@@ -145,7 +145,7 @@ function normalizeProfile(p: any): ApiProfile {
   const models = Array.isArray(p?.models) && p.models.length
     ? p.models.map((m: any) => ({ id: m.id || m.name, name: m.name, ownedBy: m.ownedBy || m.owned_by, created: m.created, enabled: m.enabled !== false })).filter((m: any) => m.id)
     : [{ id: defaultModel, name: defaultModel, enabled: true }]
-  if (!models.some((m) => m.id === defaultModel)) models.unshift({ id: defaultModel, name: defaultModel, enabled: true })
+  if (!models.some((m: any) => m.id === defaultModel)) models.unshift({ id: defaultModel, name: defaultModel, enabled: true })
   return {
     id: p?.id || makeId('provider'),
     name: p?.name || 'New API',
@@ -163,10 +163,10 @@ function normalizeSettings(settings: any): ChatSettings {
   const profiles = Array.isArray(settings?.apiProfiles) && settings.apiProfiles.length
     ? settings.apiProfiles.map(normalizeProfile)
     : DEFAULT_SETTINGS.apiProfiles
-  const activeProfileId = profiles.some((p) => p.id === settings?.activeProfileId)
+  const activeProfileId = profiles.some((p: any) => p.id === settings?.activeProfileId)
     ? settings.activeProfileId
     : profiles[0].id
-  const activeProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0]
+  const activeProfile = profiles.find((p: any) => p.id === activeProfileId) || profiles[0]
 
   let sessions: ChatSession[] = Array.isArray(settings?.sessions) && settings.sessions.length
     ? settings.sessions.map((s: any) => ({
