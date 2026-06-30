@@ -4,29 +4,22 @@ import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  MessageCircle,
-  BookOpen,
-  StickyNote,
-  ClipboardList,
-  Calendar,
-  Brain,
   Sun,
   Moon,
   X,
-  Heart,
 } from 'lucide-react'
 
 const tabs = [
-  { id: 'chat' as const, label: '对话', icon: MessageCircle, emoji: '💬' },
-  { id: 'diary' as const, label: '日记', icon: BookOpen, emoji: '📔' },
-  { id: 'notes' as const, label: '留言', icon: StickyNote, emoji: '📌' },
-  { id: 'todo' as const, label: '待办', icon: ClipboardList, emoji: '🧾' },
-  { id: 'calendar' as const, label: '日历', icon: Calendar, emoji: '📅' },
-  { id: 'memory' as const, label: '记忆', icon: Brain, emoji: '🧠' },
+  { id: 'chat' as const, label: '对话', emoji: '💬' },
+  { id: 'diary' as const, label: '日记', emoji: '📔' },
+  { id: 'notes' as const, label: '留言', emoji: '📌' },
+  { id: 'todo' as const, label: '待办', emoji: '🧾' },
+  { id: 'calendar' as const, label: '日历', emoji: '📅' },
+  { id: 'memory' as const, label: '记忆', emoji: '🧠' },
 ]
 
 export function Sidebar() {
-  const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen, currentUser, setCurrentUser } = useApp()
+  const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen } = useApp()
   const { theme, toggle } = useTheme()
 
   return (
@@ -45,15 +38,18 @@ export function Sidebar() {
       </AnimatePresence>
 
       {/* Sidebar */}
-      <aside className={`
-        fixed md:static inset-y-0 left-0 z-50
-        w-64 md:w-20 lg:w-64
-        flex flex-col
-        transition-all duration-300 ease-out
-        ${theme === 'night' ? 'bg-night-card border-night-border' : 'bg-white/80 border-day-muted/20'}
-        border-r
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
+      <aside
+        className={`
+          fixed md:static inset-y-0 left-0 z-50
+          w-64 md:w-20 lg:w-64
+          flex flex-col
+          transition-all duration-300 ease-out
+          ${theme === 'night' ? 'bg-night-card border-night-border' : 'bg-white/80 border-day-muted/20'}
+          border-r
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
         {/* Header */}
         <div className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -105,9 +101,8 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Bottom controls */}
-        <div className="p-3 space-y-2 border-t border-inherit">
-          {/* Theme toggle */}
+        {/* Bottom: theme toggle only */}
+        <div className="p-3 border-t border-inherit">
           <button
             onClick={toggle}
             className={`
@@ -123,25 +118,6 @@ export function Sidebar() {
             {theme === 'night' ? <Moon size={18} /> : <Sun size={18} />}
             <span className="md:hidden lg:inline">
               {theme === 'night' ? 'Night' : 'Day'}
-            </span>
-          </button>
-
-          {/* User switch */}
-          <button
-            onClick={() => setCurrentUser(currentUser === 'fire' ? 'star' : 'fire')}
-            className={`
-              w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm
-              md:justify-center lg:justify-start
-              transition-colors
-              ${theme === 'night'
-                ? 'text-night-muted hover:bg-night-surface'
-                : 'text-day-muted hover:bg-day-lemon/60'
-              }
-            `}
-          >
-            <span className="text-base">{currentUser === 'fire' ? '🔥' : '⭐'}</span>
-            <span className="md:hidden lg:inline">
-              {currentUser === 'fire' ? 'Non' : 'Star'}
             </span>
           </button>
         </div>

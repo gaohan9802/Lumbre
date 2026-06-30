@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-const DIARY_API = process.env.DIARY_API_BASE || 'https://starfire-diary.zeabur.app'
+import { deleteDiary } from '@/lib/diary-store'
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}))
-    const params = new URLSearchParams()
-    if (body.author) params.set('author', body.author)
-    if (body.target_date) params.set('target_date', body.target_date)
-    if (body.time_id) params.set('time_id', body.time_id)
-    const url = `${DIARY_API}/api/diary/delete?${params.toString()}`
-    const res = await fetch(url, { method: 'POST' })
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    const body = await req.json()
+    const result = deleteDiary(body.target_date, body.author, body.time_id)
+    if (result === 'not_found') return NextResponse.json({ error: '找不到日记' }, { status: 404 })
+    return NextResponse.json({ result: '🗑️ 已删除' })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
