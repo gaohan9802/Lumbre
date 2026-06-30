@@ -4,20 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "postinstall": "prisma generate"
+    "lint": "next lint"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
     "date-fns": "^3.6.0",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.400.0",
     "next": "^14.2.0",
-    "pg": "^8.22.0",
-    "prisma": "^7.8.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "zustand": "^4.5.0"

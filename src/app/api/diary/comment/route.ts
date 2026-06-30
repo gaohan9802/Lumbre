@@ -1,3 +1,3 @@
 import { NextRequest } from 'next/server'
-import { proxy } from '../../_helpers'
-export const POST = (req: NextRequest) => proxy(req, '/diary/comment')
+import { proxyDiary } from '../../_helpers'
+export const POST = (req: NextRequest) => proxyDiary(req, '/api/diary/comment')

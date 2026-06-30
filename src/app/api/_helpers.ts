@@ -1,25 +1,33 @@
-// Server-side helper: proxy a request to Ombre Brain / starfire-diary backend.
-// All Lumbre /api/* routes are thin pass-throughs so that the backend URL/token
-// never reaches the client.
-
+/**
+ * Server-side proxy helper.
+ * Routes diary/notes through starfire-diary backend,
+ * and memory through ombre brain backend.
+ * The env vars hold the base URLs; no auth token needed for now
+ * (both backends are open or session-based).
+ */
 import { NextRequest, NextResponse } from 'next/server'
 
-const BRAIN_API = process.env.BRAIN_API_BASE || ''
-const BRAIN_TOKEN = process.env.BRAIN_API_TOKEN || ''
+const DIARY_API = process.env.DIARY_API_BASE || 'https://starfire-diary.zeabur.app'
+const BRAIN_API = process.env.BRAIN_API_BASE || 'https://xiaohuo.zeabur.app'
 
-export async function proxy(req: NextRequest, path: string) {
+export async function proxyDiary(req: NextRequest, path: string) {
+  return doProxy(req, DIARY_API, path)
+}
+
+export async function proxyBrain(req: NextRequest, path: string) {
+  return doProxy(req, BRAIN_API, path)
+}
+
+async function doProxy(req: NextRequest, base: string, path: string) {
   try {
     const body = await req.json().catch(() => ({}))
-    const res = await fetch(`${BRAIN_API}${path}`, {
+    const url = `${base}${path}`
+    const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BRAIN_TOKEN}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
     const text = await res.text()
-    // forward as JSON if possible, else as text
     try {
       return NextResponse.json(JSON.parse(text), { status: res.status })
     } catch {
