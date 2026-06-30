@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  user      String        @default("fire")
+  title     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+
+  @@index([user, updatedAt(sort: Desc)])
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  role      String
+  content   String
+  thinking  String?
+
+  inputTokens         Int?
+  outputTokens        Int?
+  cacheReadTokens     Int?
+  cacheCreationTokens Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+model ChatConfig {
+  user           String   @id
+  systemPrompt   String   @default("")
+  contextLength  Int      @default(30)
+  model          String   @default("claude-opus-4-5")
+  thinkingBudget Int      @default(8000)
+  promptCaching  Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+}
