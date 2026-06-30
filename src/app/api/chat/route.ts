@@ -41,9 +41,10 @@ export async function POST(req: NextRequest) {
     } = await req.json()
 
     const provider: Provider = api_profile?.provider || 'anthropic'
+    const profileModel = api_profile?.modelId || api_profile?.model
     const apiKey = api_profile?.apiKey || process.env.CLAUDE_API_KEY || ''
     const baseUrl = api_profile?.baseUrl || process.env.CLAUDE_API_BASE || 'https://api.anthropic.com'
-    const model = modelOverride || process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514'
+    const model = modelOverride || profileModel || process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514'
 
     if (!apiKey) {
       return NextResponse.json(

@@ -12,13 +12,14 @@ async function post(path: string, body: any = {}) {
 
 // ── Chat ────────────────────────────────────────────────
 export const chat = {
+  models: (params: { provider: 'anthropic' | 'openai-compatible'; baseUrl: string; apiKey: string }) => post('/api/models', params),
   send: (params: {
     messages: any[]
     system?: string
     model?: string
     thinking_budget?: number
     prompt_caching?: boolean
-    api_profile?: { provider: 'anthropic' | 'openai-compatible'; baseUrl: string; apiKey: string }
+    api_profile?: { provider: 'anthropic' | 'openai-compatible'; baseUrl: string; apiKey: string; modelId?: string }
   }) => post('/api/chat', params),
 }
 
