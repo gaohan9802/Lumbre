@@ -402,7 +402,7 @@ export function ChatView() {
                 enterKeyHint="send"
                 className={`flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${isNight ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`}
               />
-              <button onClick={handleSend} disabled={!input.trim() || isLoading} className={`p-2 rounded-xl transition-all flex-shrink-0 ${input.trim() ? (isNight ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-heart') : 'opacity-30 cursor-not-allowed'}`}>
+              <button onClick={handleSend} disabled={!input.trim() || isLoading} className={`p-2 rounded-xl transition-all flex-shrink-0 ${input.trim() ? (isNight ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
                 <Send size={16} />
               </button>
             </div>

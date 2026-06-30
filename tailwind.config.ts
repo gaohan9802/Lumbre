@@ -10,19 +10,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Day Mode - Girl's Dream
+        // Day Mode — Girl's Dream
         day: {
-          bg: '#FFF8F5',
+          bg: '#FFF5F0',
           card: '#FFFFFF',
-          sky: '#A2D7D8',
-          pink: '#FF9E9D',
-          lemon: '#FFF3B0',
-          honey: '#FFB347',
-          heart: '#FF6B6B',
+          sky: '#84BECA',       // Diamond
+          pink: '#EF4067',      // Heartbeat — primary accent, buttons
+          lemon: '#FEDAB8',     // Banana — warm cream highlights
+          honey: '#F3A4AC',     // Girl's Dream — soft pink decorative
+          heart: '#BE0001',     // Sweet Honey — deep red emphasis
           text: '#5C4B51',
           muted: '#9B8E93',
         },
-        // Night Mode - Old Fashioned
+        // Night Mode — Old Fashioned
         night: {
           bg: '#1A1D23',
           card: '#22262E',
@@ -40,7 +40,7 @@ const config: Config = {
           ink: '#4A3728',
           stamp: '#C45C48',
           line: '#D4C9BC',
-        }
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
