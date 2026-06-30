@@ -84,7 +84,7 @@ export function NotesView() {
 
   const noteColors = isNight
     ? ['bg-night-surface', 'bg-night-amber/10', 'bg-night-card']
-    : ['bg-day-lemon/40', 'bg-day-pink/15', 'bg-day-sky/20', 'bg-white']
+    : ['bg-day-lemon', 'bg-day-honey/40', 'bg-day-sky/30', 'bg-white']
 
   return (
     <div className="h-full flex flex-col">
@@ -93,7 +93,7 @@ export function NotesView() {
         <button
           onClick={() => setIsWriting(true)}
           className={`p-2 rounded-xl transition ${
-            isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-pink/10 text-day-heart'
+            isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-lemon text-day-pink'
           }`}
         >
           <Plus size={20} />
@@ -109,7 +109,7 @@ export function NotesView() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               className={`mb-4 p-4 rounded-2xl ${
-                isNight ? 'bg-night-amber/10' : 'bg-day-lemon/50'
+                isNight ? 'bg-night-amber/10' : 'bg-day-lemon'
               }`}
             >
               <textarea

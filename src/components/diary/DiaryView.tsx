@@ -171,7 +171,7 @@ export function DiaryView() {
           <button
             onClick={() => setIsWriting(true)}
             className={`p-2 rounded-xl transition ${
-              isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-pink/10 text-day-heart'
+              isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-lemon text-day-pink'
             }`}
           >
             <Plus size={20} />
@@ -215,7 +215,7 @@ export function DiaryView() {
                     onClick={() => setVisibility(v)}
                     className={`px-3 py-1 rounded-lg text-xs transition ${
                       visibility === v
-                        ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink/20 text-day-heart'
+                        ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-honey/60 text-day-pink'
                         : isNight ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'
                     }`}
                   >
@@ -310,7 +310,7 @@ export function DiaryView() {
                           onClick={handleAppend}
                           disabled={!appendText.trim()}
                           className={`px-3 py-1 rounded-lg ${
-                            isNight ? 'bg-night-amber/80 text-night-bg' : 'bg-day-pink/80 text-white'
+                            isNight ? 'bg-night-amber/80 text-night-bg' : 'bg-day-pink text-white'
                           } disabled:opacity-30`}
                         >
                           追加

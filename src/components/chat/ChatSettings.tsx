@@ -239,7 +239,7 @@ export function ChatSettings({ open, onClose }: Props) {
                       {selectedProvider.models.map((m) => {
                         const active = activeProvider?.id === selectedProvider.id && settings.model === m.id
                         return (
-                          <div key={m.id} className={`p-2 rounded-lg flex items-center gap-2 ${active ? (isNight ? 'bg-night-amber/15' : 'bg-day-pink/10') : (isNight ? 'bg-night-card/50' : 'bg-white')}`}>
+                          <div key={m.id} className={`p-2 rounded-lg flex items-center gap-2 ${active ? (isNight ? 'bg-night-amber/15' : 'bg-day-lemon') : (isNight ? 'bg-night-card/50' : 'bg-white')}`}>
                             <button onClick={() => toggleModelEnabled(selectedProvider.id, m.id)} className={`p-1 rounded ${m.enabled ? (isNight ? 'text-night-amber' : 'text-day-heart') : 'opacity-30'}`} title={m.enabled ? '已启用' : '已停用'}>
                               <Power size={13} />
                             </button>

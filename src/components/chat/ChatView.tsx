@@ -199,7 +199,7 @@ export function ChatView() {
               onClick={() => { setActiveSession(s.id); if (mobile) setSessionDrawerOpen(false) }}
               className={`group p-3 rounded-xl cursor-pointer transition ${
                 active
-                  ? isNight ? 'bg-night-amber/15 text-night-text' : 'bg-day-pink/10 text-day-text'
+                  ? isNight ? 'bg-night-amber/15 text-night-text' : 'bg-day-lemon text-day-text'
                   : isNight ? 'hover:bg-night-surface' : 'hover:bg-gray-50'
               }`}
             >
@@ -306,7 +306,7 @@ export function ChatView() {
               <h2 className="text-sm font-medium opacity-80 truncate">{activeSession?.title || '对话'}</h2>
               <span className="text-[10px] opacity-40 truncate">{activeProfile?.name} · {settings.model}</span>
               {cacheHit && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${isNight ? 'bg-night-amber/10 text-night-amber' : 'bg-day-pink/10 text-day-heart'}`}>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${isNight ? 'bg-night-amber/10 text-night-amber' : 'bg-day-lemon text-day-pink'}`}>
                   cache ↻ {lastAssistant?.cache_read_tokens}
                 </span>
               )}
@@ -351,7 +351,7 @@ export function ChatView() {
                       )}
                     </AnimatePresence>
 
-                    <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? (isNight ? 'bg-night-amber/20 text-night-text rounded-br-md' : 'bg-day-pink/20 text-day-text rounded-br-md') : (isNight ? 'bg-night-surface text-night-text rounded-bl-md' : 'bg-white shadow-sm text-day-text rounded-bl-md')}`}>
+                    <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? (isNight ? 'bg-night-amber/20 text-night-text rounded-br-md' : 'bg-day-honey text-day-text rounded-br-md') : (isNight ? 'bg-night-surface text-night-text rounded-bl-md' : 'bg-white shadow-sm text-day-text rounded-bl-md')}`}>
                       <p className="whitespace-pre-wrap">{msg.content}</p>
                     </div>
 

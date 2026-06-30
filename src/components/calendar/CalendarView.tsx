@@ -121,9 +121,9 @@ export function CalendarView() {
                     rounded-xl text-sm transition-all
                     ${!inMonth ? 'opacity-20' : ''}
                     ${selected
-                      ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink/20 text-day-heart'
+                      ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink text-white'
                       : today
-                        ? isNight ? 'bg-night-surface' : 'bg-day-lemon/30'
+                        ? isNight ? 'bg-night-surface' : 'bg-day-lemon'
                         : 'hover:bg-black/5 dark:hover:bg-white/5'
                     }
                   `}

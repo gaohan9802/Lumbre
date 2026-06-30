@@ -61,8 +61,8 @@ export function MemoryView() {
       if (valence > 0.4) return 'bg-night-surface border-night-amber/30'
       return 'bg-night-surface border-night-muted/30'
     } else {
-      if (valence > 0.7) return 'bg-day-pink/20 border-day-pink'
-      if (valence > 0.4) return 'bg-day-sky/20 border-day-sky'
+      if (valence > 0.7) return 'bg-day-honey/50 border-day-pink'
+      if (valence > 0.4) return 'bg-day-sky/40 border-day-sky'
       return 'bg-gray-100 border-gray-200'
     }
   }

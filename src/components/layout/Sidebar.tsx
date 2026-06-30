@@ -83,10 +83,10 @@ export function Sidebar() {
                   ${isActive
                     ? theme === 'night'
                       ? 'bg-night-amber/15 text-night-amber'
-                      : 'bg-day-pink/15 text-day-heart'
+                      : 'bg-day-lemon text-day-pink'
                     : theme === 'night'
                       ? 'text-night-muted hover:text-night-text hover:bg-night-surface'
-                      : 'text-day-muted hover:text-day-text hover:bg-day-pink/5'
+                      : 'text-day-muted hover:text-day-text hover:bg-day-lemon/60'
                   }
                 `}
               >
@@ -116,7 +116,7 @@ export function Sidebar() {
               transition-colors
               ${theme === 'night'
                 ? 'text-night-amber hover:bg-night-surface'
-                : 'text-day-honey hover:bg-day-lemon/30'
+                : 'text-day-pink hover:bg-day-lemon'
               }
             `}
           >
@@ -135,7 +135,7 @@ export function Sidebar() {
               transition-colors
               ${theme === 'night'
                 ? 'text-night-muted hover:bg-night-surface'
-                : 'text-day-muted hover:bg-day-pink/5'
+                : 'text-day-muted hover:bg-day-lemon/60'
               }
             `}
           >
