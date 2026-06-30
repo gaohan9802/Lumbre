@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, ChevronDown, Settings2 } from 'lucide-react'
-import { useChatStore, ChatMessage } from '@/lib/chatStore'
+import { useChatStore, ChatMessage, getActiveProfile } from '@/lib/chatStore'
 import { chat } from '@/lib/api'
 import { ChatSettings } from './ChatSettings'
 
@@ -12,6 +12,7 @@ export function ChatView() {
   const { theme } = useTheme()
   const isNight = theme === 'night'
   const { messages, settings, addMessage } = useChatStore()
+  const activeProfile = getActiveProfile(settings)
 
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -57,6 +58,11 @@ export function ChatView() {
         model: settings.model,
         thinking_budget: settings.thinkingBudget,
         prompt_caching: settings.promptCaching,
+        api_profile: activeProfile ? {
+          provider: activeProfile.provider,
+          baseUrl: activeProfile.baseUrl,
+          apiKey: activeProfile.apiKey,
+        } : undefined,
       })
 
       addMessage({
@@ -70,11 +76,11 @@ export function ChatView() {
         cache_read_tokens: data.cache_read_tokens,
         cache_creation_tokens: data.cache_creation_tokens,
       })
-    } catch {
+    } catch (err: any) {
       addMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: '连接失败了…',
+        content: err?.message || '连接失败了…',
         timestamp: Date.now(),
       })
     } finally {

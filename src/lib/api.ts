@@ -18,6 +18,7 @@ export const chat = {
     model?: string
     thinking_budget?: number
     prompt_caching?: boolean
+    api_profile?: { provider: 'anthropic' | 'openai-compatible'; baseUrl: string; apiKey: string }
   }) => post('/api/chat', params),
 }
 
