@@ -5,7 +5,7 @@
 import fs from 'fs'
 import path from 'path'
 
-const DATA_DIR = process.env.DATA_DIR || '/app/data'
+const DATA_DIR = process.env.DATA_DIR || '/src/data'
 const DIARY_DIR = path.join(DATA_DIR, 'diaries')
 const NOTES_DIR = path.join(DATA_DIR, 'notes')
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json')
