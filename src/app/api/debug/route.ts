@@ -16,35 +16,6 @@ export async function GET() {
     notes_count: 0,
     persist_test: { previous_write: null as string | null, survived_redeploy: false },
     write_error: null as string | null,
-    all_root_dirs: null as string[] | null,
-    src_contents: null as string[] | null,
-    path_checks: {} as Record<string, boolean>,
-  }
-
-  // List root dirs
-  try {
-    info.all_root_dirs = fs.readdirSync('/')
-  } catch (e) {
-    info.all_root_dirs = [`error: ${e}`]
-  }
-
-  // List /src contents
-  try {
-    info.src_contents = fs.readdirSync('/src')
-  } catch (e) {
-    info.src_contents = [`error: ${e}`]
-  }
-
-  // Check common mount paths
-  const checkPaths = ['/persistent', '/data', '/src/data', '/src/persistent', '/mnt/data', '/var/data', '/tmp']
-  for (const p of checkPaths) {
-    info.path_checks[p] = fs.existsSync(p)
-    if (fs.existsSync(p)) {
-      try {
-        const contents = fs.readdirSync(p)
-        info.path_checks[p + '_contents'] = contents as unknown as boolean
-      } catch {}
-    }
   }
 
   if (fs.existsSync(dataDir)) {
