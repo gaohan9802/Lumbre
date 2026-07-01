@@ -198,7 +198,7 @@ export function NotesView() {
                   {/* Author + time */}
                   <div className="flex items-center justify-between mb-2 mt-1">
                     <span className="text-xs font-medium" style={{ color: isNight ? '#D4A574' : '#5C4B51' }}>
-                      {note.author === 'star' ? '⭐ 星星' : '🔥 小火'}
+                      {note.author === 'star' ? '🐆 星星' : '🦦 小火'}
                     </span>
                     <span className="text-[10px] opacity-40">
                       {formatTime(note.created_at)}
@@ -239,7 +239,7 @@ export function NotesView() {
                       {note.replies!.map((reply, j) => (
                         <div key={j} className="flex gap-2 items-start">
                           <span className="text-xs flex-shrink-0">
-                            {reply.author === 'star' ? '⭐' : '🔥'}
+                            {reply.author === 'star' ? '🐆' : '🦦'}
                           </span>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs leading-relaxed" style={{ color: isNight ? '#C0B8B0' : '#5C4B51' }}>

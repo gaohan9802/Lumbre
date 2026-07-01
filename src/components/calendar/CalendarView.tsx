@@ -195,7 +195,7 @@ export function CalendarView() {
                 onChange={(e) => setNewEmoji(e.target.value)}
                 className="text-sm bg-transparent outline-none"
               >
-                {['❤️', '🎂', '🌸', '⭐', '🔥', '💍', '🎄', '🎉', '🐾'].map(e => (
+                {['❤️', '🎂', '🌸', '🐆', '🦦', '💍', '🎄', '🎉', '🐾'].map(e => (
                   <option key={e} value={e}>{e}</option>
                 ))}
               </select>

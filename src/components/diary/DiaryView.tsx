@@ -228,7 +228,7 @@ export function DiaryView() {
               <div className={`flex rounded-lg overflow-hidden text-[11px] ${
                 isNight ? 'bg-night-surface' : 'bg-day-honey/20'
               }`}>
-                {([['all', '全部'], ['star', '⭐'], ['fire', '🔥']] as const).map(([key, label]) => (
+                {([['all', '全部'], ['star', '🐆'], ['fire', '🦦']] as const).map(([key, label]) => (
                   <button
                     key={key}
                     onClick={() => setAuthorFilter(key as AuthorFilter)}
@@ -269,7 +269,7 @@ export function DiaryView() {
               /* ── Write Mode ── */
               <motion.div key="write" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="max-w-lg mx-auto space-y-5">
                 <p className={`text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-                  {format(new Date(), 'yyyy年M月d日 EEEE', { locale: zhCN })} · 🔥
+                  {format(new Date(), 'yyyy年M月d日 EEEE', { locale: zhCN })} · 🦦
                 </p>
                 <input
                   value={title} onChange={(e) => setTitle(e.target.value)}
@@ -323,7 +323,7 @@ export function DiaryView() {
               /* ── Read Mode ── */
               <motion.div key="read" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="max-w-lg mx-auto">
                 <div className={`flex items-center gap-2 text-xs flex-wrap mb-4 ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-                  <span className="text-sm">{selected.author === 'star' ? '⭐' : '🔥'}</span>
+                  <span className="text-sm">{selected.author === 'star' ? '🐆' : '🦦'}</span>
                   <span>{friendlyDate(selected.date)}</span>
                   <span>{friendlyTime(selected.created_at)}</span>
                   {selected.visibility === 'private' && <Lock size={11} className="opacity-60" />}
@@ -377,7 +377,7 @@ export function DiaryView() {
                     const who = c.commenter || c.author || 'unknown'
                     return (
                       <div key={i} className="flex gap-2.5 text-sm">
-                        <span className="mt-0.5 text-xs flex-shrink-0">{who === 'star' ? '⭐' : '🔥'}</span>
+                        <span className="mt-0.5 text-xs flex-shrink-0">{who === 'star' ? '🐆' : '🦦'}</span>
                         <div className="flex-1 min-w-0">
                           <p className={`leading-relaxed ${isNight ? 'text-night-text/80' : 'text-day-text/85'}`}>{c.content}</p>
                           <span className={`text-[10px] mt-0.5 block ${isNight ? 'text-night-muted/50' : 'text-day-muted/60'}`}>
@@ -388,7 +388,7 @@ export function DiaryView() {
                     )
                   })}
                   <div className={`flex gap-2 items-end rounded-xl p-2 ${isNight ? 'bg-night-surface/50' : 'bg-day-honey/10'}`}>
-                    <span className="text-xs pb-1">🔥</span>
+                    <span className="text-xs pb-1">🦦</span>
                     <input value={commentText} onChange={(e) => setCommentText(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleComment()}
                       placeholder="留个言..."
@@ -435,7 +435,7 @@ export function DiaryView() {
                             >
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-xs">{entry.author === 'star' ? '⭐' : '🔥'}</span>
+                                  <span className="text-xs">{entry.author === 'star' ? '🐆' : '🦦'}</span>
                                   <span className={`text-[11px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{friendlyTime(entry.created_at)}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
@@ -486,7 +486,7 @@ export function DiaryView() {
                 <span className="text-sm font-medium">解锁日记</span>
               </div>
               <p className={`text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-                {unlocking.author === 'star' ? '⭐' : '🔥'} {unlocking.title}
+                {unlocking.author === 'star' ? '🐆' : '🦦'} {unlocking.title}
               </p>
               <input type="password" value={unlockPwd}
                 onChange={(e) => { setUnlockPwd(e.target.value); setUnlockErr('') }}

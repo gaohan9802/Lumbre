@@ -35,7 +35,7 @@ export function TopBar() {
         <Menu size={22} />
       </button>
       <span className="text-sm font-medium">{titles[activeTab]}</span>
-      <span className="text-base">🔥</span>
+      <span className="text-base">🦦</span>
     </header>
   )
 }

@@ -109,7 +109,7 @@ export function TodoView() {
           </div>
           <div className="flex justify-between">
             <span>柜员</span>
-            <span>{currentUser === 'fire' ? 'Non' : 'Star'} · {currentUser === 'fire' ? '🔥' : '⭐'}</span>
+            <span>{currentUser === 'fire' ? 'Non' : 'Star'} · {currentUser === 'fire' ? '🦦' : '🐆'}</span>
           </div>
           <div className="flex justify-between">
             <span>此刻</span>
@@ -237,7 +237,7 @@ export function TodoView() {
             </motion.div>
           ) : (
             <p className="text-[10px] text-receipt-ink/30 font-receipt">
-              今天也辛苦了 {currentUser === 'fire' ? '🔥' : '⭐'}
+              今天也辛苦了 {currentUser === 'fire' ? '🦦' : '🐆'}
             </p>
           )}
           <p className="text-[10px] text-receipt-ink/20 font-receipt">
