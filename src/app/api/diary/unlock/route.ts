@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { unlockDiary, hasPassword } from '@/lib/diary-store'
+import { unlockDiary, hasPassword } from '@/server/diary-store'
 
 export async function POST(req: NextRequest) {
   try {

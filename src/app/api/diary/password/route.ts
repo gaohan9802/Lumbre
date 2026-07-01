@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { setPassword } from '@/lib/diary-store'
+import { setPassword } from '@/server/diary-store'
 
 export async function POST(req: NextRequest) {
   try {

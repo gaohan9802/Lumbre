@@ -36,6 +36,7 @@ export function ChatView() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set())
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
@@ -102,6 +103,7 @@ export function ChatView() {
         output_tokens: data.output_tokens,
         cache_read_tokens: data.cache_read_tokens,
         cache_creation_tokens: data.cache_creation_tokens,
+        tool_calls: data.tool_calls,
         providerId: profile?.id,
         modelId: model,
       })
@@ -128,6 +130,15 @@ export function ChatView() {
 
   const toggleThinking = (id: string) => {
     setExpandedThinking((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleTools = (id: string) => {
+    setExpandedTools((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -350,6 +361,33 @@ export function ChatView() {
                         </motion.div>
                       )}
                     </AnimatePresence>
+
+                    {msg.tool_calls && msg.tool_calls.length > 0 && (
+                      <>
+                        <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
+                          <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? 'rotate-180' : ''}`} />
+                          🔧 {msg.tool_calls.length} tool{msg.tool_calls.length > 1 ? 's' : ''}
+                        </button>
+                        <AnimatePresence>
+                          {expandedTools.has(msg.id) && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                              <div className={`text-xs space-y-2 p-2.5 rounded-xl ${isNight ? 'bg-night-surface/80' : 'bg-gray-50'}`}>
+                                {msg.tool_calls.map((tc: any, i: number) => (
+                                  <div key={i} className={`p-2 rounded-lg ${isNight ? 'bg-night-card' : 'bg-white'}`}>
+                                    <div className="flex items-center gap-1.5 mb-1">
+                                      <span className={`font-medium ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>{tc.name}</span>
+                                      <span className="opacity-30">→</span>
+                                      <span className="opacity-50 truncate">{Object.entries(tc.input || {}).filter(([,v]) => v).map(([k,v]) => `${k}=${JSON.stringify(v)}`).join(', ').slice(0, 80)}</span>
+                                    </div>
+                                    <pre className={`whitespace-pre-wrap text-[10px] leading-relaxed max-h-40 overflow-y-auto ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{typeof tc.result === 'string' ? tc.result.slice(0, 500) : JSON.stringify(tc.result, null, 2).slice(0, 500)}{(tc.result?.length || 0) > 500 ? '...' : ''}</pre>
+                                  </div>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </>
+                    )}
 
                     <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? (isNight ? 'bg-night-amber/20 text-night-text rounded-br-md' : 'bg-day-honey text-day-text rounded-br-md') : (isNight ? 'bg-night-surface text-night-text rounded-bl-md' : 'bg-white shadow-sm text-day-text rounded-bl-md')}`}>
                       <p className="whitespace-pre-wrap">{msg.content}</p>

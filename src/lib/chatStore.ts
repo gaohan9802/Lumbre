@@ -16,6 +16,7 @@ export interface ChatMessage {
   output_tokens?: number
   cache_read_tokens?: number
   cache_creation_tokens?: number
+  tool_calls?: { name: string; input: Record<string, any>; result: string }[]
   providerId?: string
   modelId?: string
 }

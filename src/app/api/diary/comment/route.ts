@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { commentDiary } from '@/lib/diary-store'
+import { commentDiary } from '@/server/diary-store'
 
 export async function POST(req: NextRequest) {
   try {
