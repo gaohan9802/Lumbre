@@ -4,32 +4,32 @@ import fs from 'fs'
 
 export async function GET() {
   const cwd = process.cwd()
-  const dataDir = process.env.DATA_DIR || '/src/data'
+  const dataDir = process.env.DATA_DIR || path.join(cwd, 'data')
 
-  const info: Record<string, any> = {
+  const info = {
     cwd,
     DATA_DIR_env: process.env.DATA_DIR || '(not set)',
     resolved_dataDir: dataDir,
     dataDir_exists: fs.existsSync(dataDir),
+    contents: null as string[] | null,
+    diary_count: 0,
+    notes_count: 0,
+    persist_test: { previous_write: null as string | null, survived_redeploy: false },
   }
 
   if (fs.existsSync(dataDir)) {
     info.contents = fs.readdirSync(dataDir)
     const diaryDir = path.join(dataDir, 'diaries')
     const notesDir = path.join(dataDir, 'notes')
-    if (fs.existsSync(diaryDir))
-      info.diary_count = fs.readdirSync(diaryDir).length
-    if (fs.existsSync(notesDir))
-      info.notes_count = fs.readdirSync(notesDir).length
+    if (fs.existsSync(diaryDir)) info.diary_count = fs.readdirSync(diaryDir).length
+    if (fs.existsSync(notesDir)) info.notes_count = fs.readdirSync(notesDir).length
   }
 
-  // Persistence test
   const testFile = path.join(dataDir, '.persist-test')
-  let prev = null
-  if (fs.existsSync(testFile)) prev = fs.readFileSync(testFile, 'utf-8')
+  if (fs.existsSync(testFile)) info.persist_test.previous_write = fs.readFileSync(testFile, 'utf-8')
+  info.persist_test.survived_redeploy = info.persist_test.previous_write !== null
   fs.mkdirSync(dataDir, { recursive: true })
   fs.writeFileSync(testFile, new Date().toISOString())
-  info.persist_test = { previous_write: prev, survived_redeploy: prev !== null }
 
   return NextResponse.json(info, { headers: { 'Cache-Control': 'no-store' } })
 }
