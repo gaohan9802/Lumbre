@@ -15,6 +15,17 @@ export async function GET() {
     diary_count: 0,
     notes_count: 0,
     persist_test: { previous_write: null as string | null, survived_redeploy: false },
+    write_error: null as string | null,
+    all_root_dirs: null as string[] | null,
+  }
+
+  // List root dirs to find where volume actually mounted
+  try {
+    info.all_root_dirs = fs.readdirSync('/').filter(d => {
+      try { return fs.statSync('/' + d).isDirectory() } catch { return false }
+    })
+  } catch (e) {
+    info.all_root_dirs = [`error: ${e}`]
   }
 
   if (fs.existsSync(dataDir)) {
@@ -25,11 +36,15 @@ export async function GET() {
     if (fs.existsSync(notesDir)) info.notes_count = fs.readdirSync(notesDir).length
   }
 
-  const testFile = path.join(dataDir, '.persist-test')
-  if (fs.existsSync(testFile)) info.persist_test.previous_write = fs.readFileSync(testFile, 'utf-8')
-  info.persist_test.survived_redeploy = info.persist_test.previous_write !== null
-  fs.mkdirSync(dataDir, { recursive: true })
-  fs.writeFileSync(testFile, new Date().toISOString())
+  try {
+    fs.mkdirSync(dataDir, { recursive: true })
+    const testFile = path.join(dataDir, '.persist-test')
+    if (fs.existsSync(testFile)) info.persist_test.previous_write = fs.readFileSync(testFile, 'utf-8')
+    info.persist_test.survived_redeploy = info.persist_test.previous_write !== null
+    fs.writeFileSync(testFile, new Date().toISOString())
+  } catch (e) {
+    info.write_error = `${e}`
+  }
 
   return NextResponse.json(info, { headers: { 'Cache-Control': 'no-store' } })
 }
