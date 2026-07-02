@@ -1,3 +1,4 @@
+import { recordUsage } from '@/server/usage'
 import { NextRequest, NextResponse } from 'next/server'
 import { ALL_TOOLS, executeTool, ToolCallResult } from '@/server/tools'
 

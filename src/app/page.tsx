@@ -9,6 +9,8 @@ import { NotesView } from '@/components/notes/NotesView'
 import { TodoView } from '@/components/todo/TodoView'
 import { CalendarView } from '@/components/calendar/CalendarView'
 import { MemoryView } from '@/components/memory/MemoryView'
+import { TimelineView } from '@/components/timeline/TimelineView'
+import { DashboardView } from '@/components/dashboard/DashboardView'
 import { ChatSync } from '@/components/chat/ChatSync'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -19,6 +21,8 @@ const views = {
   todo: TodoView,
   calendar: CalendarView,
   memory: MemoryView,
+  timeline: TimelineView,
+  dashboard: DashboardView,
 }
 
 export default function Home() {

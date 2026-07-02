@@ -13,9 +13,11 @@ const tabs = [
   { id: 'chat' as const, label: '对话', emoji: '💬' },
   { id: 'diary' as const, label: '日记', emoji: '📔' },
   { id: 'notes' as const, label: '留言', emoji: '📌' },
+  { id: 'timeline' as const, label: '时间轴', emoji: '🕐' },
+  { id: 'memory' as const, label: '记忆', emoji: '🧠' },
+  { id: 'dashboard' as const, label: '仪表盘', emoji: '📊' },
   { id: 'todo' as const, label: '待办', emoji: '🧾' },
   { id: 'calendar' as const, label: '日历', emoji: '📅' },
-  { id: 'memory' as const, label: '记忆', emoji: '🧠' },
 ]
 
 export function Sidebar() {
