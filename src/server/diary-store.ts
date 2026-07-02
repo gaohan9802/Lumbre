@@ -1,6 +1,7 @@
 /**
  * Local file-based storage for diaries and notes.
- * Replaces the starfire-diary proxy — Lumbre is now self-contained.
+ * On first boot, migrates from combined JSON files (data/diaries.json, data/notes.json)
+ * into per-file storage (data/diaries/*.json, data/notes/*.json).
  */
 import fs from 'fs'
 import path from 'path'
@@ -16,8 +17,49 @@ function ensureDirs() {
   }
 }
 
-// ── Config (passwords) ──────────────────────────────────
+// ── Auto-migration from combined files ──────────────────
 
+function migrateIfNeeded() {
+  ensureDirs()
+
+  // Migrate diaries.json → individual files
+  const combinedDiaries = path.join(DATA_DIR, 'diaries.json')
+  if (fs.existsSync(combinedDiaries)) {
+    const existing = fs.readdirSync(DIARY_DIR).filter(f => f.endsWith('.json'))
+    if (existing.length === 0) {
+      try {
+        const entries = JSON.parse(fs.readFileSync(combinedDiaries, 'utf-8'))
+        for (const entry of entries) {
+          const filename = `${entry.date}_${entry.time_id}_${entry.author}.json`
+          fs.writeFileSync(path.join(DIARY_DIR, filename), JSON.stringify(entry, null, 2), 'utf-8')
+        }
+        console.log(`[diary-store] Migrated ${entries.length} diaries from combined file`)
+      } catch (e) {
+        console.error('[diary-store] Failed to migrate diaries:', e)
+      }
+    }
+  }
+
+  // Migrate notes.json → individual files
+  const combinedNotes = path.join(DATA_DIR, 'notes.json')
+  if (fs.existsSync(combinedNotes)) {
+    const existing = fs.readdirSync(NOTES_DIR).filter(f => f.endsWith('.json'))
+    if (existing.length === 0) {
+      try {
+        const notes = JSON.parse(fs.readFileSync(combinedNotes, 'utf-8'))
+        for (const note of notes) {
+          fs.writeFileSync(path.join(NOTES_DIR, `${note.id}.json`), JSON.stringify(note, null, 2), 'utf-8')
+        }
+        console.log(`[diary-store] Migrated ${notes.length} notes from combined file`)
+      } catch (e) {
+        console.error('[diary-store] Failed to migrate notes:', e)
+      }
+    }
+  }
+}
+
+// Run migration on module load
+migrateIfNeeded()
 function loadConfig(): Record<string, any> {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'))
