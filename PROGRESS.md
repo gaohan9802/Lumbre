@@ -116,3 +116,21 @@ git push -u origin main
 # 3. Zeabur 自动 next build && next start
 ```
 
+
+---
+
+## 2026-07-02 晚间 — 照片 + 食谱模块
+
+### 完成
+- `src/components/photos/PhotosView.tsx` — 照片墙（占位版：网格布局 + 上传按钮，待接后端）
+- `src/components/recipes/RecipesView.tsx` — 食谱（book/daily 双 tab，A-Z 索引，待接后端）
+- Tab 类型、Sidebar、page.tsx 路由全部接线完成
+
+### Debug 笔记
+- **坑：commit 只提交了组件文件，忘了改 Sidebar + page.tsx**
+  - 第一次 push 成功（487fb45）但只包含 View 组件和 store.ts 的 Tab 类型
+  - Sidebar tabs 数组和 page.tsx 的 views 映射没加 → 页面上根本看不到入口，看起来像"推失败了"
+  - 教训：加新模块的 checklist = ①View组件 ②store Tab类型 ③Sidebar tabs ④page.tsx import+views 映射，四处缺一不可
+  - 修复 commit：316a78d
+- push 本身没失败过，`git push https://<user>:<token>@github.com/...` 直连稳定
+- 仓库位置注意：/tmp/Lumbre 是开发仓库，/data/Lumbre 是旧的 debug 现场，别搞混
