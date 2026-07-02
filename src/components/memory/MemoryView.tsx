@@ -109,7 +109,7 @@ export function MemoryView() {
   }
 
   // Available domains from results
-  const domains = [...new Set(memories.map(m => m.domain).filter(Boolean))]
+  const domains = Array.from(new Set(memories.map(m => m.domain).filter(Boolean)))
 
   return (
     <div className="h-full flex flex-col relative">
