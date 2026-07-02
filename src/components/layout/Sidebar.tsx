@@ -18,6 +18,12 @@ const tabs = [
   { id: 'dashboard' as const, label: '仪表盘', emoji: '📊' },
   { id: 'todo' as const, label: '待办', emoji: '🧾' },
   { id: 'calendar' as const, label: '日历', emoji: '📅' },
+  { id: 'location' as const, label: '位置', emoji: '📍' },
+  { id: 'health' as const, label: '健康', emoji: '❤️' },
+  { id: 'weather' as const, label: '天气', emoji: '🌤️' },
+  { id: 'autowake' as const, label: '唤醒', emoji: '🔔' },
+  { id: 'coreading' as const, label: '共读', emoji: '📖' },
+  { id: 'knit' as const, label: '编织', emoji: '🧶' },
 ]
 
 export function Sidebar() {
@@ -64,7 +70,7 @@ export function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-2 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id
             return (

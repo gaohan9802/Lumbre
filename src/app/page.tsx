@@ -11,6 +11,12 @@ import { CalendarView } from '@/components/calendar/CalendarView'
 import { MemoryView } from '@/components/memory/MemoryView'
 import { TimelineView } from '@/components/timeline/TimelineView'
 import { DashboardView } from '@/components/dashboard/DashboardView'
+import { LocationView } from '@/components/location/LocationView'
+import { HealthView } from '@/components/health/HealthView'
+import { WeatherView } from '@/components/weather/WeatherView'
+import { AutoWakeView } from '@/components/autowake/AutoWakeView'
+import { CoReadingView } from '@/components/coreading/CoReadingView'
+import { KnitView } from '@/components/knit/KnitView'
 import { ChatSync } from '@/components/chat/ChatSync'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -23,6 +29,12 @@ const views = {
   memory: MemoryView,
   timeline: TimelineView,
   dashboard: DashboardView,
+  location: LocationView,
+  health: HealthView,
+  weather: WeatherView,
+  autowake: AutoWakeView,
+  coreading: CoReadingView,
+  knit: KnitView,
 }
 
 export default function Home() {

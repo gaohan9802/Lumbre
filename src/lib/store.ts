@@ -2,7 +2,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-type Tab = 'chat' | 'diary' | 'notes' | 'todo' | 'calendar' | 'memory' | 'timeline' | 'dashboard'
+type Tab = 'chat' | 'diary' | 'notes' | 'todo' | 'calendar' | 'memory' | 'timeline' | 'dashboard' | 'location' | 'health' | 'weather' | 'autowake' | 'coreading' | 'knit'
 
 interface AppStore {
   // Navigation
