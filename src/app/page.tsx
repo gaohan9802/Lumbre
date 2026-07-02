@@ -17,6 +17,8 @@ import { WeatherView } from '@/components/weather/WeatherView'
 import { AutoWakeView } from '@/components/autowake/AutoWakeView'
 import { CoReadingView } from '@/components/coreading/CoReadingView'
 import { KnitView } from '@/components/knit/KnitView'
+import { PhotosView } from '@/components/photos/PhotosView'
+import { RecipesView } from '@/components/recipes/RecipesView'
 import { ChatSync } from '@/components/chat/ChatSync'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -35,6 +37,8 @@ const views = {
   autowake: AutoWakeView,
   coreading: CoReadingView,
   knit: KnitView,
+  photos: PhotosView,
+  recipes: RecipesView,
 }
 
 export default function Home() {

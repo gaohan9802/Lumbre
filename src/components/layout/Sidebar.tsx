@@ -24,6 +24,8 @@ const tabs = [
   { id: 'autowake' as const, label: '唤醒', emoji: '🔔' },
   { id: 'coreading' as const, label: '共读', emoji: '📖' },
   { id: 'knit' as const, label: '编织', emoji: '🧶' },
+  { id: 'photos' as const, label: '照片', emoji: '📷' },
+  { id: 'recipes' as const, label: '食谱', emoji: '🍳' },
 ]
 
 export function Sidebar() {
