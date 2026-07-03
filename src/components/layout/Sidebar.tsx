@@ -3,11 +3,7 @@
 import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Sun,
-  Moon,
-  X,
-} from 'lucide-react'
+import { X } from 'lucide-react'
 
 const tabs = [
   { id: 'chat' as const, label: '星星', emoji: '🐆' },
@@ -121,9 +117,11 @@ export function Sidebar() {
               }
             `}
           >
-            {theme === 'night' ? <Moon size={18} /> : <Sun size={18} />}
+            <span className="text-base leading-none">
+              {theme === 'night' ? '🌙🐆' : '☀️'}
+            </span>
             <span className="md:hidden lg:inline">
-              {theme === 'night' ? 'Night' : 'Day'}
+              {theme === 'night' ? '雪豹夜行' : 'Day'}
             </span>
           </button>
         </div>

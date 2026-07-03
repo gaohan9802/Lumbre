@@ -330,7 +330,7 @@ export function ChatView() {
                 <div className="opacity-0 group-hover:opacity-100 flex gap-1" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => togglePinSession(s.id)} className="p-1 opacity-60 hover:opacity-100"><Pin size={12} /></button>
                   <button onClick={() => startRename(s.id, s.title)} className="p-1 opacity-60 hover:opacity-100"><Pencil size={12} /></button>
-                  <button onClick={() => { if (confirm('删除这条对话？')) deleteSession(s.id) }} className="p-1 text-red-500/60 hover:text-red-500"><Trash2 size={12} /></button>
+                  <button onClick={() => { if (confirm('删除这条对话？')) deleteSession(s.id) }} className="p-1 text-red-500/60 hover:text-red-500 dark:text-night-error/60 dark:hover:text-night-error"><Trash2 size={12} /></button>
                 </div>
               </div>
             </div>
@@ -359,7 +359,7 @@ export function ChatView() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className={`absolute left-4 bottom-[112px] z-40 w-[min(420px,calc(100vw-2rem))] max-h-[55vh] overflow-y-auto rounded-2xl shadow-xl border p-2 ${isNight ? 'bg-night-card border-night-border' : 'bg-white border-gray-100'}`}
+            className={`absolute left-4 bottom-[112px] z-40 w-[min(420px,calc(100vw-2rem))] max-h-[55vh] overflow-y-auto rounded-2xl shadow-xl border p-2 ${isNight ? 'bg-night-surface border-night-border' : 'bg-white border-gray-100'}`}
           >
             <div className="px-3 py-2 text-xs opacity-50">切换模型</div>
             {settings.apiProfiles.map((profile) => {
@@ -516,7 +516,7 @@ export function ChatView() {
                         <button onClick={() => handleBranch(msg.id)} title="从这里分支" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
                           <GitBranch size={11} />
                         </button>
-                        <button onClick={() => { if (confirm('删除这条消息？')) deleteMessage(msg.id) }} title="删除" className="p-1 rounded hover:bg-current/10 text-red-400/70 hover:text-red-400">
+                        <button onClick={() => { if (confirm('删除这条消息？')) deleteMessage(msg.id) }} title="删除" className="p-1 rounded hover:bg-current/10 text-red-400/70 hover:text-red-400 dark:text-night-error/70 dark:hover:text-night-error">
                           <Trash2 size={11} />
                         </button>
                       </div>
@@ -573,10 +573,10 @@ export function ChatView() {
               </div>
             )}
 
-            <div className={`flex items-end gap-2 px-3 py-2 rounded-2xl ${isNight ? 'bg-night-surface' : 'bg-gray-50'}`}>
+            <div className={`flex items-end gap-2 px-3 py-2 rounded-2xl ${isNight ? 'bg-night-card' : 'bg-gray-50'}`}>
               <button
                 onClick={() => setModelPickerOpen((v) => !v)}
-                className={`max-w-[32%] sm:max-w-[200px] flex-shrink-0 px-2 py-2 rounded-xl text-[10px] text-left leading-tight ${isNight ? 'bg-night-card hover:bg-night-card/80' : 'bg-white hover:bg-gray-100'}`}
+                className={`max-w-[32%] sm:max-w-[200px] flex-shrink-0 px-2 py-2 rounded-xl text-[10px] text-left leading-tight ${isNight ? 'bg-night-surface hover:bg-night-surface/80' : 'bg-white hover:bg-gray-100'}`}
                 title="切换模型"
               >
                 <div className="truncate font-medium">{activeProfile?.name || 'No API'}</div>

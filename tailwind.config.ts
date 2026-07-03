@@ -22,17 +22,22 @@ const config: Config = {
           text: '#5C4B51',
           muted: '#9B8E93',
         },
-        // Night Mode — Old Fashioned
+        // Night Mode — 雪豹夜行 Snow Leopard
         night: {
-          bg: '#1A1D23',
-          card: '#22262E',
-          surface: '#2A2E37',
-          amber: '#D4A574',
-          amberGlow: '#E8B87A',
-          amberDim: '#8B7355',
-          text: '#E8E0D8',
-          muted: '#6B6560',
-          border: '#333840',
+          bg: '#0f1419',        // Base — page background
+          card: '#1c2630',      // Surface — cards/modules
+          surface: '#243040',   // Elevated — overlays/popups/dropdowns
+          amber: '#e2a84b',     // Amber — buttons/highlights/active
+          amberGlow: '#f5c96b', // Amber Glow — small glow/notification dots
+          amberDim: '#c48a30',  // Amber Dim — hover/secondary emphasis
+          text: '#e8e4df',      // Primary text
+          muted: '#8899a6',     // Secondary text/timestamps/labels
+          disabled: '#4d5b6a',  // Disabled/placeholder
+          border: '#2e3d4d',    // Divider/border
+          success: '#4a9e7e',
+          warning: '#d4915c',
+          error: '#c45c5c',
+          info: '#5b8fb4',
         },
         // Receipt / Todo
         receipt: {

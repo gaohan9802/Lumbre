@@ -169,3 +169,30 @@ git push -u origin main
 - persist 的 store 改 Tab 枚举必须加 migrate，否则老用户 localStorage 里的 activeTab='weather' 直接白屏（views[undefined]）；page.tsx 里再兜底 `views[activeTab] || ChatView`
 - chatStore settings 加字段（tombstones）要同时改 DEFAULT_SETTINGS + normalizeSettings，否则老数据 rehydrate 后 undefined
 - shell 工具确实容易掉线：build 用 nohup 后台跑再 tail 日志，比前台管道稳
+
+## 2026-07-03 夜间模式改版：雪豹夜行 🌙🐆
+
+### 色板全面替换（Old Fashioned → 雪豹夜行）
+- tailwind.config.ts `night.*`：bg=#0f1419(Base) / card=#1c2630(Surface) / surface=#243040(Elevated) / border=#2e3d4d(Divider)
+- 文字：text=#e8e4df / muted=#8899a6 / 新增 disabled=#4d5b6a
+- 强调：amber=#e2a84b / amberDim=#c48a30 / amberGlow=#f5c96b
+- 新增功能色：night-success/#4a9e7e、night-warning/#d4915c、night-error/#c45c5c、night-info/#5b8fb4
+- globals.css CSS vars 同步；.dark 滚动条 track #2e3d4d / thumb #4d5b6a；输入框聚焦 Amber 1px（:has 选择器覆盖 bg-transparent 包装容器）
+
+### 层级修正
+- 语义对齐：night-card=Surface(卡片)、night-surface=Elevated(浮层)
+- 弹窗/下拉改用 Elevated：诊断——模型选择弹窗、日记解锁弹窗、ChatSettings 抽屉原先用 card
+- 小纸条：Elevated 背景 + 左3px Amber系色条（3种：amber/glow/dim），夜间阴影 0 2px 12px rgba(0,0,0,0.4)
+
+### 硬编码清理
+- 全局 sed 替换旧色值（D4A574/22262E/1A1D23/2A2E37/8B7355/E8E0D8/6B6560/E8B87A → 新色板），涉及 dashboard/memory/diary/notes/layout.tsx(themeColor)
+- rgba(212,165,116,*) → rgba(226,168,75,*)
+- 红绿功能色加 dark: 变体 → night-error/night-success
+
+### 切换按钮
+- Sidebar 底部按钮：夜间显示 "🌙🐆 雪豹夜行"，日间 "☀️ Day"；移除 lucide Sun/Moon
+
+### Debug 笔记
+- sed 处理含 `${}` 的 className 时注意转义，复杂替换用 python 脚本更稳
+- `:has()` 选择器解决"视觉输入框是外层 div、真实 input 是 bg-transparent"的聚焦边框问题
+- shell 工具不接受 `&&`/`;` 拼接 sleep 的长命令？实际是偶发掉线，重试即可

@@ -58,7 +58,7 @@ function NotebookBg({ isNight }: { isNight: boolean }) {
           <pattern id="ruled" width="100%" height="32" patternUnits="userSpaceOnUse">
             <line
               x1="0" y1="31" x2="100%" y2="31"
-              stroke={isNight ? 'rgba(212,165,116,0.06)' : 'rgba(243,164,172,0.15)'}
+              stroke={isNight ? 'rgba(226,168,75,0.06)' : 'rgba(243,164,172,0.15)'}
               strokeWidth="1"
             />
           </pattern>
@@ -69,7 +69,7 @@ function NotebookBg({ isNight }: { isNight: boolean }) {
         className="absolute top-0 bottom-0 w-px"
         style={{
           left: '2rem',
-          background: isNight ? 'rgba(212,165,116,0.08)' : 'rgba(239,64,103,0.08)',
+          background: isNight ? 'rgba(226,168,75,0.08)' : 'rgba(239,64,103,0.08)',
         }}
       />
     </div>
@@ -253,7 +253,7 @@ export function DiaryView() {
             </>
           )}
           {selected && canEdit && (
-            <button onClick={handleDelete} className="p-2 rounded-xl opacity-30 hover:opacity-100 hover:text-red-500 transition">
+            <button onClick={handleDelete} className="p-2 rounded-xl opacity-30 hover:opacity-100 hover:text-red-500 dark:hover:text-night-error transition">
               <Trash2 size={15} />
             </button>
           )}
@@ -480,7 +480,7 @@ export function DiaryView() {
             onClick={() => setUnlocking(null)}>
             <motion.div initial={{ scale: 0.92, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 10 }}
               onClick={(e) => e.stopPropagation()}
-              className={`w-80 p-6 rounded-2xl space-y-4 ${isNight ? 'bg-night-card border border-night-border' : 'bg-white shadow-xl'}`}>
+              className={`w-80 p-6 rounded-2xl space-y-4 ${isNight ? 'bg-night-surface border border-night-border' : 'bg-white shadow-xl'}`}>
               <div className="flex items-center gap-2">
                 <Key size={15} className={isNight ? 'text-night-amber' : 'text-day-pink'} />
                 <span className="text-sm font-medium">解锁日记</span>
@@ -494,7 +494,7 @@ export function DiaryView() {
                 autoFocus placeholder="密码"
                 className={`w-full text-sm bg-transparent outline-none border-b py-2 ${isNight ? 'border-night-border' : 'border-day-honey/30'}`}
               />
-              {unlockErr && <p className="text-xs text-red-500">{unlockErr}</p>}
+              {unlockErr && <p className="text-xs text-red-500 dark:text-night-error">{unlockErr}</p>}
               <div className="flex gap-2 justify-end text-sm">
                 <button onClick={() => setUnlocking(null)} className="opacity-50 px-3 py-1">取消</button>
                 <button onClick={handleUnlock} disabled={!unlockPwd}

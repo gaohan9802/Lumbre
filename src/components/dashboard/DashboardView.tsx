@@ -61,7 +61,7 @@ export function DashboardView() {
     const stepX = w / (data.length - 1)
 
     // Draw grid lines
-    ctx.strokeStyle = isNight ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
+    ctx.strokeStyle = isNight ? 'rgba(46,61,77,0.6)' : 'rgba(0,0,0,0.05)'
     ctx.lineWidth = 1
     for (let i = 0; i < 4; i++) {
       const y = (h / 4) * i + 10
@@ -74,8 +74,8 @@ export function DashboardView() {
     // Draw pulse line
     const gradient = ctx.createLinearGradient(0, 0, w, 0)
     if (isNight) {
-      gradient.addColorStop(0, '#D4A574')
-      gradient.addColorStop(1, '#E8B88A')
+      gradient.addColorStop(0, '#e2a84b')
+      gradient.addColorStop(1, '#f5c96b')
     } else {
       gradient.addColorStop(0, '#F3A4AC')
       gradient.addColorStop(1, '#EF4067')
@@ -99,14 +99,14 @@ export function DashboardView() {
     data.forEach((d, i) => {
       const x = i * stepX
       const y = h - 20 - ((d.tokens / maxTokens) * (h - 40))
-      ctx.fillStyle = isNight ? '#D4A574' : '#EF4067'
+      ctx.fillStyle = isNight ? '#e2a84b' : '#EF4067'
       ctx.beginPath()
       ctx.arc(x, y, 3, 0, Math.PI * 2)
       ctx.fill()
     })
 
     // Labels
-    ctx.fillStyle = isNight ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'
+    ctx.fillStyle = isNight ? '#8899a6' : 'rgba(0,0,0,0.3)'
     ctx.font = '9px sans-serif'
     ctx.textAlign = 'center'
     data.forEach((d, i) => {

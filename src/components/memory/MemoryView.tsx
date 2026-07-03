@@ -243,7 +243,7 @@ export function MemoryView() {
               <line
                 key={i}
                 x1={x1} y1={y1} x2={x2} y2={y2}
-                stroke={isNight ? '#D4A574' : '#F3A4AC'}
+                stroke={isNight ? '#e2a84b' : '#F3A4AC'}
                 strokeOpacity={0.15 * conn.strength}
                 strokeWidth={conn.strength * 0.5}
               />

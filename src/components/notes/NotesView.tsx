@@ -25,9 +25,9 @@ const dayColors = [
   { bg: '#FFE5E5', border: '#EF4067' },  // Heartbeat light
 ]
 const nightColors = [
-  { bg: '#2A2E37', border: '#D4A574' },
-  { bg: '#2E2A27', border: '#8B7355' },
-  { bg: '#252830', border: '#4A5568' },
+  { bg: '#243040', border: '#e2a84b' },  // Elevated + Amber
+  { bg: '#243040', border: '#f5c96b' },  // Elevated + Amber Glow
+  { bg: '#243040', border: '#c48a30' },  // Elevated + Amber Dim
 ]
 
 export function NotesView() {
@@ -124,8 +124,8 @@ export function NotesView() {
               exit={{ scale: 0.8, opacity: 0, rotate: 3 }}
               className="mb-4 p-5 rounded-2xl shadow-lg relative"
               style={{
-                backgroundColor: isNight ? '#2A2E37' : '#FEDAB8',
-                borderLeft: `3px solid ${isNight ? '#D4A574' : '#EF4067'}`,
+                backgroundColor: isNight ? '#243040' : '#FEDAB8',
+                borderLeft: `3px solid ${isNight ? '#e2a84b' : '#EF4067'}`,
               }}
             >
               <button
@@ -141,7 +141,7 @@ export function NotesView() {
                 rows={4}
                 autoFocus
                 className="w-full bg-transparent outline-none text-sm resize-none leading-relaxed"
-                style={{ color: isNight ? '#E8E0D8' : '#5C4B51' }}
+                style={{ color: isNight ? '#e8e4df' : '#5C4B51' }}
               />
               <div className="flex justify-end mt-3">
                 <button
@@ -187,7 +187,7 @@ export function NotesView() {
                     backgroundColor: color.bg,
                     borderLeft: `3px solid ${color.border}`,
                     boxShadow: isNight
-                      ? '2px 3px 8px rgba(0,0,0,0.3)'
+                      ? '0 2px 12px rgba(0,0,0,0.4)'
                       : '2px 3px 12px rgba(0,0,0,0.08)',
                   }}
                   onClick={() => setExpandedNote(isExpanded ? null : note.id)}
@@ -197,7 +197,7 @@ export function NotesView() {
 
                   {/* Author + time */}
                   <div className="flex items-center justify-between mb-2 mt-1">
-                    <span className="text-xs font-medium" style={{ color: isNight ? '#D4A574' : '#5C4B51' }}>
+                    <span className="text-xs font-medium" style={{ color: isNight ? '#e2a84b' : '#5C4B51' }}>
                       {note.author === 'star' ? '🐆 星星' : '🦦 小火'}
                     </span>
                     <span className="text-[10px] opacity-40">
@@ -208,7 +208,7 @@ export function NotesView() {
                   {/* Content */}
                   <p
                     className={`text-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-4'}`}
-                    style={{ color: isNight ? '#E8E0D8' : '#4A3728' }}
+                    style={{ color: isNight ? '#e8e4df' : '#4A3728' }}
                   >
                     {note.content}
                   </p>
@@ -221,8 +221,8 @@ export function NotesView() {
                           key={j}
                           className="text-[10px] px-1.5 py-0.5 rounded-full opacity-60"
                           style={{
-                            backgroundColor: isNight ? 'rgba(212,165,116,0.2)' : 'rgba(239,64,103,0.15)',
-                            color: isNight ? '#D4A574' : '#EF4067',
+                            backgroundColor: isNight ? 'rgba(226,168,75,0.2)' : 'rgba(239,64,103,0.15)',
+                            color: isNight ? '#e2a84b' : '#EF4067',
                           }}
                         >
                           {tag}
@@ -234,7 +234,7 @@ export function NotesView() {
                   {/* Replies */}
                   {hasReplies && (
                     <div className="mt-3 pt-2 space-y-2" style={{
-                      borderTop: `1px dashed ${isNight ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+                      borderTop: `1px dashed ${isNight ? '#2e3d4d' : 'rgba(0,0,0,0.1)'}`,
                     }}>
                       {note.replies!.map((reply, j) => (
                         <div key={j} className="flex gap-2 items-start">
@@ -242,7 +242,7 @@ export function NotesView() {
                             {reply.author === 'star' ? '🐆' : '🦦'}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs leading-relaxed" style={{ color: isNight ? '#C0B8B0' : '#5C4B51' }}>
+                            <p className="text-xs leading-relaxed" style={{ color: isNight ? '#8899a6' : '#5C4B51' }}>
                               {reply.content}
                             </p>
                             <span className="text-[9px] opacity-30">
@@ -261,7 +261,7 @@ export function NotesView() {
                       animate={{ opacity: 1, height: 'auto' }}
                       className="mt-3 pt-2 space-y-2"
                       style={{
-                        borderTop: hasReplies ? 'none' : `1px dashed ${isNight ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+                        borderTop: hasReplies ? 'none' : `1px dashed ${isNight ? '#2e3d4d' : 'rgba(0,0,0,0.1)'}`,
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -276,8 +276,8 @@ export function NotesView() {
                             onKeyDown={(e) => e.key === 'Enter' && handleReply(note.id)}
                             className="flex-1 text-xs bg-transparent outline-none py-1"
                             style={{
-                              borderBottom: `1px solid ${isNight ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'}`,
-                              color: isNight ? '#E8E0D8' : '#4A3728',
+                              borderBottom: `1px solid ${isNight ? '#2e3d4d' : 'rgba(0,0,0,0.15)'}`,
+                              color: isNight ? '#e8e4df' : '#4A3728',
                             }}
                           />
                           <button

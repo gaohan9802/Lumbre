@@ -62,8 +62,8 @@ export function HealthView() {
   const dayOfPeriod = openPeriod ? differenceInDays(new Date(), parseISO(openPeriod.start)) + 1 : null
 
   const healthCards = [
-    { icon: Heart, label: '心率', value: '--', unit: 'BPM', color: 'text-red-400' },
-    { icon: Footprints, label: '今日步数', value: '--', unit: '步', color: 'text-green-400' },
+    { icon: Heart, label: '心率', value: '--', unit: 'BPM', color: 'text-red-400 dark:text-night-error' },
+    { icon: Footprints, label: '今日步数', value: '--', unit: '步', color: 'text-green-400 dark:text-night-success' },
     { icon: Moon, label: '昨晚睡眠', value: '--', unit: '小时', color: 'text-indigo-400' },
     { icon: Activity, label: '活动消耗', value: '--', unit: 'kcal', color: 'text-orange-400' },
   ]
@@ -130,7 +130,7 @@ export function HealthView() {
                     {r.start} → {r.end || '进行中'}
                     {r.end && <span className="opacity-50 ml-1">({differenceInDays(parseISO(r.end), parseISO(r.start)) + 1}天)</span>}
                   </span>
-                  <button onClick={() => deleteRecord(r.id)} className="p-1 text-red-400/50 hover:text-red-400">
+                  <button onClick={() => deleteRecord(r.id)} className="p-1 text-red-400/50 hover:text-red-400 dark:text-night-error/50 dark:hover:text-night-error">
                     <X size={11} />
                   </button>
                 </div>
