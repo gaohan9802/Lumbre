@@ -10,22 +10,18 @@ import {
 } from 'lucide-react'
 
 const tabs = [
-  { id: 'chat' as const, label: '对话', emoji: '💬' },
+  { id: 'chat' as const, label: '星星', emoji: '🐆' },
   { id: 'diary' as const, label: '日记', emoji: '📔' },
-  { id: 'notes' as const, label: '留言', emoji: '📌' },
-  { id: 'timeline' as const, label: '时间轴', emoji: '🕐' },
-  { id: 'memory' as const, label: '记忆', emoji: '🧠' },
-  { id: 'dashboard' as const, label: '仪表盘', emoji: '📊' },
+  { id: 'notes' as const, label: '小纸条', emoji: '📌' },
   { id: 'todo' as const, label: '待办', emoji: '🧾' },
-  { id: 'calendar' as const, label: '日历', emoji: '📅' },
-  { id: 'location' as const, label: '位置', emoji: '📍' },
-  { id: 'health' as const, label: '健康', emoji: '❤️' },
-  { id: 'weather' as const, label: '天气', emoji: '🌤️' },
-  { id: 'autowake' as const, label: '唤醒', emoji: '🔔' },
-  { id: 'coreading' as const, label: '共读', emoji: '📖' },
-  { id: 'knit' as const, label: '编织', emoji: '🧶' },
   { id: 'photos' as const, label: '照片', emoji: '📷' },
+  { id: 'calendar' as const, label: '日历', emoji: '📅' },
+  { id: 'memory' as const, label: '记忆', emoji: '✨' },
+  { id: 'health' as const, label: '健康', emoji: '❤️' },
+  { id: 'coreading' as const, label: '阅读', emoji: '📖' },
+  { id: 'knit' as const, label: '编织', emoji: '🧶' },
   { id: 'recipes' as const, label: '食谱', emoji: '🍳' },
+  { id: 'dashboard' as const, label: 'Usage', emoji: '💰' },
 ]
 
 export function Sidebar() {

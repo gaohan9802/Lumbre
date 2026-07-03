@@ -3,16 +3,52 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, Settings2, PanelLeft, Plus, Pin, Trash2, Pencil, Search, X } from 'lucide-react'
+import { Send, ChevronDown, Settings2, PanelLeft, Plus, Pin, Trash2, Pencil, Search, X, ImagePlus, RotateCcw, GitBranch } from 'lucide-react'
 import {
   useChatStore,
   ChatMessage,
   getActiveProfile,
   getEnabledModels,
   getSortedSessions,
+  estimateTokens,
 } from '@/lib/chatStore'
 import { chat } from '@/lib/api'
+import { useWeather, weatherEmoji } from '@/lib/useWeather'
 import { ChatSettings } from './ChatSettings'
+
+const p2 = (n: number) => String(n).padStart(2, '0')
+const formatFullTs = (ts: number) => {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`
+}
+const formatDuration = (ms: number) => {
+  if (ms < 60000) return '刚刚开始'
+  const m = Math.floor(ms / 60000)
+  if (m < 60) return `${m} 分钟`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} 小时 ${m % 60} 分`
+  const d = Math.floor(h / 24)
+  return `${d} 天 ${h % 24} 小时`
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  const raw = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(r.result as string)
+    r.onerror = reject
+    r.readAsDataURL(file)
+  })
+  if (raw.length < 800_000) return raw
+  // downscale large images for API friendliness
+  const img = document.createElement('img')
+  await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = raw })
+  const scale = Math.min(1, 1568 / Math.max(img.width, img.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(img.width * scale)
+  canvas.height = Math.round(img.height * scale)
+  canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', 0.85)
+}
 
 export function ChatView() {
   const { theme } = useTheme()
@@ -27,13 +63,18 @@ export function ChatView() {
     deleteSession,
     togglePinSession,
     setActiveModel,
+    deleteMessage,
+    truncateFrom,
+    branchFromMessage,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
+  const weather = useWeather()
 
   const [input, setInput] = useState('')
+  const [images, setImages] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set())
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
@@ -43,9 +84,11 @@ export function ChatView() {
   const [sessionSearch, setSessionSearch] = useState('')
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const [nowTick, setNowTick] = useState(Date.now())
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -58,29 +101,35 @@ export function ChatView() {
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }, [input])
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return
+  useEffect(() => {
+    const iv = setInterval(() => setNowTick(Date.now()), 30000)
+    return () => clearInterval(iv)
+  }, [])
 
+  // ── context window stats ──
+  const contextSlice = messages.slice(-settings.contextLength)
+  const windowDuration = contextSlice.length ? nowTick - contextSlice[0].timestamp : 0
+  const contextTokens = contextSlice.reduce((sum, m) => sum + estimateTokens(m.content) + (m.images?.length || 0) * 1200, 0)
+  const contextPct = Math.min(100, Math.round((contextSlice.length / Math.max(settings.contextLength, 1)) * 100))
+
+  const addFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
+    for (const f of list.slice(0, 4 - images.length)) {
+      try {
+        const url = await fileToDataUrl(f)
+        setImages((prev) => (prev.length >= 4 ? prev : [...prev, url]))
+      } catch {}
+    }
+  }
+
+  const runInference = async (history: ChatMessage[]) => {
     const profile = getActiveProfile(settings)
     const model = settings.model
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input.trim(),
-      timestamp: Date.now(),
-      providerId: profile?.id,
-      modelId: model,
-    }
-    addMessage(userMsg)
-    setInput('')
     setIsLoading(true)
-
     try {
-      const history = [...messages, userMsg]
       const slice = history.slice(-settings.contextLength)
-
       const data = await chat.send({
-        messages: slice.map((m) => ({ role: m.role, content: m.content })),
+        messages: slice.map((m) => ({ role: m.role, content: m.content, images: m.images })),
         system: settings.systemPrompt || undefined,
         model,
         thinking_budget: settings.thinkingBudget,
@@ -121,10 +170,48 @@ export function ChatView() {
     }
   }
 
+  const handleSend = async () => {
+    if ((!input.trim() && !images.length) || isLoading) return
+    const profile = getActiveProfile(settings)
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input.trim(),
+      timestamp: Date.now(),
+      images: images.length ? images : undefined,
+      providerId: profile?.id,
+      modelId: settings.model,
+    }
+    addMessage(userMsg)
+    setInput('')
+    setImages([])
+    await runInference([...messages, userMsg])
+  }
+
+  const handleReroll = (msgId: string) => {
+    if (isLoading) return
+    const idx = messages.findIndex((m) => m.id === msgId)
+    if (idx < 0) return
+    const base = messages.slice(0, idx)
+    truncateFrom(msgId)
+    runInference(base)
+  }
+
+  const handleBranch = (msgId: string) => {
+    branchFromMessage(msgId)
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (e.clipboardData?.files?.length) {
+      e.preventDefault()
+      addFiles(e.clipboardData.files)
     }
   }
 
@@ -146,13 +233,10 @@ export function ChatView() {
     })
   }
 
-  const formatTime = (ts: number) =>
-    new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-
   const formatDate = (ts: number) => {
     const d = new Date(ts)
     const today = new Date()
-    if (d.toDateString() === today.toDateString()) return formatTime(ts)
+    if (d.toDateString() === today.toDateString()) return `${p2(d.getHours())}:${p2(d.getMinutes())}`
     return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
   }
 
@@ -173,6 +257,12 @@ export function ChatView() {
     setEditingSessionId(null)
     setEditingTitle('')
   }
+
+  const weatherChip = weather && (
+    <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${isNight ? 'bg-night-surface text-night-muted' : 'bg-day-lemon/70 text-day-text/70'}`}>
+      {weatherEmoji(weather.code)} {weather.temp != null ? `${Math.round(weather.temp)}°` : ''}{weather.city ? ` · ${weather.city}` : ''}
+    </span>
+  )
 
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={`h-full flex flex-col ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${isNight ? 'bg-night-card border-night-border' : 'bg-white border-day-muted/10'} border-r`}>
@@ -269,7 +359,7 @@ export function ChatView() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className={`absolute left-4 bottom-[92px] z-40 w-[min(420px,calc(100vw-2rem))] max-h-[55vh] overflow-y-auto rounded-2xl shadow-xl border p-2 ${isNight ? 'bg-night-card border-night-border' : 'bg-white border-gray-100'}`}
+            className={`absolute left-4 bottom-[112px] z-40 w-[min(420px,calc(100vw-2rem))] max-h-[55vh] overflow-y-auto rounded-2xl shadow-xl border p-2 ${isNight ? 'bg-night-card border-night-border' : 'bg-white border-gray-100'}`}
           >
             <div className="px-3 py-2 text-xs opacity-50">切换模型</div>
             {settings.apiProfiles.map((profile) => {
@@ -309,24 +399,29 @@ export function ChatView() {
         </div>
 
         <div className="flex flex-col h-full flex-1 min-w-0">
+          {/* Desktop header: title + weather + city */}
           <div className="hidden md:flex px-6 py-3 items-center justify-between border-b border-current/5">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setSessionDrawerOpen(true)} className={`lg:hidden p-2 rounded-xl ${isNight ? 'hover:bg-night-surface' : 'hover:bg-gray-100'}`}>
                 <PanelLeft size={16} />
               </button>
-              <h2 className="text-sm font-medium opacity-80 truncate">{activeSession?.title || '对话'}</h2>
-              <span className="text-[10px] opacity-40 truncate">{activeProfile?.name} · {settings.model}</span>
+              <h2 className="text-sm font-medium opacity-80 truncate">🐆 {activeSession?.title || '星星'}</h2>
+              <span className="text-[10px] opacity-40 truncate hidden lg:inline">{activeProfile?.name} · {settings.model}</span>
               {cacheHit && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${isNight ? 'bg-night-amber/10 text-night-amber' : 'bg-day-lemon text-day-pink'}`}>
                   cache ↻ {lastAssistant?.cache_read_tokens}
                 </span>
               )}
             </div>
-            <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl transition ${isNight ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
-              <Settings2 size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              {weatherChip}
+              <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl transition ${isNight ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
+                <Settings2 size={16} />
+              </button>
+            </div>
           </div>
 
+          {/* Mobile floating buttons */}
           <div className="md:hidden absolute top-3 left-3 right-3 z-20 flex justify-between pointer-events-none">
             <button onClick={() => setSessionDrawerOpen(true)} className={`pointer-events-auto p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
               <PanelLeft size={16} />
@@ -339,7 +434,7 @@ export function ChatView() {
           <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-40">
-                <span className="text-4xl">🏠</span>
+                <span className="text-4xl">🐆</span>
                 <p className="text-sm">说点什么吧</p>
                 <p className="text-[11px]">{activeProfile?.name || 'No provider'} · {settings.model}</p>
               </div>
@@ -348,7 +443,7 @@ export function ChatView() {
             <AnimatePresence initial={false}>
               {messages.map((msg) => (
                 <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className="max-w-[85%] sm:max-w-[80%] space-y-1">
+                  <div className="max-w-[85%] sm:max-w-[80%] space-y-1 group/msg">
                     {msg.thinking && (
                       <button onClick={() => toggleThinking(msg.id)} className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
                         <ChevronDown size={12} className={`transition-transform ${expandedThinking.has(msg.id) ? 'rotate-180' : ''}`} /> Thinking
@@ -389,17 +484,43 @@ export function ChatView() {
                       </>
                     )}
 
-                    <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? (isNight ? 'bg-night-amber/20 text-night-text rounded-br-md' : 'bg-day-honey text-day-text rounded-br-md') : (isNight ? 'bg-night-surface text-night-text rounded-bl-md' : 'bg-white shadow-sm text-day-text rounded-bl-md')}`}>
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
-                    </div>
+                    {msg.images && msg.images.length > 0 && (
+                      <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                        {msg.images.map((img, i) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={i} src={img} alt="" className="max-w-[200px] max-h-[200px] rounded-xl object-cover" />
+                        ))}
+                      </div>
+                    )}
 
-                    <p className={`text-[10px] px-1 ${msg.role === 'user' ? 'text-right' : 'text-left'} ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-                      {formatTime(msg.timestamp)}
-                      {msg.modelId && <span className="opacity-50 ml-2">{msg.modelId}</span>}
-                      {msg.role === 'assistant' && msg.input_tokens && (
-                        <span className="opacity-60 ml-2">↓{msg.input_tokens} ↑{msg.output_tokens}{msg.cache_read_tokens ? ` ↻${msg.cache_read_tokens}` : ''}</span>
-                      )}
-                    </p>
+                    {msg.content && (
+                      <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? (isNight ? 'bg-night-amber/20 text-night-text rounded-br-md' : 'bg-day-honey text-day-text rounded-br-md') : (isNight ? 'bg-night-surface text-night-text rounded-bl-md' : 'bg-white shadow-sm text-day-text rounded-bl-md')}`}>
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      </div>
+                    )}
+
+                    <div className={`flex items-center gap-2 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <p className={`text-[10px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+                        {formatFullTs(msg.timestamp)}
+                        {msg.modelId && <span className="opacity-50 ml-2 hidden sm:inline">{msg.modelId}</span>}
+                        {msg.role === 'assistant' && msg.input_tokens && (
+                          <span className="opacity-60 ml-2">↓{msg.input_tokens} ↑{msg.output_tokens}{msg.cache_read_tokens ? ` ↻${msg.cache_read_tokens}` : ''}</span>
+                        )}
+                      </p>
+                      <div className={`flex gap-0.5 transition-opacity opacity-60 md:opacity-0 md:group-hover/msg:opacity-100`}>
+                        {msg.role === 'assistant' && (
+                          <button onClick={() => handleReroll(msg.id)} title="重新生成" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
+                            <RotateCcw size={11} />
+                          </button>
+                        )}
+                        <button onClick={() => handleBranch(msg.id)} title="从这里分支" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
+                          <GitBranch size={11} />
+                        </button>
+                        <button onClick={() => { if (confirm('删除这条消息？')) deleteMessage(msg.id) }} title="删除" className="p-1 rounded hover:bg-current/10 text-red-400/70 hover:text-red-400">
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -419,28 +540,75 @@ export function ChatView() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className={`p-4 border-t backdrop-blur-md ${isNight ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
+          <div className={`p-4 pt-2 border-t backdrop-blur-md ${isNight ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
             <ModelPicker />
+
+            {/* Context window status */}
+            {contextSlice.length > 0 && (
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <div className={`h-1 flex-1 rounded-full overflow-hidden ${isNight ? 'bg-night-surface' : 'bg-gray-100'}`}>
+                  <div
+                    className={`h-full rounded-full transition-all ${isNight ? 'bg-night-amber/60' : 'bg-day-pink/60'}`}
+                    style={{ width: `${contextPct}%` }}
+                  />
+                </div>
+                <span className={`text-[10px] flex-shrink-0 ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+                  🪟 {contextSlice.length}/{settings.contextLength} · {formatDuration(windowDuration)} · ~{contextTokens > 1000 ? (contextTokens / 1000).toFixed(1) + 'K' : contextTokens} tok
+                </span>
+              </div>
+            )}
+
+            {/* Image previews */}
+            {images.length > 0 && (
+              <div className="flex gap-2 mb-2 px-1">
+                {images.map((img, i) => (
+                  <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img} alt="" className="w-14 h-14 rounded-lg object-cover" />
+                    <button onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))} className="absolute -top-1.5 -right-1.5 bg-black/60 text-white rounded-full p-0.5">
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className={`flex items-end gap-2 px-3 py-2 rounded-2xl ${isNight ? 'bg-night-surface' : 'bg-gray-50'}`}>
               <button
                 onClick={() => setModelPickerOpen((v) => !v)}
-                className={`max-w-[36%] sm:max-w-[220px] flex-shrink-0 px-2 py-2 rounded-xl text-[10px] text-left leading-tight ${isNight ? 'bg-night-card hover:bg-night-card/80' : 'bg-white hover:bg-gray-100'}`}
+                className={`max-w-[32%] sm:max-w-[200px] flex-shrink-0 px-2 py-2 rounded-xl text-[10px] text-left leading-tight ${isNight ? 'bg-night-card hover:bg-night-card/80' : 'bg-white hover:bg-gray-100'}`}
                 title="切换模型"
               >
                 <div className="truncate font-medium">{activeProfile?.name || 'No API'}</div>
                 <div className="truncate opacity-50">{settings.model}</div>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = '' }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-2 rounded-xl flex-shrink-0 transition ${isNight ? 'text-night-muted hover:text-night-amber hover:bg-night-card' : 'text-day-muted hover:text-day-pink hover:bg-white'}`}
+                title="发送图片"
+              >
+                <ImagePlus size={16} />
               </button>
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder="说点什么..."
                 rows={1}
                 enterKeyHint="send"
                 className={`flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${isNight ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`}
               />
-              <button onClick={handleSend} disabled={!input.trim() || isLoading} className={`p-2 rounded-xl transition-all flex-shrink-0 ${input.trim() ? (isNight ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
+              <button onClick={handleSend} disabled={(!input.trim() && !images.length) || isLoading} className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || images.length) ? (isNight ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
                 <Send size={16} />
               </button>
             </div>

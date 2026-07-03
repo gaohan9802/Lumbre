@@ -2,17 +2,19 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-type Tab = 'chat' | 'diary' | 'notes' | 'todo' | 'calendar' | 'memory' | 'timeline' | 'dashboard' | 'location' | 'health' | 'weather' | 'autowake' | 'coreading' | 'knit' | 'photos' | 'recipes'
+type Tab = 'chat' | 'diary' | 'notes' | 'todo' | 'photos' | 'calendar' | 'memory' | 'health' | 'coreading' | 'knit' | 'recipes' | 'dashboard'
+
+const VALID_TABS: Tab[] = ['chat', 'diary', 'notes', 'todo', 'photos', 'calendar', 'memory', 'health', 'coreading', 'knit', 'recipes', 'dashboard']
 
 interface AppStore {
   // Navigation
   activeTab: Tab
   setActiveTab: (tab: Tab) => void
-  
+
   // User identity (who's using the device)
   currentUser: 'star' | 'fire'
   setCurrentUser: (user: 'star' | 'fire') => void
-  
+
   // Sidebar
   sidebarOpen: boolean
   toggleSidebar: () => void
@@ -24,14 +26,24 @@ export const useApp = create<AppStore>()(
     (set) => ({
       activeTab: 'chat',
       setActiveTab: (tab) => set({ activeTab: tab }),
-      
+
       currentUser: 'fire',
       setCurrentUser: (user) => set({ currentUser: user }),
-      
+
       sidebarOpen: false,
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
     }),
-    { name: 'starfire-app' }
+    {
+      name: 'starfire-app',
+      version: 2,
+      migrate: (persisted: any) => {
+        // Old persisted tabs (weather/timeline/location/autowake…) no longer exist
+        if (persisted?.state && !VALID_TABS.includes(persisted.state.activeTab)) {
+          persisted.state.activeTab = 'chat'
+        }
+        return persisted
+      },
+    }
   )
 )

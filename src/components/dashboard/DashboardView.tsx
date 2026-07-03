@@ -127,7 +127,7 @@ export function DashboardView() {
     <div className="h-full overflow-y-auto">
       <div className="max-w-2xl mx-auto px-6 py-6 space-y-6">
         {/* Header */}
-        <h2 className="text-lg font-medium">📊 仪表盘</h2>
+        <h2 className="text-lg font-medium">💰 Usage</h2>
 
         {loading || !stats ? (
           <div className="text-center py-12 opacity-30">加载中...</div>

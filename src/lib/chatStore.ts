@@ -17,6 +17,7 @@ export interface ChatMessage {
   cache_read_tokens?: number
   cache_creation_tokens?: number
   tool_calls?: { name: string; input: Record<string, any>; result: string }[]
+  images?: string[] // data URLs
   providerId?: string
   modelId?: string
 }
@@ -61,6 +62,7 @@ export interface ChatSettings {
   apiProfiles: ApiProfile[]
   activeSessionId: string
   sessions: ChatSession[]
+  tombstones: Record<string, number> // deleted session id -> deletedAt
 }
 
 export const DEFAULT_ANTHROPIC_BASE = 'https://api.anthropic.com'
@@ -98,6 +100,7 @@ const DEFAULT_SETTINGS: ChatSettings = {
   sessions: [
     { id: DEFAULT_SESSION_ID, title: '新的对话', messages: [], pinned: false, createdAt: NOW, updatedAt: NOW },
   ],
+  tombstones: {},
 }
 
 interface ChatStore {
@@ -112,6 +115,10 @@ interface ChatStore {
 
   createSession: () => string
   setActiveSession: (id: string) => void
+  deleteMessage: (id: string) => void
+  truncateFrom: (id: string) => void
+  branchFromMessage: (id: string) => string
+  mergeRemote: (sessions: ChatSession[], tombstones: Record<string, number>) => void
   renameSession: (id: string, title: string) => void
   deleteSession: (id: string) => void
   togglePinSession: (id: string) => void
@@ -192,6 +199,7 @@ function normalizeSettings(settings: any): ChatSettings {
     model: normalizeModelId(activeProfile, settings?.model),
     sessions,
     activeSessionId,
+    tombstones: settings?.tombstones && typeof settings.tombstones === 'object' ? settings.tombstones : {},
   }
 }
 
@@ -273,7 +281,70 @@ export const useChatStore = create<ChatStore>()(
         let sessions = settings.sessions.filter((s) => s.id !== id)
         if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
         const activeSessionId = settings.activeSessionId === id ? sortedSessions(sessions)[0].id : settings.activeSessionId
-        const nextSettings = { ...settings, sessions, activeSessionId }
+        const tombstones = { ...settings.tombstones, [id]: Date.now() }
+        const nextSettings = { ...settings, sessions, activeSessionId, tombstones }
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
+      deleteMessage: (id) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId
+          ? { ...s, messages: s.messages.filter((m) => m.id !== id), updatedAt: Date.now() }
+          : s)
+        const nextSettings = { ...settings, sessions }
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
+      truncateFrom: (id) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const sessions = settings.sessions.map((s) => {
+          if (s.id !== settings.activeSessionId) return s
+          const idx = s.messages.findIndex((m) => m.id === id)
+          if (idx < 0) return s
+          return { ...s, messages: s.messages.slice(0, idx), updatedAt: Date.now() }
+        })
+        const nextSettings = { ...settings, sessions }
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
+      branchFromMessage: (id) => {
+        const newId = makeId('session')
+        set((state) => {
+          const settings = normalizeSettings(state.settings)
+          const active = getActiveSession(settings)
+          const idx = active.messages.findIndex((m) => m.id === id)
+          if (idx < 0) return state
+          const now = Date.now()
+          const branch: ChatSession = {
+            id: newId,
+            title: `${active.title} · 分支`,
+            messages: active.messages.slice(0, idx + 1).map((m) => ({ ...m })),
+            pinned: false,
+            createdAt: now,
+            updatedAt: now,
+          }
+          const nextSettings = { ...settings, sessions: [branch, ...settings.sessions], activeSessionId: newId }
+          return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+        })
+        return newId
+      },
+
+      mergeRemote: (remoteSessions, remoteTombstones) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const tombstones: Record<string, number> = { ...settings.tombstones }
+        for (const [tid, ts] of Object.entries(remoteTombstones || {})) {
+          tombstones[tid] = Math.max(tombstones[tid] || 0, ts as number)
+        }
+        const map = new Map(settings.sessions.map((s) => [s.id, s]))
+        for (const rs of remoteSessions || []) {
+          if (!rs?.id) continue
+          const cur = map.get(rs.id)
+          if (!cur || (rs.updatedAt || 0) > (cur.updatedAt || 0)) map.set(rs.id, rs)
+        }
+        let sessions = Array.from(map.values()).filter((s) => !(tombstones[s.id] && tombstones[s.id] >= (s.updatedAt || 0)))
+        if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
+        const activeSessionId = sessions.some((s) => s.id === settings.activeSessionId) ? settings.activeSessionId : sortedSessions(sessions)[0].id
+        const nextSettings = { ...settings, sessions, activeSessionId, tombstones }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 

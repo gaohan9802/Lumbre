@@ -134,3 +134,38 @@ git push -u origin main
   - 修复 commit：316a78d
 - push 本身没失败过，`git push https://<user>:<token>@github.com/...` 直连稳定
 - 仓库位置注意：/tmp/Lumbre 是开发仓库，/data/Lumbre 是旧的 debug 现场，别搞混
+
+---
+
+## 📅 2026-07-02 — 砍板块 + Sidebar 重排 + 星星板块大升级
+
+### 删除
+- 🗑️ 天气（WeatherView）、时间轴（TimelineView）、独立位置（LocationView）、自主唤醒（AutoWakeView）四个组件目录删除
+- store.ts Tab 类型收窄为 12 个，persist version=2 + migrate（旧 activeTab 指向已删板块时回落 chat，防白屏）
+
+### Sidebar 新顺序（按需求文档）
+🐆星星 📔日记 📌小纸条 🧾待办 📷照片 📅日历 ✨记忆 ❤️健康 📖阅读 🧶编织 🍳食谱 💰Usage
+- 日历 = 未来与自主唤醒前端合并的落点（AutoWake UI 已删，待重建进日历）
+- 健康 = 已合并位置 + 生理期
+- TopBar 标题表同步更新
+
+### 星星板块（Chat）六项
+1. **完整时间戳**：每条消息 `yyyy-MM-dd HH:mm:ss`（formatFullTs）
+2. **图片发送**：ImagePlus 按钮 + 粘贴上传，≤4 张，>800KB 自动 canvas 压缩到 1568px JPEG；
+   - Anthropic 走 image block（base64），OpenAI-compatible 走 image_url
+   - ChatMessage.images?: string[]（data URL 直接进 localStorage + 同步）
+3. **上下文可视化**：输入框上方进度条 = 窗口占用%（条数/contextLength），显示 🪟 n/N · 窗口持续时间（首条消息距今，30s tick 刷新）· ~估算 token
+4. **消息操作**：hover（桌面）/常显淡化（手机）三按钮 —— 🔄重roll（截断到该 assistant 消息前重新推理）、🌿分支（复制到该消息为止开新会话「标题 · 分支」）、🗑删除单条
+5. **多端同步**：/api/sync（文件存储 data/chat-sync.json）push+pull 合并；按 session.updatedAt 新者胜 + tombstone 防删除复活；ChatSync 组件挂载时同步 + 45s 轮询 + 本地变更 2.5s debounce
+6. **天气+城市**：桌面在 chat 头部右侧 chip，手机在 TopBar 右上角；/api/weather 代理 open-meteo（气温+weather_code）+ bigdatacloud 反向地理（中文城市名），前端 useWeather hook sessionStorage 缓存 30 分钟，无 key 依赖
+
+### 健康板块
+- 生理期：usePeriodStore（persist）记录 start/end；显示 Day N（进行中）或距下次预测天数（平均周期取有效历史 15-60 天区间均值，默认 28）；历史列表可删
+- 位置：geolocation → /api/weather 反向地理出城市，显示坐标+更新时间；拒绝可重试
+- HealthKit 四卡保留占位
+
+### Debug 笔记
+- **TS2802**：`[...map.values()]` 在当前 tsconfig target 下报错 → `Array.from(map.values())`
+- persist 的 store 改 Tab 枚举必须加 migrate，否则老用户 localStorage 里的 activeTab='weather' 直接白屏（views[undefined]）；page.tsx 里再兜底 `views[activeTab] || ChatView`
+- chatStore settings 加字段（tombstones）要同时改 DEFAULT_SETTINGS + normalizeSettings，否则老数据 rehydrate 后 undefined
+- shell 工具确实容易掉线：build 用 nohup 后台跑再 tail 日志，比前台管道稳

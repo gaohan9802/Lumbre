@@ -7,18 +7,14 @@ import { ChatView } from '@/components/chat/ChatView'
 import { DiaryView } from '@/components/diary/DiaryView'
 import { NotesView } from '@/components/notes/NotesView'
 import { TodoView } from '@/components/todo/TodoView'
+import { PhotosView } from '@/components/photos/PhotosView'
 import { CalendarView } from '@/components/calendar/CalendarView'
 import { MemoryView } from '@/components/memory/MemoryView'
-import { TimelineView } from '@/components/timeline/TimelineView'
-import { DashboardView } from '@/components/dashboard/DashboardView'
-import { LocationView } from '@/components/location/LocationView'
 import { HealthView } from '@/components/health/HealthView'
-import { WeatherView } from '@/components/weather/WeatherView'
-import { AutoWakeView } from '@/components/autowake/AutoWakeView'
 import { CoReadingView } from '@/components/coreading/CoReadingView'
 import { KnitView } from '@/components/knit/KnitView'
-import { PhotosView } from '@/components/photos/PhotosView'
 import { RecipesView } from '@/components/recipes/RecipesView'
+import { DashboardView } from '@/components/dashboard/DashboardView'
 import { ChatSync } from '@/components/chat/ChatSync'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -27,23 +23,19 @@ const views = {
   diary: DiaryView,
   notes: NotesView,
   todo: TodoView,
+  photos: PhotosView,
   calendar: CalendarView,
   memory: MemoryView,
-  timeline: TimelineView,
-  dashboard: DashboardView,
-  location: LocationView,
   health: HealthView,
-  weather: WeatherView,
-  autowake: AutoWakeView,
   coreading: CoReadingView,
   knit: KnitView,
-  photos: PhotosView,
   recipes: RecipesView,
+  dashboard: DashboardView,
 }
 
 export default function Home() {
   const { activeTab } = useApp()
-  const View = views[activeTab]
+  const View = views[activeTab] || ChatView
 
   return (
     <div className="flex h-dvh overflow-hidden">

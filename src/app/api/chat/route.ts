@@ -67,11 +67,20 @@ async function proxyAnthropic(params: {
   const cacheBreakpoint = prompt_caching && messages.length > 6 ? messages.length - 5 : -1
   const initialMessages = messages.map((m: any, i: number) => {
     const base: any = { role: m.role }
-    if (i === cacheBreakpoint) {
-      base.content = [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }]
-    } else {
-      base.content = m.content
+    const blocks: any[] = []
+    // images: data URLs → anthropic image blocks
+    if (Array.isArray(m.images)) {
+      for (const img of m.images) {
+        const match = /^data:(image\/\w+);base64,(.+)$/.exec(img || '')
+        if (match) {
+          blocks.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } })
+        }
+      }
     }
+    const textBlock: any = { type: 'text', text: m.content || ' ' }
+    if (i === cacheBreakpoint) textBlock.cache_control = { type: 'ephemeral' }
+    blocks.push(textBlock)
+    base.content = blocks.length === 1 && !Array.isArray(m.images) ? m.content : blocks
     return base
   })
 
@@ -204,7 +213,18 @@ async function proxyOpenAI(params: {
 
   const builtMessages = [
     ...(system?.trim() ? [{ role: 'system', content: system }] : []),
-    ...messages.map((m: any) => ({ role: m.role, content: m.content })),
+    ...messages.map((m: any) => {
+      if (Array.isArray(m.images) && m.images.length) {
+        return {
+          role: m.role,
+          content: [
+            ...m.images.map((img: string) => ({ type: 'image_url', image_url: { url: img } })),
+            { type: 'text', text: m.content || ' ' },
+          ],
+        }
+      }
+      return { role: m.role, content: m.content }
+    }),
   ]
 
   const body: any = { model, messages: builtMessages, max_tokens: 16000 }
