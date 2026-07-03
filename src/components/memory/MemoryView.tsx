@@ -134,7 +134,7 @@ export function MemoryView() {
             onClick={() => setShowFilters(!showFilters)}
             className={`p-2 rounded-xl transition-colors ${
               showFilters
-                ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink/20 text-day-pink'
+                ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink'
                 : isNight ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-gray-400'
             }`}
           >
@@ -162,7 +162,7 @@ export function MemoryView() {
                       onClick={() => setFilters(f => ({ ...f, domain: '' }))}
                       className={`text-[10px] px-2 py-0.5 rounded-full transition-colors ${
                         !filters.domain
-                          ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink/20 text-day-pink'
+                          ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink'
                           : 'opacity-40'
                       }`}
                     >全部</button>
@@ -172,7 +172,7 @@ export function MemoryView() {
                         onClick={() => setFilters(f => ({ ...f, domain: d }))}
                         className={`text-[10px] px-2 py-0.5 rounded-full transition-colors ${
                           filters.domain === d
-                            ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink/20 text-day-pink'
+                            ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink'
                             : 'opacity-40'
                         }`}
                       >{d}</button>
@@ -209,7 +209,7 @@ export function MemoryView() {
                 <button
                   onClick={() => search(query)}
                   className={`w-full py-1.5 rounded-lg text-xs ${
-                    isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink/20 text-day-pink'
+                    isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink'
                   }`}
                 >
                   应用筛选
@@ -288,7 +288,7 @@ export function MemoryView() {
                 >
                   {mem.pinned && (
                     <Pin size={10} className={`absolute -top-1 -right-1 ${
-                      isNight ? 'text-night-amber' : 'text-day-heart'
+                      isNight ? 'text-night-amber' : 'text-day-pink'
                     }`} />
                   )}
                   <span className="text-[9px] px-1 text-center leading-tight truncate">

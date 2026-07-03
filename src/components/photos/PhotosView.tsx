@@ -26,7 +26,7 @@ export function PhotosView() {
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs ${
               isNight
                 ? 'bg-night-amber/20 text-night-amber'
-                : 'bg-day-pink/10 text-day-pink'
+                : 'bg-day-pinkLight text-day-pink'
             }`}
           >
             <Plus size={14} />
@@ -58,7 +58,7 @@ export function PhotosView() {
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs ${
                 isNight
                   ? 'bg-night-amber/20 text-night-amber'
-                  : 'bg-day-pink/10 text-day-pink'
+                  : 'bg-day-pinkLight text-day-pink'
               }`}
             >
               <Camera size={14} />
@@ -68,7 +68,7 @@ export function PhotosView() {
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs ${
                 isNight
                   ? 'bg-night-amber/20 text-night-amber'
-                  : 'bg-day-pink/10 text-day-pink'
+                  : 'bg-day-pinkLight text-day-pink'
               }`}
             >
               <ImagePlus size={14} />

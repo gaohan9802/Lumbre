@@ -46,7 +46,7 @@ export function Sidebar() {
           w-64 md:w-20 lg:w-64
           flex flex-col
           transition-all duration-300 ease-out
-          ${theme === 'night' ? 'bg-night-card border-night-border' : 'bg-white/80 border-day-muted/20'}
+          ${theme === 'night' ? 'bg-night-card border-night-border' : 'bg-day-tint border-day-border'}
           border-r
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
@@ -81,10 +81,10 @@ export function Sidebar() {
                   ${isActive
                     ? theme === 'night'
                       ? 'bg-night-amber/15 text-night-amber'
-                      : 'bg-day-lemon text-day-pink'
+                      : 'bg-day-pinkLight text-day-pink'
                     : theme === 'night'
                       ? 'text-night-muted hover:text-night-text hover:bg-night-surface'
-                      : 'text-day-muted hover:text-day-text hover:bg-day-lemon/60'
+                      : 'text-day-muted hover:text-day-text hover:bg-day-pinkLight'
                   }
                 `}
               >
@@ -113,15 +113,12 @@ export function Sidebar() {
               transition-colors
               ${theme === 'night'
                 ? 'text-night-amber hover:bg-night-surface'
-                : 'text-day-pink hover:bg-day-lemon'
+                : 'text-day-pink hover:bg-day-pinkLight'
               }
             `}
           >
             <span className="text-base leading-none">
-              {theme === 'night' ? '🌙🐆' : '☀️'}
-            </span>
-            <span className="md:hidden lg:inline">
-              {theme === 'night' ? '雪豹夜行' : 'Day'}
+              {theme === 'night' ? '🌙 🐆' : '🌸 🦦'}
             </span>
           </button>
         </div>

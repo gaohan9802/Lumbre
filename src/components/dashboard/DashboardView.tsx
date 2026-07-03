@@ -152,7 +152,7 @@ export function DashboardView() {
                 >
                   <p className="text-[10px] opacity-40 mb-1">{card.label}</p>
                   <p className={`text-2xl font-light ${
-                    isNight ? 'text-night-amber' : 'text-day-heart'
+                    isNight ? 'text-night-amber' : 'text-day-pink'
                   }`}>
                     {card.value}
                   </p>

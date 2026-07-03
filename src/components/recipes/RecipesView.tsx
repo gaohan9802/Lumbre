@@ -28,7 +28,7 @@ export function RecipesView() {
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs ${
               isNight
                 ? 'bg-night-amber/20 text-night-amber'
-                : 'bg-day-pink/10 text-day-pink'
+                : 'bg-day-pinkLight text-day-pink'
             }`}
           >
             <Plus size={14} />
@@ -121,7 +121,7 @@ export function RecipesView() {
                     className={`w-8 h-8 rounded-lg text-xs flex items-center justify-center transition-colors ${
                       isNight
                         ? 'bg-night-card text-night-muted hover:text-night-amber hover:bg-night-amber/10'
-                        : 'bg-gray-50 text-day-muted hover:text-day-pink hover:bg-day-pink/10'
+                        : 'bg-gray-50 text-day-muted hover:text-day-pink hover:bg-day-pinkLight'
                     }`}
                   >
                     {letter}

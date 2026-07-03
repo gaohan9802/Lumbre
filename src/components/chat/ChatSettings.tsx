@@ -139,7 +139,7 @@ export function ChatSettings({ open, onClose }: Props) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 280 }}
-            className={`fixed right-0 top-0 bottom-0 w-full sm:w-[520px] z-50 overflow-y-auto ${isNight ? 'bg-night-surface border-l border-night-border' : 'bg-white border-l border-day-muted/10'} pb-[env(safe-area-inset-bottom)]`}
+            className={`fixed right-0 top-0 bottom-0 w-full sm:w-[520px] z-50 overflow-y-auto ${isNight ? 'bg-night-surface border-l border-night-border' : 'bg-white border-l border-day-border'} pb-[env(safe-area-inset-bottom)]`}
           >
             <div className="sticky top-0 z-10 backdrop-blur-md bg-inherit px-6 py-4 flex items-center justify-between border-b border-current/5">
               <div>
@@ -226,9 +226,9 @@ export function ChatSettings({ open, onClose }: Props) {
                       <button disabled={fetchingId === selectedProvider.id} onClick={() => fetchModels(selectedProvider.id)} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${isNight ? 'bg-night-amber text-night-bg disabled:opacity-50' : 'bg-day-pink text-white disabled:opacity-50'}`}>
                         <Download size={12} /> {fetchingId === selectedProvider.id ? '拉取中…' : '拉取模型'}
                       </button>
-                      <button onClick={() => { if (confirm('删除这个供应商？')) deleteApiProfile(selectedProvider.id) }} className="px-3 py-2 rounded-lg text-xs text-red-500/80 hover:text-red-500 dark:text-night-error/80 dark:hover:text-night-error">删除供应商</button>
+                      <button onClick={() => { if (confirm('删除这个供应商？')) deleteApiProfile(selectedProvider.id) }} className="px-3 py-2 rounded-lg text-xs text-day-error/80 hover:text-day-error dark:text-night-error/80 dark:hover:text-night-error">删除供应商</button>
                     </div>
-                    {fetchError && <div className="text-xs text-red-500/80 dark:text-night-error/80 whitespace-pre-wrap">{fetchError}</div>}
+                    {fetchError && <div className="text-xs text-day-error/80 dark:text-night-error/80 whitespace-pre-wrap">{fetchError}</div>}
 
                     <div className="flex gap-2">
                       <input className={`${inputClass} font-mono`} value={manualModel} placeholder="手动添加模型 ID" onChange={(e) => setManualModel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addManual() }} />
@@ -239,15 +239,15 @@ export function ChatSettings({ open, onClose }: Props) {
                       {selectedProvider.models.map((m) => {
                         const active = activeProvider?.id === selectedProvider.id && settings.model === m.id
                         return (
-                          <div key={m.id} className={`p-2 rounded-lg flex items-center gap-2 ${active ? (isNight ? 'bg-night-amber/15' : 'bg-day-lemon') : (isNight ? 'bg-night-card/50' : 'bg-white')}`}>
-                            <button onClick={() => toggleModelEnabled(selectedProvider.id, m.id)} className={`p-1 rounded ${m.enabled ? (isNight ? 'text-night-amber' : 'text-day-heart') : 'opacity-30'}`} title={m.enabled ? '已启用' : '已停用'}>
+                          <div key={m.id} className={`p-2 rounded-lg flex items-center gap-2 ${active ? (isNight ? 'bg-night-amber/15' : 'bg-day-pinkLight') : (isNight ? 'bg-night-card/50' : 'bg-white')}`}>
+                            <button onClick={() => toggleModelEnabled(selectedProvider.id, m.id)} className={`p-1 rounded ${m.enabled ? (isNight ? 'text-night-amber' : 'text-day-pink') : 'opacity-30'}`} title={m.enabled ? '已启用' : '已停用'}>
                               <Power size={13} />
                             </button>
                             <button onClick={() => setActiveModel(selectedProvider.id, m.id)} className="flex-1 min-w-0 text-left">
                               <div className="text-xs truncate font-medium">{m.name || m.id}</div>
                               <div className="text-[10px] opacity-40 truncate">{m.id}</div>
                             </button>
-                            {active && <Check size={14} className={isNight ? 'text-night-amber' : 'text-day-heart'} />}
+                            {active && <Check size={14} className={isNight ? 'text-night-amber' : 'text-day-pink'} />}
                           </div>
                         )
                       })}
@@ -284,7 +284,7 @@ export function ChatSettings({ open, onClose }: Props) {
               <section className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs opacity-60">Context — 抓取最近多少条</label>
-                  <span className="text-xs"><span className={isNight ? 'text-night-amber' : 'text-day-heart'}>{settings.contextLength}</span><span className="opacity-40"> / {messages.length}</span></span>
+                  <span className="text-xs"><span className={isNight ? 'text-night-amber' : 'text-day-pink'}>{settings.contextLength}</span><span className="opacity-40"> / {messages.length}</span></span>
                 </div>
                 <input type="range" min={4} max={200} step={2} value={settings.contextLength} onChange={(e) => setSettings({ contextLength: parseInt(e.target.value) })} className="w-full accent-current" />
                 <div className="text-[10px] opacity-40 flex justify-between"><span>4</span><span>本轮发送 ~{sentTokens} tok（共 ~{totalMsgTokens}）</span><span>200</span></div>
@@ -311,7 +311,7 @@ export function ChatSettings({ open, onClose }: Props) {
 
               <section className="pt-4 border-t border-current/10 space-y-2">
                 <button onClick={() => { if (confirm('恢复默认设置？API key、供应商和会话都会重置。')) resetSettings() }} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5"><RotateCcw size={12} /> 恢复默认</button>
-                <button onClick={() => { if (confirm(`清空当前会话 ${messages.length} 条聊天？这不能撤销。`)) clearMessages() }} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-red-500/80 hover:text-red-500 dark:text-night-error/80 dark:hover:text-night-error hover:bg-red-500/5 dark:text-night-error/80 dark:hover:text-night-error"><Trash2 size={12} /> 清空当前对话（{messages.length} 条）</button>
+                <button onClick={() => { if (confirm(`清空当前会话 ${messages.length} 条聊天？这不能撤销。`)) clearMessages() }} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-day-error/80 hover:text-day-error dark:text-night-error/80 dark:hover:text-night-error hover:bg-day-error/5 dark:text-night-error/80 dark:hover:text-night-error"><Trash2 size={12} /> 清空当前对话（{messages.length} 条）</button>
               </section>
             </div>
           </motion.div>

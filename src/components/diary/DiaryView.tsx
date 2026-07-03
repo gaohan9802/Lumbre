@@ -207,7 +207,7 @@ export function DiaryView() {
     <div className={`h-full flex flex-col relative ${isNight ? 'bg-night-bg' : 'bg-[#FBF6F0]'}`}>
       {/* Header */}
       <div className={`relative z-10 px-5 pt-4 pb-3 flex items-center justify-between ${
-        isNight ? 'border-b border-night-border/50' : 'border-b border-day-honey/20'
+        isNight ? 'border-b border-night-border/50' : 'border-b border-day-border'
       }`}>
         {selected ? (
           <button
@@ -245,7 +245,7 @@ export function DiaryView() {
               <button
                 onClick={() => setIsWriting(true)}
                 className={`p-2 rounded-xl transition ${
-                  isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-lemon text-day-pink'
+                  isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-pinkLight text-day-pink'
                 }`}
               >
                 <Plus size={18} />
@@ -253,7 +253,7 @@ export function DiaryView() {
             </>
           )}
           {selected && canEdit && (
-            <button onClick={handleDelete} className="p-2 rounded-xl opacity-30 hover:opacity-100 hover:text-red-500 dark:hover:text-night-error transition">
+            <button onClick={handleDelete} className="p-2 rounded-xl opacity-30 hover:opacity-100 hover:text-day-error dark:hover:text-night-error transition">
               <Trash2 size={15} />
             </button>
           )}
@@ -275,7 +275,7 @@ export function DiaryView() {
                   value={title} onChange={(e) => setTitle(e.target.value)}
                   placeholder="标题" autoFocus
                   className={`w-full text-xl font-medium bg-transparent outline-none leading-relaxed ${
-                    isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-honey'
+                    isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-disabled'
                   }`}
                 />
                 <div className="flex gap-2 flex-wrap items-center">
@@ -293,7 +293,7 @@ export function DiaryView() {
                   {visibility === 'timed' && (
                     <input type="datetime-local" value={revealAt} onChange={(e) => setRevealAt(e.target.value)}
                       className={`text-xs px-3 py-1.5 rounded-full bg-transparent border ${
-                        isNight ? 'border-night-border text-night-text' : 'border-day-honey/30 text-day-text'
+                        isNight ? 'border-night-border text-night-text' : 'border-day-border text-day-text'
                       }`}
                     />
                   )}
@@ -302,7 +302,7 @@ export function DiaryView() {
                   value={content} onChange={(e) => setContent(e.target.value)}
                   placeholder="今天想说什么..." rows={14}
                   className={`w-full bg-transparent outline-none text-sm resize-none ${
-                    isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-honey'
+                    isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-disabled'
                   }`}
                   style={{ lineHeight: '2rem' }}
                 />
@@ -368,7 +368,7 @@ export function DiaryView() {
                 )}
 
                 {/* Comments */}
-                <div className={`mt-8 pt-5 space-y-4 border-t ${isNight ? 'border-night-border/30' : 'border-day-honey/15'}`}>
+                <div className={`mt-8 pt-5 space-y-4 border-t ${isNight ? 'border-night-border/30' : 'border-day-border'}`}>
                   <div className={`flex items-center gap-2 text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
                     <MessageCircle size={13} />
                     <span>{selected.comments?.length || 0} 条留言</span>
@@ -429,7 +429,7 @@ export function DiaryView() {
                               className={`w-full text-left group transition-all duration-200 rounded-2xl p-4 ${
                                 isNight
                                   ? 'bg-night-card/60 hover:bg-night-card border border-night-border/30 hover:border-night-amber/20'
-                                  : 'bg-white/70 hover:bg-white border border-day-honey/10 hover:border-day-honey/40 hover:shadow-sm'
+                                  : 'bg-white/70 hover:bg-white border border-day-border hover:border-day-honey hover:shadow-sm'
                               }`}
                               whileTap={{ scale: 0.99 }}
                             >
@@ -492,9 +492,9 @@ export function DiaryView() {
                 onChange={(e) => { setUnlockPwd(e.target.value); setUnlockErr('') }}
                 onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
                 autoFocus placeholder="密码"
-                className={`w-full text-sm bg-transparent outline-none border-b py-2 ${isNight ? 'border-night-border' : 'border-day-honey/30'}`}
+                className={`w-full text-sm bg-transparent outline-none border-b py-2 ${isNight ? 'border-night-border' : 'border-day-border'}`}
               />
-              {unlockErr && <p className="text-xs text-red-500 dark:text-night-error">{unlockErr}</p>}
+              {unlockErr && <p className="text-xs text-day-error dark:text-night-error">{unlockErr}</p>}
               <div className="flex gap-2 justify-end text-sm">
                 <button onClick={() => setUnlocking(null)} className="opacity-50 px-3 py-1">取消</button>
                 <button onClick={handleUnlock} disabled={!unlockPwd}

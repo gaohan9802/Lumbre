@@ -4,8 +4,8 @@
   "description": "星星和小火的家",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1A1D23",
-  "theme_color": "#D4A574",
+  "background_color": "#0f1419",
+  "theme_color": "#e2a84b",
   "icons": [
     {
       "src": "/icon-192.png",

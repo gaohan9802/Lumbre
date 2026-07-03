@@ -12,15 +12,24 @@ const config: Config = {
       colors: {
         // Day Mode — Girl's Dream
         day: {
-          bg: '#FFF5F0',
-          card: '#FFFFFF',
-          sky: '#84BECA',       // Diamond
+          bg: '#FFF9F5',        // Base — page background
+          card: '#FFFFFF',      // Surface — cards/modules
+          tint: '#FEF3EC',      // Tinted BG — section/sidebar background
+          border: '#F0E4DD',    // Divider/border
+          sky: '#84BECA',       // Diamond — links/info/cool contrast
+          skyLight: '#E6F3F6',  // Diamond Light — info bg/cool tag bg
           pink: '#EF4067',      // Heartbeat — primary accent, buttons
-          lemon: '#FEDAB8',     // Banana — warm cream highlights
-          honey: '#F3A4AC',     // Girl's Dream — soft pink decorative
-          heart: '#BE0001',     // Sweet Honey — deep red emphasis
-          text: '#5C4B51',
-          muted: '#9B8E93',
+          pinkLight: '#FDE8ED', // Heartbeat Light — hover/light button bg
+          lemon: '#FEDAB8',     // Banana — tag bg/badge/warm hint bg
+          honey: '#F3A4AC',     // Girl's Dream — selected highlight/progress
+          heart: '#BE0001',     // Sweet Honey — error/delete
+          text: '#2D2424',      // Primary text
+          muted: '#7A6B66',     // Secondary text/timestamps
+          disabled: '#BFB0A8',  // Placeholder/disabled
+          success: '#4a9e7e',
+          warning: '#E8943A',
+          error: '#BE0001',
+          info: '#84BECA',
         },
         // Night Mode — 雪豹夜行 Snow Leopard
         night: {

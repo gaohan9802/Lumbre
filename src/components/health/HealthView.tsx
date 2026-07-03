@@ -62,10 +62,10 @@ export function HealthView() {
   const dayOfPeriod = openPeriod ? differenceInDays(new Date(), parseISO(openPeriod.start)) + 1 : null
 
   const healthCards = [
-    { icon: Heart, label: '心率', value: '--', unit: 'BPM', color: 'text-red-400 dark:text-night-error' },
-    { icon: Footprints, label: '今日步数', value: '--', unit: '步', color: 'text-green-400 dark:text-night-success' },
-    { icon: Moon, label: '昨晚睡眠', value: '--', unit: '小时', color: 'text-indigo-400' },
-    { icon: Activity, label: '活动消耗', value: '--', unit: 'kcal', color: 'text-orange-400' },
+    { icon: Heart, label: '心率', value: '--', unit: 'BPM', color: 'text-day-error dark:text-night-error' },
+    { icon: Footprints, label: '今日步数', value: '--', unit: '步', color: 'text-day-success dark:text-night-success' },
+    { icon: Moon, label: '昨晚睡眠', value: '--', unit: '小时', color: 'text-day-sky dark:text-night-info' },
+    { icon: Activity, label: '活动消耗', value: '--', unit: 'kcal', color: 'text-day-warning dark:text-night-warning' },
   ]
 
   return (
@@ -88,7 +88,7 @@ export function HealthView() {
 
           {openPeriod ? (
             <div className="text-center space-y-3">
-              <p className={`text-3xl font-light ${isNight ? 'text-night-amber' : 'text-day-heart'}`}>
+              <p className={`text-3xl font-light ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>
                 Day {dayOfPeriod}
               </p>
               <p className="text-xs opacity-40">{openPeriod.start} 开始</p>
@@ -103,7 +103,7 @@ export function HealthView() {
             <div className="text-center space-y-3">
               {nextPredicted ? (
                 <>
-                  <p className={`text-3xl font-light ${isNight ? 'text-night-amber' : 'text-day-heart'}`}>
+                  <p className={`text-3xl font-light ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>
                     {daysUntilNext !== null && daysUntilNext >= 0 ? `${daysUntilNext} 天` : `晚了 ${-daysUntilNext!} 天`}
                   </p>
                   <p className="text-xs opacity-40">
@@ -115,7 +115,7 @@ export function HealthView() {
               )}
               <button
                 onClick={() => startPeriod(today)}
-                className={`px-4 py-2 rounded-xl text-xs flex items-center gap-1 mx-auto ${isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink/10 text-day-pink'}`}
+                className={`px-4 py-2 rounded-xl text-xs flex items-center gap-1 mx-auto ${isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink'}`}
               >
                 <Plus size={12} /> 今天来了
               </button>
@@ -130,7 +130,7 @@ export function HealthView() {
                     {r.start} → {r.end || '进行中'}
                     {r.end && <span className="opacity-50 ml-1">({differenceInDays(parseISO(r.end), parseISO(r.start)) + 1}天)</span>}
                   </span>
-                  <button onClick={() => deleteRecord(r.id)} className="p-1 text-red-400/50 hover:text-red-400 dark:text-night-error/50 dark:hover:text-night-error">
+                  <button onClick={() => deleteRecord(r.id)} className="p-1 text-day-error/50 hover:text-day-error dark:text-night-error/50 dark:hover:text-night-error">
                     <X size={11} />
                   </button>
                 </div>
@@ -167,7 +167,7 @@ export function HealthView() {
               {geoStatus !== 'loading' && (
                 <button
                   onClick={requestLocation}
-                  className={`px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink/10 text-day-pink'}`}
+                  className={`px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink'}`}
                 >
                   {geoStatus === 'denied' ? '重试' : '授权定位'}
                 </button>
@@ -189,7 +189,7 @@ export function HealthView() {
               <card.icon size={18} className={`${card.color} mb-3`} />
               <p className="text-[10px] opacity-40 mb-1">{card.label}</p>
               <div className="flex items-baseline gap-1">
-                <p className={`text-2xl font-light ${isNight ? 'text-night-amber' : 'text-day-heart'}`}>
+                <p className={`text-2xl font-light ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>
                   {card.value}
                 </p>
                 <p className="text-[10px] opacity-30">{card.unit}</p>

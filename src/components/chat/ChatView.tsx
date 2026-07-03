@@ -259,13 +259,13 @@ export function ChatView() {
   }
 
   const weatherChip = weather && (
-    <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${isNight ? 'bg-night-surface text-night-muted' : 'bg-day-lemon/70 text-day-text/70'}`}>
+    <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${isNight ? 'bg-night-surface text-night-muted' : 'bg-day-lemon/70 text-day-muted'}`}>
       {weatherEmoji(weather.code)} {weather.temp != null ? `${Math.round(weather.temp)}°` : ''}{weather.city ? ` · ${weather.city}` : ''}
     </span>
   )
 
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
-    <div className={`h-full flex flex-col ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${isNight ? 'bg-night-card border-night-border' : 'bg-white border-day-muted/10'} border-r`}>
+    <div className={`h-full flex flex-col ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${isNight ? 'bg-night-card border-night-border' : 'bg-white border-day-border'} border-r`}>
       <div className="p-4 space-y-3 border-b border-current/5">
         <div className="flex items-center justify-between">
           <div>
@@ -300,7 +300,7 @@ export function ChatView() {
               onClick={() => { setActiveSession(s.id); if (mobile) setSessionDrawerOpen(false) }}
               className={`group p-3 rounded-xl cursor-pointer transition ${
                 active
-                  ? isNight ? 'bg-night-amber/15 text-night-text' : 'bg-day-lemon text-day-text'
+                  ? isNight ? 'bg-night-amber/15 text-night-text' : 'bg-day-pinkLight text-day-text'
                   : isNight ? 'hover:bg-night-surface' : 'hover:bg-gray-50'
               }`}
             >
@@ -318,7 +318,7 @@ export function ChatView() {
                     />
                   ) : (
                     <div className="text-xs font-medium truncate flex items-center gap-1">
-                      {s.pinned && <Pin size={10} className={isNight ? 'text-night-amber' : 'text-day-heart'} />}
+                      {s.pinned && <Pin size={10} className={isNight ? 'text-night-amber' : 'text-day-pink'} />}
                       {s.title}
                     </div>
                   )}
@@ -330,7 +330,7 @@ export function ChatView() {
                 <div className="opacity-0 group-hover:opacity-100 flex gap-1" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => togglePinSession(s.id)} className="p-1 opacity-60 hover:opacity-100"><Pin size={12} /></button>
                   <button onClick={() => startRename(s.id, s.title)} className="p-1 opacity-60 hover:opacity-100"><Pencil size={12} /></button>
-                  <button onClick={() => { if (confirm('删除这条对话？')) deleteSession(s.id) }} className="p-1 text-red-500/60 hover:text-red-500 dark:text-night-error/60 dark:hover:text-night-error"><Trash2 size={12} /></button>
+                  <button onClick={() => { if (confirm('删除这条对话？')) deleteSession(s.id) }} className="p-1 text-day-error/60 hover:text-day-error dark:text-night-error/60 dark:hover:text-night-error"><Trash2 size={12} /></button>
                 </div>
               </div>
             </div>
@@ -408,7 +408,7 @@ export function ChatView() {
               <h2 className="text-sm font-medium opacity-80 truncate">🐆 {activeSession?.title || '星星'}</h2>
               <span className="text-[10px] opacity-40 truncate hidden lg:inline">{activeProfile?.name} · {settings.model}</span>
               {cacheHit && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${isNight ? 'bg-night-amber/10 text-night-amber' : 'bg-day-lemon text-day-pink'}`}>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${isNight ? 'bg-night-amber/10 text-night-amber' : 'bg-day-lemon text-day-muted'}`}>
                   cache ↻ {lastAssistant?.cache_read_tokens}
                 </span>
               )}
@@ -516,7 +516,7 @@ export function ChatView() {
                         <button onClick={() => handleBranch(msg.id)} title="从这里分支" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
                           <GitBranch size={11} />
                         </button>
-                        <button onClick={() => { if (confirm('删除这条消息？')) deleteMessage(msg.id) }} title="删除" className="p-1 rounded hover:bg-current/10 text-red-400/70 hover:text-red-400 dark:text-night-error/70 dark:hover:text-night-error">
+                        <button onClick={() => { if (confirm('删除这条消息？')) deleteMessage(msg.id) }} title="删除" className="p-1 rounded hover:bg-current/10 text-day-error/70 hover:text-day-error dark:text-night-error/70 dark:hover:text-night-error">
                           <Trash2 size={11} />
                         </button>
                       </div>
@@ -540,7 +540,7 @@ export function ChatView() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className={`p-4 pt-2 border-t backdrop-blur-md ${isNight ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
+          <div className={`p-4 pt-2 border-t backdrop-blur-md ${isNight ? 'border-night-border bg-night-card/50' : 'border-day-border bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
             <ModelPicker />
 
             {/* Context window status */}

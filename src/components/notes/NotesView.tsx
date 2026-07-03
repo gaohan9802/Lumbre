@@ -18,11 +18,7 @@ interface Note {
 
 // Sticky note color palettes
 const dayColors = [
-  { bg: '#FEDAB8', border: '#F3C896' },  // Banana
-  { bg: '#F3A4AC', border: '#E8909A' },  // Girl's Dream
-  { bg: '#B8E0E8', border: '#84BECA' },  // Diamond light
-  { bg: '#FFF5F0', border: '#F3A4AC' },  // Warm white
-  { bg: '#FFE5E5', border: '#EF4067' },  // Heartbeat light
+  { bg: '#FFFFFF', border: '#F3A4AC' },  // Surface + Girl's Dream (spec)
 ]
 const nightColors = [
   { bg: '#243040', border: '#e2a84b' },  // Elevated + Amber
@@ -104,7 +100,7 @@ export function NotesView() {
         <button
           onClick={() => setIsWriting(true)}
           className={`p-2.5 rounded-xl transition ${
-            isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-lemon text-day-pink'
+            isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-pinkLight text-day-pink'
           }`}
         >
           <Plus size={20} />
@@ -141,7 +137,7 @@ export function NotesView() {
                 rows={4}
                 autoFocus
                 className="w-full bg-transparent outline-none text-sm resize-none leading-relaxed"
-                style={{ color: isNight ? '#e8e4df' : '#5C4B51' }}
+                style={{ color: isNight ? '#e8e4df' : '#2D2424' }}
               />
               <div className="flex justify-end mt-3">
                 <button
@@ -188,7 +184,7 @@ export function NotesView() {
                     borderLeft: `3px solid ${color.border}`,
                     boxShadow: isNight
                       ? '0 2px 12px rgba(0,0,0,0.4)'
-                      : '2px 3px 12px rgba(0,0,0,0.08)',
+                      : '0 2px 8px rgba(45,36,36,0.08)',
                   }}
                   onClick={() => setExpandedNote(isExpanded ? null : note.id)}
                 >
@@ -197,7 +193,7 @@ export function NotesView() {
 
                   {/* Author + time */}
                   <div className="flex items-center justify-between mb-2 mt-1">
-                    <span className="text-xs font-medium" style={{ color: isNight ? '#e2a84b' : '#5C4B51' }}>
+                    <span className="text-xs font-medium" style={{ color: isNight ? '#e2a84b' : '#2D2424' }}>
                       {note.author === 'star' ? '🐆 星星' : '🦦 小火'}
                     </span>
                     <span className="text-[10px] opacity-40">
@@ -208,7 +204,7 @@ export function NotesView() {
                   {/* Content */}
                   <p
                     className={`text-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-4'}`}
-                    style={{ color: isNight ? '#e8e4df' : '#4A3728' }}
+                    style={{ color: isNight ? '#e8e4df' : '#2D2424' }}
                   >
                     {note.content}
                   </p>
@@ -221,8 +217,8 @@ export function NotesView() {
                           key={j}
                           className="text-[10px] px-1.5 py-0.5 rounded-full opacity-60"
                           style={{
-                            backgroundColor: isNight ? 'rgba(226,168,75,0.2)' : 'rgba(239,64,103,0.15)',
-                            color: isNight ? '#e2a84b' : '#EF4067',
+                            backgroundColor: isNight ? 'rgba(226,168,75,0.2)' : '#FEDAB8',
+                            color: isNight ? '#e2a84b' : '#7A6B66',
                           }}
                         >
                           {tag}
@@ -234,7 +230,7 @@ export function NotesView() {
                   {/* Replies */}
                   {hasReplies && (
                     <div className="mt-3 pt-2 space-y-2" style={{
-                      borderTop: `1px dashed ${isNight ? '#2e3d4d' : 'rgba(0,0,0,0.1)'}`,
+                      borderTop: `1px dashed ${isNight ? '#2e3d4d' : '#F0E4DD'}`,
                     }}>
                       {note.replies!.map((reply, j) => (
                         <div key={j} className="flex gap-2 items-start">
@@ -242,7 +238,7 @@ export function NotesView() {
                             {reply.author === 'star' ? '🐆' : '🦦'}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs leading-relaxed" style={{ color: isNight ? '#8899a6' : '#5C4B51' }}>
+                            <p className="text-xs leading-relaxed" style={{ color: isNight ? '#8899a6' : '#7A6B66' }}>
                               {reply.content}
                             </p>
                             <span className="text-[9px] opacity-30">
@@ -261,7 +257,7 @@ export function NotesView() {
                       animate={{ opacity: 1, height: 'auto' }}
                       className="mt-3 pt-2 space-y-2"
                       style={{
-                        borderTop: hasReplies ? 'none' : `1px dashed ${isNight ? '#2e3d4d' : 'rgba(0,0,0,0.1)'}`,
+                        borderTop: hasReplies ? 'none' : `1px dashed ${isNight ? '#2e3d4d' : '#F0E4DD'}`,
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -277,7 +273,7 @@ export function NotesView() {
                             className="flex-1 text-xs bg-transparent outline-none py-1"
                             style={{
                               borderBottom: `1px solid ${isNight ? '#2e3d4d' : 'rgba(0,0,0,0.15)'}`,
-                              color: isNight ? '#e8e4df' : '#4A3728',
+                              color: isNight ? '#e8e4df' : '#2D2424',
                             }}
                           />
                           <button
