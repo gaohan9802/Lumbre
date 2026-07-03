@@ -259,7 +259,7 @@ export function ChatView() {
   }
 
   const weatherChip = weather && (
-    <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${isNight ? 'bg-night-surface text-night-muted' : 'bg-day-lemon/70 text-day-muted'}`}>
+    <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${isNight ? 'bg-night-surface text-night-muted' : 'bg-day-lemon text-day-muted'}`}>
       {weatherEmoji(weather.code)} {weather.temp != null ? `${Math.round(weather.temp)}°` : ''}{weather.city ? ` · ${weather.city}` : ''}
     </span>
   )
@@ -330,7 +330,7 @@ export function ChatView() {
                 <div className="opacity-0 group-hover:opacity-100 flex gap-1" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => togglePinSession(s.id)} className="p-1 opacity-60 hover:opacity-100"><Pin size={12} /></button>
                   <button onClick={() => startRename(s.id, s.title)} className="p-1 opacity-60 hover:opacity-100"><Pencil size={12} /></button>
-                  <button onClick={() => { if (confirm('删除这条对话？')) deleteSession(s.id) }} className="p-1 text-day-error/60 hover:text-day-error dark:text-night-error/60 dark:hover:text-night-error"><Trash2 size={12} /></button>
+                  <button onClick={() => { if (confirm('删除这条对话？')) deleteSession(s.id) }} className="p-1 text-day-error hover:text-day-error dark:text-night-error/60 dark:hover:text-night-error"><Trash2 size={12} /></button>
                 </div>
               </div>
             </div>
@@ -423,10 +423,10 @@ export function ChatView() {
 
           {/* Mobile floating buttons */}
           <div className="md:hidden absolute top-3 left-3 right-3 z-20 flex justify-between pointer-events-none">
-            <button onClick={() => setSessionDrawerOpen(true)} className={`pointer-events-auto p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
+            <button onClick={() => setSessionDrawerOpen(true)} className={`pointer-events-auto p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white text-day-muted'} backdrop-blur-md`}>
               <PanelLeft size={16} />
             </button>
-            <button onClick={() => setSettingsOpen(true)} className={`pointer-events-auto p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
+            <button onClick={() => setSettingsOpen(true)} className={`pointer-events-auto p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white text-day-muted'} backdrop-blur-md`}>
               <Settings2 size={16} />
             </button>
           </div>
@@ -459,7 +459,7 @@ export function ChatView() {
 
                     {msg.tool_calls && msg.tool_calls.length > 0 && (
                       <>
-                        <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
+                        <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-amber/70' : 'text-day-pink'}`}>
                           <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? 'rotate-180' : ''}`} />
                           🔧 {msg.tool_calls.length} tool{msg.tool_calls.length > 1 ? 's' : ''}
                         </button>
@@ -516,7 +516,7 @@ export function ChatView() {
                         <button onClick={() => handleBranch(msg.id)} title="从这里分支" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
                           <GitBranch size={11} />
                         </button>
-                        <button onClick={() => { if (confirm('删除这条消息？')) deleteMessage(msg.id) }} title="删除" className="p-1 rounded hover:bg-current/10 text-day-error/70 hover:text-day-error dark:text-night-error/70 dark:hover:text-night-error">
+                        <button onClick={() => { if (confirm('删除这条消息？')) deleteMessage(msg.id) }} title="删除" className="p-1 rounded hover:bg-current/10 text-day-error hover:text-day-error dark:text-night-error/70 dark:hover:text-night-error">
                           <Trash2 size={11} />
                         </button>
                       </div>
@@ -548,7 +548,7 @@ export function ChatView() {
               <div className="flex items-center gap-2 mb-2 px-1">
                 <div className={`h-1 flex-1 rounded-full overflow-hidden ${isNight ? 'bg-night-surface' : 'bg-gray-100'}`}>
                   <div
-                    className={`h-full rounded-full transition-all ${isNight ? 'bg-night-amber/60' : 'bg-day-pink/60'}`}
+                    className={`h-full rounded-full transition-all ${isNight ? 'bg-night-amber/60' : 'bg-day-honey'}`}
                     style={{ width: `${contextPct}%` }}
                   />
                 </div>
@@ -608,7 +608,7 @@ export function ChatView() {
                 enterKeyHint="send"
                 className={`flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${isNight ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`}
               />
-              <button onClick={handleSend} disabled={(!input.trim() && !images.length) || isLoading} className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || images.length) ? (isNight ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
+              <button onClick={handleSend} disabled={(!input.trim() && !images.length) || isLoading} className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || images.length) ? (isNight ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pinkDeep') : 'opacity-30 cursor-not-allowed'}`}>
                 <Send size={16} />
               </button>
             </div>

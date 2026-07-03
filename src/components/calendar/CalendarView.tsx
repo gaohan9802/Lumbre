@@ -83,13 +83,13 @@ export function CalendarView() {
       <div className="max-w-md mx-auto space-y-6">
         {/* Month navigation */}
         <div className="flex items-center justify-between">
-          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5">
+          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-day-tint dark:hover:bg-white/5">
             <ChevronLeft size={18} />
           </button>
           <h2 className="text-lg font-medium">
             {format(currentMonth, 'yyyy年 M月', { locale: zhCN })}
           </h2>
-          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5">
+          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-day-tint dark:hover:bg-white/5">
             <ChevronRight size={18} />
           </button>
         </div>
@@ -124,7 +124,7 @@ export function CalendarView() {
                       ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink text-white'
                       : today
                         ? isNight ? 'bg-night-surface' : 'bg-day-lemon'
-                        : 'hover:bg-black/5 dark:hover:bg-white/5'
+                        : 'hover:bg-day-tint dark:hover:bg-white/5'
                     }
                   `}
                 >

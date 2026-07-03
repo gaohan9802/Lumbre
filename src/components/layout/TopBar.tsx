@@ -32,7 +32,7 @@ export function TopBar() {
         flex items-center justify-between gap-2
         ${theme === 'night'
           ? 'bg-night-bg/80 border-night-border'
-          : 'bg-white/80 border-day-border'
+          : 'bg-white border-day-border'
         }
         border-b backdrop-blur-md
         md:hidden

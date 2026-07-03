@@ -137,7 +137,7 @@ export function NotesView() {
                 rows={4}
                 autoFocus
                 className="w-full bg-transparent outline-none text-sm resize-none leading-relaxed"
-                style={{ color: isNight ? '#e8e4df' : '#2D2424' }}
+                style={{ color: isNight ? '#e8e4df' : '#5D4037' }}
               />
               <div className="flex justify-end mt-3">
                 <button
@@ -193,7 +193,7 @@ export function NotesView() {
 
                   {/* Author + time */}
                   <div className="flex items-center justify-between mb-2 mt-1">
-                    <span className="text-xs font-medium" style={{ color: isNight ? '#e2a84b' : '#2D2424' }}>
+                    <span className="text-xs font-medium" style={{ color: isNight ? '#e2a84b' : '#5D4037' }}>
                       {note.author === 'star' ? '🐆 星星' : '🦦 小火'}
                     </span>
                     <span className="text-[10px] opacity-40">
@@ -204,7 +204,7 @@ export function NotesView() {
                   {/* Content */}
                   <p
                     className={`text-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-4'}`}
-                    style={{ color: isNight ? '#e8e4df' : '#2D2424' }}
+                    style={{ color: isNight ? '#e8e4df' : '#5D4037' }}
                   >
                     {note.content}
                   </p>
@@ -218,7 +218,7 @@ export function NotesView() {
                           className="text-[10px] px-1.5 py-0.5 rounded-full opacity-60"
                           style={{
                             backgroundColor: isNight ? 'rgba(226,168,75,0.2)' : '#FEDAB8',
-                            color: isNight ? '#e2a84b' : '#7A6B66',
+                            color: isNight ? '#e2a84b' : '#8D7468',
                           }}
                         >
                           {tag}
@@ -238,7 +238,7 @@ export function NotesView() {
                             {reply.author === 'star' ? '🐆' : '🦦'}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs leading-relaxed" style={{ color: isNight ? '#8899a6' : '#7A6B66' }}>
+                            <p className="text-xs leading-relaxed" style={{ color: isNight ? '#8899a6' : '#8D7468' }}>
                               {reply.content}
                             </p>
                             <span className="text-[9px] opacity-30">
@@ -273,7 +273,7 @@ export function NotesView() {
                             className="flex-1 text-xs bg-transparent outline-none py-1"
                             style={{
                               borderBottom: `1px solid ${isNight ? '#2e3d4d' : 'rgba(0,0,0,0.15)'}`,
-                              color: isNight ? '#e8e4df' : '#2D2424',
+                              color: isNight ? '#e8e4df' : '#5D4037',
                             }}
                           />
                           <button

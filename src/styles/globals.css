@@ -12,6 +12,7 @@
 
   body {
     @apply antialiased;
+    letter-spacing: 0.01em;
     
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
@@ -29,8 +30,8 @@
   :root {
     --bg: #FFF9F5;
     --card: #FFFFFF;
-    --text: #2D2424;
-    --muted: #7A6B66;
+    --text: #5D4037;
+    --muted: #8D7468;
     --accent: #EF4067;
     --accent2: #84BECA;
   }
@@ -58,8 +59,7 @@
   }
 
   .glass-card {
-    @apply backdrop-blur-sm;
-    background: rgba(255, 255, 255, 0.6);
+    background: #FFFFFF;
   }
 
   .dark .glass-card {

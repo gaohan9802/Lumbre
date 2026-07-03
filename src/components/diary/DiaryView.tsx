@@ -226,7 +226,7 @@ export function DiaryView() {
           {!selected && !isWriting && (
             <>
               <div className={`flex rounded-lg overflow-hidden text-[11px] ${
-                isNight ? 'bg-night-surface' : 'bg-day-honey/20'
+                isNight ? 'bg-night-surface' : 'bg-day-pinkLight'
               }`}>
                 {([['all', '全部'], ['star', '🐆'], ['fire', '🦦']] as const).map(([key, label]) => (
                   <button
@@ -284,7 +284,7 @@ export function DiaryView() {
                       className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs transition-all ${
                         visibility === v
                           ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink text-white'
-                          : isNight ? 'bg-night-surface text-night-muted' : 'bg-day-honey/20 text-day-muted'
+                          : isNight ? 'bg-night-surface text-night-muted' : 'bg-day-pinkLight text-day-muted'
                       }`}
                     >
                       <Icon size={12} /> {label}
@@ -309,7 +309,7 @@ export function DiaryView() {
                 <div className="flex gap-3 pt-2">
                   <button onClick={() => { setIsWriting(false); setTitle(''); setContent('') }}
                     className={`px-5 py-2.5 rounded-xl text-sm transition ${
-                      isNight ? 'bg-night-surface text-night-muted' : 'bg-day-honey/15 text-day-muted'
+                      isNight ? 'bg-night-surface text-night-muted' : 'bg-day-pinkLight text-day-muted'
                     }`}>算了</button>
                   <button onClick={handleWrite}
                     disabled={!title.trim() || !content.trim() || (visibility === 'timed' && !revealAt)}
@@ -334,19 +334,19 @@ export function DiaryView() {
                   <div className="flex gap-1.5 flex-wrap mb-5">
                     {selected.tags.map((tag: string) => (
                       <span key={tag} className={`text-[10px] px-2 py-0.5 rounded-full ${
-                        isNight ? 'bg-night-amber/10 text-night-amber/70' : 'bg-day-honey/30 text-day-pink'
+                        isNight ? 'bg-night-amber/10 text-night-amber/70' : 'bg-day-pinkLight text-day-pink'
                       }`}>{tag}</span>
                     ))}
                   </div>
                 )}
-                <div className={`text-sm whitespace-pre-wrap ${isNight ? 'text-night-text/85' : 'text-day-text/90'}`} style={{ lineHeight: '2rem' }}>
+                <div className={`text-sm whitespace-pre-wrap ${isNight ? 'text-night-text/85' : 'text-day-text'}`} style={{ lineHeight: '2rem' }}>
                   {selected.content}
                 </div>
 
                 {canEdit && (
                   <div className="mt-6">
                     {showAppend ? (
-                      <div className={`p-3 rounded-xl space-y-2 ${isNight ? 'bg-night-surface/50' : 'bg-day-lemon/30'}`}>
+                      <div className={`p-3 rounded-xl space-y-2 ${isNight ? 'bg-night-surface/50' : 'bg-day-tint'}`}>
                         <textarea value={appendText} onChange={(e) => setAppendText(e.target.value)}
                           placeholder="续一段..." rows={4} autoFocus
                           className={`w-full text-sm bg-transparent outline-none resize-none ${isNight ? 'placeholder:text-night-muted' : 'placeholder:text-day-muted'}`}
@@ -379,15 +379,15 @@ export function DiaryView() {
                       <div key={i} className="flex gap-2.5 text-sm">
                         <span className="mt-0.5 text-xs flex-shrink-0">{who === 'star' ? '🐆' : '🦦'}</span>
                         <div className="flex-1 min-w-0">
-                          <p className={`leading-relaxed ${isNight ? 'text-night-text/80' : 'text-day-text/85'}`}>{c.content}</p>
-                          <span className={`text-[10px] mt-0.5 block ${isNight ? 'text-night-muted/50' : 'text-day-muted/60'}`}>
+                          <p className={`leading-relaxed ${isNight ? 'text-night-text/80' : 'text-day-text'}`}>{c.content}</p>
+                          <span className={`text-[10px] mt-0.5 block ${isNight ? 'text-night-muted/50' : 'text-day-disabled'}`}>
                             {friendlyTime(c.timestamp || c.time)}
                           </span>
                         </div>
                       </div>
                     )
                   })}
-                  <div className={`flex gap-2 items-end rounded-xl p-2 ${isNight ? 'bg-night-surface/50' : 'bg-day-honey/10'}`}>
+                  <div className={`flex gap-2 items-end rounded-xl p-2 ${isNight ? 'bg-night-surface/50' : 'bg-day-tint'}`}>
                     <span className="text-xs pb-1">🦦</span>
                     <input value={commentText} onChange={(e) => setCommentText(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleComment()}
@@ -411,15 +411,15 @@ export function DiaryView() {
                   <div className="text-center py-16 space-y-3">
                     <span className="text-4xl">📔</span>
                     <p className={`text-sm ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>还没有日记</p>
-                    <p className={`text-xs ${isNight ? 'text-night-muted/50' : 'text-day-muted/60'}`}>点右上角 + 写第一篇</p>
+                    <p className={`text-xs ${isNight ? 'text-night-muted/50' : 'text-day-disabled'}`}>点右上角 + 写第一篇</p>
                   </div>
                 ) : (
                   <div className="space-y-8">
                     {sortedDates.map((date: string) => (
                       <div key={date}>
-                        <div className={`flex items-center gap-3 mb-3 ${isNight ? 'text-night-amber/60' : 'text-day-pink/70'}`}>
+                        <div className={`flex items-center gap-3 mb-3 ${isNight ? 'text-night-amber/60' : 'text-day-pink'}`}>
                           <span className="text-xs font-medium tracking-wider">{friendlyDate(date)}</span>
-                          <div className={`flex-1 h-px ${isNight ? 'bg-night-amber/10' : 'bg-day-pink/10'}`} />
+                          <div className={`flex-1 h-px ${isNight ? 'bg-night-amber/10' : 'bg-day-pinkLight'}`} />
                         </div>
                         <div className="space-y-3">
                           {grouped[date].map((entry: DiaryEntry, i: number) => (
@@ -429,7 +429,7 @@ export function DiaryView() {
                               className={`w-full text-left group transition-all duration-200 rounded-2xl p-4 ${
                                 isNight
                                   ? 'bg-night-card/60 hover:bg-night-card border border-night-border/30 hover:border-night-amber/20'
-                                  : 'bg-white/70 hover:bg-white border border-day-border hover:border-day-honey hover:shadow-sm'
+                                  : 'bg-white hover:bg-white border border-day-border hover:border-day-honey hover:shadow-sm'
                               }`}
                               whileTap={{ scale: 0.99 }}
                             >
@@ -443,7 +443,7 @@ export function DiaryView() {
                                   {entry.visibility === 'timed' && <Clock size={11} className="opacity-30" />}
                                   {entry.tags && entry.tags.length > 0 && (
                                     <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
-                                      isNight ? 'bg-night-amber/10 text-night-amber/50' : 'bg-day-honey/25 text-day-pink/70'
+                                      isNight ? 'bg-night-amber/10 text-night-amber/50' : 'bg-day-pinkLight text-day-pink'
                                     }`}>{entry.tags[0]}</span>
                                   )}
                                   {(entry.comments?.length || 0) > 0 && (
@@ -453,7 +453,7 @@ export function DiaryView() {
                               </div>
                               <h4 className={`text-sm font-medium mb-1 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{entry.title}</h4>
                               {entry.locked ? (
-                                <p className={`text-xs italic flex items-center gap-1 ${isNight ? 'text-night-muted/40' : 'text-day-muted/50'}`}>
+                                <p className={`text-xs italic flex items-center gap-1 ${isNight ? 'text-night-muted/40' : 'text-day-disabled'}`}>
                                   <Lock size={10} /> 需要密码解锁
                                 </p>
                               ) : (

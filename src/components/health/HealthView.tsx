@@ -130,7 +130,7 @@ export function HealthView() {
                     {r.start} → {r.end || '进行中'}
                     {r.end && <span className="opacity-50 ml-1">({differenceInDays(parseISO(r.end), parseISO(r.start)) + 1}天)</span>}
                   </span>
-                  <button onClick={() => deleteRecord(r.id)} className="p-1 text-day-error/50 hover:text-day-error dark:text-night-error/50 dark:hover:text-night-error">
+                  <button onClick={() => deleteRecord(r.id)} className="p-1 text-day-error hover:text-day-error dark:text-night-error/50 dark:hover:text-night-error">
                     <X size={11} />
                   </button>
                 </div>

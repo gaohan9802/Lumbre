@@ -20,12 +20,14 @@ const config: Config = {
           skyLight: '#E6F3F6',  // Diamond Light — info bg/cool tag bg
           pink: '#EF4067',      // Heartbeat — primary accent, buttons
           pinkLight: '#FDE8ED', // Heartbeat Light — hover/light button bg
+          pinkDeep: '#D63656',  // Heartbeat Deep — button hover (solid, no opacity)
+          errorLight: '#F9E3E3',// Sweet Honey Light — error hover bg (solid)
           lemon: '#FEDAB8',     // Banana — tag bg/badge/warm hint bg
           honey: '#F3A4AC',     // Girl's Dream — selected highlight/progress
           heart: '#BE0001',     // Sweet Honey — error/delete
-          text: '#2D2424',      // Primary text
-          muted: '#7A6B66',     // Secondary text/timestamps
-          disabled: '#BFB0A8',  // Placeholder/disabled
+          text: '#5D4037',      // Primary text — deep brown
+          muted: '#8D7468',     // Secondary text/timestamps — mid brown
+          disabled: '#C9B8AF',  // Placeholder/disabled
           success: '#4a9e7e',
           warning: '#E8943A',
           error: '#BE0001',
@@ -55,6 +57,15 @@ const config: Config = {
           stamp: '#C45C48',
           line: '#D4C9BC',
         },
+      },
+      fontSize: {
+        xs: ['0.72rem', { lineHeight: '1.5' }],
+        sm: ['0.83rem', { lineHeight: '1.65' }],
+        base: ['0.93rem', { lineHeight: '1.7' }],
+        lg: ['1.05rem', { lineHeight: '1.6' }],
+        xl: ['1.15rem', { lineHeight: '1.5' }],
+        '2xl': ['1.35rem', { lineHeight: '1.4' }],
+        '3xl': ['1.65rem', { lineHeight: '1.3' }],
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
