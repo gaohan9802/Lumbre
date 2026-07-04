@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft, Plus, Pin, Trash2, Pencil, Search, X, ImagePlus, RotateCcw, GitBranch, Boxes } from 'lucide-react'
+import { Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft, Plus, Pin, Trash2, Pencil, Search, X, ImagePlus, RotateCcw, GitBranch, Boxes, Copy, Check, Download, Sparkles } from 'lucide-react'
 import {
   useChatStore,
   ChatMessage,
@@ -11,6 +12,7 @@ import {
   getActiveProfile,
   getSortedSessions,
   estimateTokens,
+  snapshotOfMessage,
 } from '@/lib/chatStore'
 import { chat } from '@/lib/api'
 import { useWeather, weatherEmoji } from '@/lib/useWeather'
@@ -81,6 +83,8 @@ export function ChatView() {
     branchFromMessage,
     addMessageVersion,
     switchMessageVersion,
+    deleteMessageVersion,
+    setSettings,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const sessions = getSortedSessions(settings)
@@ -101,6 +105,13 @@ export function ChatView() {
   const [editingTitle, setEditingTitle] = useState('')
   const [nowTick, setNowTick] = useState(Date.now())
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
+  const [mounted, setMounted] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(50)
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState('')
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const statusBusyRef = useRef(false)
+  const statusGapRef = useRef(5 + Math.floor(Math.random() * 6)) // 5-10 条刷新一次
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -124,6 +135,11 @@ export function ChatView() {
     return () => clearInterval(iv)
   }, [])
 
+  useEffect(() => { setMounted(true) }, [])
+
+  // 切换会话时重置懒加载窗口
+  useEffect(() => { setVisibleCount(50); setEditingMsgId(null) }, [settings.activeSessionId])
+
   // ── context window stats ──
   const contextSlice = messages.slice(-settings.contextLength)
   const windowDuration = contextSlice.length ? nowTick - contextSlice[0].timestamp : 0
@@ -139,6 +155,76 @@ export function ChatView() {
         setImages((prev) => (prev.length >= 4 ? prev : [...prev, url]))
       } catch {}
     }
+  }
+
+  // ── 星星状态栏：每 5-10 条随机刷新一次当下状态 ──
+  const refreshStarStatus = async (manual = false) => {
+    if (statusBusyRef.current) return
+    const profile = getActiveProfile(settings)
+    if (!profile) return
+    statusBusyRef.current = true
+    try {
+      const recent = messages.slice(-6).map((m) => ({ role: m.role, content: m.content }))
+      const data = await chat.send({
+        messages: [...recent, { role: 'user', content: '（系统提示，不是对话）请用一句话（20字以内）描述你此刻的心情/状态/感受，第一人称，可带一个emoji，不要引号不要解释。' }],
+        system: settings.systemPrompt || undefined,
+        model: settings.model,
+        temperature: 1,
+        api_profile: { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: settings.model },
+      })
+      const text = (data.content || '').trim().replace(/^["'「『]|["'」』]$/g, '').slice(0, 40)
+      if (text) {
+        setSettings({ starStatus: { text, timestamp: Date.now(), msgCount: messages.length } })
+        statusGapRef.current = 5 + Math.floor(Math.random() * 6)
+      }
+    } catch {}
+    statusBusyRef.current = false
+  }
+
+  useEffect(() => {
+    if (!messages.length || isLoading) return
+    const last = messages[messages.length - 1]
+    if (last.role !== 'assistant') return
+    const since = messages.length - (settings.starStatus?.msgCount || 0)
+    if (since >= statusGapRef.current) refreshStarStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length, isLoading])
+
+  // ── 导出整个会话为 Markdown ──
+  const exportMarkdown = () => {
+    const title = activeSession?.title || '对话'
+    const md = [
+      `# ${title}`,
+      '',
+      ...messages.map((m) => `**${m.role === 'user' ? '我' : '星星 🐆'}** · ${formatFullTs(m.timestamp)}\n\n${m.content}\n`),
+    ].join('\n')
+    navigator.clipboard?.writeText(md).catch(() => {})
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${title}.md`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  const copyMessage = (msg: ChatMessage) => {
+    navigator.clipboard?.writeText(msg.content).then(() => {
+      setCopiedId(msg.id)
+      setTimeout(() => setCopiedId((cur) => (cur === msg.id ? null : cur)), 1500)
+    }).catch(() => {})
+  }
+
+  const startEdit = (msg: ChatMessage) => {
+    setEditingMsgId(msg.id)
+    setEditingContent(msg.content)
+  }
+
+  const saveEdit = (msg: ChatMessage) => {
+    const text = editingContent.trim()
+    setEditingMsgId(null)
+    if (!text || text === msg.content) return
+    // 修改 = 追加一个新版本，旧版本保留可切换/可删除
+    addMessageVersion(msg.id, { ...snapshotOfMessage(msg), content: text, timestamp: Date.now() })
   }
 
   // versionFor: reroll target message id — result becomes a new switchable version
@@ -362,22 +448,6 @@ export function ChatView() {
         })}
       </div>
 
-      <div className="p-3 border-t border-current/5 grid grid-cols-2 gap-2">
-        <button
-          onClick={() => setModelDialogOpen(true)}
-          className={`px-3 py-2 rounded-xl text-xs text-left ${isNight ? 'hover:bg-night-surface bg-night-surface/50' : 'hover:bg-gray-100 bg-gray-50'}`}
-        >
-          <div className="font-medium">模型 API</div>
-          <div className="text-[10px] opacity-40 truncate mt-0.5">{activeProfile?.name || '未配置'}</div>
-        </button>
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className={`px-3 py-2 rounded-xl text-xs text-left ${isNight ? 'hover:bg-night-surface bg-night-surface/50' : 'hover:bg-gray-100 bg-gray-50'}`}
-        >
-          <div className="font-medium">星星设置</div>
-          <div className="text-[10px] opacity-40 truncate mt-0.5">人设 · 温度 · 外观</div>
-        </button>
-      </div>
     </div>
   )
 
@@ -407,6 +477,9 @@ export function ChatView() {
             </div>
             <div className="flex items-center gap-2">
               {weatherChip}
+              <button onClick={exportMarkdown} title="导出整个会话为 Markdown" className={`p-2 rounded-xl transition ${isNight ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
+                <Download size={16} />
+              </button>
               <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl transition ${isNight ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
                 <Settings2 size={16} />
               </button>
@@ -418,11 +491,29 @@ export function ChatView() {
             <button onClick={() => setSessionDrawerOpen(true)} className={`p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white/90 text-day-muted shadow-sm'} backdrop-blur-md`}>
               <PanelLeft size={16} />
             </button>
-            <span className="text-xs font-medium opacity-70 truncate max-w-[50%]">{activeSession?.title || ''}</span>
-            <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white/90 text-day-muted shadow-sm'} backdrop-blur-md`}>
-              <Settings2 size={16} />
-            </button>
+            <span className="text-xs font-medium opacity-70 truncate max-w-[40%]">{activeSession?.title || ''}</span>
+            <div className="flex gap-1.5">
+              <button onClick={exportMarkdown} className={`p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white/90 text-day-muted shadow-sm'} backdrop-blur-md`}>
+                <Download size={16} />
+              </button>
+              <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white/90 text-day-muted shadow-sm'} backdrop-blur-md`}>
+                <Settings2 size={16} />
+              </button>
+            </div>
           </div>
+
+
+          {/* 星星状态栏 */}
+          {settings.starStatus?.text && (
+            <div className={`relative z-10 flex items-center gap-2 px-4 md:px-6 py-1.5 text-[11px] border-b border-current/5 ${isNight ? 'text-night-muted bg-night-card/40' : 'text-day-muted bg-white/50'}`}>
+              <Sparkles size={11} className={isNight ? 'text-night-amber' : 'text-day-pink'} />
+              <span className="flex-1 truncate">{settings.starStatus.text}</span>
+              <span className="opacity-50 flex-shrink-0">{formatShortTs(settings.starStatus.timestamp)}</span>
+              <button onClick={() => refreshStarStatus(true)} title="刷新状态" className="p-0.5 opacity-50 hover:opacity-100 flex-shrink-0">
+                <RotateCcw size={10} />
+              </button>
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 relative z-10">
             {messages.length === 0 && (
@@ -432,8 +523,19 @@ export function ChatView() {
               </div>
             )}
 
+            {messages.length > visibleCount && (
+              <div className="flex justify-center">
+                <button
+                  onClick={() => setVisibleCount((c) => c + 50)}
+                  className={`px-4 py-1.5 rounded-full text-[11px] ${isNight ? 'bg-night-surface text-night-muted hover:text-night-text' : 'bg-white shadow-sm text-day-muted hover:text-day-text'}`}
+                >
+                  加载更早的 {Math.min(50, messages.length - visibleCount)} 条（共 {messages.length} 条）
+                </button>
+              </div>
+            )}
+
             <AnimatePresence initial={false}>
-              {messages.map((msg) => {
+              {messages.slice(-visibleCount).map((msg) => {
                 const vCount = msg.versions?.length || 0
                 const vIndex = msg.versionIndex ?? Math.max(0, vCount - 1)
                 return (
@@ -496,18 +598,32 @@ export function ChatView() {
                         </div>
                       )}
 
-                      {msg.content && (
+                      {editingMsgId === msg.id ? (
+                        <div className={`rounded-2xl overflow-hidden ${isNight ? 'bg-night-surface' : 'bg-white shadow-sm'}`}>
+                          <textarea
+                            value={editingContent}
+                            autoFocus
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            rows={Math.min(10, Math.max(3, editingContent.split('\n').length))}
+                            className={`w-full min-w-[min(70vw,420px)] p-3 text-sm leading-relaxed bg-transparent outline-none resize-y ${isNight ? 'text-night-text' : 'text-day-text'}`}
+                          />
+                          <div className="flex justify-end gap-2 px-3 pb-2">
+                            <button onClick={() => setEditingMsgId(null)} className="text-[11px] opacity-50 hover:opacity-100">取消</button>
+                            <button onClick={() => saveEdit(msg)} className={`text-[11px] font-medium ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>保存为新版本</button>
+                          </div>
+                        </div>
+                      ) : msg.content ? (
                         <div
                           style={bubbleStyle(msg.role === 'user')}
-                          className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? (isNight ? 'bg-night-amber/20 text-night-text rounded-br-md' : 'bg-day-honey text-day-text rounded-br-md') : (isNight ? 'bg-night-surface text-night-text rounded-bl-md' : 'bg-white shadow-sm text-day-text rounded-bl-md')}`}
+                          className={`px-4 py-3 rounded-2xl text-sm leading-relaxed select-text ${msg.role === 'user' ? (isNight ? 'bg-night-amber/20 text-night-text rounded-br-md' : 'bg-day-honey text-day-text rounded-br-md') : (isNight ? 'bg-night-surface text-night-text rounded-bl-md' : 'bg-white shadow-sm text-day-text rounded-bl-md')}`}
                         >
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>
-                      )}
+                      ) : null}
 
                       {/* actions row: version switcher + reroll/branch/delete */}
                       <div className={`flex items-center gap-1.5 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        {msg.role === 'assistant' && vCount > 1 && (
+                        {vCount > 1 && (
                           <span className={`flex items-center gap-0.5 text-[10px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
                             <button
                               disabled={vIndex <= 0}
@@ -520,9 +636,20 @@ export function ChatView() {
                               onClick={() => switchMessageVersion(msg.id, vIndex + 1)}
                               className="p-0.5 rounded disabled:opacity-20 hover:bg-current/10"
                             ><ChevronRight size={11} /></button>
+                            <button
+                              onClick={() => askConfirm(`删除版本 ${vIndex + 1}/${vCount}？其他版本保留。`, () => deleteMessageVersion(msg.id, vIndex))}
+                              title="删除当前版本"
+                              className="p-0.5 rounded hover:bg-current/10 opacity-60 hover:opacity-100"
+                            ><X size={10} /></button>
                           </span>
                         )}
                         <div className={`flex gap-0.5 transition-opacity opacity-60 md:opacity-0 md:group-hover/msg:opacity-100`}>
+                          <button onClick={() => copyMessage(msg)} title="复制" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
+                            {copiedId === msg.id ? <Check size={11} /> : <Copy size={11} />}
+                          </button>
+                          <button onClick={() => startEdit(msg)} title="修改（保留旧版本）" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
+                            <Pencil size={11} />
+                          </button>
                           {msg.role === 'assistant' && (
                             <button onClick={() => handleReroll(msg.id)} title="重新生成（保留旧版本）" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
                               <RotateCcw size={11} />
@@ -636,44 +763,50 @@ export function ChatView() {
         </div>
       </div>
 
-      {/* session drawer (mobile) */}
-      <AnimatePresence>
-        {sessionDrawerOpen && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSessionDrawerOpen(false)} className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm lg:hidden" />
-            <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 30, stiffness: 280 }} className="fixed left-0 top-0 bottom-0 z-50 lg:hidden">
-              <Sidebar mobile />
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {/* 所有浮层 portal 到 body：绕过 page.tsx motion.div 的 transform / backdrop-filter 形成的包含块，修复弹窗位置漂移 */}
+      {mounted && createPortal(
+        <>
+          {/* session drawer (mobile) */}
+          <AnimatePresence>
+            {sessionDrawerOpen && (
+              <>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSessionDrawerOpen(false)} className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm lg:hidden" />
+                <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 30, stiffness: 280 }} className="fixed left-0 top-0 bottom-0 z-50 lg:hidden">
+                  <Sidebar mobile />
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
 
-      {/* confirm dialog */}
-      <AnimatePresence>
-        {confirmState && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" onClick={() => setConfirmState(null)} />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
-              className={`fixed z-[71] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(320px,calc(100vw-3rem))] rounded-2xl p-5 shadow-2xl ${isNight ? 'bg-night-card text-night-text' : 'bg-white text-day-text'}`}
-            >
-              <p className="text-sm leading-relaxed">{confirmState.message}</p>
-              <div className="flex gap-2 mt-4 justify-end">
-                <button onClick={() => setConfirmState(null)} className={`px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-surface' : 'bg-gray-100'}`}>取消</button>
-                <button
-                  onClick={() => { const fn = confirmState.onOk; setConfirmState(null); fn() }}
-                  className={`px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}
-                >确定</button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+          {/* confirm dialog */}
+          <AnimatePresence>
+            {confirmState && (
+              <>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" onClick={() => setConfirmState(null)} />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.92 }}
+                  className={`fixed z-[71] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(320px,calc(100vw-3rem))] rounded-2xl p-5 shadow-2xl ${isNight ? 'bg-night-card text-night-text' : 'bg-white text-day-text'}`}
+                >
+                  <p className="text-sm leading-relaxed">{confirmState.message}</p>
+                  <div className="flex gap-2 mt-4 justify-end">
+                    <button onClick={() => setConfirmState(null)} className={`px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-surface' : 'bg-gray-100'}`}>取消</button>
+                    <button
+                      onClick={() => { const fn = confirmState.onOk; setConfirmState(null); fn() }}
+                      className={`px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}
+                    >确定</button>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
 
-      <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={askConfirm} />
-      <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
+          <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={askConfirm} />
+          <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
+        </>,
+        document.body,
+      )}
     </>
   )
 }

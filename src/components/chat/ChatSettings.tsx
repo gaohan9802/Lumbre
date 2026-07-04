@@ -92,12 +92,12 @@ export function ChatSettings({ open, onClose, onConfirm }: Props) {
             transition={{ type: 'spring', damping: 30, stiffness: 280 }}
             className={`fixed right-0 top-0 bottom-0 w-full sm:w-[480px] z-50 overflow-y-auto ${isNight ? 'bg-night-surface border-l border-night-border' : 'bg-white border-l border-day-border'} pb-[env(safe-area-inset-bottom)]`}
           >
-            <div className="sticky top-0 z-10 backdrop-blur-md bg-inherit px-6 py-4 flex items-center justify-between border-b border-current/5">
+            <div className="sticky top-0 z-10 backdrop-blur-md bg-inherit px-6 pb-4 pt-[max(1rem,env(safe-area-inset-top))] flex items-center justify-between border-b border-current/5">
               <div>
                 <h3 className="font-medium">🐆 星星设置</h3>
                 <p className="text-[10px] opacity-40 mt-0.5">人设与参数不跟模型走，切模型也不变</p>
               </div>
-              <button onClick={onClose} className="p-1 opacity-60 hover:opacity-100"><X size={18} /></button>
+              <button onClick={onClose} className={`p-2.5 -mr-2 rounded-xl opacity-70 hover:opacity-100 active:scale-95 ${isNight ? 'bg-night-card' : 'bg-gray-100'}`}><X size={20} /></button>
             </div>
 
             <div className="p-6 space-y-7">

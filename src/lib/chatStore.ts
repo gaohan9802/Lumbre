@@ -92,6 +92,7 @@ export interface ChatSettings {
   activeSessionId: string
   sessions: ChatSession[]
   tombstones: Record<string, number> // deleted session id -> deletedAt
+  starStatus?: { text: string; timestamp: number; msgCount?: number } // 星星当下状态（心情/感受）
   configUpdatedAt: number // last time model/prompt/appearance config changed (for cross-device sync)
 }
 
@@ -154,6 +155,7 @@ interface ChatStore {
   branchFromMessage: (id: string) => string
   addMessageVersion: (id: string, v: MessageVersion) => void
   switchMessageVersion: (id: string, index: number) => void
+  deleteMessageVersion: (id: string, index: number) => void
   mergeRemote: (sessions: ChatSession[], tombstones: Record<string, number>) => void
   mergeRemoteConfig: (config: any, ts: number) => void
   renameSession: (id: string, title: string) => void
@@ -440,6 +442,26 @@ export const useChatStore = create<ChatStore>()(
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
+      deleteMessageVersion: (id, index) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const sessions = settings.sessions.map((s) => {
+          if (s.id !== settings.activeSessionId) return s
+          return {
+            ...s,
+            messages: s.messages.map((m) => {
+              if (m.id !== id || !m.versions || m.versions.length <= 1) return m
+              const versions = m.versions.filter((_, i) => i !== index)
+              const cur = m.versionIndex ?? m.versions.length - 1
+              const nextIndex = Math.max(0, Math.min(cur > index ? cur - 1 : cur, versions.length - 1))
+              return { ...m, ...versions[nextIndex], versions, versionIndex: nextIndex }
+            }),
+            updatedAt: Date.now(),
+          }
+        })
+        const nextSettings = { ...settings, sessions }
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
       mergeRemote: (remoteSessions, remoteTombstones) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const tombstones: Record<string, number> = { ...settings.tombstones }
@@ -624,6 +646,7 @@ export function extractConfig(s: ChatSettings) {
     appearance: s.appearance,
     activeProfileId: s.activeProfileId,
     apiProfiles: s.apiProfiles,
+    starStatus: s.starStatus,
   }
 }
 

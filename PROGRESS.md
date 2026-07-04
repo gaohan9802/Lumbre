@@ -219,3 +219,24 @@ git push -u origin main
 - store 里 `models.map(...)` 推断出的对象字面量类型会和 `ProviderModel[]` 冲突（exactOptionalPropertyTypes 影响），显式标注 `const nextModels: ProviderModel[]`
 - persist version 5→6：normalizeSettings 兜底新字段（temperature/streamEnabled/appearance/configUpdatedAt），老数据无痛升级
 - 同步防回环：ChatSync 里 `applyingRemote` 标志覆盖 config merge，`mergeRemoteConfig` 只在 remote ts 更新时应用，不 bump 本地 configUpdatedAt
+
+---
+
+## 2026-07-04 — Chat 页面六项优化
+
+### 完成
+1. **弹窗位置修复**：page.tsx 的 `motion.div`（AnimatePresence 切页动画）带 transform，成为 `position:fixed` 的包含块 → 弹窗/抽屉定位漂移（截图里模型弹窗跑到右下、确认框偏移）。修法：ChatView 里所有浮层（会话抽屉/确认框/ChatSettings/ModelDialog）统一 `createPortal(document.body)`，加 `mounted` state 防 SSR 报错
+2. **星星设置关闭按钮**：sticky header `pt-[max(1rem,env(safe-area-inset-top))]` 避开刘海/状态栏；按钮 p-1→p-2.5 + 背景色块，手机可点
+3. **删除会话菜单底部「模型 API / 星星设置」入口**：入口保留在输入框左下模型 chip + 头部齿轮
+4. **星星状态栏**：`settings.starStatus {text,timestamp,msgCount}`（入 extractConfig 跨端同步）；每收到 assistant 回复后检查距上次刷新条数 ≥ 随机阈值(5-10)则调 chat.send 用最近 6 条对话让模型一句话自述心情（20字内），显示在头部下方一条细栏，带手动刷新按钮
+5. **消息复制/修改 + 会话导出**：
+   - 每条消息操作区加 📋复制（1.5s 打勾反馈）+ ✏️修改
+   - 修改 = `addMessageVersion` 追加新版本，旧版本保留左右切换；版本切换器旁加 ✕ 删除当前版本（`deleteMessageVersion`，剩1个版本时不可删）；user 消息也支持版本切换（原来只有 assistant）
+   - 头部 ⬇️ 导出按钮：整个会话转 Markdown（角色+完整时间戳+正文），复制到剪贴板 + 下载 .md 文件
+6. **懒加载**：`visibleCount` 初始 50，`messages.slice(-visibleCount)` 渲染；顶部「加载更早的 N 条」按钮 +50；切换会话时重置
+
+### Debug 笔记
+- **fixed 定位漂移根因**：祖先元素有 transform/filter/backdrop-filter 时 fixed 改以该祖先为包含块。page.tsx 每个 view 都包在 motion.div（切页动画 y:8→0，动画结束后 framer 通常移除 transform，但 AnimatePresence mode=wait 下 exit 期间/某些版本会残留 will-change/transform）→ 所有全屏浮层必须 portal 到 body，别依赖"动画结束后 transform 会被移除"
+- createPortal 需要 `mounted`（useEffect 置 true）守卫，否则 SSR 阶段 document 不存在直接 build 报错
+- 星星状态刷新用 ref（statusBusyRef/statusGapRef）而不是 state，避免 effect 依赖循环；触发条件挂在 `[messages.length, isLoading]` 上、仅 last.role==='assistant' 时执行，防止用户消息也触发
+- deleteMessageVersion 里 versionIndex 修正：删的是当前之前的版本时 cur-1，删当前版本时留在同位置（自动落到下一个），再 clamp 到边界
