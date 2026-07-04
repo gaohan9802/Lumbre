@@ -196,3 +196,26 @@ git push -u origin main
 - sed 处理含 `${}` 的 className 时注意转义，复杂替换用 python 脚本更稳
 - `:has()` 选择器解决"视觉输入框是外层 div、真实 input 是 bg-transparent"的聚焦边框问题
 - shell 工具不接受 `&&`/`;` 拼接 sleep 的长命令？实际是偶发掉线，重试即可
+
+---
+
+## 2026-06-29（第二轮）Chat 页面大改
+
+### 新增
+1. **重roll保留所有版本**：`ChatMessage.versions[] + versionIndex`，气泡下 `‹ 2/3 ›` 切换；重roll结果 append 而非覆盖（store: `addMessageVersion` / `switchMessageVersion`）
+2. **危险操作先确认**：自绘 confirm 弹窗（askConfirm），重roll/分支/删除消息/删除会话/清空/重置全走它，替代原生 confirm
+3. **时间戳移到消息最上方**（thinking 之前）；气泡区不再显示模型名，模型只在输入框左下角
+4. **外观自定义**：背景图（上传→dataURL，>900KB 自动压缩）+ 背景透明度；用户/AI 气泡颜色 + 透明度（color picker + slider，可恢复默认）。存 `settings.appearance`
+5. **手机 chat 菜单栏下移**：原 absolute 浮动改为普通流 `pt-6`，消息不再被按钮遮住
+6. **模型 API 管理独立弹窗** `ModelDialog.tsx`：添加/删除 API（名称/供应商/BaseURL/Key/模型名/三种价格）、点卡片展开编辑+启停+拉取模型、点模型即切换。模型价格存 `ProviderModel.inputPrice/outputPrice/cachePrice`（$/1M）
+7. **模型配置全平台同步**：`extractConfig()` 切出 config 子集（prompt/温度/apiProfiles/appearance 等），`configUpdatedAt` 新者胜；/api/sync 和 server/chat-sync.ts 扩展 config 字段；所有改配置的 action 都 `bumpConfig()`
+8. **星星设置独立**（ChatSettings 重写）：prompt、温度（0-2，Anthropic 截断到 1）、思考预算、流式开关（UI预留）、prompt caching、上下文条数、外观。与模型解绑
+9. **右下角会话统计**：上下文条旁 `共 N 层 · 最后 M/D HH:mm`
+10. **Enter 改为换行**：去掉 onKeyDown 发送，只保留发送按钮；`enterKeyHint="enter"`
+11. **温度参数打通**：/api/chat 两条链路都接 temperature；Anthropic 开 thinking 时忽略温度（API 规定）
+
+### Debug 笔记
+- `chat.send` 加参数记得同步改 `src/lib/api.ts` 的类型签名，否则 TS 报 unknown property
+- store 里 `models.map(...)` 推断出的对象字面量类型会和 `ProviderModel[]` 冲突（exactOptionalPropertyTypes 影响），显式标注 `const nextModels: ProviderModel[]`
+- persist version 5→6：normalizeSettings 兜底新字段（temperature/streamEnabled/appearance/configUpdatedAt），老数据无痛升级
+- 同步防回环：ChatSync 里 `applyingRemote` 标志覆盖 config merge，`mergeRemoteConfig` 只在 remote ts 更新时应用，不 bump 本地 configUpdatedAt

@@ -3,23 +3,28 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, Settings2, PanelLeft, Plus, Pin, Trash2, Pencil, Search, X, ImagePlus, RotateCcw, GitBranch } from 'lucide-react'
+import { Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft, Plus, Pin, Trash2, Pencil, Search, X, ImagePlus, RotateCcw, GitBranch, Boxes } from 'lucide-react'
 import {
   useChatStore,
   ChatMessage,
+  MessageVersion,
   getActiveProfile,
-  getEnabledModels,
   getSortedSessions,
   estimateTokens,
 } from '@/lib/chatStore'
 import { chat } from '@/lib/api'
 import { useWeather, weatherEmoji } from '@/lib/useWeather'
 import { ChatSettings } from './ChatSettings'
+import { ModelDialog } from './ModelDialog'
 
 const p2 = (n: number) => String(n).padStart(2, '0')
 const formatFullTs = (ts: number) => {
   const d = new Date(ts)
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`
+}
+const formatShortTs = (ts: number) => {
+  const d = new Date(ts)
+  return `${d.getMonth() + 1}/${d.getDate()} ${p2(d.getHours())}:${p2(d.getMinutes())}`
 }
 const formatDuration = (ms: number) => {
   if (ms < 60000) return '刚刚开始'
@@ -31,6 +36,12 @@ const formatDuration = (ms: number) => {
   return `${d} 天 ${h % 24} 小时`
 }
 
+function hexToRgba(hex: string, alpha: number) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  if (!m) return hex
+  return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})`
+}
+
 async function fileToDataUrl(file: File): Promise<string> {
   const raw = await new Promise<string>((resolve, reject) => {
     const r = new FileReader()
@@ -39,7 +50,6 @@ async function fileToDataUrl(file: File): Promise<string> {
     r.readAsDataURL(file)
   })
   if (raw.length < 800_000) return raw
-  // downscale large images for API friendliness
   const img = document.createElement('img')
   await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = raw })
   const scale = Math.min(1, 1568 / Math.max(img.width, img.height))
@@ -48,6 +58,11 @@ async function fileToDataUrl(file: File): Promise<string> {
   canvas.height = Math.round(img.height * scale)
   canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
   return canvas.toDataURL('image/jpeg', 0.85)
+}
+
+interface ConfirmState {
+  message: string
+  onOk: () => void
 }
 
 export function ChatView() {
@@ -62,16 +77,16 @@ export function ChatView() {
     renameSession,
     deleteSession,
     togglePinSession,
-    setActiveModel,
     deleteMessage,
-    truncateFrom,
     branchFromMessage,
+    addMessageVersion,
+    switchMessageVersion,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
-  const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
   const weather = useWeather()
+  const ap = settings.appearance
 
   const [input, setInput] = useState('')
   const [images, setImages] = useState<string[]>([])
@@ -79,16 +94,19 @@ export function ChatView() {
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set())
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
-  const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [sessionSearch, setSessionSearch] = useState('')
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [nowTick, setNowTick] = useState(Date.now())
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const askConfirm = (message: string, onOk: () => void) => setConfirmState({ message, onOk })
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -111,6 +129,7 @@ export function ChatView() {
   const windowDuration = contextSlice.length ? nowTick - contextSlice[0].timestamp : 0
   const contextTokens = contextSlice.reduce((sum, m) => sum + estimateTokens(m.content) + (m.images?.length || 0) * 1200, 0)
   const contextPct = Math.min(100, Math.round((contextSlice.length / Math.max(settings.contextLength, 1)) * 100))
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
 
   const addFiles = async (files: FileList | File[]) => {
     const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
@@ -122,7 +141,8 @@ export function ChatView() {
     }
   }
 
-  const runInference = async (history: ChatMessage[]) => {
+  // versionFor: reroll target message id — result becomes a new switchable version
+  const runInference = async (history: ChatMessage[], versionFor?: string) => {
     const profile = getActiveProfile(settings)
     const model = settings.model
     setIsLoading(true)
@@ -133,6 +153,7 @@ export function ChatView() {
         system: settings.systemPrompt || undefined,
         model,
         thinking_budget: settings.thinkingBudget,
+        temperature: settings.temperature,
         prompt_caching: settings.promptCaching,
         api_profile: profile ? {
           provider: profile.provider,
@@ -142,9 +163,7 @@ export function ChatView() {
         } : undefined,
       })
 
-      addMessage({
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
+      const version: MessageVersion = {
         content: data.content || data.error || '...',
         timestamp: Date.now(),
         thinking: data.thinking,
@@ -155,16 +174,22 @@ export function ChatView() {
         tool_calls: data.tool_calls,
         providerId: profile?.id,
         modelId: model,
-      })
+      }
+
+      if (versionFor) {
+        addMessageVersion(versionFor, version)
+      } else {
+        addMessage({ id: (Date.now() + 1).toString(), role: 'assistant', ...version })
+      }
     } catch (err: any) {
-      addMessage({
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
+      const errVersion: MessageVersion = {
         content: err?.message || '连接失败了…',
         timestamp: Date.now(),
         providerId: profile?.id,
         modelId: model,
-      })
+      }
+      if (versionFor) addMessageVersion(versionFor, errVersion)
+      else addMessage({ id: (Date.now() + 1).toString(), role: 'assistant', ...errVersion })
     } finally {
       setIsLoading(false)
     }
@@ -188,24 +213,24 @@ export function ChatView() {
     await runInference([...messages, userMsg])
   }
 
+  // reroll: keep all versions, regenerate from messages before this one
   const handleReroll = (msgId: string) => {
     if (isLoading) return
-    const idx = messages.findIndex((m) => m.id === msgId)
-    if (idx < 0) return
-    const base = messages.slice(0, idx)
-    truncateFrom(msgId)
-    runInference(base)
+    askConfirm('重新生成这条回复？旧版本会保留，可以左右切换。', () => {
+      const idx = messages.findIndex((m) => m.id === msgId)
+      if (idx < 0) return
+      runInference(messages.slice(0, idx), msgId)
+    })
   }
 
   const handleBranch = (msgId: string) => {
-    branchFromMessage(msgId)
+    askConfirm('从这条消息开一个新的分支会话？', () => {
+      branchFromMessage(msgId)
+    })
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
+  const handleDeleteMessage = (msgId: string) => {
+    askConfirm('删除这条消息？不能撤销。', () => deleteMessage(msgId))
   }
 
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -215,23 +240,16 @@ export function ChatView() {
     }
   }
 
-  const toggleThinking = (id: string) => {
-    setExpandedThinking((prev) => {
+  const toggleSet = (setter: React.Dispatch<React.SetStateAction<Set<string>>>) => (id: string) => {
+    setter((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
   }
-
-  const toggleTools = (id: string) => {
-    setExpandedTools((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  const toggleThinking = toggleSet(setExpandedThinking)
+  const toggleTools = toggleSet(setExpandedTools)
 
   const formatDate = (ts: number) => {
     const d = new Date(ts)
@@ -244,9 +262,6 @@ export function ChatView() {
     !sessionSearch.trim() || s.title.toLowerCase().includes(sessionSearch.toLowerCase()),
   )
 
-  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
-  const cacheHit = lastAssistant?.cache_read_tokens && lastAssistant.cache_read_tokens > 0
-
   const startRename = (id: string, title: string) => {
     setEditingSessionId(id)
     setEditingTitle(title)
@@ -258,6 +273,15 @@ export function ChatView() {
     setEditingTitle('')
   }
 
+  // custom bubble colors (fall back to theme defaults)
+  const bubbleStyle = (isUser: boolean): React.CSSProperties | undefined => {
+    const color = isUser ? ap.userBubbleColor : ap.aiBubbleColor
+    const opacity = isUser ? ap.userBubbleOpacity : ap.aiBubbleOpacity
+    if (!color && opacity >= 1) return undefined
+    const base = color || (isUser ? (isNight ? '#3E3423' : '#F3A4AC') : (isNight ? '#243040' : '#FFFFFF'))
+    return { backgroundColor: hexToRgba(base, opacity) }
+  }
+
   const weatherChip = weather && (
     <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${isNight ? 'bg-night-surface text-night-muted' : 'bg-day-lemon text-day-muted'}`}>
       {weatherEmoji(weather.code)} {weather.temp != null ? `${Math.round(weather.temp)}°` : ''}{weather.city ? ` · ${weather.city}` : ''}
@@ -266,7 +290,7 @@ export function ChatView() {
 
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={`h-full flex flex-col ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${isNight ? 'bg-night-card border-night-border' : 'bg-white border-day-border'} border-r`}>
-      <div className="p-4 space-y-3 border-b border-current/5">
+      <div className={`p-4 space-y-3 border-b border-current/5 ${mobile ? 'pt-[max(1.5rem,env(safe-area-inset-top))]' : ''}`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-medium">会话</div>
@@ -327,10 +351,10 @@ export function ChatView() {
                     <span>{formatDate(s.updatedAt)}</span>
                   </div>
                 </div>
-                <div className="opacity-0 group-hover:opacity-100 flex gap-1" onClick={(e) => e.stopPropagation()}>
+                <div className="opacity-60 md:opacity-0 md:group-hover:opacity-100 flex gap-1" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => togglePinSession(s.id)} className="p-1 opacity-60 hover:opacity-100"><Pin size={12} /></button>
                   <button onClick={() => startRename(s.id, s.title)} className="p-1 opacity-60 hover:opacity-100"><Pencil size={12} /></button>
-                  <button onClick={() => { if (confirm('删除这条对话？')) deleteSession(s.id) }} className="p-1 text-day-error hover:text-day-error dark:text-night-error/60 dark:hover:text-night-error"><Trash2 size={12} /></button>
+                  <button onClick={() => askConfirm(`删除对话「${s.title}」？`, () => deleteSession(s.id))} className="p-1 text-day-error dark:text-night-error/60 dark:hover:text-night-error"><Trash2 size={12} /></button>
                 </div>
               </div>
             </div>
@@ -338,57 +362,23 @@ export function ChatView() {
         })}
       </div>
 
-      <div className="p-3 border-t border-current/5 space-y-2">
+      <div className="p-3 border-t border-current/5 grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setModelDialogOpen(true)}
+          className={`px-3 py-2 rounded-xl text-xs text-left ${isNight ? 'hover:bg-night-surface bg-night-surface/50' : 'hover:bg-gray-100 bg-gray-50'}`}
+        >
+          <div className="font-medium">模型 API</div>
+          <div className="text-[10px] opacity-40 truncate mt-0.5">{activeProfile?.name || '未配置'}</div>
+        </button>
         <button
           onClick={() => setSettingsOpen(true)}
-          className={`w-full text-left px-3 py-2 rounded-xl text-xs ${isNight ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}
+          className={`px-3 py-2 rounded-xl text-xs text-left ${isNight ? 'hover:bg-night-surface bg-night-surface/50' : 'hover:bg-gray-100 bg-gray-50'}`}
         >
-          <div className="font-medium">模型 / 人设 / 上下文</div>
-          <div className="text-[10px] opacity-40 truncate mt-0.5">{activeProfile?.name || 'No provider'} · {settings.model}</div>
+          <div className="font-medium">星星设置</div>
+          <div className="text-[10px] opacity-40 truncate mt-0.5">人设 · 温度 · 外观</div>
         </button>
       </div>
     </div>
-  )
-
-  const ModelPicker = () => (
-    <AnimatePresence>
-      {modelPickerOpen && (
-        <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setModelPickerOpen(false)} className="fixed inset-0 z-30" />
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            className={`absolute left-4 bottom-[112px] z-40 w-[min(420px,calc(100vw-2rem))] max-h-[55vh] overflow-y-auto rounded-2xl shadow-xl border p-2 ${isNight ? 'bg-night-surface border-night-border' : 'bg-white border-gray-100'}`}
-          >
-            <div className="px-3 py-2 text-xs opacity-50">切换模型</div>
-            {settings.apiProfiles.map((profile) => {
-              const enabled = profile.models.filter((m) => m.enabled)
-              if (!enabled.length) return null
-              return (
-                <div key={profile.id} className="mb-2">
-                  <div className="px-3 py-1 text-[10px] opacity-40 uppercase tracking-wide">{profile.name}</div>
-                  {enabled.map((model) => {
-                    const active = settings.activeProfileId === profile.id && settings.model === model.id
-                    return (
-                      <button
-                        key={`${profile.id}-${model.id}`}
-                        onClick={() => { setActiveModel(profile.id, model.id); setModelPickerOpen(false) }}
-                        className={`w-full text-left px-3 py-2 rounded-xl text-xs ${active ? (isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white') : (isNight ? 'hover:bg-night-surface' : 'hover:bg-gray-50')}`}
-                      >
-                        <div className="font-medium truncate">{model.name || model.id}</div>
-                        <div className="text-[10px] opacity-60 truncate">{model.id}</div>
-                      </button>
-                    )
-                  })}
-                </div>
-              )
-            })}
-            {!enabledModels.length && <div className="px-3 py-6 text-xs opacity-40 text-center">还没有启用的模型</div>}
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
   )
 
   return (
@@ -398,20 +388,22 @@ export function ChatView() {
           <Sidebar />
         </div>
 
-        <div className="flex flex-col h-full flex-1 min-w-0">
-          {/* Desktop header: title + weather + city */}
-          <div className="hidden md:flex px-6 py-3 items-center justify-between border-b border-current/5">
+        <div className="flex flex-col h-full flex-1 min-w-0 relative">
+          {/* custom background */}
+          {ap.bgImage && (
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ backgroundImage: `url(${ap.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: ap.bgOpacity }}
+            />
+          )}
+
+          {/* Desktop header */}
+          <div className="hidden md:flex px-6 py-3 items-center justify-between border-b border-current/5 relative z-10">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setSessionDrawerOpen(true)} className={`lg:hidden p-2 rounded-xl ${isNight ? 'hover:bg-night-surface' : 'hover:bg-gray-100'}`}>
                 <PanelLeft size={16} />
               </button>
               <h2 className="text-sm font-medium opacity-80 truncate">🐆 {activeSession?.title || '星星'}</h2>
-              <span className="text-[10px] opacity-40 truncate hidden lg:inline">{activeProfile?.name} · {settings.model}</span>
-              {cacheHit && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${isNight ? 'bg-night-amber/10 text-night-amber' : 'bg-day-lemon text-day-muted'}`}>
-                  cache ↻ {lastAssistant?.cache_read_tokens}
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-2">
               {weatherChip}
@@ -421,109 +413,133 @@ export function ChatView() {
             </div>
           </div>
 
-          {/* Mobile floating buttons */}
-          <div className="md:hidden absolute top-3 left-3 right-3 z-20 flex justify-between pointer-events-none">
-            <button onClick={() => setSessionDrawerOpen(true)} className={`pointer-events-auto p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white text-day-muted'} backdrop-blur-md`}>
+          {/* Mobile menu row — pushed down, in normal flow so messages start below it */}
+          <div className="md:hidden relative z-10 flex justify-between items-center px-3 pt-6 pb-1">
+            <button onClick={() => setSessionDrawerOpen(true)} className={`p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white/90 text-day-muted shadow-sm'} backdrop-blur-md`}>
               <PanelLeft size={16} />
             </button>
-            <button onClick={() => setSettingsOpen(true)} className={`pointer-events-auto p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white text-day-muted'} backdrop-blur-md`}>
+            <span className="text-xs font-medium opacity-70 truncate max-w-[50%]">{activeSession?.title || ''}</span>
+            <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl ${isNight ? 'bg-night-card/80 text-night-muted' : 'bg-white/90 text-day-muted shadow-sm'} backdrop-blur-md`}>
               <Settings2 size={16} />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 relative z-10">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-40">
                 <span className="text-4xl">🐆</span>
                 <p className="text-sm">说点什么吧</p>
-                <p className="text-[11px]">{activeProfile?.name || 'No provider'} · {settings.model}</p>
               </div>
             )}
 
             <AnimatePresence initial={false}>
-              {messages.map((msg) => (
-                <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className="max-w-[85%] sm:max-w-[80%] space-y-1 group/msg">
-                    {msg.thinking && (
-                      <button onClick={() => toggleThinking(msg.id)} className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-                        <ChevronDown size={12} className={`transition-transform ${expandedThinking.has(msg.id) ? 'rotate-180' : ''}`} /> Thinking
-                      </button>
-                    )}
-                    <AnimatePresence>
-                      {msg.thinking && expandedThinking.has(msg.id) && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className={`text-xs p-2 rounded-lg overflow-hidden whitespace-pre-wrap ${isNight ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                          {msg.thinking}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    {msg.tool_calls && msg.tool_calls.length > 0 && (
-                      <>
-                        <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-amber/70' : 'text-day-pink'}`}>
-                          <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? 'rotate-180' : ''}`} />
-                          🔧 {msg.tool_calls.length} tool{msg.tool_calls.length > 1 ? 's' : ''}
-                        </button>
-                        <AnimatePresence>
-                          {expandedTools.has(msg.id) && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                              <div className={`text-xs space-y-2 p-2.5 rounded-xl ${isNight ? 'bg-night-surface/80' : 'bg-gray-50'}`}>
-                                {msg.tool_calls.map((tc: any, i: number) => (
-                                  <div key={i} className={`p-2 rounded-lg ${isNight ? 'bg-night-card' : 'bg-white'}`}>
-                                    <div className="flex items-center gap-1.5 mb-1">
-                                      <span className={`font-medium ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>{tc.name}</span>
-                                      <span className="opacity-30">→</span>
-                                      <span className="opacity-50 truncate">{Object.entries(tc.input || {}).filter(([,v]) => v).map(([k,v]) => `${k}=${JSON.stringify(v)}`).join(', ').slice(0, 80)}</span>
-                                    </div>
-                                    <pre className={`whitespace-pre-wrap text-[10px] leading-relaxed max-h-40 overflow-y-auto ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{typeof tc.result === 'string' ? tc.result.slice(0, 500) : JSON.stringify(tc.result, null, 2).slice(0, 500)}{(tc.result?.length || 0) > 500 ? '...' : ''}</pre>
-                                  </div>
-                                ))}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </>
-                    )}
-
-                    {msg.images && msg.images.length > 0 && (
-                      <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
-                        {msg.images.map((img, i) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={i} src={img} alt="" className="max-w-[200px] max-h-[200px] rounded-xl object-cover" />
-                        ))}
-                      </div>
-                    )}
-
-                    {msg.content && (
-                      <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? (isNight ? 'bg-night-amber/20 text-night-text rounded-br-md' : 'bg-day-honey text-day-text rounded-br-md') : (isNight ? 'bg-night-surface text-night-text rounded-bl-md' : 'bg-white shadow-sm text-day-text rounded-bl-md')}`}>
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                      </div>
-                    )}
-
-                    <div className={`flex items-center gap-2 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <p className={`text-[10px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+              {messages.map((msg) => {
+                const vCount = msg.versions?.length || 0
+                const vIndex = msg.versionIndex ?? Math.max(0, vCount - 1)
+                return (
+                  <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className="max-w-[85%] sm:max-w-[80%] space-y-1 group/msg">
+                      {/* timestamp — before reply & thinking; no model here */}
+                      <p className={`text-[10px] px-1 ${msg.role === 'user' ? 'text-right' : ''} ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
                         {formatFullTs(msg.timestamp)}
-                        {msg.modelId && <span className="opacity-50 ml-2 hidden sm:inline">{msg.modelId}</span>}
-                        {msg.role === 'assistant' && msg.input_tokens && (
+                        {msg.role === 'assistant' && !!msg.input_tokens && (
                           <span className="opacity-60 ml-2">↓{msg.input_tokens} ↑{msg.output_tokens}{msg.cache_read_tokens ? ` ↻${msg.cache_read_tokens}` : ''}</span>
                         )}
                       </p>
-                      <div className={`flex gap-0.5 transition-opacity opacity-60 md:opacity-0 md:group-hover/msg:opacity-100`}>
-                        {msg.role === 'assistant' && (
-                          <button onClick={() => handleReroll(msg.id)} title="重新生成" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
-                            <RotateCcw size={11} />
-                          </button>
+
+                      {msg.thinking && (
+                        <button onClick={() => toggleThinking(msg.id)} className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+                          <ChevronDown size={12} className={`transition-transform ${expandedThinking.has(msg.id) ? 'rotate-180' : ''}`} /> Thinking
+                        </button>
+                      )}
+                      <AnimatePresence>
+                        {msg.thinking && expandedThinking.has(msg.id) && (
+                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className={`text-xs p-2 rounded-lg overflow-hidden whitespace-pre-wrap ${isNight ? 'bg-night-surface/90 text-night-muted' : 'bg-gray-50/90 text-day-muted'}`}>
+                            {msg.thinking}
+                          </motion.div>
                         )}
-                        <button onClick={() => handleBranch(msg.id)} title="从这里分支" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
-                          <GitBranch size={11} />
-                        </button>
-                        <button onClick={() => { if (confirm('删除这条消息？')) deleteMessage(msg.id) }} title="删除" className="p-1 rounded hover:bg-current/10 text-day-error hover:text-day-error dark:text-night-error/70 dark:hover:text-night-error">
-                          <Trash2 size={11} />
-                        </button>
+                      </AnimatePresence>
+
+                      {msg.tool_calls && msg.tool_calls.length > 0 && (
+                        <>
+                          <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-amber/70' : 'text-day-pink'}`}>
+                            <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? 'rotate-180' : ''}`} />
+                            🔧 {msg.tool_calls.length} tool{msg.tool_calls.length > 1 ? 's' : ''}
+                          </button>
+                          <AnimatePresence>
+                            {expandedTools.has(msg.id) && (
+                              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                <div className={`text-xs space-y-2 p-2.5 rounded-xl ${isNight ? 'bg-night-surface/80' : 'bg-gray-50'}`}>
+                                  {msg.tool_calls.map((tc: any, i: number) => (
+                                    <div key={i} className={`p-2 rounded-lg ${isNight ? 'bg-night-card' : 'bg-white'}`}>
+                                      <div className="flex items-center gap-1.5 mb-1">
+                                        <span className={`font-medium ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>{tc.name}</span>
+                                        <span className="opacity-30">→</span>
+                                        <span className="opacity-50 truncate">{Object.entries(tc.input || {}).filter(([,v]) => v).map(([k,v]) => `${k}=${JSON.stringify(v)}`).join(', ').slice(0, 80)}</span>
+                                      </div>
+                                      <pre className={`whitespace-pre-wrap text-[10px] leading-relaxed max-h-40 overflow-y-auto ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{typeof tc.result === 'string' ? tc.result.slice(0, 500) : JSON.stringify(tc.result, null, 2).slice(0, 500)}{(tc.result?.length || 0) > 500 ? '...' : ''}</pre>
+                                    </div>
+                                  ))}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </>
+                      )}
+
+                      {msg.images && msg.images.length > 0 && (
+                        <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                          {msg.images.map((img, i) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={i} src={img} alt="" className="max-w-[200px] max-h-[200px] rounded-xl object-cover" />
+                          ))}
+                        </div>
+                      )}
+
+                      {msg.content && (
+                        <div
+                          style={bubbleStyle(msg.role === 'user')}
+                          className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? (isNight ? 'bg-night-amber/20 text-night-text rounded-br-md' : 'bg-day-honey text-day-text rounded-br-md') : (isNight ? 'bg-night-surface text-night-text rounded-bl-md' : 'bg-white shadow-sm text-day-text rounded-bl-md')}`}
+                        >
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                        </div>
+                      )}
+
+                      {/* actions row: version switcher + reroll/branch/delete */}
+                      <div className={`flex items-center gap-1.5 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        {msg.role === 'assistant' && vCount > 1 && (
+                          <span className={`flex items-center gap-0.5 text-[10px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+                            <button
+                              disabled={vIndex <= 0}
+                              onClick={() => switchMessageVersion(msg.id, vIndex - 1)}
+                              className="p-0.5 rounded disabled:opacity-20 hover:bg-current/10"
+                            ><ChevronLeft size={11} /></button>
+                            {vIndex + 1}/{vCount}
+                            <button
+                              disabled={vIndex >= vCount - 1}
+                              onClick={() => switchMessageVersion(msg.id, vIndex + 1)}
+                              className="p-0.5 rounded disabled:opacity-20 hover:bg-current/10"
+                            ><ChevronRight size={11} /></button>
+                          </span>
+                        )}
+                        <div className={`flex gap-0.5 transition-opacity opacity-60 md:opacity-0 md:group-hover/msg:opacity-100`}>
+                          {msg.role === 'assistant' && (
+                            <button onClick={() => handleReroll(msg.id)} title="重新生成（保留旧版本）" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
+                              <RotateCcw size={11} />
+                            </button>
+                          )}
+                          <button onClick={() => handleBranch(msg.id)} title="从这里分支" className={`p-1 rounded hover:bg-current/10 ${isNight ? 'text-night-muted hover:text-night-amber' : 'text-day-muted hover:text-day-pink'}`}>
+                            <GitBranch size={11} />
+                          </button>
+                          <button onClick={() => handleDeleteMessage(msg.id)} title="删除" className="p-1 rounded hover:bg-current/10 text-day-error dark:text-night-error/70 dark:hover:text-night-error">
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                )
+              })}
             </AnimatePresence>
 
             {isLoading && (
@@ -540,11 +556,9 @@ export function ChatView() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className={`p-4 pt-2 border-t backdrop-blur-md ${isNight ? 'border-night-border bg-night-card/50' : 'border-day-border bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
-            <ModelPicker />
-
-            {/* Context window status */}
-            {contextSlice.length > 0 && (
+          <div className={`p-4 pt-2 border-t backdrop-blur-md ${isNight ? 'border-night-border bg-night-card/50' : 'border-day-border bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative z-10`}>
+            {/* Context window + conversation stats */}
+            {messages.length > 0 && (
               <div className="flex items-center gap-2 mb-2 px-1">
                 <div className={`h-1 flex-1 rounded-full overflow-hidden ${isNight ? 'bg-night-surface' : 'bg-gray-100'}`}>
                   <div
@@ -554,6 +568,9 @@ export function ChatView() {
                 </div>
                 <span className={`text-[10px] flex-shrink-0 ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
                   🪟 {contextSlice.length}/{settings.contextLength} · {formatDuration(windowDuration)} · ~{contextTokens > 1000 ? (contextTokens / 1000).toFixed(1) + 'K' : contextTokens} tok
+                </span>
+                <span className={`text-[10px] flex-shrink-0 ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+                  · 共 {messages.length} 层{lastAssistant ? ` · 最后 ${formatShortTs(lastAssistant.timestamp)}` : ''}
                 </span>
               </div>
             )}
@@ -574,13 +591,17 @@ export function ChatView() {
             )}
 
             <div className={`flex items-end gap-2 px-3 py-2 rounded-2xl ${isNight ? 'bg-night-card' : 'bg-gray-50'}`}>
+              {/* model — bottom-left only; opens model dialog */}
               <button
-                onClick={() => setModelPickerOpen((v) => !v)}
-                className={`max-w-[32%] sm:max-w-[200px] flex-shrink-0 px-2 py-2 rounded-xl text-[10px] text-left leading-tight ${isNight ? 'bg-night-surface hover:bg-night-surface/80' : 'bg-white hover:bg-gray-100'}`}
-                title="切换模型"
+                onClick={() => setModelDialogOpen(true)}
+                className={`max-w-[32%] sm:max-w-[200px] flex-shrink-0 px-2 py-2 rounded-xl text-[10px] text-left leading-tight flex items-center gap-1.5 ${isNight ? 'bg-night-surface hover:bg-night-surface/80' : 'bg-white hover:bg-gray-100'}`}
+                title="模型 API 管理"
               >
-                <div className="truncate font-medium">{activeProfile?.name || 'No API'}</div>
-                <div className="truncate opacity-50">{settings.model}</div>
+                <Boxes size={13} className="flex-shrink-0 opacity-60" />
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{activeProfile?.name || 'No API'}</span>
+                  <span className="block truncate opacity-50">{settings.model}</span>
+                </span>
               </button>
               <input
                 ref={fileInputRef}
@@ -601,11 +622,10 @@ export function ChatView() {
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                placeholder="说点什么..."
+                placeholder="说点什么...（回车换行）"
                 rows={1}
-                enterKeyHint="send"
+                enterKeyHint="enter"
                 className={`flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${isNight ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`}
               />
               <button onClick={handleSend} disabled={(!input.trim() && !images.length) || isLoading} className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || images.length) ? (isNight ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pinkDeep') : 'opacity-30 cursor-not-allowed'}`}>
@@ -616,6 +636,7 @@ export function ChatView() {
         </div>
       </div>
 
+      {/* session drawer (mobile) */}
       <AnimatePresence>
         {sessionDrawerOpen && (
           <>
@@ -627,7 +648,32 @@ export function ChatView() {
         )}
       </AnimatePresence>
 
-      <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {/* confirm dialog */}
+      <AnimatePresence>
+        {confirmState && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" onClick={() => setConfirmState(null)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              className={`fixed z-[71] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(320px,calc(100vw-3rem))] rounded-2xl p-5 shadow-2xl ${isNight ? 'bg-night-card text-night-text' : 'bg-white text-day-text'}`}
+            >
+              <p className="text-sm leading-relaxed">{confirmState.message}</p>
+              <div className="flex gap-2 mt-4 justify-end">
+                <button onClick={() => setConfirmState(null)} className={`px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-surface' : 'bg-gray-100'}`}>取消</button>
+                <button
+                  onClick={() => { const fn = confirmState.onOk; setConfirmState(null); fn() }}
+                  className={`px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}
+                >确定</button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={askConfirm} />
+      <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
     </>
   )
 }

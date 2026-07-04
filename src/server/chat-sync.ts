@@ -1,6 +1,7 @@
 /**
- * Server-side chat session storage for multi-device sync.
- * File-based (data/chat-sync.json), merge by session.updatedAt, tombstones for deletions.
+ * Server-side chat storage for multi-device sync.
+ * File-based (data/chat-sync.json): sessions merged by updatedAt + tombstones,
+ * config (providers/prompt/appearance) merged by configUpdatedAt (newer wins).
  */
 import fs from 'fs'
 import path from 'path'
@@ -11,6 +12,8 @@ const SYNC_FILE = path.join(DATA_DIR, 'chat-sync.json')
 export interface SyncState {
   sessions: any[]
   tombstones: Record<string, number>
+  config?: any
+  configUpdatedAt?: number
 }
 
 export function loadSyncState(): SyncState {
@@ -19,9 +22,11 @@ export function loadSyncState(): SyncState {
     return {
       sessions: Array.isArray(raw.sessions) ? raw.sessions : [],
       tombstones: raw.tombstones && typeof raw.tombstones === 'object' ? raw.tombstones : {},
+      config: raw.config,
+      configUpdatedAt: typeof raw.configUpdatedAt === 'number' ? raw.configUpdatedAt : 0,
     }
   } catch {
-    return { sessions: [], tombstones: {} }
+    return { sessions: [], tombstones: {}, configUpdatedAt: 0 }
   }
 }
 
@@ -44,5 +49,9 @@ export function mergeSyncState(a: SyncState, b: SyncState): SyncState {
   const sessions = Array.from(map.values()).filter(
     (s) => !(tombstones[s.id] && tombstones[s.id] >= (s.updatedAt || 0))
   )
-  return { sessions, tombstones }
+  // config: newer configUpdatedAt wins
+  const aTs = a.configUpdatedAt || 0
+  const bTs = b.configUpdatedAt || 0
+  const [config, configUpdatedAt] = bTs > aTs && b.config ? [b.config, bTs] : [a.config, aTs]
+  return { sessions, tombstones, config, configUpdatedAt }
 }

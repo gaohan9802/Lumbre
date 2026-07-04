@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
       system,
       model: modelOverride,
       thinking_budget,
+      temperature,
       prompt_caching = true,
       api_profile,
       tools_enabled = true,
@@ -39,12 +40,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (provider === 'openai-compatible') {
-      return proxyOpenAI({ messages, system, model, apiKey, baseUrl, thinking_budget })
+      return proxyOpenAI({ messages, system, model, apiKey, baseUrl, thinking_budget, temperature })
     }
 
     return proxyAnthropic({
       messages, system, model, apiKey, baseUrl,
-      thinking_budget, prompt_caching, tools_enabled,
+      thinking_budget, prompt_caching, tools_enabled, temperature,
     })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
@@ -56,11 +57,11 @@ export async function POST(req: NextRequest) {
 async function proxyAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
-  tools_enabled?: boolean;
+  tools_enabled?: boolean; temperature?: number;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
-    thinking_budget, prompt_caching, tools_enabled,
+    thinking_budget, prompt_caching, tools_enabled, temperature,
   } = params
 
   // Build initial messages with caching
@@ -115,6 +116,8 @@ async function proxyAnthropic(params: {
 
     if (budget > 0) {
       body.thinking = { type: 'enabled', budget_tokens: budget }
+    } else if (typeof temperature === 'number' && isFinite(temperature)) {
+      body.temperature = Math.max(0, Math.min(1, temperature))
     }
 
     // Add tools on first iteration or when doing tool loop
@@ -207,9 +210,9 @@ async function proxyAnthropic(params: {
 
 async function proxyOpenAI(params: {
   messages: any[]; system?: string; model: string;
-  apiKey: string; baseUrl: string; thinking_budget?: number;
+  apiKey: string; baseUrl: string; thinking_budget?: number; temperature?: number;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, temperature } = params
 
   const builtMessages = [
     ...(system?.trim() ? [{ role: 'system', content: system }] : []),
@@ -228,6 +231,7 @@ async function proxyOpenAI(params: {
   ]
 
   const body: any = { model, messages: builtMessages, max_tokens: 16000 }
+  if (typeof temperature === 'number' && isFinite(temperature)) body.temperature = temperature
 
   if (typeof thinking_budget === 'number' && thinking_budget > 0) {
     body.reasoning = { max_tokens: thinking_budget }

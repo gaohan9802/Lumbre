@@ -1,25 +1,30 @@
 /**
  * Chat store — local-first chat OS.
- * Sessions, providers and fetched model lists live in browser localStorage.
- * API keys are sent only per request to /api/* proxy routes.
+ * Sessions, providers, model lists and appearance live in localStorage,
+ * and sync across devices through /api/sync (config merged by configUpdatedAt).
  */
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
+export interface MessageVersion {
   content: string
-  timestamp: number
   thinking?: string
+  timestamp: number
   input_tokens?: number
   output_tokens?: number
   cache_read_tokens?: number
   cache_creation_tokens?: number
   tool_calls?: { name: string; input: Record<string, any>; result: string }[]
-  images?: string[] // data URLs
   providerId?: string
   modelId?: string
+}
+
+export interface ChatMessage extends MessageVersion {
+  id: string
+  role: 'user' | 'assistant'
+  images?: string[] // data URLs
+  versions?: MessageVersion[] // all reroll versions (incl. current)
+  versionIndex?: number
 }
 
 export type ApiProvider = 'anthropic' | 'openai-compatible'
@@ -30,6 +35,9 @@ export interface ProviderModel {
   ownedBy?: string
   created?: number
   enabled: boolean
+  inputPrice?: number   // per 1M tokens
+  outputPrice?: number  // per 1M tokens
+  cachePrice?: number   // cache-read per 1M tokens
 }
 
 export interface ApiProfile {
@@ -52,17 +60,39 @@ export interface ChatSession {
   updatedAt: number
 }
 
+export interface ChatAppearance {
+  bgImage: string
+  bgOpacity: number
+  userBubbleColor: string
+  userBubbleOpacity: number
+  aiBubbleColor: string
+  aiBubbleOpacity: number
+}
+
+export const DEFAULT_APPEARANCE: ChatAppearance = {
+  bgImage: '',
+  bgOpacity: 0.3,
+  userBubbleColor: '',
+  userBubbleOpacity: 1,
+  aiBubbleColor: '',
+  aiBubbleOpacity: 1,
+}
+
 export interface ChatSettings {
   systemPrompt: string
   contextLength: number
   model: string
   thinkingBudget: number
+  temperature: number
+  streamEnabled: boolean
   promptCaching: boolean
+  appearance: ChatAppearance
   activeProfileId: string
   apiProfiles: ApiProfile[]
   activeSessionId: string
   sessions: ChatSession[]
   tombstones: Record<string, number> // deleted session id -> deletedAt
+  configUpdatedAt: number // last time model/prompt/appearance config changed (for cross-device sync)
 }
 
 export const DEFAULT_ANTHROPIC_BASE = 'https://api.anthropic.com'
@@ -83,7 +113,10 @@ const DEFAULT_SETTINGS: ChatSettings = {
   contextLength: 30,
   model: 'claude-sonnet-4-20250514',
   thinkingBudget: 8000,
+  temperature: 1,
+  streamEnabled: false,
   promptCaching: true,
+  appearance: DEFAULT_APPEARANCE,
   activeProfileId: DEFAULT_PROFILE_ID,
   apiProfiles: [
     {
@@ -101,6 +134,7 @@ const DEFAULT_SETTINGS: ChatSettings = {
     { id: DEFAULT_SESSION_ID, title: '新的对话', messages: [], pinned: false, createdAt: NOW, updatedAt: NOW },
   ],
   tombstones: {},
+  configUpdatedAt: 0,
 }
 
 interface ChatStore {
@@ -118,7 +152,10 @@ interface ChatStore {
   deleteMessage: (id: string) => void
   truncateFrom: (id: string) => void
   branchFromMessage: (id: string) => string
+  addMessageVersion: (id: string, v: MessageVersion) => void
+  switchMessageVersion: (id: string, index: number) => void
   mergeRemote: (sessions: ChatSession[], tombstones: Record<string, number>) => void
+  mergeRemoteConfig: (config: any, ts: number) => void
   renameSession: (id: string, title: string) => void
   deleteSession: (id: string) => void
   togglePinSession: (id: string) => void
@@ -131,12 +168,15 @@ interface ChatStore {
   setProviderModels: (profileId: string, models: ProviderModel[], merge?: boolean) => void
   toggleModelEnabled: (profileId: string, modelId: string) => void
   addManualModel: (profileId: string, modelId: string) => void
+  updateModelMeta: (profileId: string, modelId: string, patch: Partial<ProviderModel>) => void
 }
 
 function makeId(prefix = 'id') {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
+
+const numOr = (v: any) => (typeof v === 'number' && isFinite(v) ? v : undefined)
 
 function normalizeModelId(profile?: ApiProfile, model?: string) {
   return model || profile?.defaultModel || 'claude-sonnet-4-20250514'
@@ -147,11 +187,35 @@ function sessionTitleFromMessage(text: string) {
   return clean ? clean.slice(0, 24) : '新的对话'
 }
 
+export function snapshotOfMessage(m: ChatMessage): MessageVersion {
+  return {
+    content: m.content,
+    thinking: m.thinking,
+    timestamp: m.timestamp,
+    input_tokens: m.input_tokens,
+    output_tokens: m.output_tokens,
+    cache_read_tokens: m.cache_read_tokens,
+    cache_creation_tokens: m.cache_creation_tokens,
+    tool_calls: m.tool_calls,
+    providerId: m.providerId,
+    modelId: m.modelId,
+  }
+}
+
 function normalizeProfile(p: any): ApiProfile {
   const provider: ApiProvider = p?.provider || 'anthropic'
   const defaultModel = p?.defaultModel || (provider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-4o')
   const models = Array.isArray(p?.models) && p.models.length
-    ? p.models.map((m: any) => ({ id: m.id || m.name, name: m.name, ownedBy: m.ownedBy || m.owned_by, created: m.created, enabled: m.enabled !== false })).filter((m: any) => m.id)
+    ? p.models.map((m: any) => ({
+        id: m.id || m.name,
+        name: m.name,
+        ownedBy: m.ownedBy || m.owned_by,
+        created: m.created,
+        enabled: m.enabled !== false,
+        inputPrice: numOr(m.inputPrice),
+        outputPrice: numOr(m.outputPrice),
+        cachePrice: numOr(m.cachePrice),
+      })).filter((m: any) => m.id)
     : [{ id: defaultModel, name: defaultModel, enabled: true }]
   if (!models.some((m: any) => m.id === defaultModel)) models.unshift({ id: defaultModel, name: defaultModel, enabled: true })
   return {
@@ -197,9 +261,13 @@ function normalizeSettings(settings: any): ChatSettings {
     apiProfiles: profiles,
     activeProfileId,
     model: normalizeModelId(activeProfile, settings?.model),
+    temperature: typeof settings?.temperature === 'number' ? settings.temperature : 1,
+    streamEnabled: !!settings?.streamEnabled,
+    appearance: { ...DEFAULT_APPEARANCE, ...(settings?.appearance || {}) },
     sessions,
     activeSessionId,
     tombstones: settings?.tombstones && typeof settings.tombstones === 'object' ? settings.tombstones : {},
+    configUpdatedAt: typeof settings?.configUpdatedAt === 'number' ? settings.configUpdatedAt : 0,
   }
 }
 
@@ -209,6 +277,11 @@ function getActiveSession(settings: ChatSettings) {
 
 function sortedSessions(sessions: ChatSession[]) {
   return [...sessions].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
+}
+
+// mark config as changed → other devices will pick it up
+function bumpConfig(s: ChatSettings): ChatSettings {
+  return { ...s, configUpdatedAt: Date.now() }
 }
 
 export const useChatStore = create<ChatStore>()(
@@ -245,11 +318,11 @@ export const useChatStore = create<ChatStore>()(
       }),
 
       setSettings: (patch) => set((state) => {
-        const nextSettings = normalizeSettings({ ...state.settings, ...patch })
+        const nextSettings = bumpConfig(normalizeSettings({ ...state.settings, ...patch }))
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
-      resetSettings: () => set({ settings: DEFAULT_SETTINGS, messages: [] }),
+      resetSettings: () => set({ settings: { ...DEFAULT_SETTINGS, configUpdatedAt: Date.now() }, messages: [] }),
 
       createSession: () => {
         const id = makeId('session')
@@ -329,6 +402,44 @@ export const useChatStore = create<ChatStore>()(
         return newId
       },
 
+      // reroll: append a new version to a message, keep old ones switchable
+      addMessageVersion: (id, v) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const sessions = settings.sessions.map((s) => {
+          if (s.id !== settings.activeSessionId) return s
+          return {
+            ...s,
+            messages: s.messages.map((m) => {
+              if (m.id !== id) return m
+              const base = m.versions?.length ? m.versions : [snapshotOfMessage(m)]
+              const versions = [...base, v]
+              return { ...m, ...v, versions, versionIndex: versions.length - 1 }
+            }),
+            updatedAt: Date.now(),
+          }
+        })
+        const nextSettings = { ...settings, sessions }
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
+      switchMessageVersion: (id, index) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const sessions = settings.sessions.map((s) => {
+          if (s.id !== settings.activeSessionId) return s
+          return {
+            ...s,
+            messages: s.messages.map((m) => {
+              if (m.id !== id || !m.versions?.length) return m
+              const i = Math.max(0, Math.min(index, m.versions.length - 1))
+              return { ...m, ...m.versions[i], versionIndex: i }
+            }),
+            updatedAt: Date.now(),
+          }
+        })
+        const nextSettings = { ...settings, sessions }
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
       mergeRemote: (remoteSessions, remoteTombstones) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const tombstones: Record<string, number> = { ...settings.tombstones }
@@ -348,6 +459,14 @@ export const useChatStore = create<ChatStore>()(
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
+      // apply model/prompt/appearance config from another device (newer wins)
+      mergeRemoteConfig: (config, ts) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        if (!config || !(ts > (settings.configUpdatedAt || 0))) return state
+        const nextSettings = normalizeSettings({ ...settings, ...config, configUpdatedAt: ts })
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
       togglePinSession: (id) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const sessions = settings.sessions.map((s) => s.id === id ? { ...s, pinned: !s.pinned, updatedAt: Date.now() } : s)
@@ -359,7 +478,7 @@ export const useChatStore = create<ChatStore>()(
         const next = normalizeProfile({ ...profile, id: profile.id || makeId('provider'), models: profile.models })
         set((state) => {
           const settings = normalizeSettings(state.settings)
-          const nextSettings = normalizeSettings({ ...settings, apiProfiles: [...settings.apiProfiles, next], activeProfileId: next.id, model: next.defaultModel })
+          const nextSettings = bumpConfig(normalizeSettings({ ...settings, apiProfiles: [...settings.apiProfiles, next], activeProfileId: next.id, model: next.defaultModel }))
           return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
         })
       },
@@ -368,7 +487,7 @@ export const useChatStore = create<ChatStore>()(
         const settings = normalizeSettings(state.settings)
         const profiles = settings.apiProfiles.map((p) => p.id === id ? normalizeProfile({ ...p, ...patch }) : p)
         const model = settings.activeProfileId === id && patch.defaultModel ? patch.defaultModel : settings.model
-        const nextSettings = normalizeSettings({ ...settings, apiProfiles: profiles, model })
+        const nextSettings = bumpConfig(normalizeSettings({ ...settings, apiProfiles: profiles, model }))
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
@@ -378,7 +497,7 @@ export const useChatStore = create<ChatStore>()(
         const safeProfiles = profiles.length ? profiles : DEFAULT_SETTINGS.apiProfiles
         const activeProfileId = settings.activeProfileId === id ? safeProfiles[0].id : settings.activeProfileId
         const active = safeProfiles.find((p) => p.id === activeProfileId) || safeProfiles[0]
-        const nextSettings = normalizeSettings({ ...settings, apiProfiles: safeProfiles, activeProfileId, model: active.defaultModel })
+        const nextSettings = bumpConfig(normalizeSettings({ ...settings, apiProfiles: safeProfiles, activeProfileId, model: active.defaultModel }))
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
@@ -386,14 +505,14 @@ export const useChatStore = create<ChatStore>()(
         const settings = normalizeSettings(state.settings)
         const profile = settings.apiProfiles.find((p) => p.id === id)
         if (!profile) return state
-        const nextSettings = normalizeSettings({ ...settings, activeProfileId: id, model: modelId || profile.defaultModel })
+        const nextSettings = bumpConfig(normalizeSettings({ ...settings, activeProfileId: id, model: modelId || profile.defaultModel }))
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
       setActiveModel: (profileId, modelId) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const profiles = settings.apiProfiles.map((p) => p.id === profileId ? { ...p, defaultModel: modelId } : p)
-        const nextSettings = normalizeSettings({ ...settings, apiProfiles: profiles, activeProfileId: profileId, model: modelId })
+        const nextSettings = bumpConfig(normalizeSettings({ ...settings, apiProfiles: profiles, activeProfileId: profileId, model: modelId }))
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
@@ -402,14 +521,23 @@ export const useChatStore = create<ChatStore>()(
         const profiles = settings.apiProfiles.map((p) => {
           if (p.id !== profileId) return p
           const oldMap = new Map(p.models.map((m) => [m.id, m]))
-          const nextModels = models.map((m) => ({ ...m, enabled: merge ? (oldMap.get(m.id)?.enabled ?? true) : m.enabled !== false }))
+          const nextModels: ProviderModel[] = models.map((m) => {
+            const old = oldMap.get(m.id)
+            return {
+              ...m,
+              enabled: merge ? (old?.enabled ?? true) : m.enabled !== false,
+              inputPrice: m.inputPrice ?? old?.inputPrice,
+              outputPrice: m.outputPrice ?? old?.outputPrice,
+              cachePrice: m.cachePrice ?? old?.cachePrice,
+            }
+          })
           if (merge) {
             for (const old of p.models) if (!nextModels.some((m) => m.id === old.id)) nextModels.push(old)
           }
           const defaultModel = nextModels.find((m) => m.enabled)?.id || p.defaultModel
           return { ...p, models: nextModels, defaultModel, lastFetchedAt: Date.now() }
         })
-        const nextSettings = normalizeSettings({ ...settings, apiProfiles: profiles })
+        const nextSettings = bumpConfig(normalizeSettings({ ...settings, apiProfiles: profiles }))
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
@@ -418,7 +546,7 @@ export const useChatStore = create<ChatStore>()(
         const profiles = settings.apiProfiles.map((p) => p.id === profileId
           ? { ...p, models: p.models.map((m) => m.id === modelId ? { ...m, enabled: !m.enabled } : m) }
           : p)
-        const nextSettings = normalizeSettings({ ...settings, apiProfiles: profiles })
+        const nextSettings = bumpConfig(normalizeSettings({ ...settings, apiProfiles: profiles }))
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
@@ -429,14 +557,23 @@ export const useChatStore = create<ChatStore>()(
         const profiles = settings.apiProfiles.map((p) => p.id === profileId && !p.models.some((m) => m.id === id)
           ? { ...p, models: [{ id, name: id, enabled: true }, ...p.models], defaultModel: p.defaultModel || id }
           : p)
-        const nextSettings = normalizeSettings({ ...settings, apiProfiles: profiles })
+        const nextSettings = bumpConfig(normalizeSettings({ ...settings, apiProfiles: profiles }))
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
+      updateModelMeta: (profileId, modelId, patch) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const profiles = settings.apiProfiles.map((p) => p.id === profileId
+          ? { ...p, models: p.models.map((m) => m.id === modelId ? { ...m, ...patch } : m) }
+          : p)
+        const nextSettings = bumpConfig({ ...settings, apiProfiles: profiles })
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
     }),
     {
       name: 'starfire-chat',
       storage: createJSONStorage(() => localStorage),
-      version: 5,
+      version: 6,
       migrate: (persisted: any) => {
         if (!persisted?.state) return persisted
         const raw = persisted.state.settings || {}
@@ -472,6 +609,37 @@ export function getEnabledModels(settings: ChatSettings) {
 
 export function getSortedSessions(settings: ChatSettings) {
   return sortedSessions(settings.sessions)
+}
+
+// config subset that syncs across devices
+export function extractConfig(s: ChatSettings) {
+  return {
+    systemPrompt: s.systemPrompt,
+    contextLength: s.contextLength,
+    model: s.model,
+    thinkingBudget: s.thinkingBudget,
+    temperature: s.temperature,
+    streamEnabled: s.streamEnabled,
+    promptCaching: s.promptCaching,
+    appearance: s.appearance,
+    activeProfileId: s.activeProfileId,
+    apiProfiles: s.apiProfiles,
+  }
+}
+
+export function findModelMeta(settings: ChatSettings, providerId?: string, modelId?: string) {
+  const p = settings.apiProfiles.find((x) => x.id === providerId)
+  return p?.models.find((m) => m.id === modelId)
+}
+
+// estimate cost of one assistant message from its usage × model prices (per 1M)
+export function estimateMsgCost(settings: ChatSettings, m: ChatMessage): number {
+  const meta = findModelMeta(settings, m.providerId, m.modelId)
+  if (!meta) return 0
+  const inP = meta.inputPrice || 0
+  const outP = meta.outputPrice || 0
+  const cacheP = meta.cachePrice || 0
+  return ((m.input_tokens || 0) * inP + (m.output_tokens || 0) * outP + (m.cache_read_tokens || 0) * cacheP) / 1e6
 }
 
 export function estimateTokens(text: string): number {

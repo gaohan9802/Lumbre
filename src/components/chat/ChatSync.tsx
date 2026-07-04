@@ -1,11 +1,11 @@
 'use client'
 
 /**
- * ChatSync — multi-device session sync.
+ * ChatSync — multi-device sync for sessions AND model/prompt/appearance config.
  * Push+pull to /api/sync on mount, every 45s, and 2.5s after local changes.
  */
 import { useEffect, useRef } from 'react'
-import { useChatStore } from '@/lib/chatStore'
+import { useChatStore, extractConfig } from '@/lib/chatStore'
 
 let applyingRemote = false
 
@@ -15,15 +15,23 @@ async function doSync() {
     const res = await fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessions: settings.sessions, tombstones: settings.tombstones }),
+      body: JSON.stringify({
+        sessions: settings.sessions,
+        tombstones: settings.tombstones,
+        config: extractConfig(settings),
+        configUpdatedAt: settings.configUpdatedAt || 0,
+      }),
     })
     if (!res.ok) return
     const data = await res.json()
+    applyingRemote = true
     if (Array.isArray(data.sessions)) {
-      applyingRemote = true
       useChatStore.getState().mergeRemote(data.sessions, data.tombstones || {})
-      applyingRemote = false
     }
+    if (data.config && typeof data.configUpdatedAt === 'number') {
+      useChatStore.getState().mergeRemoteConfig(data.config, data.configUpdatedAt)
+    }
+    applyingRemote = false
   } catch {
     // offline is fine — local-first
   }
@@ -37,7 +45,7 @@ export function ChatSync() {
     const iv = setInterval(doSync, 45000)
     const unsub = useChatStore.subscribe((state, prev) => {
       if (applyingRemote) return
-      if (state.settings.sessions !== prev.settings.sessions) {
+      if (state.settings.sessions !== prev.settings.sessions || state.settings.configUpdatedAt !== prev.settings.configUpdatedAt) {
         if (timer.current) clearTimeout(timer.current)
         timer.current = setTimeout(doSync, 2500)
       }
