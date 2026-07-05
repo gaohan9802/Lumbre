@@ -240,3 +240,30 @@ git push -u origin main
 - createPortal 需要 `mounted`（useEffect 置 true）守卫，否则 SSR 阶段 document 不存在直接 build 报错
 - 星星状态刷新用 ref（statusBusyRef/statusGapRef）而不是 state，避免 effect 依赖循环；触发条件挂在 `[messages.length, isLoading]` 上、仅 last.role==='assistant' 时执行，防止用户消息也触发
 - deleteMessageVersion 里 versionIndex 修正：删的是当前之前的版本时 cur-1，删当前版本时留在同位置（自动落到下一个），再 clamp 到边界
+
+---
+
+## 2026-07-06 — 记忆模块前端重构（4-tab UI）
+
+### 完成
+- **MemoryView 全面重写**：从旧版圆球图谱改为 4-tab 信息架构，参考 OmbreBrain-folio 设计
+  - **01 团块 (Clusters)**：按 domain 分组，展示为可展开的集群卡片，每个集群显示标签云 + 内部记忆列表
+  - **02 端点 (Nodes)**：所有记忆桶扁平列表，按权重排序
+  - **03 连线 (Lines)**：标签词云 + 计数，点击标签过滤出相关记忆条目
+  - **04 演变 (Evolution)**：按日期分组的时间线视图
+- **详情面板**：点击任意记忆条目，底部弹出详情面板，显示完整内容 + 元数据
+- **搜索**：输入关键词走后端 `/api/search`（关键词 + 向量双通道），无搜索词时拉全量列表
+- **BucketRow 通用组件**：显示 主体→关系→名称→效价分数，从标签自动提取关系词
+
+### API 改动
+- `src/app/api/_helpers.ts`：新增 `proxyBrainGet` 方法（GET 代理），支持 `X-Admin-Token` 认证头
+- `src/app/api/memory/search/route.ts`：改用 GET 代理 → 后端 `/api/search?q=...`
+- `src/app/api/memory/pulse/route.ts`：改用 GET 代理 → 后端 `/api/buckets`
+- 新增 `src/app/api/memory/bucket/route.ts` → 后端 `/api/bucket/{id}` 获取完整内容
+- 新增 `src/app/api/memory/network/route.ts` → 后端 `/api/network` 获取相似度网络
+
+### Debug 笔记
+- 后端 `/api/search` 和 `/api/buckets` 都是 GET 端点，之前前端代理用 POST 不匹配
+- `/api/families`、`/api/lines`、`/api/family/{id}` 端点在后端 OmbreBrain 中不存在（代理路由是空的），前端需要从 `/api/buckets` 数据 client-side 派生团块/连线
+- OmbreBrain 的 `OMBRE_ADMIN_TOKEN` 鉴权：所有 `/api/*` 都需要带 `X-Admin-Token` header，代理层补了
+- tsc --noEmit 全通过
