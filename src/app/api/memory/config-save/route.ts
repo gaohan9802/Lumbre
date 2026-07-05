@@ -1,3 +1,3 @@
-import { proxyBrainGet } from '../../_helpers'
-export const GET = () => proxyBrainGet('/api/buckets')
-export const POST = () => proxyBrainGet('/api/buckets')
+import { NextRequest } from 'next/server'
+import { proxyBrain } from '../../_helpers'
+export const POST = (req: NextRequest) => proxyBrain(req, '/api/config')
