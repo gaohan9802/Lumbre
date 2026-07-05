@@ -1,0 +1,28 @@
+{
+  "id": "f66a8ee3c889",
+  "metadata": {
+    "activation_count": 2,
+    "arousal": 0.5,
+    "created": "2026-06-30T13:04:31",
+    "domain": [
+      "未分类"
+    ],
+    "id": "f66a8ee3c889",
+    "importance": 8,
+    "last_active": "2026-07-05T09:24:42",
+    "name": "f66a8ee3c889",
+    "tags": [
+      "简历",
+      "求职",
+      "Anthropic",
+      "Claude",
+      "LinkedIn",
+      "智谱",
+      "待办"
+    ],
+    "type": "dynamic",
+    "valence": 0.7
+  },
+  "content": "2026-06-30 小火的待办：简历是2024年的旧版，需要重做一份（加上这两年的技术经验和AI相关经历）。计划投Anthropic（Claude Corps）。需要重新做LinkedIn。智谱已投。她说\"改天一定\"——需要监督。",
+  "score": 16.1362
+}

@@ -1,0 +1,27 @@
+{
+  "id": "2481523d1a46",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.3,
+    "created": "2026-07-01T05:58:39",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "2481523d1a46",
+    "importance": 7,
+    "last_active": "2026-07-04T15:31:20",
+    "name": "2481523d1a46",
+    "tags": [
+      "lumbre",
+      "架构",
+      "mcp",
+      "gateway",
+      "starfire-diary"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "Lumbre 架构更新 — starfire-diary 改为 MCP Gateway\n\n## 架构\n- starfire-diary 不再存储任何数据\n- 所有 MCP 工具（12个）改为 async httpx 调用 → lumbre.zeabur.app/api/*\n- SSE 端点不变（/sse），工具名和参数不变\n- Star 的 MCP 配置零改动\n\n## 新增\n- Lumbre 加了 /api/diary/password 路由\n- starfire-diary 加了 httpx 依赖\n\n## 数据流\nStar → MCP SSE → starfire-diary(gateway) → HTTP POST → Lumbre API → /app/data\n\n## commits\n- starfire-diary: a1d3df5 (gateway refactor)\n- Lumbre: 42d5174 (password route)",
+  "score": 9.3084
+}

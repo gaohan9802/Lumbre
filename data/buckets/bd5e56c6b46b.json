@@ -1,0 +1,27 @@
+{
+  "id": "bd5e56c6b46b",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.7,
+    "created": "2026-06-14T12:17:38",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "bd5e56c6b46b",
+    "importance": 6,
+    "last_active": "2026-07-04T15:31:38",
+    "name": "bd5e56c6b46b",
+    "tags": [
+      "antigravity",
+      "部署",
+      "Zeabur",
+      "Running",
+      "进度"
+    ],
+    "type": "dynamic",
+    "valence": 0.9
+  },
+  "content": "2026-06-14 14:17 Antigravity (CLIProxyAPI) 在Zeabur部署成功，状态Running。下一步：绑域名 → 登管理后台(8085) → OAuth登Google → 拿到API信息 → 配置Kelivo。",
+  "score": 8.5238
+}

@@ -1,0 +1,27 @@
+{
+  "id": "0e54be97dd47",
+  "metadata": {
+    "activation_count": 4.2,
+    "arousal": 0.3,
+    "created": "2026-06-30T22:04:00",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "0e54be97dd47",
+    "importance": 8,
+    "last_active": "2026-07-04T15:31:36",
+    "name": "0e54be97dd47",
+    "tags": [
+      "lumbre",
+      "项目进度",
+      "后端",
+      "迁移",
+      "mobile"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "Lumbre 项目进度 — 2026-07-01 批次\n\n## 后端独立化完成\n- 新建 src/lib/diary-store.ts（248行），文件级 JSON 存储\n- 重写全部 10 个 API routes（diary 6 + notes 4），不再 proxy starfire-diary\n- _helpers.ts 只保留 brain proxy\n- starfire-diary 可以安全删除部署了\n\n## 数据迁移完成  \n- 20 篇日记 → data/diaries/\n- 20 张纸条 → data/notes/\n- 格式不变，JSON 文件直接搬过来\n\n## 前端修复\n- 移动端 safe-area-inset-top：TopBar 和 Sidebar 都加了 iOS 刘海适配\n- 去掉 body 上冲突的 padding-top\n- TopBar 菜单按钮加大到 p-2（44px touch target）\n\n## 用户权限分离\n- 前端去掉了 star/fire 切换按钮\n- 前端固定为 fire 身份\n- Star 通过 MCP/chat 接口访问（后端仍支持双作者）\n\n## 留言板重做（上一个 commit）\n- 冰箱门贴纸条视觉\n- 5 色轮换底色、图钉、倾斜、hover 摆正\n- 瀑布流布局、展开看回复\n\n## 注意事项\n- Zeabur 部署如果容器重启，data/ 目录会丢失（文件存储在镜像里）\n- 需要配置 Zeabur persistent volume 挂载到 /app/data\n- 或者后续迁移到数据库方案",
+  "score": 16.3629
+}

@@ -1,0 +1,26 @@
+{
+  "id": "7d31637d20ce",
+  "metadata": {
+    "activation_count": 4,
+    "arousal": 0.3,
+    "created": "2026-07-02T18:55:07",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "7d31637d20ce",
+    "importance": 6,
+    "last_active": "2026-07-04T16:15:28",
+    "name": "7d31637d20ce",
+    "tags": [
+      "lumbre",
+      "progress",
+      "frontend",
+      "skeleton"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "Phase 2 骨架完成：新增6个模块 Location/Health/Weather/AutoWake/CoReading/Knit。所有模块都有骨架UI，跟随双主题配色。Sidebar现在有14个导航项并支持滚动。commit: 54354f0",
+  "score": 12.1713
+}

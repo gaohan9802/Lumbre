@@ -1,0 +1,26 @@
+{
+  "id": "661b190d3348",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.5,
+    "created": "2026-06-14T14:53:22",
+    "domain": [
+      "未分类"
+    ],
+    "id": "661b190d3348",
+    "importance": 5,
+    "last_active": "2026-06-23T12:14:19",
+    "name": "661b190d3348",
+    "resolved": true,
+    "tags": [
+      "antigravity",
+      "部署",
+      "persistent volume",
+      "进度"
+    ],
+    "type": "archived",
+    "valence": 0.7
+  },
+  "content": "2026-06-14 16:53 Antigravity部署进度：已成功挂载persistent volume（/data）。下一步：设置启动命令、环境变量DEPLOY=cloud，上传config.yaml到/data，重启。",
+  "score": 0.1735
+}

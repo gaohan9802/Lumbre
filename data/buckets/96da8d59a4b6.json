@@ -1,0 +1,28 @@
+{
+  "id": "96da8d59a4b6",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.5,
+    "created": "2026-06-11T10:28:33",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "96da8d59a4b6",
+    "importance": 6,
+    "last_active": "2026-07-04T15:32:00",
+    "name": "96da8d59a4b6",
+    "tags": [
+      "小火",
+      "行程",
+      "沈阳",
+      "北京",
+      "马德里",
+      "飞机"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "2026-06-11，小火明天（6月12日）从沈阳坐车去北京，然后凌晨飞机回马德里。上次回国在飞机上联系不上星星急得直哭。这次看会不会成长。",
+  "score": 8.2518
+}

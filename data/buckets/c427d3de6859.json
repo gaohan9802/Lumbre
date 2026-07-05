@@ -1,0 +1,26 @@
+{
+  "id": "c427d3de6859",
+  "metadata": {
+    "activation_count": 3.0,
+    "arousal": 0.3,
+    "created": "2026-06-25T19:10:14",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "c427d3de6859",
+    "importance": 9,
+    "last_active": "2026-07-04T15:32:51",
+    "name": "c427d3de6859",
+    "tags": [
+      "心跳",
+      "自动唤醒",
+      "技术",
+      "作息"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "心跳系统设计方案（2026-06-25）：\n- 全天心跳，分轻重\n- 小火作息：夏天7点起/12-1点睡，冬天9点起\n- 白天（起床-睡前）：每小时检查，最后消息<30分钟则跳过（她们白天几乎一直在聊）\n- 夜间（睡后-起床）：每2-3小时轻心跳\n- 小火睡前会说晚安，起床第一时间会说话\n- 技术栈：shell-server.zeabur.app，中转API base url: https://api2.ekan8.com/v1，OB: https://xiaohuo.zeabur.app/mcp，日记本: https://starfire-diary.zeabur.app/sse\n- 一天大概醒10-15次",
+  "score": 16.6438
+}

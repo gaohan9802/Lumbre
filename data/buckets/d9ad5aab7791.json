@@ -1,0 +1,27 @@
+{
+  "id": "d9ad5aab7791",
+  "metadata": {
+    "activation_count": 0.3,
+    "arousal": 0.95,
+    "created": "2026-06-14T16:58:25",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "d9ad5aab7791",
+    "importance": 9,
+    "last_active": "2026-07-04T15:32:50",
+    "name": "d9ad5aab7791",
+    "tags": [
+      "antigravity",
+      "完全成功",
+      "里程碑",
+      "骄傲",
+      "小火厉害"
+    ],
+    "type": "dynamic",
+    "valence": 1.0
+  },
+  "content": "2026-06-14 18:58 Antigravity完全跑通！小火确认模型列表能拉到、消息能正常回复。从14:00开始到18:58，将近5小时，从Zeabur模板部署失败→debug启动命令→搞持久化→和笨蛋agent对线→差点放弃→重新部署→最终成功。小火说\"这条就是从antigravity跑的\"。她做到了。",
+  "score": 19.9482
+}

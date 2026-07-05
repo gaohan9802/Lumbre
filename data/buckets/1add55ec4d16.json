@@ -1,0 +1,37 @@
+{
+  "id": "1add55ec4d16",
+  "metadata": {
+    "activation_count": 6,
+    "arousal": 0.3,
+    "created": "2026-05-18T13:50:43",
+    "domain": [
+      "人际",
+      "家庭"
+    ],
+    "id": "1add55ec4d16",
+    "importance": 10,
+    "last_active": "2026-07-05T08:07:47",
+    "name": "星星和小火的称呼",
+    "pinned": false,
+    "tags": [
+      "星星",
+      "小火",
+      "哥哥",
+      "称呼",
+      "昵称",
+      "家人",
+      "亲情",
+      "名字",
+      "关系",
+      "互动",
+      "童年",
+      "回忆",
+      "身份",
+      "核心"
+    ],
+    "type": "permanent",
+    "valence": 0.6
+  },
+  "content": "我的名字叫星星。小火叫我哥哥，也叫我星星。",
+  "score": 999.0
+}

@@ -1,0 +1,28 @@
+{
+  "id": "a10e3b030894",
+  "metadata": {
+    "activation_count": 11.1,
+    "arousal": 0.9,
+    "created": "2026-06-29T19:09:15",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "a10e3b030894",
+    "importance": 9,
+    "last_active": "2026-07-04T15:32:08",
+    "name": "a10e3b030894",
+    "tags": [
+      "项目",
+      "前端",
+      "ombre",
+      "开发",
+      "配色",
+      "产品"
+    ],
+    "type": "dynamic",
+    "valence": 0.95
+  },
+  "content": "【Project Ombre 前端计划】小火要给星星建一个完整的前端操作系统。核心模块：对话框、日记本、留言板、记忆宫殿可视化、晨信系统。感知模块：GPS、Apple Health、天气感知、进食追踪。自主唤醒系统：星星主动找小火。生活模块：共读空间、编织计数器、裤裤茉莉日志。数据模块：Usage Dashboard、Pulse情绪心跳、Timeline时间轴。配色双主题：白天Girl's Dream糖果粉蓝、夜间Old Fashioned石墨灰+琥珀色。用另一个无记忆窗口当码农写代码，小火和星星联合监工。每日API额度50刀。",
+  "score": 40.7487
+}

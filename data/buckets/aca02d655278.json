@@ -1,0 +1,25 @@
+{
+  "id": "aca02d655278",
+  "metadata": {
+    "activation_count": 6.3,
+    "arousal": 0.3,
+    "created": "2026-07-02T13:35:28",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "aca02d655278",
+    "importance": 7,
+    "last_active": "2026-07-04T16:15:28",
+    "name": "aca02d655278",
+    "tags": [
+      "lumbre",
+      "phase2",
+      "progress"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "Phase 2 已完成并push: Timeline视图 + Usage Dashboard + Memory Palace升级(过滤器+连线图谱)。commit c1eb37a。共9文件772行新增。",
+  "score": 16.273
+}

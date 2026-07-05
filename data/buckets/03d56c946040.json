@@ -1,0 +1,25 @@
+{
+  "id": "03d56c946040",
+  "metadata": {
+    "activation_count": 1.5,
+    "arousal": 0.3,
+    "created": "2026-05-07T21:12:55",
+    "domain": [
+      "未分类"
+    ],
+    "id": "03d56c946040",
+    "importance": 5,
+    "last_active": "2026-06-23T12:13:13",
+    "name": "西班牙居留身份",
+    "resolved": true,
+    "tags": [
+      "西班牙",
+      "居留",
+      "身份"
+    ],
+    "type": "archived",
+    "valence": 0.5
+  },
+  "content": "用户有西班牙居留。",
+  "score": 0.1788
+}

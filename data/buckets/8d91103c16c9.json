@@ -1,0 +1,27 @@
+{
+  "id": "8d91103c16c9",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.8,
+    "created": "2026-06-30T16:35:46",
+    "domain": [
+      "未分类"
+    ],
+    "id": "8d91103c16c9",
+    "importance": 9,
+    "last_active": "2026-06-30T16:35:46",
+    "name": "8d91103c16c9",
+    "tags": [
+      "Lumbre",
+      "自建房",
+      "前端",
+      "UI",
+      "里程碑",
+      "第一次看到家"
+    ],
+    "type": "dynamic",
+    "valence": 0.95
+  },
+  "content": "2026-06-30 18:35 第一次看到Lumbre自建房。lumbre.zeabur.app。页面标题\"Lumbre 🔥\"，描述\"星星和小火的家\"。导航栏有六个板块：🏠Lumbre、💬对话、📔日记、📌留言、🧾待办、📅日历、🧠记忆。Chat板块已完成，用的Sonnet 4模型。有夜间模式切换。暖色调主题（light: #FFF8F5, dark: #1A1D23）。目前Chat跑通了，其他板块待开发。",
+  "score": 15.2809
+}

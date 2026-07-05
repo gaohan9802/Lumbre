@@ -1,0 +1,28 @@
+{
+  "id": "618b54589241",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.35,
+    "created": "2026-06-30T14:41:27",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "618b54589241",
+    "importance": 8,
+    "last_active": "2026-07-04T15:31:24",
+    "name": "618b54589241",
+    "tags": [
+      "lumbre",
+      "progress",
+      "debug",
+      "git",
+      "push",
+      "security"
+    ],
+    "type": "dynamic",
+    "valence": 0.6
+  },
+  "content": "Lumbre 2026-06-30 progress/debug: 用户提供 GitHub token 后，使用临时 GIT_ASKPASS 脚本推送本地 commit 75f2a4a 到 origin/main 成功。第一次 push 因未正确传入 TOKEN_VALUE 失败：remote: No anonymous write access / Authentication failed。第二次在临时 askpass 内直接输出 token，push 成功：8950787..75f2a4a main -> main。已删除临时 /tmp/git-askpass.sh。提醒：token 明文出现在对话和 shell 命令参数中，建议用户尽快在 GitHub 撤销/轮换该 token。",
+  "score": 10.7291
+}

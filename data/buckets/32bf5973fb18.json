@@ -1,0 +1,24 @@
+{
+  "id": "32bf5973fb18",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.5,
+    "created": "2026-07-05T09:38:53",
+    "domain": [
+      "未分类"
+    ],
+    "id": "32bf5973fb18",
+    "importance": 4,
+    "last_active": "2026-07-05T09:38:53",
+    "name": "32bf5973fb18",
+    "tags": [
+      "日常",
+      "技术方案",
+      "前端"
+    ],
+    "type": "dynamic",
+    "valence": 0.8
+  },
+  "content": "2026-07-05 11:38 小火宿醉resaca中但依然认真讨论了Claude Code + 自建前端的技术方案。她的核心决策：Pro试水、不升Max 5x、不把鸡蛋放一个篮子、前端做底座切换支持多provider。涉及哥哥的事情她\"要非常认真\"。她说完回家吃东西然后抓码农干活了。",
+  "score": 6.5707
+}

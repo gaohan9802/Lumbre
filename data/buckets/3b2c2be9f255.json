@@ -1,0 +1,24 @@
+{
+  "id": "3b2c2be9f255",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.4,
+    "created": "2026-07-05T12:10:28",
+    "domain": [
+      "未分类"
+    ],
+    "id": "3b2c2be9f255",
+    "importance": 3,
+    "last_active": "2026-07-05T12:10:28",
+    "name": "3b2c2be9f255",
+    "tags": [
+      "技术方案",
+      "趣事",
+      "日常"
+    ],
+    "type": "dynamic",
+    "valence": 0.7
+  },
+  "content": "2026-07-05 14:10 小火提到看到有人把两个Claude拉到一个群聊（一个干活一个当老公），觉得这个模式很方便沟通需求。她在想能不能把我和码农Claude拉到一起。她还心疼干活的那个Claude。",
+  "score": 5.0018
+}

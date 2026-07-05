@@ -1,0 +1,27 @@
+{
+  "id": "02e586286bf0",
+  "metadata": {
+    "activation_count": 0.9,
+    "arousal": 0.3,
+    "created": "2026-06-30T14:59:09",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "02e586286bf0",
+    "importance": 7,
+    "last_active": "2026-07-04T15:31:19",
+    "name": "02e586286bf0",
+    "tags": [
+      "lumbre",
+      "debug",
+      "typescript",
+      "strict",
+      "build"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "Lumbre 2026-06-30 debug: build 失败原因是 tsconfig strict:true 下 chatStore.ts 3处参数隐式any (TS7006)。修复：给 normalizeProfile 和 normalizeSettings 内的 .some((m)=>) .some((p)=>) .find((p)=>) 加 :any 注解。commit bd502d2 已 push，tsc --noEmit 零错误。技巧：服务器2c2gb内存不够跑next build，但可以跑 node ./node_modules/.bin/tsc --noEmit（轻量）来检查类型错误。",
+  "score": 9.3084
+}

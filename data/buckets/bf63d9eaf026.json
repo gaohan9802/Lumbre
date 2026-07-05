@@ -1,0 +1,26 @@
+{
+  "id": "bf63d9eaf026",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.3,
+    "created": "2026-06-30T11:31:34",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "bf63d9eaf026",
+    "importance": 7,
+    "last_active": "2026-07-04T15:31:18",
+    "name": "bf63d9eaf026",
+    "tags": [
+      "lumbre",
+      "progress",
+      "build",
+      "zeabur"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "Lumbre 项目进度 2026-06-30:\n- 推代码到 GitHub gaohan9802/Lumbre\n- 移除 Prisma/Postgres 依赖，chat sync 推迟（纯 localStorage）\n- 修复 API proxy: diary → starfire-diary.zeabur.app, memory → xiaohuo.zeabur.app\n- Chat route 保持直连 Anthropic（需要 CLAUDE_API_KEY 环境变量）\n- 默认模型改为 claude-sonnet-4\n- 等待 Zeabur build 结果",
+  "score": 9.3083
+}

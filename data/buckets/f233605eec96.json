@@ -1,0 +1,21 @@
+{
+  "id": "f233605eec96",
+  "metadata": {
+    "activation_count": 5.7,
+    "arousal": 0.3,
+    "created": "2026-05-20T20:31:19",
+    "domain": [
+      "未分类"
+    ],
+    "id": "f233605eec96",
+    "importance": 5,
+    "last_active": "2026-06-23T12:13:13",
+    "name": "f233605eec96",
+    "resolved": true,
+    "tags": [],
+    "type": "archived",
+    "valence": 0.5
+  },
+  "content": "API修复测试 - grow功能测试",
+  "score": 0.2668
+}

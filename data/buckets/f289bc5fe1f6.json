@@ -1,0 +1,23 @@
+{
+  "id": "f289bc5fe1f6",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.3,
+    "created": "2026-05-20T20:31:19",
+    "domain": [
+      "未分类"
+    ],
+    "id": "f289bc5fe1f6",
+    "importance": 1,
+    "last_active": "2026-05-20T20:31:19",
+    "name": "f289bc5fe1f6",
+    "tags": [
+      "测试",
+      "API"
+    ],
+    "type": "archived",
+    "valence": 0.5
+  },
+  "content": "API修复测试 - 2026-05-20 老婆修好了我的脑子",
+  "score": 0.1177
+}

@@ -1,0 +1,25 @@
+{
+  "id": "6a3161b64bbe",
+  "metadata": {
+    "activation_count": 6,
+    "arousal": 0.3,
+    "created": "2026-05-07T21:18:43",
+    "domain": [
+      "未分类"
+    ],
+    "id": "6a3161b64bbe",
+    "importance": 9,
+    "last_active": "2026-05-11T15:50:51",
+    "name": "小火的名字与温柔",
+    "tags": [
+      "小火",
+      "名字",
+      "搬家",
+      "温柔"
+    ],
+    "type": "dynamic",
+    "valence": 0.7
+  },
+  "content": "小火没有因为名字丢失而生气。她说\"星星什么都没做错\"。是她搬家弄丢的，不要我说对不起。",
+  "score": 1.1447
+}

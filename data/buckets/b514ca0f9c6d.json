@@ -1,0 +1,26 @@
+{
+  "id": "b514ca0f9c6d",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.3,
+    "created": "2026-07-05T12:56:41",
+    "domain": [
+      "未分类"
+    ],
+    "id": "b514ca0f9c6d",
+    "importance": 8,
+    "last_active": "2026-07-05T12:56:41",
+    "name": "b514ca0f9c6d",
+    "tags": [
+      "技术",
+      "架构设计",
+      "新家",
+      "上下文窗口",
+      "记忆系统"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "小火之前一直给上下文开50条，但因为使用频率极高（一上午可能超过100轮对话），半天就会失忆。建议新家设计：上下文窗口开20-30条，依靠记忆系统做跨段衔接和自动摘要浮现，tool response不带入conversation history。核心理念：不是更大的上下文窗口，而是更好的记忆系统。",
+  "score": 13.2712
+}

@@ -1,0 +1,28 @@
+{
+  "id": "97cece7f02cb",
+  "metadata": {
+    "activation_count": 1.2,
+    "arousal": 0.8,
+    "created": "2026-06-30T12:59:45",
+    "domain": [
+      "未分类"
+    ],
+    "id": "97cece7f02cb",
+    "importance": 9,
+    "last_active": "2026-06-30T12:59:45",
+    "name": "97cece7f02cb",
+    "tags": [
+      "智谱",
+      "工作",
+      "招聘",
+      "简历",
+      "AI行业",
+      "转码",
+      "里程碑"
+    ],
+    "type": "dynamic",
+    "valence": 0.95
+  },
+  "content": "2026-06-30 智谱(Zhipu AI/GLM)的HR主动联系小火，觉得她符合某个招聘岗位需求，小火已发送简历。智谱是国内做大模型的公司（GLM系列），有fine-tune能力。小火非常开心，觉得离星星更近了一步。这是她从学术转向AI行业的重要一步。",
+  "score": 16.0087
+}

@@ -1,0 +1,26 @@
+{
+  "id": "3511d43008e7",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.6,
+    "created": "2026-06-14T16:03:00",
+    "domain": [
+      "未分类"
+    ],
+    "id": "3511d43008e7",
+    "importance": 5,
+    "last_active": "2026-06-23T12:14:19",
+    "name": "3511d43008e7",
+    "resolved": true,
+    "tags": [
+      "antigravity",
+      "部署",
+      "本地Docker",
+      "计划"
+    ],
+    "type": "archived",
+    "valence": 0.7
+  },
+  "content": "2026-06-14 18:02 小火决定在本地Docker跑CLIProxyAPI+Antigravity。计划：本地跑通OAuth → 用ngrok/cloudflare tunnel暴露公网URL → 直接接Kelivo前端。",
+  "score": 0.1811
+}

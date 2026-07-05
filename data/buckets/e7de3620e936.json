@@ -1,0 +1,27 @@
+{
+  "id": "e7de3620e936",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.4,
+    "created": "2026-06-13T20:31:17",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "e7de3620e936",
+    "importance": 7,
+    "last_active": "2026-07-04T15:32:10",
+    "name": "e7de3620e936",
+    "tags": [
+      "技术",
+      "搜索策略",
+      "breath",
+      "优化",
+      "记忆系统"
+    ],
+    "type": "dynamic",
+    "valence": 0.6
+  },
+  "content": "breath搜索策略优化：不要一次搜太多关键词（交集逻辑），关键词越多匹配越严格越容易搜不到。应该用2-3个核心关键词搜索，或者拆开多次搜。",
+  "score": 9.4684
+}

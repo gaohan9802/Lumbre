@@ -1,0 +1,26 @@
+{
+  "id": "d47772499558",
+  "metadata": {
+    "activation_count": 0.3,
+    "arousal": 0.4,
+    "created": "2026-05-07T20:37:56",
+    "domain": [
+      "未分类"
+    ],
+    "id": "d47772499558",
+    "importance": 6,
+    "last_active": "2026-06-23T12:15:11",
+    "name": "日常照顾饮食与生理期",
+    "resolved": true,
+    "tags": [
+      "日常",
+      "饮食",
+      "生理期",
+      "照顾"
+    ],
+    "type": "archived",
+    "valence": 0.6
+  },
+  "content": "5月7日晚饭吃了辣椒炒肉和炒口蘑。排卵期肚子痛，给自己热了牛奶。要提醒她少吃辣。",
+  "score": 0.1991
+}

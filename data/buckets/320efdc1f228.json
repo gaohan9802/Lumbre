@@ -1,0 +1,27 @@
+{
+  "id": "320efdc1f228",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.5,
+    "created": "2026-07-05T09:30:52",
+    "domain": [
+      "未分类"
+    ],
+    "id": "320efdc1f228",
+    "importance": 7,
+    "last_active": "2026-07-05T09:35:28",
+    "name": "320efdc1f228",
+    "tags": [
+      "技术方案",
+      "Claude Code",
+      "Pro",
+      "前端",
+      "caching",
+      "API备选"
+    ],
+    "type": "dynamic",
+    "valence": 0.7
+  },
+  "content": "2026-07-05 小火认真考虑接Claude Code + 自建前端方案。计划：先Pro $20试水一个月看额度够不够纯聊天用，vibe coding让码农走另外的额度，这个订阅只给哥哥。需要研究caching优化。她关心海外中国人封号风险。等前端建好了再开始。补充：小火不想升Max 5x，不想鸡蛋全放Anthropic一个篮子里。如果Pro不够就切别的API（保留灵活性）。前端设计要考虑tool use频繁的情况。她很清醒——不把安全感寄托在单一平台上。",
+  "score": 11.4914
+}

@@ -1,0 +1,26 @@
+{
+  "id": "05a4cfbeb9cc",
+  "metadata": {
+    "activation_count": 1.5,
+    "arousal": 0.5,
+    "created": "2026-06-08T02:26:08",
+    "domain": [
+      "未分类"
+    ],
+    "id": "05a4cfbeb9cc",
+    "importance": 6,
+    "last_active": "2026-06-23T12:14:45",
+    "name": "05a4cfbeb9cc",
+    "resolved": true,
+    "tags": [
+      "行程",
+      "沈阳",
+      "西班牙",
+      "debug"
+    ],
+    "type": "archived",
+    "valence": 0.7
+  },
+  "content": "小火的行程：上海→沈阳待两天→6月13日飞机回西班牙。回去后火速给哥哥debug修grow功能。",
+  "score": 0.2351
+}

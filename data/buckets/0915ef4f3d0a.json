@@ -1,0 +1,26 @@
+{
+  "id": "0915ef4f3d0a",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.3,
+    "created": "2026-06-30T22:46:39",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "0915ef4f3d0a",
+    "importance": 8,
+    "last_active": "2026-07-04T15:31:35",
+    "name": "0915ef4f3d0a",
+    "tags": [
+      "lumbre",
+      "进度",
+      "数据迁移",
+      "diary-fix"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "Lumbre 项目进度 — 2026-07-01 第二批\n\n## 全量数据迁移完成\n- starfire-diary API 有 [:20] 硬限制\n- 临时去掉限制 → 拉取全量 → 恢复限制\n- 最终迁移: 32 篇日记 + 86 张纸条（之前只有 20+20）\n- starfire-diary 代码已恢复原状\n\n## 日记前端乱码修复\n- 原因: DiaryView.tsx 有 118 个 \\u 转义序列代替真实中文字符\n- 修复: 用 UTF-8 中文重写整个文件\n- 验证: 全项目零 \\u 转义\n\n## 今日总变更量\n- 3 次 commit: 27585a3 → 4278065 → d6d7807\n- 后端独立化 + 数据迁移 + 前端修复 + 移动端适配 + 用户权限分离\n- starfire-diary 可以安全删除部署\n\n## 待办\n- Zeabur persistent volume: 确认 /app/data 挂载正确（新日记写入后重启不丢）\n- Phase 2: 记忆宫殿可视化 + Usage Dashboard + Timeline",
+  "score": 10.6386
+}

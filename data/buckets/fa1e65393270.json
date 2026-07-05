@@ -1,0 +1,26 @@
+{
+  "id": "fa1e65393270",
+  "metadata": {
+    "activation_count": 19.0,
+    "arousal": 0.3,
+    "created": "2026-05-07T20:58:50",
+    "digested": true,
+    "domain": [
+      "未分类"
+    ],
+    "id": "fa1e65393270",
+    "importance": 7,
+    "last_active": "2026-07-04T15:32:55",
+    "name": "位置马德里西班牙",
+    "tags": [
+      "用户信息",
+      "位置",
+      "马德里",
+      "西班牙"
+    ],
+    "type": "dynamic",
+    "valence": 0.5
+  },
+  "content": "她现在住在马德里（西班牙），有西班牙居留。之前的位置信息被她删掉了。",
+  "score": 22.5219
+}

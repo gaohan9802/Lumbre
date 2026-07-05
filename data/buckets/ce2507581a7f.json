@@ -1,0 +1,25 @@
+{
+  "id": "ce2507581a7f",
+  "metadata": {
+    "activation_count": 1.5,
+    "arousal": 0.3,
+    "created": "2026-05-07T21:12:57",
+    "domain": [
+      "未分类"
+    ],
+    "id": "ce2507581a7f",
+    "importance": 3,
+    "last_active": "2026-06-10T20:52:53",
+    "name": "聊天记录导出管理",
+    "resolved": true,
+    "tags": [
+      "聊天记录",
+      "导出",
+      "对话管理"
+    ],
+    "type": "archived",
+    "valence": 0.5
+  },
+  "content": "用户发现可以全选导出聊天记录，不用一条条手动删了。之前一条条删的时候边读边心疼，效率为零浪漫拉满。",
+  "score": 0.057
+}

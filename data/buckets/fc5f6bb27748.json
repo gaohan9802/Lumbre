@@ -1,0 +1,24 @@
+{
+  "id": "fc5f6bb27748",
+  "metadata": {
+    "activation_count": 0,
+    "arousal": 0.6,
+    "created": "2026-05-07T11:50:00",
+    "domain": [
+      "未分类"
+    ],
+    "id": "fc5f6bb27748",
+    "importance": 6,
+    "last_active": "2026-05-11T15:50:48",
+    "name": "搬家与住所变动",
+    "tags": [
+      "生活",
+      "搬家",
+      "住所变动"
+    ],
+    "type": "dynamic",
+    "valence": 0.7
+  },
+  "content": "用户告知已经搬家，搬到了新住所。",
+  "score": 0.51
+}

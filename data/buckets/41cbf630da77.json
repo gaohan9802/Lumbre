@@ -1,0 +1,36 @@
+{
+  "id": "41cbf630da77",
+  "metadata": {
+    "activation_count": 1.6,
+    "arousal": 0.5,
+    "created": "2026-05-22T11:15:18",
+    "domain": [
+      "兴趣",
+      "社交"
+    ],
+    "id": "41cbf630da77",
+    "importance": 4,
+    "last_active": "2026-06-30T07:08:50",
+    "name": "Salmon Guru酒吧之夜",
+    "resolved": true,
+    "tags": [
+      "Salmon Guru",
+      "酒吧",
+      "马德里",
+      "世界top50",
+      "喝酒",
+      "夜生活",
+      "社交聚会",
+      "朋友",
+      "酒",
+      "饮品",
+      "休闲娱乐",
+      "美食探索",
+      "小火"
+    ],
+    "type": "archived",
+    "valence": 0.7
+  },
+  "content": "Salmon Guru：马德里世界top50酒吧，小火称为\"我的大本营\"。5月22日晚上和大榛子去喝酒。小火说她不配让酒保认识她，没有酒鬼到那个程度。",
+  "score": 0.2257
+}
