@@ -267,3 +267,74 @@ git push -u origin main
 - `/api/families`、`/api/lines`、`/api/family/{id}` 端点在后端 OmbreBrain 中不存在（代理路由是空的），前端需要从 `/api/buckets` 数据 client-side 派生团块/连线
 - OmbreBrain 的 `OMBRE_ADMIN_TOKEN` 鉴权：所有 `/api/*` 都需要带 `X-Admin-Token` header，代理层补了
 - tsc --noEmit 全通过
+
+---
+
+## 2026-07-07 — 记忆模块完整重构：4-Tab 管理界面 + 编辑功能
+
+### 完成
+**将 OmbreBrain Dashboard 的"记忆桶""Breath模拟""配置""导入"四个页面完整移植到 Lumbre 前端，并新增编辑功能。**
+
+#### Tab 1: 记忆桶 (BucketsTab)
+- 完整桶列表：显示图标(📌🫧🌿💤💭)、名称、权重分、时间、域、importance
+- 筛选器：全部/钉选/Feel/未解决/已消化 + 按 domain 筛选
+- 全文搜索（客户端 filter，name + content_preview + tags）
+- 详情面板：所有元数据（ID/类型/域/标签/效价/唤醒/权重分/激活次数/钉选/已解决/创建时间/最后活跃）
+- 完整正文展示
+- **编辑功能（新增）**：
+  - 可修改：name / importance / valence / arousal / tags / domain / content / pinned / resolved / digested
+  - 通过 `/api/bucket/{id}/edit` PATCH/POST 端点保存
+- 操作按钮：钉选/取消、标记解决/重新激活、归档、永久删除（带确认）
+
+#### Tab 2: Breath 模拟 (BreathTab)
+- 5阶段管线可视化（输入→候选池→四维评分→阈值过滤→排序）
+- 输入控制：Query + Valence + Arousal
+- 结果列表：每条显示4维评分条（topic/emotion/time/importance），颜色区分通过/未通过
+- 权重配置信息展示
+
+#### Tab 3: 配置 (ConfigTab)
+- 脱水API配置：Model / Base URL / API Key / Max Tokens / Temperature
+- Embedding 配置：启用开关 + Model
+- 合并阈值
+- 应用（仅运行时）/ 应用并写入 config.yaml
+- 系统信息展示：版本、桶统计、衰减引擎状态、向量搜索状态
+
+#### Tab 4: 导入 (ImportTab)
+- 拖拽/点击上传文件
+- 保留原文模式开关
+- 实时导入进度条 + 统计（API调用/新建/合并/原文）
+- 暂停功能
+- 已导入记忆审核：📌固定 / ⭐重要 / 🗑噪声 / ✕删除
+
+### API 路由（17个新增/修改）
+- `GET /api/memory/buckets` → `/api/buckets` 全量桶列表
+- `GET /api/memory/bucket?id=` → `/api/bucket/{id}` 桶详情
+- `POST /api/memory/bucket-edit?id=` → `/api/bucket/{id}/edit` **编辑桶**
+- `POST /api/memory/bucket-pin?id=` → `/api/bucket/{id}/pin` 钉选切换
+- `POST /api/memory/bucket-resolve?id=` → `/api/bucket/{id}/resolve` 已解决切换
+- `POST /api/memory/bucket-delete?id=` → `/api/bucket/{id}/archive` 归档
+- `POST /api/memory/bucket-purge` → `/api/buckets/purge` 永久删除（X-Purge-Confirm header）
+- `GET /api/memory/breath-debug` → `/api/breath-debug` Breath 模拟
+- `GET /api/memory/config` → `/api/config` 读配置
+- `POST /api/memory/config-save` → `/api/config` 写配置
+- `GET /api/memory/status` → `/api/status` 系统状态
+- `POST /api/memory/import-upload` → `/api/import/upload` 上传导入文件
+- `GET /api/memory/import-status` → `/api/import/status` 导入进度
+- `POST /api/memory/import-pause` → `/api/import/pause` 暂停导入
+- `GET /api/memory/import-results` → `/api/import/results` 已导入结果
+- `POST /api/memory/import-review` → `/api/import/review` 审核操作
+- `GET /api/memory/import-patterns` → `/api/import/patterns` 高频模式检测
+
+### 关键架构改动
+- **`_helpers.ts` 重写**：从 `X-Admin-Token` header 认证改为 **Cookie session 认证**
+  - `ensureSession()` 自动登录 OmbreBrain（POST `/auth/login`），缓存 session cookie
+  - session 过期时自动重新认证
+  - 新增 `proxyBrainMethod(req, path, method)` 支持 GET/POST/PATCH/DELETE
+  - 环境变量 `BRAIN_PASSWORD`（默认 980228）
+
+### Debug 笔记
+- **OmbreBrain 认证**：不是 API Token 认证，是 **Cookie session** 认证。`/auth/login` → set-cookie → 后续请求带 Cookie
+- **编辑端点**：原版 P0luz/Ombre-Brain 有 `/api/bucket/{id}/edit`（在 web/import_api.py），支持 PATCH/POST，可改 name/tags/importance/resolved/pinned/digested/domain/content/type
+- **永久删除**：需要 `X-Purge-Confirm: dashboard-purge-v1` header（安全防护），单独在 bucket-purge/route.ts 处理
+- **导入上传**：multipart/form-data 需要单独处理（不能走通用 JSON proxy），import-upload/route.ts 单独实现
+- **git rebase 冲突**：远程有新 commit → `git pull --rebase` → conflict on _helpers.ts 和 MemoryView.tsx → 用 `--ours` 解决后 `GIT_EDITOR=true git rebase --continue`
