@@ -338,3 +338,24 @@ git push -u origin main
 - **永久删除**：需要 `X-Purge-Confirm: dashboard-purge-v1` header（安全防护），单独在 bucket-purge/route.ts 处理
 - **导入上传**：multipart/form-data 需要单独处理（不能走通用 JSON proxy），import-upload/route.ts 单独实现
 - **git rebase 冲突**：远程有新 commit → `git pull --rebase` → conflict on _helpers.ts 和 MemoryView.tsx → 用 `--ours` 解决后 `GIT_EDITOR=true git rebase --continue`
+
+---
+
+## 2026-07-07 — 记忆数据迁移：xiaohuo → Lumbre
+
+### 完成
+- **612 个记忆桶从 xiaohuo.zeabur.app (OmbreBrain) 完整迁移到 Lumbre 仓库**
+  - 源：`https://xiaohuo.zeabur.app/api/buckets` + `/api/bucket/{id}`（需 Cookie session 认证）
+  - 目标：`data/buckets/{id}.json`（每个桶一个文件）+ `data/buckets/_index.json`（索引）
+  - 每个文件包含完整字段：id、metadata（name/type/domain/tags/valence/arousal/importance/pinned/resolved/digested/created/last_active/activation_count）、content（完整正文）、score
+  - 总大小 3.1MB，无丢失
+
+### 迁移方式
+1. 用 Python 脚本通过 OmbreBrain API 批量拉取（`/auth/login` → cookie → `/api/buckets` 列表 → 逐个 `/api/bucket/{id}` 获取完整内容）
+2. 所有 612 个桶全部成功导出，0 失败
+3. 存入 `data/buckets/` 目录，推送到 GitHub
+
+### Debug 笔记
+- OmbreBrain 认证是 Cookie session（非 API Token），用 `http.cookiejar` + `urllib.request` 处理
+- `/api/buckets` 返回列表只含 `content_preview`（截断），完整正文需要逐个请求 `/api/bucket/{id}`
+- 612 个桶串行请求约 1 分钟完成，未触发限流
