@@ -30,3 +30,6 @@ yarn-error.log*
 # Vercel/Zeabur
 .vercel
 .zeabur
+-e 
+# Persistent data (Zeabur volume mount)
+src/data/

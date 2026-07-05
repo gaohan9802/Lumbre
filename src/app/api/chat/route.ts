@@ -1,4 +1,3 @@
-import { recordUsage } from '@/server/usage'
 import { NextRequest, NextResponse } from 'next/server'
 import { ALL_TOOLS, executeTool, ToolCallResult } from '@/server/tools'
 
@@ -20,7 +19,6 @@ export async function POST(req: NextRequest) {
       system,
       model: modelOverride,
       thinking_budget,
-      temperature,
       prompt_caching = true,
       api_profile,
       tools_enabled = true,
@@ -40,12 +38,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (provider === 'openai-compatible') {
-      return proxyOpenAI({ messages, system, model, apiKey, baseUrl, thinking_budget, temperature })
+      return proxyOpenAI({ messages, system, model, apiKey, baseUrl, thinking_budget })
     }
 
     return proxyAnthropic({
       messages, system, model, apiKey, baseUrl,
-      thinking_budget, prompt_caching, tools_enabled, temperature,
+      thinking_budget, prompt_caching, tools_enabled,
     })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
@@ -57,31 +55,22 @@ export async function POST(req: NextRequest) {
 async function proxyAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
-  tools_enabled?: boolean; temperature?: number;
+  tools_enabled?: boolean;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
-    thinking_budget, prompt_caching, tools_enabled, temperature,
+    thinking_budget, prompt_caching, tools_enabled,
   } = params
 
   // Build initial messages with caching
   const cacheBreakpoint = prompt_caching && messages.length > 6 ? messages.length - 5 : -1
   const initialMessages = messages.map((m: any, i: number) => {
     const base: any = { role: m.role }
-    const blocks: any[] = []
-    // images: data URLs → anthropic image blocks
-    if (Array.isArray(m.images)) {
-      for (const img of m.images) {
-        const match = /^data:(image\/\w+);base64,(.+)$/.exec(img || '')
-        if (match) {
-          blocks.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } })
-        }
-      }
+    if (i === cacheBreakpoint) {
+      base.content = [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }]
+    } else {
+      base.content = m.content
     }
-    const textBlock: any = { type: 'text', text: m.content || ' ' }
-    if (i === cacheBreakpoint) textBlock.cache_control = { type: 'ephemeral' }
-    blocks.push(textBlock)
-    base.content = blocks.length === 1 && !Array.isArray(m.images) ? m.content : blocks
     return base
   })
 
@@ -116,8 +105,6 @@ async function proxyAnthropic(params: {
 
     if (budget > 0) {
       body.thinking = { type: 'enabled', budget_tokens: budget }
-    } else if (typeof temperature === 'number' && isFinite(temperature)) {
-      body.temperature = Math.max(0, Math.min(1, temperature))
     }
 
     // Add tools on first iteration or when doing tool loop
@@ -210,28 +197,16 @@ async function proxyAnthropic(params: {
 
 async function proxyOpenAI(params: {
   messages: any[]; system?: string; model: string;
-  apiKey: string; baseUrl: string; thinking_budget?: number; temperature?: number;
+  apiKey: string; baseUrl: string; thinking_budget?: number;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, temperature } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget } = params
 
   const builtMessages = [
     ...(system?.trim() ? [{ role: 'system', content: system }] : []),
-    ...messages.map((m: any) => {
-      if (Array.isArray(m.images) && m.images.length) {
-        return {
-          role: m.role,
-          content: [
-            ...m.images.map((img: string) => ({ type: 'image_url', image_url: { url: img } })),
-            { type: 'text', text: m.content || ' ' },
-          ],
-        }
-      }
-      return { role: m.role, content: m.content }
-    }),
+    ...messages.map((m: any) => ({ role: m.role, content: m.content })),
   ]
 
   const body: any = { model, messages: builtMessages, max_tokens: 16000 }
-  if (typeof temperature === 'number' && isFinite(temperature)) body.temperature = temperature
 
   if (typeof thinking_budget === 'number' && thinking_budget > 0) {
     body.reasoning = { max_tokens: thinking_budget }
