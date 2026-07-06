@@ -1,7 +1,6 @@
 /**
  * Local file-based storage for diaries and notes.
- * On first boot, migrates from combined JSON files (data/diaries.json, data/notes.json)
- * into per-file storage (data/diaries/*.json, data/notes/*.json).
+ * On first boot, seeds from bundled JSON files (src/seed/) into per-file storage.
  */
 import fs from 'fs'
 import path from 'path'
@@ -17,42 +16,55 @@ function ensureDirs() {
   }
 }
 
-// ── Auto-migration from combined files ──────────────────
+// ── Auto-migration / seeding ────────────────────────────
+
+function findSeedFile(name: string): string | null {
+  // Check DATA_DIR first (legacy combined files)
+  const inData = path.join(DATA_DIR, name)
+  if (fs.existsSync(inData)) return inData
+  // Check bundled seed directory (shipped with git)
+  const inSeed = path.join(process.cwd(), 'src', 'seed', name)
+  if (fs.existsSync(inSeed)) return inSeed
+  // Standalone build puts files in .next/server/ area
+  const inStandalone = path.join(__dirname, '..', '..', 'seed', name)
+  if (fs.existsSync(inStandalone)) return inStandalone
+  return null
+}
 
 function migrateIfNeeded() {
   ensureDirs()
 
-  // Migrate diaries.json → individual files
-  const combinedDiaries = path.join(DATA_DIR, 'diaries.json')
-  if (fs.existsSync(combinedDiaries)) {
-    const existing = fs.readdirSync(DIARY_DIR).filter(f => f.endsWith('.json'))
-    if (existing.length === 0) {
+  // Migrate diaries
+  const existing = fs.readdirSync(DIARY_DIR).filter(f => f.endsWith('.json'))
+  if (existing.length === 0) {
+    const seedPath = findSeedFile('diaries.json')
+    if (seedPath) {
       try {
-        const entries = JSON.parse(fs.readFileSync(combinedDiaries, 'utf-8'))
+        const entries = JSON.parse(fs.readFileSync(seedPath, 'utf-8'))
         for (const entry of entries) {
           const filename = `${entry.date}_${entry.time_id}_${entry.author}.json`
           fs.writeFileSync(path.join(DIARY_DIR, filename), JSON.stringify(entry, null, 2), 'utf-8')
         }
-        console.log(`[diary-store] Migrated ${entries.length} diaries from combined file`)
+        console.log(`[diary-store] Seeded ${entries.length} diaries from ${seedPath}`)
       } catch (e) {
-        console.error('[diary-store] Failed to migrate diaries:', e)
+        console.error('[diary-store] Failed to seed diaries:', e)
       }
     }
   }
 
-  // Migrate notes.json → individual files
-  const combinedNotes = path.join(DATA_DIR, 'notes.json')
-  if (fs.existsSync(combinedNotes)) {
-    const existing = fs.readdirSync(NOTES_DIR).filter(f => f.endsWith('.json'))
-    if (existing.length === 0) {
+  // Migrate notes
+  const existingNotes = fs.readdirSync(NOTES_DIR).filter(f => f.endsWith('.json'))
+  if (existingNotes.length === 0) {
+    const seedPath = findSeedFile('notes.json')
+    if (seedPath) {
       try {
-        const notes = JSON.parse(fs.readFileSync(combinedNotes, 'utf-8'))
+        const notes = JSON.parse(fs.readFileSync(seedPath, 'utf-8'))
         for (const note of notes) {
           fs.writeFileSync(path.join(NOTES_DIR, `${note.id}.json`), JSON.stringify(note, null, 2), 'utf-8')
         }
-        console.log(`[diary-store] Migrated ${notes.length} notes from combined file`)
+        console.log(`[diary-store] Seeded ${notes.length} notes from ${seedPath}`)
       } catch (e) {
-        console.error('[diary-store] Failed to migrate notes:', e)
+        console.error('[diary-store] Failed to seed notes:', e)
       }
     }
   }
@@ -60,6 +72,7 @@ function migrateIfNeeded() {
 
 // Run migration on module load
 migrateIfNeeded()
+
 function loadConfig(): Record<string, any> {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'))
