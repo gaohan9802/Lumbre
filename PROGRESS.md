@@ -359,3 +359,19 @@ git push -u origin main
 - OmbreBrain 认证是 Cookie session（非 API Token），用 `http.cookiejar` + `urllib.request` 处理
 - `/api/buckets` 返回列表只含 `content_preview`（截断），完整正文需要逐个请求 `/api/bucket/{id}`
 - 612 个桶串行请求约 1 分钟完成，未触发限流
+
+---
+
+## 2026-07-08 — 数据路径迁移到 /persistent
+
+### 完成
+- **所有数据存储路径从 `process.cwd()/src/data` 迁移到 `/persistent`**（Zeabur 持久卷挂载点）
+  - `diary-store.ts`: `DATA_DIR` → `/persistent`（diaries/notes/config.json）
+  - `chat-sync.ts`: `DATA_DIR` → `/persistent`（chat-sync.json）
+  - `usage.ts`: `USAGE_DIR` → `/persistent/usage`
+  - `debug/route.ts`: `dataDir` → `/persistent`
+
+### Debug 笔记
+- Zeabur 持久卷挂载在 `/persistent`，代码里不能用 `process.cwd()` 相对路径（cwd 在容器里是 `/app`，和持久卷无关）
+- 所有目录都有 `ensureDirs()` 自动创建机制，首次部署不需要手动建目录
+- `/persistent` 下已有 `buckets/` 和 `notes/`（从之前迁移过来的），`diaries/` 和 `usage/` 会自动创建
