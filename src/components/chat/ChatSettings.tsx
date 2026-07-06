@@ -13,7 +13,7 @@ import { useChatStore, estimateTokens, DEFAULT_APPEARANCE } from '@/lib/chatStor
 interface Props {
   open: boolean
   onClose: () => void
-  onConfirm: (message: string, action: () => void) => void
+  onConfirm?: (message: string, action: () => void) => void
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -34,7 +34,7 @@ async function fileToDataUrl(file: File): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.82)
 }
 
-export function ChatSettings({ open, onClose, onConfirm }: Props) {
+export function ChatSettings({ open, onClose, onConfirm = (msg, fn) => { if (window.confirm(msg)) fn() } }: Props) {
   const { theme } = useTheme()
   const isNight = theme === 'night'
   const { messages, settings, setSettings, resetSettings, clearMessages } = useChatStore()
