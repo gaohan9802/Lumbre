@@ -6,7 +6,7 @@
 import fs from 'fs'
 import path from 'path'
 
-const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'src', 'data')
+const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const SYNC_FILE = path.join(DATA_DIR, 'chat-sync.json')
 
 export interface SyncState {

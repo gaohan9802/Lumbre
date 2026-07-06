@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 
-const USAGE_DIR = path.join(process.cwd(), 'src', 'data', 'usage')
+const USAGE_DIR = '/persistent/usage'
 
 function ensureDir() {
   if (!fs.existsSync(USAGE_DIR)) fs.mkdirSync(USAGE_DIR, { recursive: true })

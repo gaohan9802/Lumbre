@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const cwd = process.cwd()
-  const dataDir = process.env.DATA_DIR || path.join(cwd, 'data')
+  const dataDir = process.env.DATA_DIR || '/persistent'
 
   const info: Record<string, unknown> = {
     cwd,
