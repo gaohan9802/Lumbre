@@ -403,3 +403,46 @@ git push -u origin main
 - tsc --noEmit 全通过
 - persist version 2→3 + migrate 防旧 activeTab 白屏
 - `src/server/usage.ts` 和 `src/app/api/chat/route.ts` 中的 usage 记录逻辑保留（是 chat token 统计，不是 dashboard 板块）
+
+---
+
+## 2026-07-08 — OmbreBrain v2.0：本地记忆引擎替代外部代理
+
+### 完成
+
+**将 OmbreBrain 后端从外部代理（xiaohuo.zeabur.app）迁移为 Lumbre 内置的 TypeScript 本地引擎。目标：Lumbre 跑通后可直接删除旧的独立 OmbreBrain 服务。**
+
+#### 核心文件
+- **`src/server/brain.ts`**（676 行）：完整的记忆引擎
+  - Bucket CRUD：loadAllBuckets / getBucket / saveBucket / deleteBucket / archiveBucket
+  - 30 秒内存缓存 + 自动失效
+  - Ebbinghaus 遗忘曲线评分：情绪强度影响衰减速率，pinned=999分永不沉底
+  - 模糊搜索：名称/内容/标签三通道，词级匹配评分
+  - Breath 浮现：无参→高权重未解决桶；有 query→搜索；有 importance_min→按重要度批量拉取
+  - Breath Debug：4 维评分可视化（topic/emotion/time/importance）
+  - Hold/Grow/Trace/Dream/Pulse：完整实现 OmbreBrain 高频 5 工具
+  - 标签相似度网络、配置读写、系统状态
+
+#### API 路由改动（22 个全部重写）
+- **删除 `_helpers.ts`**（外部代理辅助，不再需要）
+- 所有 `src/app/api/memory/*/route.ts` 改为直接调用 `brain.ts`，不再依赖 `BRAIN_API_BASE` / `BRAIN_PASSWORD` 环境变量
+- 新增 `/api/memory/pulse/route.ts`（前端 MemoryView 调用入口）
+- 搜索返回 `{keyword_hits, vector_hits}` 格式兼容前端
+- Import 端点暂存 stub（返回 idle/ok）
+
+#### 数据格式
+- 沿用已迁移的 612 个 JSON 桶（`/persistent/buckets/{id}.json`）
+- 支持两种格式自动识别：`{id, metadata, content, score}`（完整格式）和 `{id, name, ...}`（扁平格式）
+
+#### 关键差异 vs 旧版 OmbreBrain
+- **无 Python 依赖**：纯 TypeScript，与 Next.js 同进程运行
+- **无 Cookie session 认证**：去掉了登录/session 机制（Lumbre 自己的前端不需要）
+- **无向量搜索**：暂用模糊匹配替代（后续可接 embedding API）
+- **无 LLM 脱水**：hold/grow 不调 LLM 打标/压缩（原始内容直接存储）
+- **无 Obsidian .md 文件**：改用 JSON 存储（已有数据就是 JSON 格式）
+
+### Debug 笔记
+- 前端 MemoryView 用 POST 调 pulse/search/bucket，路由必须同时 export POST 和 GET
+- 搜索响应必须是 `{keyword_hits: [], vector_hits: []}` 格式，前端 dedup 依赖这个结构
+- `_helpers.ts` 删除安全——diary/notes 路由不依赖它，走的是 `diary-store.ts`
+- `tsc --noEmit` 全通过
