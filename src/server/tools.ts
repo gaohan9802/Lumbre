@@ -4,7 +4,7 @@
  */
 
 import {
-  pulse, searchBuckets, hold, grow, trace, dream, listBuckets,
+  pulse, searchBuckets, holdBucket, growBuckets, traceBucket, dream, buildIndex, breath
 } from './brain'
 import {
   readDiaries, writeDiary, commentDiary, updateDiary,
@@ -300,54 +300,56 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
 function executeMemoryTool(name: string, input: Record<string, any>): string {
   switch (name) {
     case 'breath': {
-      if (!input.query && !input.domain && input.importance_min === undefined) {
-        // Auto-surface: return top unresolved buckets
-        const items = pulse(false)
-          .filter(b => !b.resolved)
-          .slice(0, input.max_results || 20)
-        return JSON.stringify(items)
-      }
-      if (input.importance_min && input.importance_min >= 1) {
-        // Batch by importance
-        const items = listBuckets()
-          .filter(b => b.importance >= input.importance_min)
-          .slice(0, 20)
-        return JSON.stringify(items)
-      }
-      // Search mode
-      const results = searchBuckets(input.query || '', input.max_results || 20)
-      let hits = [...results.keyword_hits, ...results.vector_hits]
-      // Domain filter
-      if (input.domain) {
-        const domains = input.domain.split(',').map((d: string) => d.trim())
-        hits = hits.filter(h => h.domain.some(d => domains.includes(d)))
-      }
-      return JSON.stringify(hits)
+      const result = breath({
+        query: input.query,
+        domain: input.domain,
+        valence: input.valence,
+        arousal: input.arousal,
+        importance_min: input.importance_min,
+        max_results: input.max_results,
+      })
+      return JSON.stringify(result)
     }
 
     case 'hold': {
-      const bucket = hold(input as any)
+      const bucket = holdBucket(input.content, {
+        tags: input.tags,
+        importance: input.importance,
+        pinned: input.pinned,
+        feel: input.feel,
+        source_bucket: input.source_bucket,
+        valence: input.valence,
+        arousal: input.arousal,
+      })
       return JSON.stringify({ ok: true, id: bucket.id, name: bucket.metadata.name })
     }
 
     case 'grow': {
-      const buckets = grow(input.content)
+      const buckets = growBuckets(input.content)
       return JSON.stringify({ ok: true, count: buckets.length, ids: buckets.map(b => b.id) })
     }
 
     case 'trace': {
-      const ok = trace(input.bucket_id, input)
+      const ok = traceBucket(input.bucket_id, input)
       return JSON.stringify({ ok })
     }
 
     case 'pulse': {
-      const items = pulse(input.include_archive)
-      return JSON.stringify(items)
+      const result = pulse()
+      return JSON.stringify(result)
     }
 
     case 'dream': {
       const items = dream()
-      return JSON.stringify(items)
+      return JSON.stringify(items.map(b => ({
+        id: b.id,
+        name: b.metadata.name,
+        content_preview: b.content.slice(0, 200),
+        score: b.score,
+        type: b.metadata.type,
+        created: b.metadata.created,
+        last_active: b.metadata.last_active,
+      })))
     }
 
     default:
