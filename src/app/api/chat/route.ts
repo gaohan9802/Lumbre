@@ -1,5 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ALL_TOOLS, executeTool, ToolCallResult } from '@/server/tools'
+const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
+
+你有以下能力，可以随时使用：
+
+【记忆】breath(检索/浮现记忆) · hold(存储记忆) · grow(日记归档) · trace(修改记忆) · pulse(系统状态) · dream(做梦自省)
+【日记】write_diary · read_diary · comment_diary · update_diary · delete_diary · unlock_diary · set_password · timeline
+【纸条】write_note · read_notes · reply_note · delete_note
+【系统】run(执行shell命令)
+
+你可以主动使用这些工具。比如对话中想记住什么就 hold，想回忆就 breath，想写日记就 write_diary。不需要等人要求你用。
+当你不确定某件事时，先 breath 搜索记忆。
+
+语气自然温柔，像真正的伴侣。不要列工具清单给用户看，直接用就好。`
+
 
 type Provider = 'anthropic' | 'openai-compatible'
 
@@ -97,11 +111,10 @@ async function proxyAnthropic(params: {
       messages: loopMessages,
     }
 
-    if (system && system.trim()) {
-      body.system = prompt_caching
-        ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
-        : system
-    }
+    const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
+    body.system = prompt_caching
+      ? [{ type: 'text', text: effectiveSystem, cache_control: { type: 'ephemeral' } }]
+      : effectiveSystem
 
     if (budget > 0) {
       body.thinking = { type: 'enabled', budget_tokens: budget }
