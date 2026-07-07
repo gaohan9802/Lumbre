@@ -11,13 +11,8 @@ const tabs = [
   { id: 'notes' as const, label: '小纸条', emoji: '📌' },
   { id: 'todo' as const, label: '待办', emoji: '🧾' },
   { id: 'photos' as const, label: '照片', emoji: '📷' },
-  { id: 'calendar' as const, label: '日历', emoji: '📅' },
   { id: 'memory' as const, label: '记忆', emoji: '✨' },
-  { id: 'health' as const, label: '健康', emoji: '❤️' },
   { id: 'coreading' as const, label: '阅读', emoji: '📖' },
-  { id: 'knit' as const, label: '编织', emoji: '🧶' },
-  { id: 'recipes' as const, label: '食谱', emoji: '🍳' },
-  { id: 'dashboard' as const, label: 'Usage', emoji: '💰' },
 ]
 
 export function Sidebar() {

@@ -8,13 +8,8 @@ import { DiaryView } from '@/components/diary/DiaryView'
 import { NotesView } from '@/components/notes/NotesView'
 import { TodoView } from '@/components/todo/TodoView'
 import { PhotosView } from '@/components/photos/PhotosView'
-import { CalendarView } from '@/components/calendar/CalendarView'
 import { MemoryView } from '@/components/memory/MemoryView'
-import { HealthView } from '@/components/health/HealthView'
 import { CoReadingView } from '@/components/coreading/CoReadingView'
-import { KnitView } from '@/components/knit/KnitView'
-import { RecipesView } from '@/components/recipes/RecipesView'
-import { DashboardView } from '@/components/dashboard/DashboardView'
 import { ChatSync } from '@/components/chat/ChatSync'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -24,13 +19,8 @@ const views = {
   notes: NotesView,
   todo: TodoView,
   photos: PhotosView,
-  calendar: CalendarView,
   memory: MemoryView,
-  health: HealthView,
   coreading: CoReadingView,
-  knit: KnitView,
-  recipes: RecipesView,
-  dashboard: DashboardView,
 }
 
 export default function Home() {

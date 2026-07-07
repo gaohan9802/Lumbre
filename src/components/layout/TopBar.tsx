@@ -16,13 +16,8 @@ export function TopBar() {
     notes: '📌 小纸条',
     todo: '🧾 待办',
     photos: '📷 照片',
-    calendar: '📅 日历',
     memory: '✨ 记忆',
-    health: '❤️ 健康',
     coreading: '📖 阅读',
-    knit: '🧶 编织',
-    recipes: '🍳 食谱',
-    dashboard: '💰 Usage',
   }
 
   return (
