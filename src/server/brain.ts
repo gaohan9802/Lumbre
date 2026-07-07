@@ -81,6 +81,43 @@ function ensureDir() {
   fs.mkdirSync(BUCKETS_DIR, { recursive: true })
 }
 
+function seedIfEmpty() {
+  ensureDir()
+  const existing = fs.readdirSync(BUCKETS_DIR).filter(f => f.endsWith('.json') && f !== '_index.json')
+  if (existing.length > 0) return // already has data
+
+  // Try to find seed file
+  const candidates = [
+    path.join(DATA_DIR, 'buckets.json'),
+    path.join(process.cwd(), 'src', 'seed', 'buckets.json'),
+    path.join(__dirname, '..', '..', 'seed', 'buckets.json'),
+  ]
+  let seedPath: string | null = null
+  for (const p of candidates) {
+    if (fs.existsSync(p)) { seedPath = p; break }
+  }
+  if (!seedPath) return
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(seedPath, 'utf-8'))
+    if (!Array.isArray(raw)) return
+    for (const bucket of raw) {
+      if (!bucket.id) continue
+      fs.writeFileSync(
+        path.join(BUCKETS_DIR, `${bucket.id}.json`),
+        JSON.stringify(bucket, null, 2),
+        'utf-8'
+      )
+    }
+    console.log(`[brain] Seeded ${raw.length} buckets from ${seedPath}`)
+  } catch (e) {
+    console.error('[brain] Failed to seed buckets:', e)
+  }
+}
+
+// Seed on module load
+seedIfEmpty()
+
 function bucketPath(id: string): string {
   return path.join(BUCKETS_DIR, `${id}.json`)
 }
