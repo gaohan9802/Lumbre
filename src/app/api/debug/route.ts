@@ -42,6 +42,12 @@ export async function GET() {
     diaries: check(diaryDir),
     notes: check(notesDir),
     seedDir: check(path.join(cwd, 'src', 'seed')),
+    bucketsDir: check(path.join(dataDir, 'buckets')),
+    bucketsSeedCandidates: {
+      inData: fs.existsSync(path.join(dataDir, 'buckets.json')),
+      inSeed: fs.existsSync(path.join(cwd, 'src', 'seed', 'buckets.json')),
+      inStandalone: fs.existsSync(path.join(cwd, '.next', 'server', 'seed', 'buckets.json')),
+    },
     sampleDiary,
   })
 }
