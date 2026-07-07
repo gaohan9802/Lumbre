@@ -488,3 +488,30 @@ git push -u origin main
 - TS2802 `Set` 迭代：`[...batchSelected]` → `Array.from(batchSelected)`，`[...new Set(...)]` → `Array.from(new Set(...))`，`[...m.entries()]` → `Array.from(m.entries())`
 - `.sort((a, b) => ...)` 在 map 结果中需要显式标注类型 `(a: Bucket, b: Bucket)`，否则 TS 推断为隐式 any
 - tsc --noEmit 全通过
+
+---
+
+## 2026-07-09 — 记忆模块数据修复：Seed 机制
+
+### 问题
+- 前端记忆板块（MemoryView）显示空白，`/api/memory/buckets` 返回 `[]`
+- **根因**：Lumbre 应用容器的 `/persistent/buckets/` 目录为空。612 个记忆桶文件只存在于 shell 容器的 `/persistent/buckets/`，两个容器不共享持久卷
+- diary/notes 之所以正常，是因为有 `src/seed/diaries.json` + `src/seed/notes.json` 的 seed 机制（`diary-store.ts` 的 `migrateIfNeeded()`）
+
+### 修复
+- **`src/seed/buckets.json`**（496KB，612 个桶）：从 shell 容器 `/persistent/buckets/` 导出的完整数据，合并为单个 JSON
+- **`src/server/brain.ts` 新增 `seedIfEmpty()`**：模块加载时检查 `/persistent/buckets/` 是否为空，若空则从 seed 文件写入
+  - 查找路径：`/persistent/buckets.json` → `process.cwd()/src/seed/buckets.json` → `__dirname/../../seed/buckets.json`
+  - 与 `diary-store.ts` 的 `findSeedFile()` 模式一致
+- **`src/app/api/debug/route.ts`**：增加 `bucketsDir` 和 `bucketsSeedCandidates` 诊断字段
+
+### 验证
+- 部署后 `/api/memory/status` 返回 `bucket_count: 612`
+- `/api/memory/buckets` 返回完整桶列表
+- 前端 MemoryView 可正常显示所有记忆桶
+
+### Debug 笔记
+- `outputFileTracingIncludes` 配置 `'/api/**': ['./src/seed/**']` 已存在，新增的 `buckets.json` 自动被包含到 standalone build
+- Zeabur 部署 cwd 是 `/src`，所以 seed 路径实际是 `/src/src/seed/buckets.json`
+- 两个 Zeabur 服务（shell 和 Next.js 应用）各有独立的 `/persistent` 持久卷，不共享
+- Zeabur build 耗时约 3-5 分钟，中间会 502
