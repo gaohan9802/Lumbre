@@ -446,3 +446,45 @@ git push -u origin main
 - 搜索响应必须是 `{keyword_hits: [], vector_hits: []}` 格式，前端 dedup 依赖这个结构
 - `_helpers.ts` 删除安全——diary/notes 路由不依赖它，走的是 `diary-store.ts`
 - `tsc --noEmit` 全通过
+
+---
+
+## 2026-07-08 — OmbreBrain Dashboard 前端合并
+
+### 完成
+**将 OmbreBrain Dashboard 的管理功能合并到 Lumbre MemoryView，新增 3 项能力。**
+
+#### 新增功能
+1. **内联编辑**（Edit3 按钮）
+   - 详情面板点击编辑图标进入编辑模式
+   - 可修改：名称、标签（逗号分隔）、领域（逗号分隔）、重要性（滑块 1-10）、正文内容
+   - 调用 `POST /api/memory/bucket-edit?id=` 保存
+   - 保存后自动刷新列表
+
+2. **批量选择 + 清除**
+   - Stats 栏「批量」按钮进入多选模式
+   - BucketRow 显示复选框，点击切换选中状态
+   - 选中后出现「删除」按钮，调用 `POST /api/memory/bucket-purge`（永久删除）
+   - 支持 Clusters / Nodes / Evolution 三个 tab
+
+3. **Admin 管理 Tab**（⚙ 图标）
+   - 系统状态卡片：版本、桶数、数据量 MB、衰减引擎、向量搜索、持久化状态
+   - 领域分布：横向进度条可视化各 domain 占比
+   - 类型分布：normal/feel/permanent 各类桶数量
+   - 快速统计：总桶数 / 钉选 / 已解决 / 未解决 / 感受 / 领域数
+   - 刷新按钮
+
+#### 其他改动
+- **Breath Tab 加图例**：4 维评分条旁显示颜色图例（主题/情绪/时间/重要）
+- **Pulse 路由拆分**：GET → pulse() 返回完整统计（total/pinned/domains/types/buckets），POST → buildIndex() 兼容工具调用
+- **tools.ts 本地化**：确认全部使用 brain.ts 本地引擎，无外部依赖
+- **Tab 扩展**：从 6 tab 扩展到 7 tab（+ admin），TABS 类型更新
+
+#### 架构说明
+- 现在 Lumbre 的记忆模块是完全自包含的：前端 MemoryView → API 路由 → brain.ts → /persistent/buckets/
+- 不再依赖 xiaohuo.zeabur.app，可以安全删除旧的 OmbreBrain 服务
+
+### Debug 笔记
+- TS2802 `Set` 迭代：`[...batchSelected]` → `Array.from(batchSelected)`，`[...new Set(...)]` → `Array.from(new Set(...))`，`[...m.entries()]` → `Array.from(m.entries())`
+- `.sort((a, b) => ...)` 在 map 结果中需要显式标注类型 `(a: Bucket, b: Bucket)`，否则 TS 推断为隐式 any
+- tsc --noEmit 全通过
