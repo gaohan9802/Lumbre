@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server'
-import { proxyBrain } from '../../_helpers'
-export const POST = (req: NextRequest) => proxyBrain(req, '/api/lines')
-export const GET = (req: NextRequest) => proxyBrain(req, '/api/lines')
+import { NextResponse } from 'next/server'
+export async function POST() { return NextResponse.json([]) }
+export async function GET() { return NextResponse.json([]) }

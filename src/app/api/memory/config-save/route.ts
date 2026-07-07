@@ -1,3 +1,9 @@
-import { NextRequest } from 'next/server'
-import { proxyBrain } from '../../_helpers'
-export const POST = (req: NextRequest) => proxyBrain(req, '/api/config')
+import { NextRequest, NextResponse } from 'next/server'
+import { saveConfig, getConfig } from '../../../../server/brain'
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({}))
+  const current = getConfig()
+  const merged = { ...current, ...body }
+  saveConfig(merged)
+  return NextResponse.json({ ok: true, config: merged })
+}
