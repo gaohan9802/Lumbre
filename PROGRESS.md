@@ -375,3 +375,31 @@ git push -u origin main
 - Zeabur 持久卷挂载在 `/persistent`，代码里不能用 `process.cwd()` 相对路径（cwd 在容器里是 `/app`，和持久卷无关）
 - 所有目录都有 `ensureDirs()` 自动创建机制，首次部署不需要手动建目录
 - `/persistent` 下已有 `buckets/` 和 `notes/`（从之前迁移过来的），`diaries/` 和 `usage/` 会自动创建
+
+---
+
+## 2026-07-08 — 删除 5 个板块 + 记忆模块描述
+
+### 删除的板块
+- 🗑️ **健康 (health)**：HealthView.tsx 删除
+- 🗑️ **编织 (knit)**：KnitView.tsx 删除
+- 🗑️ **食谱 (recipes)**：RecipesView.tsx 删除
+- 🗑️ **Usage (dashboard)**：DashboardView.tsx + `/api/usage/route.ts` 删除
+- 🗑️ **日历 (calendar)**：CalendarView.tsx 删除
+
+### 修改的文件
+- `src/lib/store.ts`：Tab 类型缩减为 7 个（chat/diary/notes/todo/photos/memory/coreading），persist version=3
+- `src/components/layout/Sidebar.tsx`：tabs 数组缩减为 7 项
+- `src/components/layout/TopBar.tsx`：titles 对象同步缩减
+- `src/app/page.tsx`：views 映射和 import 同步缩减
+
+### Sidebar 新顺序
+🐆星星 📔日记 📌小纸条 🧾待办 📷照片 ✨记忆 📖阅读
+
+### 记忆模块现状描述
+4-tab 界面（团块 Clusters / 端点 Nodes / 连线 Lines / 演变 Evolution），底部搜索+详情面板。后端 21 个 API 代理路由，612 个记忆桶。详见上方 2026-07-07 条目。
+
+### Debug 笔记
+- tsc --noEmit 全通过
+- persist version 2→3 + migrate 防旧 activeTab 白屏
+- `src/server/usage.ts` 和 `src/app/api/chat/route.ts` 中的 usage 记录逻辑保留（是 chat token 统计，不是 dashboard 板块）
