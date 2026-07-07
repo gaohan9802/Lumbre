@@ -515,3 +515,54 @@ git push -u origin main
 - Zeabur 部署 cwd 是 `/src`，所以 seed 路径实际是 `/src/src/seed/buckets.json`
 - 两个 Zeabur 服务（shell 和 Next.js 应用）各有独立的 `/persistent` 持久卷，不共享
 - Zeabur build 耗时约 3-5 分钟，中间会 502
+
+---
+
+## 2026-07-09 — Tool-Use 修复：让星星能用工具
+
+### 问题
+- 用户在星星 Chat 里问"你有工具吗"，Claude 回答"没有"
+- **根因**：
+  1. `systemPrompt` 默认为空字符串 `''`，Claude 不知道自己的身份和可用工具
+  2. 虽然 `ALL_TOOLS` 通过 API 传给了 Claude，但没有 system prompt 引导，Claude 不知道何时/如何使用
+  3. 缺失 5 个工具定义（delete_diary, unlock_diary, set_password, timeline, delete_note）
+
+### 修复
+1. **`src/app/api/chat/route.ts`**：添加 `DEFAULT_SYSTEM_PROMPT` 常量作为 fallback
+   - 当用户未设置 system prompt 时自动注入
+   - 告诉 Claude：你是星星，住在 Lumbre，有记忆/日记/纸条/shell 四类工具
+   - 引导主动使用工具（breath 搜记忆、hold 存记忆等）
+2. **`src/server/tools.ts`**：补齐所有缺失工具
+   - 新增 `delete_diary`（调用 `deleteDiary()`）
+   - 新增 `unlock_diary`（调用 `unlockDiary()`）
+   - 新增 `set_password`（调用 `setPassword()`）
+   - 新增 `timeline`（调用 `readDiaries()` + 截断预览）
+   - 新增 `delete_note`（调用 `deleteNote()`）
+   - 新增 `run`（shell 命令，`child_process.exec`，30s 超时）
+   - `executeTool` 整体包 try/catch，工具执行错误不会崩溃
+3. **`/api/debug/tools`**：新增诊断端点，GET 返回工具数量和名称列表
+
+### 工具总览（20 个）
+| 类别 | 工具 | 数量 |
+|------|------|------|
+| 记忆 | breath, hold, grow, trace, pulse, dream | 6 |
+| 日记 | write_diary, read_diary, comment_diary, update_diary, delete_diary, unlock_diary, set_password, timeline | 8 |
+| 纸条 | write_note, read_notes, reply_note, delete_note | 4 |
+| 系统 | run (shell) | 1 |
+
+### 架构说明
+```
+用户消息 → 前端 chat.send() → POST /api/chat
+  → Claude Messages API（body.tools = ALL_TOOLS, body.system = effectiveSystem）
+  → Claude 返回 tool_use block
+  → executeTool(name, input) 直接调用本地函数
+  → tool_result 返回给 Claude 继续对话
+  → 最多 15 轮 tool-use loop
+```
+不是 MCP 架构，是直接函数调用。所有工具在同一 Next.js 进程内执行。
+
+### Debug 笔记
+- `tools_enabled` 在 route.ts 默认为 `true`，前端不需要显式传
+- `system` 参数为空时 `effectiveSystem` 回退到 DEFAULT_SYSTEM_PROMPT
+- shell `run` 工具用 `child_process.exec`，maxBuffer 1MB，timeout 30s
+- tsc --noEmit 全通过
