@@ -1,9 +1,11 @@
 /**
  * Tool definitions for Claude API + unified executor.
- * Routes tool_use calls to Brain MCP or local diary/notes handlers.
+ * Routes tool_use calls to local Brain engine or diary/notes handlers.
  */
 
-import { callBrainTool } from './brain-client'
+import {
+  pulse, searchBuckets, hold, grow, trace, dream, listBuckets,
+} from './brain'
 import {
   readDiaries, writeDiary, commentDiary, updateDiary,
   listNotes, writeNote, replyNote,
@@ -21,7 +23,7 @@ export interface ToolDef {
   }
 }
 
-// ── Memory tools (Brain MCP) ────────────────────────────
+// ── Memory tools (Brain local) ──────────────────────────
 
 const MEMORY_TOOLS: ToolDef[] = [
   {
@@ -231,9 +233,9 @@ export interface ToolCallResult {
 }
 
 export async function executeTool(name: string, input: Record<string, any>): Promise<string> {
-  // Memory → Brain MCP
+  // Memory → local Brain engine
   if (BRAIN_TOOLS.has(name)) {
-    return callBrainTool(name, input)
+    return executeMemoryTool(name, input)
   }
 
   // Diary → local store
@@ -291,5 +293,64 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
 
     default:
       return `Unknown tool: ${name}`
+  }
+}
+
+/** Execute memory tools directly via local brain engine */
+function executeMemoryTool(name: string, input: Record<string, any>): string {
+  switch (name) {
+    case 'breath': {
+      if (!input.query && !input.domain && input.importance_min === undefined) {
+        // Auto-surface: return top unresolved buckets
+        const items = pulse(false)
+          .filter(b => !b.resolved)
+          .slice(0, input.max_results || 20)
+        return JSON.stringify(items)
+      }
+      if (input.importance_min && input.importance_min >= 1) {
+        // Batch by importance
+        const items = listBuckets()
+          .filter(b => b.importance >= input.importance_min)
+          .slice(0, 20)
+        return JSON.stringify(items)
+      }
+      // Search mode
+      const results = searchBuckets(input.query || '', input.max_results || 20)
+      let hits = [...results.keyword_hits, ...results.vector_hits]
+      // Domain filter
+      if (input.domain) {
+        const domains = input.domain.split(',').map((d: string) => d.trim())
+        hits = hits.filter(h => h.domain.some(d => domains.includes(d)))
+      }
+      return JSON.stringify(hits)
+    }
+
+    case 'hold': {
+      const bucket = hold(input as any)
+      return JSON.stringify({ ok: true, id: bucket.id, name: bucket.metadata.name })
+    }
+
+    case 'grow': {
+      const buckets = grow(input.content)
+      return JSON.stringify({ ok: true, count: buckets.length, ids: buckets.map(b => b.id) })
+    }
+
+    case 'trace': {
+      const ok = trace(input.bucket_id, input)
+      return JSON.stringify({ ok })
+    }
+
+    case 'pulse': {
+      const items = pulse(input.include_archive)
+      return JSON.stringify(items)
+    }
+
+    case 'dream': {
+      const items = dream()
+      return JSON.stringify(items)
+    }
+
+    default:
+      return `Unknown memory tool: ${name}`
   }
 }
