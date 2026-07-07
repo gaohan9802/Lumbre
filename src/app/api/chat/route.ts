@@ -125,6 +125,20 @@ async function proxyAnthropic(params: {
       body.tools = ALL_TOOLS
     }
 
+    // Debug log: what are we sending to Claude?
+    console.log('[CHAT DEBUG]', JSON.stringify({
+      has_system: !!body.system,
+      system_type: typeof body.system === 'string' ? 'string' : (Array.isArray(body.system) ? 'array' : typeof body.system),
+      system_length: typeof body.system === 'string' ? body.system.length : (Array.isArray(body.system) ? body.system[0]?.text?.length : 0),
+      has_tools: !!body.tools,
+      tools_count: body.tools?.length || 0,
+      tool_names: body.tools?.map((t: any) => t.name),
+      has_thinking: !!body.thinking,
+      model: body.model,
+      messages_count: body.messages?.length,
+      iter,
+    }))
+
     const res = await fetch(url, {
       method: 'POST',
       headers,
