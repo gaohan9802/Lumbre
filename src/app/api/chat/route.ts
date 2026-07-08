@@ -633,6 +633,7 @@ async function streamOpenAI(params: {
       messages: loopMessages,
       max_tokens: 16000,
       stream: true,
+      stream_options: { include_usage: true },
       ...(tools_enabled ? { tools: openaiTools } : {}),
     }
     if (typeof temperature === 'number') body.temperature = temperature

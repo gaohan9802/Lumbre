@@ -605,9 +605,24 @@ export function ChatView() {
                           </div>
                         </div>
                       ) : (
-                        <div className={`px-4 py-3 rounded-2xl text-[15px] leading-relaxed ${isUser ? 'rounded-br-md' : 'rounded-bl-md'} ${!ap.userBubbleColor && !ap.aiBubbleColor ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
+                        <div className={`inline-block w-fit max-w-[88%] break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isUser ? 'rounded-br-md ml-auto' : 'rounded-bl-md'} ${!ap.userBubbleColor && !ap.aiBubbleColor ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (ap.userBubbleColor ? userBubbleStyle : {}) : (ap.aiBubbleColor ? aiBubbleStyle : {})}>
                           <p className="whitespace-pre-wrap">{msg.content}</p>
+                        </div>
+                      )}
+
+                      {/* AI model + tokens */}
+                      {!isUser && (
+                        <div className={`text-[10px] px-1 flex flex-wrap gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                          {msg.modelId && <span className="opacity-40">{msg.modelId}</span>}
+                          {(msg.input_tokens != null && msg.input_tokens > 0) && (
+                            <>
+                              <span className="opacity-50" title="输入tokens">↑{msg.input_tokens.toLocaleString()}</span>
+                              <span className="opacity-50" title="输出tokens">↓{(msg.output_tokens || 0).toLocaleString()}</span>
+                              {(msg.cache_read_tokens ?? 0) > 0 && <span className="opacity-60 text-green-500" title="缓存读取">↻{msg.cache_read_tokens}</span>}
+                              {(msg.cache_creation_tokens ?? 0) > 0 && <span className="opacity-60 text-yellow-500" title="缓存写入">⊕{msg.cache_creation_tokens}</span>}
+                            </>
+                          )}
                         </div>
                       )}
 
@@ -637,20 +652,6 @@ export function ChatView() {
                         </div>
                       )}
 
-                      {/* AI model + tokens */}
-                      {!isUser && (
-                        <div className={`text-[10px] px-1 flex flex-wrap gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                          {msg.modelId && <span className="opacity-40">{msg.modelId}</span>}
-                          {(msg.input_tokens != null && msg.input_tokens > 0) && (
-                            <>
-                              <span className="opacity-50" title="输入tokens">↑{msg.input_tokens.toLocaleString()}</span>
-                              <span className="opacity-50" title="输出tokens">↓{(msg.output_tokens || 0).toLocaleString()}</span>
-                              {(msg.cache_read_tokens ?? 0) > 0 && <span className="opacity-60 text-green-500" title="缓存读取">↻{msg.cache_read_tokens}</span>}
-                              {(msg.cache_creation_tokens ?? 0) > 0 && <span className="opacity-60 text-yellow-500" title="缓存写入">⊕{msg.cache_creation_tokens}</span>}
-                            </>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </motion.div>
                 )
@@ -667,7 +668,7 @@ export function ChatView() {
                     </div>
                   )}
                   {streamText ? (
-                    <div className={`px-4 py-3 rounded-2xl rounded-bl-md text-[15px] leading-relaxed ${n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text'}`}>
+                    <div className={`inline-block w-fit max-w-[88%] break-words px-4 py-3 rounded-2xl rounded-bl-md text-[13px] leading-relaxed ${n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text'}`}>
                       <p className="whitespace-pre-wrap">{streamText}<span className="inline-flex ml-0.5 align-baseline"><span className="stream-cursor">…</span></span></p>
                     </div>
                   ) : (
@@ -688,7 +689,7 @@ export function ChatView() {
 
           {/* footer */}
           <div className={`p-4 border-t backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
-            {/* total layers + session token stats */}
+            {/* total layers */}
             <div className={`text-[10px] mb-2 px-1 space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
               <div className="flex justify-between">
                 <span>共 {messages.length} 层</span>
@@ -698,23 +699,6 @@ export function ChatView() {
                   </button>
                 </div>
               </div>
-              {(() => {
-                const aiMsgs = messages.filter(m => m.role === 'assistant')
-                const totIn = aiMsgs.reduce((s, m) => s + (m.input_tokens || 0), 0)
-                const totOut = aiMsgs.reduce((s, m) => s + (m.output_tokens || 0), 0)
-                const totCacheR = aiMsgs.reduce((s, m) => s + (m.cache_read_tokens || 0), 0)
-                const totCacheW = aiMsgs.reduce((s, m) => s + (m.cache_creation_tokens || 0), 0)
-                const totalTokens = totIn + totOut
-                return (
-                  <div className="flex flex-wrap gap-x-2 opacity-60">
-                    <span title="总tokens">Σ{totalTokens.toLocaleString()}</span>
-                    <span title="总输入tokens">↑{totIn.toLocaleString()}</span>
-                    <span title="总输出tokens">↓{totOut.toLocaleString()}</span>
-                    {totCacheR > 0 && <span className="text-green-500" title="总缓存读取">↻{totCacheR.toLocaleString()}</span>}
-                    {totCacheW > 0 && <span className="text-yellow-500" title="总缓存写入">⊕{totCacheW.toLocaleString()}</span>}
-                  </div>
-                )
-              })()}
             </div>
 
             {/* input area */}

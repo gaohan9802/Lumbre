@@ -951,3 +951,25 @@ OpenAI-compatible 路径 (新):
 - reasoning 桥接对不支持 thinking 的模型（如旧版 Claude 3 Haiku）可能导致 API 错误；用户可在设置中将 thinkingBudget 设为 0 关闭，route.ts 仍会兜底到 8000——后续如有反馈再加开关
 - `stream-cursor` 用 CSS keyframes 而非 Tailwind animate-pulse，因为 pulse 的效果是缩放+透明度，不够像 Anthropic 主页的纯透明度闪烁
 - tsc --noEmit 全通过
+
+---
+
+## 2026-07-13 — Chat 端 3 项优化
+
+### 完成
+1. **Token 显示位置 + 修复不显示**
+   - 移除底栏「共 N 层」下方的 session 级 token 汇总（Σ/↑/↓/↻/⊕）
+   - 每条 AI 消息的 token 统计移到**气泡正下方**（原来在版本切换器之后，现在紧跟气泡）
+   - **根因（tokens 数不显示）**：OpenAI-compatible 流式请求 body 缺 `stream_options: { include_usage: true }`，中转站流式响应从不回传 usage → `totalUsage` 恒为 0 → 前端 `input_tokens > 0` 条件不成立 → 不显示。已在 `streamOpenAI()` 请求体补上该字段
+   - Anthropic 流式本来就通过 message_start/message_delta 拿 usage，无需改
+2. **气泡字体再小一号**：消息气泡 + 流式气泡 `text-[15px]` → `text-[13px]`
+3. **气泡自适应宽度**：气泡从 `w-full`（顶格两侧等距）改为 `inline-block w-fit max-w-[88%] break-words`，内容不足一行时收缩贴合内容；user 气泡 `ml-auto` 靠右，AI 气泡靠左
+
+### 文件变更
+- `src/app/api/chat/route.ts`：streamOpenAI body 加 `stream_options: { include_usage: true }`
+- `src/components/chat/ChatView.tsx`：气泡 className（宽度+字体）、token 块位置、删除底栏 session token 汇总
+
+### Debug 笔记
+- 中转站流式必须显式 `stream_options.include_usage=true` 才回传 token 用量，否则静默为 0（OpenAI 官方行为，很多相容 API 也遵循）
+- 气泡 `w-fit` 需配 `max-w` + `break-words`，否则长内容不换行会溢出
+- tsc --noEmit 全通过
