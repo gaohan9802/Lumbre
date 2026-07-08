@@ -101,10 +101,14 @@ export function ModelDialog({ open, onClose }: Props) {
     try {
       const data = await chat.models({ provider: p.provider, baseUrl: p.baseUrl, apiKey: p.apiKey })
       if (data.error) throw new Error(data.error)
-      const models = (data.models || []).map((m: any) => ({
+      const rawModels = data.models || []
+      if (rawModels.length === 0) throw new Error('API 返回了空模型列表。检查 Base URL 和 API Key 是否正确。')
+      const models = rawModels.map((m: any) => ({
         id: m.id, name: m.name || m.id, ownedBy: m.ownedBy || m.owned_by, created: m.created, enabled: true,
-      }))
+      })).filter((m: any) => m.id)
+      if (models.length === 0) throw new Error('API 返回了模型但格式无法解析。')
       setProviderModels(providerId, models, true)
+      setFetchError(`✓ 成功拉取 ${models.length} 个模型`)
     } catch (err: any) {
       setFetchError(err?.message || '拉取失败')
     } finally {

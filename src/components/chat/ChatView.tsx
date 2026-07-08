@@ -52,6 +52,7 @@ export function ChatView() {
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
     deleteMessage, addMessageVersion, switchMessageVersion,
+    truncateFrom, clearMessages,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
@@ -317,9 +318,17 @@ export function ChatView() {
 
   /* ── delete message ───────────────────── */
 
-  const handleDeleteMsg = async (id: string) => {
-    const ok = await ask('删除这条消息？')
-    if (ok) deleteMessage(id)
+  /* ── delete with options ───────────────── */
+  const [deleteMenuId, setDeleteMenuId] = useState<string | null>(null)
+  const handleDeleteMsg = (id: string) => { setDeleteMenuId(deleteMenuId === id ? null : id) }
+  const doDeleteSingle = (id: string) => { deleteMessage(id); setDeleteMenuId(null) }
+  const doDeleteBefore = async (id: string) => {
+    const ok = await ask('删除此条及之前的所有消息？')
+    if (ok) { truncateFrom(id); deleteMessage(id); setDeleteMenuId(null) }
+  }
+  const doDeleteAll = async () => {
+    const ok = await ask('删除当前会话的全部消息？')
+    if (ok) { clearMessages(); setDeleteMenuId(null) }
   }
 
   /* ── copy ─────────────────────────────── */
@@ -498,7 +507,7 @@ export function ChatView() {
           </div>
 
           {/* messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-4" onClick={() => deleteMenuId && setDeleteMenuId(null)}>
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-40">
                 <span className="text-4xl">🏠</span>
@@ -515,8 +524,8 @@ export function ChatView() {
                 const isEditing = editingMsgId === msg.id
 
                 return (
-                  <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                    <div className="max-w-[85%] sm:max-w-[80%] space-y-1">
+                  <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex">
+                    <div className="w-full space-y-1">
                       {/* wake indicator */}
                       {(msg as any)._wake && (
                         <div className={`flex items-center gap-1.5 text-[10px] px-1 mb-0.5 ${n ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
@@ -596,20 +605,27 @@ export function ChatView() {
                           </div>
                         </div>
                       ) : (
-                        <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${isUser ? 'rounded-br-md' : 'rounded-bl-md'} ${!ap.userBubbleColor && !ap.aiBubbleColor ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
+                        <div className={`px-4 py-3 rounded-2xl text-[15px] leading-relaxed ${isUser ? 'rounded-br-md' : 'rounded-bl-md'} ${!ap.userBubbleColor && !ap.aiBubbleColor ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (ap.userBubbleColor ? userBubbleStyle : {}) : (ap.aiBubbleColor ? aiBubbleStyle : {})}>
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>
                       )}
 
                       {/* action buttons */}
-                      <div className={`flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start'} opacity-40 hover:opacity-100 transition-opacity`}>
+                      <div className={`flex items-center gap-1 justify-start opacity-40 hover:opacity-100 transition-opacity relative`}>
                         <button onClick={() => handleRetry(msg)} title="重试" className="p-1"><RotateCcw size={12} /></button>
                         <button onClick={() => handleDeleteMsg(msg.id)} title="删除" className="p-1"><Trash2 size={12} /></button>
                         <button onClick={() => handleCopy(msg.id, msg.content)} title="复制" className="p-1">
                           {copiedId === msg.id ? <Check size={12} /> : <Copy size={12} />}
                         </button>
                         {isUser && <button onClick={() => startEditMsg(msg)} title="修改" className="p-1"><Pencil size={12} /></button>}
+                        {deleteMenuId === msg.id && (
+                          <div className={`absolute left-0 top-full mt-1 z-20 rounded-xl shadow-lg border py-1 min-w-[160px] ${n ? 'bg-night-card border-night-border' : 'bg-white border-gray-200'}`}>
+                            <button onClick={() => doDeleteSingle(msg.id)} className={`w-full text-left px-3 py-2 text-xs ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除此条</button>
+                            <button onClick={() => doDeleteBefore(msg.id)} className={`w-full text-left px-3 py-2 text-xs ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除此前所有消息</button>
+                            <button onClick={() => doDeleteAll()} className={`w-full text-left px-3 py-2 text-xs text-red-500 ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除全部消息</button>
+                          </div>
+                        )}
                       </div>
 
                       {/* version switcher */}
@@ -622,13 +638,13 @@ export function ChatView() {
                       )}
 
                       {/* AI model + tokens */}
-                      {!isUser && (msg.input_tokens != null || msg.modelId) && (
+                      {!isUser && (
                         <div className={`text-[10px] px-1 flex flex-wrap gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                           {msg.modelId && <span className="opacity-40">{msg.modelId}</span>}
-                          {msg.input_tokens != null && (
+                          {(msg.input_tokens != null && msg.input_tokens > 0) && (
                             <>
-                              <span className="opacity-50" title="输入tokens">↑{msg.input_tokens}</span>
-                              <span className="opacity-50" title="输出tokens">↓{msg.output_tokens || 0}</span>
+                              <span className="opacity-50" title="输入tokens">↑{msg.input_tokens.toLocaleString()}</span>
+                              <span className="opacity-50" title="输出tokens">↓{(msg.output_tokens || 0).toLocaleString()}</span>
                               {(msg.cache_read_tokens ?? 0) > 0 && <span className="opacity-60 text-green-500" title="缓存读取">↻{msg.cache_read_tokens}</span>}
                               {(msg.cache_creation_tokens ?? 0) > 0 && <span className="opacity-60 text-yellow-500" title="缓存写入">⊕{msg.cache_creation_tokens}</span>}
                             </>
@@ -644,15 +660,15 @@ export function ChatView() {
             {/* loading / streaming */}
             {isLoading && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                <div className="max-w-[85%] sm:max-w-[80%] space-y-1">
+                <div className="w-full space-y-1">
                   {streamThinking && (
                     <div className={`text-xs p-2 rounded-lg whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                      {streamThinking}
+                      {streamThinking}<span className="stream-cursor">…</span>
                     </div>
                   )}
                   {streamText ? (
-                    <div className={`px-4 py-3 rounded-2xl rounded-bl-md text-sm leading-relaxed ${n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text'}`}>
-                      <p className="whitespace-pre-wrap">{streamText}</p>
+                    <div className={`px-4 py-3 rounded-2xl rounded-bl-md text-[15px] leading-relaxed ${n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text'}`}>
+                      <p className="whitespace-pre-wrap">{streamText}<span className="inline-flex ml-0.5 align-baseline"><span className="stream-cursor">…</span></span></p>
                     </div>
                   ) : (
                     <div className={`px-4 py-3 rounded-2xl rounded-bl-md ${n ? 'bg-night-surface' : 'bg-white shadow-sm'}`}>
@@ -683,13 +699,15 @@ export function ChatView() {
                 </div>
               </div>
               {(() => {
-                const totIn = messages.reduce((s, m) => s + (m.input_tokens || 0), 0)
-                const totOut = messages.reduce((s, m) => s + (m.output_tokens || 0), 0)
-                const totCacheR = messages.reduce((s, m) => s + (m.cache_read_tokens || 0), 0)
-                const totCacheW = messages.reduce((s, m) => s + (m.cache_creation_tokens || 0), 0)
-                if (totIn === 0 && totOut === 0) return null
+                const aiMsgs = messages.filter(m => m.role === 'assistant')
+                const totIn = aiMsgs.reduce((s, m) => s + (m.input_tokens || 0), 0)
+                const totOut = aiMsgs.reduce((s, m) => s + (m.output_tokens || 0), 0)
+                const totCacheR = aiMsgs.reduce((s, m) => s + (m.cache_read_tokens || 0), 0)
+                const totCacheW = aiMsgs.reduce((s, m) => s + (m.cache_creation_tokens || 0), 0)
+                const totalTokens = totIn + totOut
                 return (
                   <div className="flex flex-wrap gap-x-2 opacity-60">
+                    <span title="总tokens">Σ{totalTokens.toLocaleString()}</span>
                     <span title="总输入tokens">↑{totIn.toLocaleString()}</span>
                     <span title="总输出tokens">↓{totOut.toLocaleString()}</span>
                     {totCacheR > 0 && <span className="text-green-500" title="总缓存读取">↻{totCacheR.toLocaleString()}</span>}

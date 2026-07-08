@@ -263,8 +263,10 @@ async function proxyAnthropic(params: {
       metadata: { user_id: 'lumbre-starfire' },
     }
 
-    if (budget > 0) body.thinking = { type: 'enabled', budget_tokens: budget }
-    if (typeof temperature === 'number' && !(budget > 0)) body.temperature = Math.min(temperature, 1)
+    // Bridge layer: always enable thinking (reasoning) for all models
+    const effectiveBudget = budget > 0 ? budget : 8000
+    body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
+    // Anthropic ignores temperature when thinking is enabled
     if (tools_enabled) body.tools = ALL_TOOLS
 
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
@@ -368,8 +370,9 @@ async function streamAnthropic(params: {
       metadata: { user_id: 'lumbre-starfire' },
     }
 
-    if (budget > 0) body.thinking = { type: 'enabled', budget_tokens: budget }
-    if (typeof temperature === 'number' && !(budget > 0)) body.temperature = Math.min(temperature, 1)
+    // Bridge layer: always enable thinking (reasoning)
+    const effectiveBudget = budget > 0 ? budget : 8000
+    body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
     if (tools_enabled) body.tools = ALL_TOOLS
 
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
@@ -519,9 +522,9 @@ async function proxyOpenAI(params: {
       ...(tools_enabled ? { tools: openaiTools } : {}),
     }
     if (typeof temperature === 'number') body.temperature = temperature
-    if (typeof thinking_budget === 'number' && thinking_budget > 0) {
-      body.reasoning = { max_tokens: thinking_budget }
-    }
+    // Bridge layer: always request reasoning for all models
+    const effectiveBudget = (typeof thinking_budget === 'number' && thinking_budget > 0) ? thinking_budget : 8000
+    body.reasoning = { max_tokens: effectiveBudget }
 
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) {
@@ -633,9 +636,9 @@ async function streamOpenAI(params: {
       ...(tools_enabled ? { tools: openaiTools } : {}),
     }
     if (typeof temperature === 'number') body.temperature = temperature
-    if (typeof thinking_budget === 'number' && thinking_budget > 0) {
-      body.reasoning = { max_tokens: thinking_budget }
-    }
+    // Bridge layer: always request reasoning
+    const effectiveStreamBudget = (typeof thinking_budget === 'number' && thinking_budget > 0) ? thinking_budget : 8000
+    body.reasoning = { max_tokens: effectiveStreamBudget }
 
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) {
