@@ -84,7 +84,7 @@ function ensureDir() {
 function seedIfEmpty() {
   ensureDir()
   const existing = fs.readdirSync(BUCKETS_DIR).filter(f => f.endsWith('.json') && f !== '_index.json')
-  if (existing.length > 0) return // already has data
+  if (existing.length >= 100) return // only seed when very few buckets exist // already has data
 
   // Try to find seed file
   const candidates = [
