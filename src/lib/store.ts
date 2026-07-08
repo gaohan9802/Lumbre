@@ -2,9 +2,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-type Tab = 'chat' | 'diary' | 'notes' | 'todo' | 'photos' | 'memory' | 'coreading'
+type Tab = 'chat' | 'diary' | 'notes' | 'todo' | 'photos' | 'memory' | 'coreading' | 'dreams'
 
-const VALID_TABS: Tab[] = ['chat', 'diary', 'notes', 'todo', 'photos', 'memory', 'coreading']
+const VALID_TABS: Tab[] = ['chat', 'diary', 'notes', 'todo', 'photos', 'memory', 'coreading', 'dreams']
 
 interface AppStore {
   // Navigation
@@ -36,7 +36,7 @@ export const useApp = create<AppStore>()(
     }),
     {
       name: 'starfire-app',
-      version: 3,
+      version: 4,
       migrate: (persisted: any) => {
         if (persisted?.state && !VALID_TABS.includes(persisted.state.activeTab)) {
           persisted.state.activeTab = 'chat'

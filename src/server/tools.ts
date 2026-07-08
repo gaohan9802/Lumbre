@@ -298,11 +298,57 @@ const SHELL_TOOLS: ToolDef[] = [
   },
 ]
 
+// ── Weather & Location tools ────────────────────────────
+
+const CONTEXT_TOOLS: ToolDef[] = [
+  {
+    name: 'get_weather',
+    description: '获取小火当前位置的天气和城市信息。数据来自小火手机的GPS定位，包含温度、天气状况、城市名。',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'get_location',
+    description: '获取小火当前的GPS位置（经纬度）和城市名。',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+]
+
 // ── All tools ────────────────────────────────────────────
 
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...SHELL_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
+
+// ── User context cache (set by frontend via API) ─────────
+
+let cachedUserContext: {
+  lat?: number
+  lon?: number
+  temp?: number | null
+  weatherCode?: number
+  city?: string
+  updatedAt: number
+} = { updatedAt: 0 }
+
+export function updateUserContext(ctx: {
+  lat?: number
+  lon?: number
+  temp?: number | null
+  weatherCode?: number
+  city?: string
+}) {
+  cachedUserContext = { ...ctx, updatedAt: Date.now() }
+}
+
+export function getUserContext() {
+  return cachedUserContext
+}
 
 // ── Executor ─────────────────────────────────────────────
 
@@ -323,6 +369,14 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
     // Shell → subprocess
     if (name === 'run') {
       return await executeShell(input.command)
+    }
+
+    // Context tools
+    if (name === 'get_weather') {
+      return executeGetWeather()
+    }
+    if (name === 'get_location') {
+      return executeGetLocation()
     }
 
     // Diary → local store
@@ -373,7 +427,6 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
         return '🔑 密码已设置'
       }
       case 'timeline': {
-        // Timeline = read all diaries sorted by date, respecting visibility
         const entries = readDiaries(input.viewer || 'star', {})
         const limited = input.limit ? entries.slice(0, input.limit) : entries
         return JSON.stringify(limited.map(e => ({
@@ -424,6 +477,41 @@ async function executeShell(command: string): Promise<string> {
         resolve((stdout + (stderr ? `\nSTDERR: ${stderr}` : '')).trim() || '(no output)')
       }
     })
+  })
+}
+
+/** Get weather for user's location */
+function executeGetWeather(): string {
+  const ctx = cachedUserContext
+  if (!ctx.updatedAt || Date.now() - ctx.updatedAt > 60 * 60 * 1000) {
+    return JSON.stringify({ error: '小火的位置信息不可用（她可能还没打开Lumbre，或者没授权定位）' })
+  }
+  const codeNames: Record<number, string> = {
+    0: '晴', 1: '大部晴', 2: '局部多云', 3: '多云',
+    45: '雾', 48: '雾凇', 51: '小毛毛雨', 53: '毛毛雨', 55: '大毛毛雨',
+    61: '小雨', 63: '中雨', 65: '大雨', 71: '小雪', 73: '中雪', 75: '大雪',
+    80: '阵雨', 81: '阵雨', 82: '暴雨', 85: '阵雪', 86: '暴雪',
+    95: '雷暴', 96: '雷暴冰雹', 99: '雷暴大冰雹',
+  }
+  return JSON.stringify({
+    temperature: ctx.temp,
+    weather: codeNames[ctx.weatherCode || 0] || `code ${ctx.weatherCode}`,
+    city: ctx.city || '未知',
+    updated: new Date(ctx.updatedAt).toLocaleString('zh-CN'),
+  })
+}
+
+/** Get user's GPS location */
+function executeGetLocation(): string {
+  const ctx = cachedUserContext
+  if (!ctx.updatedAt || Date.now() - ctx.updatedAt > 60 * 60 * 1000) {
+    return JSON.stringify({ error: '小火的位置信息不可用（她可能还没打开Lumbre，或者没授权定位）' })
+  }
+  return JSON.stringify({
+    latitude: ctx.lat,
+    longitude: ctx.lon,
+    city: ctx.city || '未知',
+    updated: new Date(ctx.updatedAt).toLocaleString('zh-CN'),
   })
 }
 

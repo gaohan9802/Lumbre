@@ -18,6 +18,7 @@ export function TopBar() {
     photos: '📷 照片',
     memory: '✨ 记忆',
     coreading: '📖 阅读',
+    dreams: '🌙 现实与梦境',
   }
 
   return (

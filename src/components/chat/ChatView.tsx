@@ -225,7 +225,7 @@ export function ChatView() {
     // Include timestamp for AI to read
     const apiMessages = slice.map((m) => ({
       role: m.role,
-      content: `[${fmtFullTs(m.timestamp)}] ${m.content}`,
+      content: m.content,
     }))
 
     await doSend(apiMessages, (data) => {
@@ -263,7 +263,7 @@ export function ChatView() {
       // Re-generate: use messages up to (but not including) this assistant message
       const idx = messages.findIndex(m => m.id === msg.id)
       const slice = messages.slice(0, idx).slice(-settings.contextLength)
-      const apiMessages = slice.map(m => ({ role: m.role, content: `[${fmtFullTs(m.timestamp)}] ${m.content}` }))
+      const apiMessages = slice.map(m => ({ role: m.role, content: m.content }))
 
       await doSend(apiMessages, (data) => {
         const newVersion: MessageVersion = {
@@ -289,7 +289,7 @@ export function ChatView() {
       const nextMsg = messages[idx + 1]
       if (nextMsg && nextMsg.role === 'assistant') {
         const slice = messages.slice(0, idx + 1).slice(-settings.contextLength)
-        const apiMessages = slice.map(m => ({ role: m.role, content: `[${fmtFullTs(m.timestamp)}] ${m.content}` }))
+        const apiMessages = slice.map(m => ({ role: m.role, content: m.content }))
 
         await doSend(apiMessages, (data) => {
           const newVersion: MessageVersion = {
@@ -524,6 +524,13 @@ export function ChatView() {
                 return (
                   <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
                     <div className="max-w-[85%] sm:max-w-[80%] space-y-1">
+                      {/* wake indicator */}
+                      {(msg as any)._wake && (
+                        <div className={`flex items-center gap-1.5 text-[10px] px-1 mb-0.5 ${n ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
+                          <span>💓</span> <span>心跳唤醒</span>
+                        </div>
+                      )}
+
                       {/* timestamp */}
                       <p className={`text-[10px] px-1 ${isUser ? 'text-right' : 'text-left'} ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                         {fmtFullTs(msg.timestamp)}
@@ -609,13 +616,18 @@ export function ChatView() {
                       )}
 
                       {/* AI model + tokens */}
-                      {!isUser && msg.modelId && (
-                        <p className={`text-[10px] px-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                          <span className="opacity-50">{msg.modelId}</span>
+                      {!isUser && (msg.input_tokens != null || msg.modelId) && (
+                        <div className={`text-[10px] px-1 flex flex-wrap gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                          {msg.modelId && <span className="opacity-40">{msg.modelId}</span>}
                           {msg.input_tokens != null && (
-                            <span className="opacity-50 ml-2">↑{msg.input_tokens} ↓{msg.output_tokens}{msg.cache_read_tokens ? ` ↻${msg.cache_read_tokens}` : ''}</span>
+                            <>
+                              <span className="opacity-50" title="输入tokens">↑{msg.input_tokens}</span>
+                              <span className="opacity-50" title="输出tokens">↓{msg.output_tokens || 0}</span>
+                              {(msg.cache_read_tokens ?? 0) > 0 && <span className="opacity-60 text-green-500" title="缓存读取">↻{msg.cache_read_tokens}</span>}
+                              {(msg.cache_creation_tokens ?? 0) > 0 && <span className="opacity-60 text-yellow-500" title="缓存写入">⊕{msg.cache_creation_tokens}</span>}
+                            </>
                           )}
-                        </p>
+                        </div>
                       )}
                     </div>
                   </motion.div>

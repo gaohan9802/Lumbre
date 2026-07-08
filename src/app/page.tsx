@@ -10,6 +10,7 @@ import { TodoView } from '@/components/todo/TodoView'
 import { PhotosView } from '@/components/photos/PhotosView'
 import { MemoryView } from '@/components/memory/MemoryView'
 import { CoReadingView } from '@/components/coreading/CoReadingView'
+import { DreamsView } from '@/components/dreams/DreamsView'
 import { ChatSync } from '@/components/chat/ChatSync'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -21,6 +22,7 @@ const views = {
   photos: PhotosView,
   memory: MemoryView,
   coreading: CoReadingView,
+  dreams: DreamsView,
 }
 
 export default function Home() {

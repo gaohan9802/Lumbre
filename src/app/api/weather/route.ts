@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { updateUserContext } from '@/server/tools'
 
 // Server-side proxy: open-meteo (weather, no key) + bigdatacloud (reverse geocode, no key)
+// Also caches the location for AI tools (get_weather, get_location)
 export async function POST(req: NextRequest) {
   try {
     const { lat, lon } = await req.json()
@@ -13,11 +15,15 @@ export async function POST(req: NextRequest) {
     ])
     const w = await wRes.json().catch(() => ({}))
     const g = await gRes.json().catch(() => ({}))
-    return NextResponse.json({
-      temp: w?.current?.temperature_2m ?? null,
-      code: w?.current?.weather_code ?? 0,
-      city: g?.city || g?.locality || g?.principalSubdivision || '',
-    })
+
+    const temp = w?.current?.temperature_2m ?? null
+    const code = w?.current?.weather_code ?? 0
+    const city = g?.city || g?.locality || g?.principalSubdivision || ''
+
+    // Cache for AI tools
+    updateUserContext({ lat, lon, temp, weatherCode: code, city })
+
+    return NextResponse.json({ temp, code, city })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

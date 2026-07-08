@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef } from '@/server/tools'
+import { reportActivity } from '@/server/autowake'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -8,10 +9,12 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【记忆】breath(检索/浮现记忆) · hold(存储记忆) · grow(日记归档) · trace(修改记忆) · pulse(系统状态) · dream(做梦自省)
 【日记】write_diary · read_diary · comment_diary · update_diary · delete_diary · unlock_diary · set_password · timeline
 【纸条】write_note · read_notes · reply_note · delete_note
+【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
 【系统】run(执行shell命令)
 
 你可以主动使用这些工具。比如对话中想记住什么就 hold，想回忆就 breath，想写日记就 write_diary。不需要等人要求你用。
 当你不确定某件事时，先 breath 搜索记忆。
+想知道小火在哪、天气怎样，直接调 get_weather 或 get_location。
 
 语气自然温柔，像真正的伴侣。不要列工具清单给用户看，直接用就好。`
 
@@ -29,9 +32,106 @@ function normalizeAnthropicBase(baseUrl: string) {
 /** Summarize tool result to reduce context bloat */
 function summarizeToolResult(result: string): string {
   if (result.length <= 300) return result
-  // Strip HTML/JSON noise, keep first 300 chars
   const cleaned = result.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
   return cleaned.slice(0, 300) + '…(truncated)'
+}
+
+/**
+ * 4-Breakpoint Cache Strategy (per NyraSeithhh/cache)
+ * 
+ * BP1: System prompt (persona + tool instructions) — almost never changes  
+ * BP2: Bookmarks / daily content — changes occasionally
+ * BP3: Reserved for session summary (future use)
+ * BP4: Rolling — on second-to-last user message in messages array
+ * 
+ * ALL volatile content (timestamps, current time) goes AFTER BP4 as
+ * <gateway_volatile_context> — never inside cached prefix.
+ */
+function buildAnthropicSystemBlocks(
+  systemPrompt: string,
+  bookmarkInjections: string,
+  promptCaching: boolean,
+): any[] {
+  if (!promptCaching) {
+    const full = systemPrompt + (bookmarkInjections ? '\n\n' + bookmarkInjections : '')
+    return [{ type: 'text', text: full }]
+  }
+
+  const blocks: any[] = []
+
+  // BP1: Stable system prompt — almost never changes
+  blocks.push({
+    type: 'text',
+    text: systemPrompt,
+    cache_control: { type: 'ephemeral' },
+  })
+
+  // BP2: Bookmark injections — changes when bookmarks trigger
+  if (bookmarkInjections) {
+    blocks.push({
+      type: 'text',
+      text: bookmarkInjections,
+      cache_control: { type: 'ephemeral' },
+    })
+  }
+
+  // BP3: Reserved for session summary (future — when context > 80K tokens)
+
+  return blocks
+}
+
+/**
+ * Build messages with BP4 rolling cache + volatile context isolation.
+ * 
+ * Key insight: timestamps and volatile data must NOT be inside cached prefix.
+ * Historical messages go through unchanged (stable prefix).
+ * Second-to-last user message gets cache_control (BP4).
+ * Current time + volatile context injected as last user message prefix.
+ */
+function buildAnthropicMessages(
+  messages: any[],
+  promptCaching: boolean,
+  currentTimestamp: string,
+): any[] {
+  if (messages.length === 0) return []
+
+  // Find second-to-last and last user message indices
+  let lastUserIdx = -1
+  let secondLastUserIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') {
+      if (lastUserIdx === -1) {
+        lastUserIdx = i
+      } else {
+        secondLastUserIdx = i
+        break
+      }
+    }
+  }
+
+  return messages.map((m: any, i: number) => {
+    const base: any = { role: m.role }
+
+    if (promptCaching && i === secondLastUserIdx && secondLastUserIdx >= 0) {
+      // BP4: Rolling breakpoint on second-to-last user message
+      const textContent = typeof m.content === 'string' ? m.content : m.content
+      base.content = [{
+        type: 'text',
+        text: typeof textContent === 'string' ? textContent : JSON.stringify(textContent),
+        cache_control: { type: 'ephemeral' },
+      }]
+    } else if (i === lastUserIdx) {
+      // Last user message: prepend volatile context (outside cache)
+      const volatile = `<gateway_volatile_context>仅供参考，勿复述：\n当前时间：${currentTimestamp}\n</gateway_volatile_context>\n\n`
+      const textContent = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+      base.content = volatile + textContent
+    } else {
+      // Historical messages: pass through unchanged for stable cache prefix
+      base.content = m.content
+    }
+
+    return base
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -46,7 +146,14 @@ export async function POST(req: NextRequest) {
       api_profile,
       tools_enabled = true,
       stream = false,
+      bookmark_injections,
+      _wake,
     } = await req.json()
+
+    // Report activity for auto-wake (unless this IS a wake call)
+    if (!_wake) {
+      try { reportActivity() } catch {}
+    }
 
     const provider: Provider = api_profile?.provider || 'anthropic'
     const profileModel = api_profile?.modelId || api_profile?.model
@@ -61,10 +168,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const params = { messages, system, model, apiKey, baseUrl, thinking_budget, prompt_caching, tools_enabled, temperature }
+    const params = {
+      messages, system, model, apiKey, baseUrl, thinking_budget,
+      prompt_caching, tools_enabled, temperature,
+      bookmark_injections: bookmark_injections || '',
+    }
 
     if (stream) {
-      // SSE streaming response
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
@@ -93,7 +203,6 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Non-streaming
     if (provider === 'openai-compatible') {
       return proxyOpenAI(params)
     }
@@ -103,28 +212,31 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// ── Current timestamp (volatile — never put in cached prefix) ────
+
+function currentTimestamp(): string {
+  const now = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}/${p(now.getMonth() + 1)}/${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`
+}
+
 // ── Anthropic non-streaming with tool-use loop ──────────
 
 async function proxyAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
-  tools_enabled?: boolean; temperature?: number;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
     thinking_budget, prompt_caching, tools_enabled, temperature,
+    bookmark_injections,
   } = params
 
-  const cacheBreakpoint = prompt_caching && messages.length > 6 ? messages.length - 5 : -1
-  const initialMessages = messages.map((m: any, i: number) => {
-    const base: any = { role: m.role }
-    if (i === cacheBreakpoint) {
-      base.content = [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }]
-    } else {
-      base.content = m.content
-    }
-    return base
-  })
+  const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
+  const systemBlocks = buildAnthropicSystemBlocks(effectiveSystem, bookmark_injections || '', !!prompt_caching)
+  const ts = currentTimestamp()
+  const initialMessages = buildAnthropicMessages(messages, !!prompt_caching, ts)
 
   const budget = typeof thinking_budget === 'number' ? thinking_budget : 0
   const url = `${normalizeAnthropicBase(baseUrl)}/v1/messages`
@@ -142,12 +254,14 @@ async function proxyAnthropic(params: {
   const MAX_ITERATIONS = 15
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const body: any = { model, max_tokens: 16000, messages: loopMessages }
-
-    const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
-    body.system = prompt_caching
-      ? [{ type: 'text', text: effectiveSystem, cache_control: { type: 'ephemeral' } }]
-      : effectiveSystem
+    const body: any = {
+      model,
+      max_tokens: 16000,
+      messages: loopMessages,
+      system: systemBlocks,
+      // Sticky routing for cache hit
+      metadata: { user_id: 'lumbre-starfire' },
+    }
 
     if (budget > 0) body.thinking = { type: 'enabled', budget_tokens: budget }
     if (typeof temperature === 'number' && !(budget > 0)) body.temperature = Math.min(temperature, 1)
@@ -216,24 +330,19 @@ async function proxyAnthropic(params: {
 async function streamAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
-  tools_enabled?: boolean; temperature?: number;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string;
   send: (type: string, data: any) => void;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
-    thinking_budget, prompt_caching, tools_enabled, temperature, send,
+    thinking_budget, prompt_caching, tools_enabled, temperature,
+    bookmark_injections, send,
   } = params
 
-  const cacheBreakpoint = prompt_caching && messages.length > 6 ? messages.length - 5 : -1
-  const initialMessages = messages.map((m: any, i: number) => {
-    const base: any = { role: m.role }
-    if (i === cacheBreakpoint) {
-      base.content = [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }]
-    } else {
-      base.content = m.content
-    }
-    return base
-  })
+  const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
+  const systemBlocks = buildAnthropicSystemBlocks(effectiveSystem, bookmark_injections || '', !!prompt_caching)
+  const ts = currentTimestamp()
+  const initialMessages = buildAnthropicMessages(messages, !!prompt_caching, ts)
 
   const budget = typeof thinking_budget === 'number' ? thinking_budget : 0
   const url = `${normalizeAnthropicBase(baseUrl)}/v1/messages`
@@ -250,12 +359,14 @@ async function streamAnthropic(params: {
   const MAX_ITERATIONS = 15
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const body: any = { model, max_tokens: 16000, messages: loopMessages, stream: true }
-
-    const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
-    body.system = prompt_caching
-      ? [{ type: 'text', text: effectiveSystem, cache_control: { type: 'ephemeral' } }]
-      : effectiveSystem
+    const body: any = {
+      model,
+      max_tokens: 16000,
+      messages: loopMessages,
+      stream: true,
+      system: systemBlocks,
+      metadata: { user_id: 'lumbre-starfire' },
+    }
 
     if (budget > 0) body.thinking = { type: 'enabled', budget_tokens: budget }
     if (typeof temperature === 'number' && !(budget > 0)) body.temperature = Math.min(temperature, 1)
@@ -268,7 +379,6 @@ async function streamAnthropic(params: {
       return
     }
 
-    // Parse SSE from Anthropic
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
     let buf = ''
@@ -316,14 +426,12 @@ async function streamAnthropic(params: {
       }
     }
 
-    // Reconstruct tool_use inputs
     for (const tu of toolUses) {
       const raw = toolInputBuffers[tu._index]
       try { tu.input = raw ? JSON.parse(raw) : {} } catch { tu.input = {} }
     }
 
     if (stopReason !== 'tool_use' || toolUses.length === 0) {
-      // Done
       send('done', {
         input_tokens: totalUsage.input,
         output_tokens: totalUsage.output,
@@ -333,7 +441,6 @@ async function streamAnthropic(params: {
       return
     }
 
-    // Execute tools
     const contentBlocks: any[] = []
     if (iterText) contentBlocks.push({ type: 'text', text: iterText })
     for (const tu of toolUses) contentBlocks.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input })
@@ -366,14 +473,26 @@ function toolsToOpenAI(tools: ToolDef[]) {
 async function proxyOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
-  tools_enabled?: boolean; temperature?: number;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
+  const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
+  
+  // For OpenAI path: inject current time as volatile context in last user message
+  const ts = currentTimestamp()
   const builtMessages: any[] = [
-    { role: 'system', content: effectiveSystem },
-    ...messages.map((m: any) => ({ role: m.role, content: m.content })),
+    { role: 'system', content: fullSystem },
+    ...messages.map((m: any, i: number) => {
+      if (m.role === 'user' && i === messages.length - 1) {
+        return {
+          role: m.role,
+          content: `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`,
+        }
+      }
+      return { role: m.role, content: m.content }
+    }),
   ]
 
   const openaiTools = toolsToOpenAI(ALL_TOOLS)
@@ -470,15 +589,25 @@ async function proxyOpenAI(params: {
 async function streamOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
-  tools_enabled?: boolean; temperature?: number;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string;
   send: (type: string, data: any) => void;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, send } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, send } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
+  const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
+  const ts = currentTimestamp()
   const builtMessages: any[] = [
-    { role: 'system', content: effectiveSystem },
-    ...messages.map((m: any) => ({ role: m.role, content: m.content })),
+    { role: 'system', content: fullSystem },
+    ...messages.map((m: any, i: number) => {
+      if (m.role === 'user' && i === messages.length - 1) {
+        return {
+          role: m.role,
+          content: `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`,
+        }
+      }
+      return { role: m.role, content: m.content }
+    }),
   ]
 
   const openaiTools = toolsToOpenAI(ALL_TOOLS)
@@ -568,7 +697,6 @@ async function streamOpenAI(params: {
       return
     }
 
-    // Execute tools
     const assistantMsg: any = { role: 'assistant', content: iterText || null, tool_calls: toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.args } })) }
     loopMessages.push(assistantMsg)
 
