@@ -713,3 +713,79 @@ OpenAI-compatible 路径 (新):
 - `useConfirm` hook 用 Promise 包装确认弹窗，比回调式更清晰
 - 背景图用 CSS backgroundImage 而非 `<img>` 标签，避免 z-index 和交互问题
 - tsc --noEmit 全通过
+
+---
+
+## 2026-07-10 — Chat 端 6 项优化
+
+### 完成
+
+#### 1. iOS PWA 弹窗位置修复
+- 所有浮层（ChatSettings/ModelDialog/BookmarkDialog/确认框/模型选择器/会话抽屉）已通过 `createPortal(document.body)` 脱离 AnimatePresence 的 transform 包含块
+- safe-area-inset-top/bottom 已在 sticky header、输入框、设置面板中正确使用
+- 确认：现有实现已经处理好了 iOS PWA 场景
+
+#### 2. 天气/GPS 作为 AI 工具
+- `get_weather` 和 `get_location` 已在 tools.ts 中定义并实现
+- 前端 useWeather hook 通过 `/api/weather` 推送 GPS 到服务端缓存（updateUserContext）
+- AI 调用时从内存缓存读取，1小时过期提示"位置不可用"
+- 天气数据显示在 TopBar 右上角（手机）和 chat 头部（桌面）
+
+#### 3. AI 气泡 Token 显示
+- 每条 AI 回复下方显示完整 token 统计：
+  - ↑{input} 输入 tokens
+  - ↓{output} 输出 tokens
+  - ↻{cache_read} 缓存读取（绿色，仅非零时显示）
+  - ⊕{cache_create} 缓存写入（黄色，仅非零时显示）
+- 模型名也显示在同一行
+
+#### 4. 4-Breakpoint 缓存方案（per NyraSeithhh/cache）
+- **BP1**：System prompt（人设 + 工具说明）→ `cache_control: ephemeral`，几乎永不变
+- **BP2**：书签注入 → `cache_control: ephemeral`，书签触发时变
+- **BP3**：预留给会话压缩摘要（未来实现）
+- **BP4**：倒数第二条 user 消息 → `cache_control: ephemeral`，滚动窗口把历史纳入缓存
+- **volatile context 隔离**：
+  - 时间戳从消息内容中移除（不再 `[timestamp] content` 格式）
+  - 当前时间注入最后一条 user 消息前缀：`<gateway_volatile_context>当前时间：...</gateway_volatile_context>`
+  - 排在所有断点之后，不影响缓存前缀
+- **sticky routing**：`metadata.user_id: "lumbre-starfire"` 固定路由到同一后端
+- OpenAI 路径也注入 volatile context（在最后一条 user 消息前缀）
+
+#### 5. 自动唤醒功能
+- **后端 autowake.ts**：
+  - setInterval 每 5 分钟检查（白天 9-24 每小时触发，深夜 0-9 每 3 小时触发）
+  - 30 分钟内有对话则跳过
+  - 执行时读取主对话最近 20 条上下文，发送唤醒文案
+  - 支持 `customPrompt` 自定义唤醒文案模板
+  - 变量替换：`{time}` `{reason}` `{quiet_note}`
+  - 非 [SILENT] 回复注入到对话流（chat-sync.json）
+  - 日志保存到 /persistent/wake-logs.json（最近 200 条）
+- **API /api/wake**：GET 读配置+日志，POST 设置 enabled/sessionId/customPrompt
+- **前端 ChatView**：唤醒消息上方显示 💓 心跳唤醒 标识
+
+#### 6. 现实与梦境 UI
+- **新模块**：DreamsView 接入 Sidebar（🌙 现实与梦境）、page.tsx views、TopBar titles
+- **现实 tab**：
+  - 心跳唤醒开关 + 主对话框选择器
+  - 状态显示（上次醒来/上次活动/规则说明）
+  - **唤醒文案编辑器**：可视化编辑唤醒 prompt 模板，支持变量高亮提示，保存/恢复默认按钮
+  - 唤醒记录列表：可展开查看触发原因、行动轨迹（工具调用详情）、发送的消息
+- **梦境 tab**：占位，待后续内容填充
+- store.ts Tab 类型扩展为 8 个（+dreams），persist version 3→4
+
+### 架构改动
+- `src/lib/store.ts`：Tab 类型新增 `'dreams'`，version 4
+- `src/components/layout/Sidebar.tsx`：tabs 新增 dreams 入口
+- `src/components/layout/TopBar.tsx`：titles 新增 dreams
+- `src/app/page.tsx`：views 映射新增 DreamsView
+- `src/app/api/chat/route.ts`：缓存策略重写（buildAnthropicSystemBlocks + buildAnthropicMessages + volatile context）
+- `src/server/autowake.ts`：新增 customPrompt 支持
+- `src/app/api/wake/route.ts`：POST 新增 customPrompt 参数
+
+### Debug 笔记
+- **缓存命中的关键**：历史消息不修改（不加时间戳前缀），保持字节级稳定
+- 时间戳以前嵌在每条消息 content 里（`[2026/07/10 12:00:00] 消息内容`），每轮都变导致 BP4 之前的历史缓存失效
+- 现在时间只在最后一条 user 消息前缀注入（`<gateway_volatile_context>`），排在 BP4 之后，不碰缓存前缀
+- wake route 创建了新文件但 autowake.ts 也是新创建的（之前的 git 跟踪状态）
+- tsc --noEmit 全通过
+
