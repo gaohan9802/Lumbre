@@ -829,3 +829,49 @@ OpenAI-compatible 路径 (新):
 - `createPortal(document.body)` 内的组件 z-index 不受父组件 stacking context 影响，是解决 transform 包含块问题的标准方案
 - 三个弹窗各自内部有 AnimatePresence 管理 open/close 动画，portal 后动画正常工作
 - tsc --noEmit 全通过
+
+---
+
+## 2026-07-11 — Chat 端 4 项优化
+
+### 完成
+
+#### 1. iOS PWA 弹窗位置修复
+- **确认框**：从 `left-1/2 top-1/2 -translate-x/y-1/2` 改为 `inset-x-0 mx-auto` + `top: max(env(safe-area-inset-top) + 30dvh, 30dvh)` + `transform: translateY(-50%)`，避免 iOS PWA 下 transform 包含块导致的偏移
+- **ModelDialog**：从 `left-1/2 top-1/2 -translate-x/y-1/2` 改为 `inset-x-0 mx-auto` + `top: max(calc(env(safe-area-inset-top) + 10dvh), 10dvh)`
+- **BookmarkDialog**：同上处理
+- **Session drawer**：添加 `paddingTop: env(safe-area-inset-top)` 避免被刘海/状态栏遮挡
+- **Model picker bottom sheet**：添加 `paddingBottom: env(safe-area-inset-bottom)` 避免被 home indicator 遮挡
+
+#### 2. 模型 API 管理：一键选择/反选
+- `chatStore.ts` 新增 `setAllModelsEnabled(profileId, enabled)` action
+- ModelDialog 展开 API 卡片后，编辑区域顶部新增两个按钮：
+  - **一键全选**：`setAllModelsEnabled(p.id, true)` — 启用该 API 下所有模型
+  - **一键反选**：`setAllModelsEnabled(p.id, false)` — 禁用该 API 下所有模型
+
+#### 3. Chat 对话框下方 Token 统计
+- 输入框上方（"共 N 层"下方）新增 session 级 token 汇总行
+- 聚合当前会话所有消息的 `input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_creation_tokens`
+- 格式：`↑12,345 ↓6,789 ↻1,234 ⊕567`（缓存仅非零时显示，分别用绿色/黄色）
+- 全部为 0 时不显示该行
+
+#### 4. Tool Use 聊天气泡完整内容展示
+- **折叠态**（默认）：`🔧 tool_name1, tool_name2` — 仅显示工具名列表
+- **展开态**：每个工具显示三部分：
+  - 工具名（amber/pink 高亮）
+  - 参数 JSON（`JSON.stringify(input, null, 2)` 格式化，monospace 字体）
+  - 返回结果（带"返回结果"标签，max-h-300px 可滚动）
+- **后端改动**：`allToolCalls.push({ result: result.slice(0, 4000) })` — 存储上限从 500→4000 字符
+  - 流式事件也从 200→4000
+
+### 文件变更
+- `src/lib/chatStore.ts`：+`setAllModelsEnabled` 接口声明和实现
+- `src/components/chat/ChatView.tsx`：弹窗定位、token 统计、tool_use 展开
+- `src/components/chat/ModelDialog.tsx`：一键选择/反选按钮、弹窗定位
+- `src/components/chat/BookmarkDialog.tsx`：弹窗定位
+- `src/app/api/chat/route.ts`：tool result 存储长度 500→4000
+
+### Debug 笔记
+- iOS PWA 弹窗偏移的核心问题：`position: fixed` + `transform` 的元素会创建新的包含块。虽然已用 `createPortal(document.body)` 脱离了 page.tsx 的 AnimatePresence，但弹窗自身的 `-translate-x-1/2 -translate-y-1/2` 在某些 iOS 版本下仍有视觉偏移。改用 `inset-x-0 mx-auto`（水平居中不依赖 transform）+ `top` 固定值更稳定
+- `env(safe-area-inset-top)` 在非 PWA 环境下为 0，`max()` 保证最小值
+- tsc --noEmit 全通过
