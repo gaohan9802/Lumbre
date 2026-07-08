@@ -354,13 +354,6 @@ export function ChatView() {
 
   /* ── key handling ─────────────────────── */
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
   const toggleThinking = (id: string) => {
     setExpandedThinking(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   }
@@ -539,8 +532,9 @@ export function ChatView() {
                       {/* thinking - above bubble, collapsed */}
                       {msg.thinking && (
                         <>
-                          <button onClick={() => toggleThinking(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                            <ChevronDown size={12} className={`transition-transform ${expandedThinking.has(msg.id) ? '' : '-rotate-90'}`} /> Thinking
+                          <button onClick={() => toggleThinking(msg.id)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                            <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${expandedThinking.has(msg.id) ? '' : '-rotate-90'}`} />
+                            <span className="truncate">💭 {expandedThinking.has(msg.id) ? 'Thinking' : (msg.thinking!.slice(0, 50).replace(/\n/g, ' ') + (msg.thinking!.length > 50 ? '…' : ''))}</span>
                           </button>
                           <AnimatePresence>
                             {expandedThinking.has(msg.id) && (
@@ -558,7 +552,7 @@ export function ChatView() {
                         <>
                           <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
                             <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? '' : '-rotate-90'}`} />
-                            🔧 {msg.tool_calls.length} tool{msg.tool_calls.length > 1 ? 's' : ''}
+                            🔧 {msg.tool_calls.map((tc: any) => tc.name).join(', ')}
                           </button>
                           <AnimatePresence>
                             {expandedTools.has(msg.id) && (
@@ -678,8 +672,8 @@ export function ChatView() {
 
             {/* input area */}
             <div className={`flex items-end gap-2 px-3 py-2 rounded-2xl ${n ? 'bg-night-surface' : 'bg-gray-50'}`}>
-              <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                placeholder="说点什么..." rows={1} enterKeyHint="send"
+              <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
+                placeholder="说点什么..." rows={1} enterKeyHint="enter"
                 className={`flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
               <button onClick={handleSend} disabled={!input.trim() || isLoading}
                 className={`p-2 rounded-xl transition-all flex-shrink-0 ${input.trim() ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
@@ -757,7 +751,7 @@ export function ChatView() {
                     {!filteredModels.length && <div className="text-center text-xs opacity-40 py-8">没有匹配的模型</div>}
                   </div>
                   {/* provider tabs */}
-                  <div className={`flex gap-1 px-4 py-3 border-t overflow-x-auto ${n ? 'border-night-border' : 'border-gray-200'}`}>
+                  <div className={`flex gap-1 px-4 py-3 border-t overflow-x-auto pb-[max(0.75rem,env(safe-area-inset-bottom))] ${n ? 'border-night-border' : 'border-gray-200'}`}>
                     <button onClick={() => setModelFilterProvider(null)}
                       className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${!modelFilterProvider ? (n ? 'bg-night-amber/20 text-night-amber' : 'bg-day-lemon text-day-text font-medium') : 'opacity-60'}`}>全部</button>
                     {providerNames.map(name => (
@@ -786,13 +780,16 @@ export function ChatView() {
               </>
             )}
           </AnimatePresence>
+
+          {/* settings / model / bookmark dialogs */}
+          <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={async (msg, fn) => { const ok = await ask(msg); if (ok) fn() }} />
+          <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
+          <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
         </>,
         document.body,
       )}
 
-      <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={async (msg, fn) => { const ok = await ask(msg); if (ok) fn() }} />
-      <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
-      <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
+
     </>
   )
 }

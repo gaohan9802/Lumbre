@@ -84,13 +84,13 @@ export function ChatSettings({ open, onClose, onConfirm = (msg, fn) => { if (win
     <AnimatePresence>
       {open && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-[70] bg-black/30 backdrop-blur-sm" />
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 280 }}
-            className={`fixed right-0 top-0 bottom-0 w-full sm:w-[480px] z-50 overflow-y-auto ${isNight ? 'bg-night-surface border-l border-night-border' : 'bg-white border-l border-day-border'} pb-[env(safe-area-inset-bottom)]`}
+            className={`fixed right-0 top-0 bottom-0 w-full sm:w-[480px] z-[71] overflow-y-auto ${isNight ? 'bg-night-surface border-l border-night-border' : 'bg-white border-l border-day-border'} pb-[env(safe-area-inset-bottom)]`}
           >
             <div className="sticky top-0 z-10 backdrop-blur-md bg-inherit px-6 pb-4 pt-[max(1rem,env(safe-area-inset-top))] flex items-center justify-between border-b border-current/5">
               <div>

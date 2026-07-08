@@ -117,12 +117,12 @@ export function ModelDialog({ open, onClose }: Props) {
     <AnimatePresence>
       {open && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" />
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 10 }}
-            className={`fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(560px,calc(100vw-2rem))] max-h-[85dvh] overflow-y-auto rounded-2xl shadow-2xl ${isNight ? 'bg-night-card text-night-text' : 'bg-[#faf9f5] text-day-text'}`}
+            className={`fixed z-[71] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(560px,calc(100vw-2rem))] max-h-[85dvh] overflow-y-auto rounded-2xl shadow-2xl ${isNight ? 'bg-night-card text-night-text' : 'bg-[#faf9f5] text-day-text'}`}
           >
             <div className="sticky top-0 z-10 px-6 py-4 flex items-center justify-between backdrop-blur-md bg-inherit border-b border-current/10">
               <h3 className="text-lg font-medium">模型 API 管理</h3>
