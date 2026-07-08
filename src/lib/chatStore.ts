@@ -184,6 +184,7 @@ interface ChatStore {
   setProviderModels: (profileId: string, models: ProviderModel[], merge?: boolean) => void
   toggleModelEnabled: (profileId: string, modelId: string) => void
   addManualModel: (profileId: string, modelId: string) => void
+  setAllModelsEnabled: (profileId: string, enabled: boolean) => void
   updateModelMeta: (profileId: string, modelId: string, patch: Partial<ProviderModel>) => void
 
   addBookmark: (b: Omit<Bookmark, 'id'>) => void
@@ -588,6 +589,14 @@ export const useChatStore = create<ChatStore>()(
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
+      setAllModelsEnabled: (profileId, enabled) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const profiles = settings.apiProfiles.map((p) => p.id === profileId
+          ? { ...p, models: p.models.map((m) => ({ ...m, enabled })) }
+          : p)
+        const nextSettings = bumpConfig(normalizeSettings({ ...settings, apiProfiles: profiles }))
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
       addManualModel: (profileId, modelId) => set((state) => {
         const id = modelId.trim()
         if (!id) return state

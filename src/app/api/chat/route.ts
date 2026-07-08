@@ -307,7 +307,7 @@ async function proxyAnthropic(params: {
     const toolResults = await Promise.all(
       toolUses.map(async (tu) => {
         const result = await executeTool(tu.name, tu.input)
-        allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 500) })
+        allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 4000) })
         return { type: 'tool_result' as const, tool_use_id: tu.id, content: summarizeToolResult(result) }
       }),
     )
@@ -448,8 +448,8 @@ async function streamAnthropic(params: {
     const toolResults = await Promise.all(
       toolUses.map(async (tu) => {
         const result = await executeTool(tu.name, tu.input)
-        allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 500) })
-        send('tool_call', { name: tu.name, input: tu.input, result: result.slice(0, 200) })
+        allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 4000) })
+        send('tool_call', { name: tu.name, input: tu.input, result: result.slice(0, 4000) })
         return { type: 'tool_result' as const, tool_use_id: tu.id, content: summarizeToolResult(result) }
       }),
     )
@@ -566,7 +566,7 @@ async function proxyOpenAI(params: {
         let fnArgs: Record<string, any> = {}
         try { fnArgs = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
         const result = await executeTool(fnName, fnArgs)
-        allToolCalls.push({ name: fnName, input: fnArgs, result: result.slice(0, 500) })
+        allToolCalls.push({ name: fnName, input: fnArgs, result: result.slice(0, 4000) })
         return { role: 'tool' as const, tool_call_id: tc.id, content: summarizeToolResult(result) }
       }),
     )
@@ -705,7 +705,7 @@ async function streamOpenAI(params: {
         let fnArgs: Record<string, any> = {}
         try { fnArgs = JSON.parse(tc.args || '{}') } catch { /* empty */ }
         const result = await executeTool(tc.name, fnArgs)
-        send('tool_call', { name: tc.name, input: fnArgs, result: result.slice(0, 200) })
+        send('tool_call', { name: tc.name, input: fnArgs, result: result.slice(0, 4000) })
         return { role: 'tool' as const, tool_call_id: tc.id, content: summarizeToolResult(result) }
       }),
     )

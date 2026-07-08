@@ -38,6 +38,7 @@ export function ModelDialog({ open, onClose }: Props) {
     setActiveModel,
     setProviderModels,
     toggleModelEnabled,
+    setAllModelsEnabled,
     addManualModel,
     updateModelMeta,
   } = useChatStore()
@@ -122,7 +123,8 @@ export function ModelDialog({ open, onClose }: Props) {
             initial={{ opacity: 0, scale: 0.96, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 10 }}
-            className={`fixed z-[71] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(560px,calc(100vw-2rem))] max-h-[85dvh] overflow-y-auto rounded-2xl shadow-2xl ${isNight ? 'bg-night-card text-night-text' : 'bg-[#faf9f5] text-day-text'}`}
+            className={`fixed z-[71] inset-x-0 mx-auto w-[min(560px,calc(100vw-2rem))] max-h-[80dvh] overflow-y-auto rounded-2xl shadow-2xl ${isNight ? 'bg-night-card text-night-text' : 'bg-[#faf9f5] text-day-text'}`}
+            style={{ top: 'max(calc(env(safe-area-inset-top, 0px) + 10dvh), 10dvh)' }}
           >
             <div className="sticky top-0 z-10 px-6 py-4 flex items-center justify-between backdrop-blur-md bg-inherit border-b border-current/10">
               <h3 className="text-lg font-medium">模型 API 管理</h3>
@@ -197,6 +199,16 @@ export function ModelDialog({ open, onClose }: Props) {
 
                     {expanded && (
                       <div className="px-4 pb-4 space-y-2 border-t border-current/5 pt-3">
+                        <div className="flex gap-2 mb-2">
+                          <button
+                            onClick={() => setAllModelsEnabled(p.id, true)}
+                            className={`px-3 py-1.5 rounded-lg text-xs ${isNight ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-gray-100 hover:bg-gray-200'}`}
+                          >一键全选</button>
+                          <button
+                            onClick={() => setAllModelsEnabled(p.id, false)}
+                            className={`px-3 py-1.5 rounded-lg text-xs ${isNight ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-gray-100 hover:bg-gray-200'}`}
+                          >一键反选</button>
+                        </div>
                         <div className="grid grid-cols-1 gap-2">
                           <input className={inputClass} value={p.name} placeholder="名称" onChange={(e) => updateApiProfile(p.id, { name: e.target.value })} />
                           <input className={inputClass} value={p.baseUrl} placeholder="Base URL" onChange={(e) => updateApiProfile(p.id, { baseUrl: e.target.value })} />

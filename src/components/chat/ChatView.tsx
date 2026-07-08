@@ -547,7 +547,7 @@ export function ChatView() {
                         </>
                       )}
 
-                      {/* tool calls - above bubble, collapsed */}
+                      {/* tool calls - above bubble, collapsed with full content */}
                       {msg.tool_calls && msg.tool_calls.length > 0 && (
                         <>
                           <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
@@ -559,11 +559,23 @@ export function ChatView() {
                               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                                 <div className={`text-xs space-y-1.5 p-2 rounded-xl ${n ? 'bg-night-surface/80' : 'bg-gray-50'}`}>
                                   {msg.tool_calls.map((tc: any, i: number) => (
-                                    <div key={i} className={`p-2 rounded-lg ${n ? 'bg-night-card' : 'bg-white'}`}>
-                                      <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{tc.name}</span>
-                                      <span className="opacity-40 ml-1.5 text-[10px]">
-                                        {Object.entries(tc.input || {}).filter(([,v]) => v).map(([k,v]) => `${k}=${typeof v === 'string' ? v.slice(0,30) : JSON.stringify(v).slice(0,30)}`).join(', ')}
-                                      </span>
+                                    <div key={i} className={`p-2 rounded-lg space-y-1.5 ${n ? 'bg-night-card' : 'bg-white'}`}>
+                                      <div>
+                                        <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{tc.name}</span>
+                                      </div>
+                                      {tc.input && Object.keys(tc.input).length > 0 && (
+                                        <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
+                                          {JSON.stringify(tc.input, null, 2)}
+                                        </pre>
+                                      )}
+                                      {tc.result && (
+                                        <div className={`mt-1 pt-1.5 border-t ${n ? 'border-night-border' : 'border-gray-200'}`}>
+                                          <span className="text-[10px] opacity-40 block mb-1">返回结果</span>
+                                          <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded max-h-[300px] overflow-y-auto ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
+                                            {tc.result}
+                                          </pre>
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -660,14 +672,31 @@ export function ChatView() {
 
           {/* footer */}
           <div className={`p-4 border-t backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
-            {/* total layers */}
-            <div className={`text-[10px] mb-2 px-1 flex justify-between ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-              <span>共 {messages.length} 层</span>
-              <div className="flex gap-2">
-                <button onClick={() => setBookmarkDialogOpen(true)} className="opacity-60 hover:opacity-100 flex items-center gap-1" title="书签">
-                  <BookMarked size={11} /> 书签{settings.bookmarks.length > 0 ? ` (${settings.bookmarks.length})` : ''}
-                </button>
+            {/* total layers + session token stats */}
+            <div className={`text-[10px] mb-2 px-1 space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+              <div className="flex justify-between">
+                <span>共 {messages.length} 层</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setBookmarkDialogOpen(true)} className="opacity-60 hover:opacity-100 flex items-center gap-1" title="书签">
+                    <BookMarked size={11} /> 书签{settings.bookmarks.length > 0 ? ` (${settings.bookmarks.length})` : ''}
+                  </button>
+                </div>
               </div>
+              {(() => {
+                const totIn = messages.reduce((s, m) => s + (m.input_tokens || 0), 0)
+                const totOut = messages.reduce((s, m) => s + (m.output_tokens || 0), 0)
+                const totCacheR = messages.reduce((s, m) => s + (m.cache_read_tokens || 0), 0)
+                const totCacheW = messages.reduce((s, m) => s + (m.cache_creation_tokens || 0), 0)
+                if (totIn === 0 && totOut === 0) return null
+                return (
+                  <div className="flex flex-wrap gap-x-2 opacity-60">
+                    <span title="总输入tokens">↑{totIn.toLocaleString()}</span>
+                    <span title="总输出tokens">↓{totOut.toLocaleString()}</span>
+                    {totCacheR > 0 && <span className="text-green-500" title="总缓存读取">↻{totCacheR.toLocaleString()}</span>}
+                    {totCacheW > 0 && <span className="text-yellow-500" title="总缓存写入">⊕{totCacheW.toLocaleString()}</span>}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* input area */}
@@ -704,7 +733,7 @@ export function ChatView() {
             {sessionDrawerOpen && (
               <>
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSessionDrawerOpen(false)} className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-sm lg:hidden" />
-                <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 30, stiffness: 280 }} className="fixed left-0 top-0 bottom-0 z-[61] lg:hidden">
+                <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 30, stiffness: 280 }} className="fixed left-0 top-0 bottom-0 z-[61] lg:hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
                   <SidebarContent mobile />
                 </motion.div>
               </>
@@ -719,7 +748,8 @@ export function ChatView() {
                 <motion.div
                   initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                   transition={{ type: 'spring', damping: 30, stiffness: 280 }}
-                  className={`fixed bottom-0 left-0 right-0 z-[61] max-h-[65dvh] rounded-t-2xl shadow-2xl flex flex-col ${n ? 'bg-night-card text-night-text' : 'bg-[#faf9f5] text-day-text'}`}>
+                  className={`fixed bottom-0 left-0 right-0 z-[61] max-h-[65dvh] rounded-t-2xl shadow-2xl flex flex-col ${n ? 'bg-night-card text-night-text' : 'bg-[#faf9f5] text-day-text'}`}
+                  style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
                   {/* drag handle */}
                   <div className="flex justify-center pt-2 pb-1"><div className={`w-10 h-1 rounded-full ${n ? 'bg-night-border' : 'bg-gray-300'}`} /></div>
                   {/* search */}
@@ -770,7 +800,8 @@ export function ChatView() {
               <>
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" onClick={() => answer(false)} />
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-                  className={`fixed z-[71] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(340px,calc(100vw-3rem))] rounded-2xl shadow-2xl p-6 ${n ? 'bg-night-card text-night-text' : 'bg-white text-day-text'}`}>
+                  className={`fixed z-[71] inset-x-0 mx-auto w-[min(340px,calc(100vw-3rem))] rounded-2xl shadow-2xl p-6 ${n ? 'bg-night-card text-night-text' : 'bg-white text-day-text'}`}
+                  style={{ top: 'max(env(safe-area-inset-top, 0px) + 30dvh, 30dvh)', transform: 'translateY(-50%)' }}>
                   <p className="text-sm mb-6">{confirmState.msg}</p>
                   <div className="flex justify-end gap-3">
                     <button onClick={() => answer(false)} className="px-4 py-2 text-sm opacity-60 hover:opacity-100">取消</button>
