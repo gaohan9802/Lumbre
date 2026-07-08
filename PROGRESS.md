@@ -789,3 +789,43 @@ OpenAI-compatible 路径 (新):
 - wake route 创建了新文件但 autowake.ts 也是新创建的（之前的 git 跟踪状态）
 - tsc --noEmit 全通过
 
+
+---
+
+## 2026-07-10 — Chat 端 5 项优化（iOS PWA 适配 + UX）
+
+### 完成
+
+#### 1. 弹窗居中修复（iOS PWA）
+- **根因**：ChatSettings/ModelDialog/BookmarkDialog 渲染在 `<ChatView>` 组件树内，而 page.tsx 的 `motion.div`（AnimatePresence 切页动画）带 transform 属性，使 `position: fixed` 以该动画容器为包含块而非 viewport → 弹窗偏移
+- **修复**：将三个弹窗组件移入 `createPortal(document.body)` 块内（与 confirm dialog、session drawer、model picker 一起），彻底脱离 AnimatePresence 的 transform 上下文
+- **z-index 统一**：overlay z-[70] / dialog z-[71]，高于 session drawer (z-[60]/z-[61])，避免层级冲突
+
+#### 2. Enter 键改为换行
+- 移除 `handleKeyDown` 中 Enter 发送逻辑（原来 Enter 不按 Shift 直接发送）
+- 现在 Enter = 纯换行，只能点击发送按钮发送
+- `enterKeyHint` 从 `"send"` 改为 `"enter"`，iOS 键盘显示换行图标
+
+#### 3. 模型选择器底部安全区
+- Model picker bottom sheet 的 provider tabs 区域添加 `pb-[max(0.75rem,env(safe-area-inset-bottom))]`
+- 解决 iOS PWA 下底部 home indicator 遮盖最后一行模型的问题
+
+#### 4. 工具调用折叠摘要
+- Collapsed 状态从 `🔧 N tools` 改为 `🔧 tool_name1, tool_name2, ...`（显示实际工具名）
+- 展开后显示每个工具的名称 + 参数摘要
+
+#### 5. 思考链折叠摘要
+- Collapsed 状态从 `Thinking` 改为 `💭 {前50字预览}…`（显示思考内容片段）
+- 展开后显示完整思考内容
+
+### 关于跨设备同步
+- **已有机制**：ChatSync 组件挂载时同步 + 45s 轮询 + 本地变更 2.5s debounce
+- **所有会话**都经 `/api/sync` → `/persistent/chat-sync.json` 保存
+- sessions 按 `updatedAt` 新者胜 + tombstone 防删除复活
+- config（API/prompt/appearance/bookmarks）按 `configUpdatedAt` 新者胜
+- 数据永久保存在 Zeabur `/persistent` 卷
+
+### Debug 笔记
+- `createPortal(document.body)` 内的组件 z-index 不受父组件 stacking context 影响，是解决 transform 包含块问题的标准方案
+- 三个弹窗各自内部有 AnimatePresence 管理 open/close 动画，portal 后动画正常工作
+- tsc --noEmit 全通过
