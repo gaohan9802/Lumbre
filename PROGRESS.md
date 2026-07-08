@@ -638,3 +638,78 @@ OpenAI-compatible 路径 (新):
 - 应用容器的 `/persistent/buckets/` 里有旧 OmbreBrain 的遗留文件（子目录 + 配置 JSON），这些不是桶但会被 `.json` 过滤器匹配
 - `loadAllBuckets()` 的 `normalizeBucket()` 会正确跳过非桶 JSON 文件（无 `id` 字段返回 null）
 - seed 文件路径 `/src/src/seed/buckets.json` 在 standalone build 中通过 `outputFileTracingIncludes` 被正确包含
+
+---
+
+## 2026-07-10 — Chat 端 9 项大改
+
+### 完成
+
+#### 1. 模型 API 管理重做
+- **ModelDialog**（居中弹窗）保留：添加/删除 API，填写名称/供应商/BaseURL/Key/模型名/价格
+- **模型选择器**改为底部 sheet（`modelPickerOpen`）：搜索框 + 模型列表（provider·model 格式）+ 底部 provider tabs 过滤
+- 聊天输入框下方显示当前模型 chip + "模型API管理"入口
+- 切换模型不影响聊天内容
+
+#### 2. 设置修复
+- **流式输出**：完整实现 Anthropic + OpenAI 双通道 SSE 流式
+  - 后端：`stream: true` → `text/event-stream`，自定义事件格式 `{type: text|thinking|tool_call|done|error}`
+  - Anthropic 流式解析上游 SSE 事件（content_block_delta/message_delta 等）
+  - OpenAI 流式解析 delta chunks
+  - Tool-use 循环在流式模式下也正常工作（工具执行期间发 tool_call 事件）
+  - 前端：fetch + ReadableStream reader 解析 SSE，逐字更新 streamText/streamThinking
+- **背景图片**：`appearance.bgImage` 现在实际应用到聊天区域
+  - 外层 div 设 backgroundImage
+  - 叠加半透明遮罩层（夜间深色/日间白色），透明度由 bgOpacity 控制
+  - 用户/AI 气泡颜色也通过 style 应用
+
+#### 3. 删除 sidebar 冗余入口
+- 移除会话列表底部的"模型 / 人设 / 上下文"按钮
+- 模型管理入口改为输入框下方的 chip
+
+#### 4. 聊天气泡改进
+- AI 气泡显示模型名 + token 统计，user 气泡不显示模型
+- 双方气泡都有操作按钮：🔄重试 | 🗑删除 | 📋复制
+  - 重试/删除需确认（自定义 confirm 弹窗，替代原生 confirm）
+  - 重试后保留所有版本，版本切换器 `‹ 2/3 ›` 显示在气泡下方
+- User 气泡额外有 ✏️修改按钮（不需确认），修改后保留所有版本
+
+#### 5. Thinking + tool_use 显示
+- 都显示在气泡上方，默认折叠（箭头指向右 = 折叠，指向下 = 展开）
+- Tool calls 只显示工具名 + 参数摘要，不显示完整返回值
+
+#### 6. 时间戳
+- 双方气泡都显示完整时间戳：`YYYY/MM/DD HH:mm:ss`
+- 时间戳显示在气泡最上方（thinking 之前）
+- AI 可读取时间：消息发送时自动在 content 前加 `[时间戳]` 前缀
+
+#### 7. Tool_use 返回优化
+- `summarizeToolResult()` 函数：>300 字符的返回值自动摘要，去除 HTML 标签
+- 前端 tool_calls 展示只显示名称和简短参数，不显示完整结果
+- 工具循环中传给下一轮的 tool_result 使用摘要版本
+
+#### 8. 全部层数显示
+- 输入框上方左侧显示"共 N 层"
+- 右侧显示书签入口
+
+#### 9. 书签系统（世界书）
+- **BookmarkDialog**：居中弹窗，完整 CRUD
+- 每个书签包含：名称（用户可见，AI不可见）、关键词（逗号分隔）、内容、注入位置（开头/末尾）、扫描深度、优先级、常驻开关
+- `getTriggeredBookmarks()` 函数：扫描最近 N 条消息匹配关键词，常驻书签永远触发
+- 触发的书签内容注入到 system prompt 末尾
+- 书签数据存入 `ChatSettings.bookmarks`，经 config sync 跨端同步
+
+### 文件变更
+- `src/lib/chatStore.ts`：新增 `Bookmark` 接口、CRUD actions、`getTriggeredBookmarks()`，persist version 6→7
+- `src/components/chat/ChatView.tsx`：完整重写（约 500 行），含以上所有 UI 改动
+- `src/components/chat/BookmarkDialog.tsx`：新文件，书签管理弹窗
+- `src/components/chat/ChatSettings.tsx`：更新流式描述文案
+- `src/app/api/chat/route.ts`：新增 `streamAnthropic()` / `streamOpenAI()` + `summarizeToolResult()`
+
+### Debug 笔记
+- `createPortal(document.body)` 需要 `mounted` state 守卫（useEffect 置 true），防 SSR build 报错
+- Anthropic 流式 tool_use 的 input 通过 `input_json_delta` 逐段拼接，需按 `content_block` index 分桶累积
+- OpenAI 流式 tool_calls 的 `arguments` 也是分段的，需按 index 累积
+- `useConfirm` hook 用 Promise 包装确认弹窗，比回调式更清晰
+- 背景图用 CSS backgroundImage 而非 `<img>` 标签，避免 z-index 和交互问题
+- tsc --noEmit 全通过
