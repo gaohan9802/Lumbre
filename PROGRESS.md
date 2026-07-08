@@ -875,3 +875,79 @@ OpenAI-compatible 路径 (新):
 - iOS PWA 弹窗偏移的核心问题：`position: fixed` + `transform` 的元素会创建新的包含块。虽然已用 `createPortal(document.body)` 脱离了 page.tsx 的 AnimatePresence，但弹窗自身的 `-translate-x-1/2 -translate-y-1/2` 在某些 iOS 版本下仍有视觉偏移。改用 `inset-x-0 mx-auto`（水平居中不依赖 transform）+ `top` 固定值更稳定
 - `env(safe-area-inset-top)` 在非 PWA 环境下为 0，`max()` 保证最小值
 - tsc --noEmit 全通过
+
+---
+
+## 2026-07-12 — Chat 端 8 项优化
+
+### 完成
+
+#### 1. 删除消息三选项
+- 点击删除按钮后弹出下拉菜单，提供三个选项：
+  - **删除此条**：仅删除当前消息
+  - **删除此前所有消息**：调用 `truncateFrom(id)` + `deleteMessage(id)` 清除该消息及之前所有消息
+  - **删除全部消息**：调用 `clearMessages()` 清空当前会话
+- "删除此前"和"删除全部"有二次确认弹窗
+- 点击消息区域其他位置自动关闭删除菜单
+
+#### 2. Token 统计修复 + 增强
+- 底栏 token 统计不再隐藏（移除 `if totIn === 0 && totOut === 0 return null` 条件）
+- 新增 **Σ 总 tokens** 显示（输入+输出合计）
+- 仅统计 assistant 消息的 token（user 消息无 token 数据）
+- 数字格式化为千分位（`toLocaleString()`）
+- 每条 AI 消息的 token 显示条件改为 `input_tokens > 0`（更精确）
+
+#### 3. 模型 API 拉取修复
+- `/api/models` 路由支持更多响应格式：
+  - `{ data: [...] }`（OpenAI 标准）
+  - `[...]`（直接数组）
+  - `{ models: [...] }`（部分提供商）
+  - `{ data: { models: [...] } }`（嵌套格式）
+- 模型 ID 识别增加 `m.model` 字段（部分提供商用这个代替 `m.id`）
+- Anthropic 硬编码列表补充 `claude-3-5-sonnet-20241022`
+- 拉取成功时显示绿色提示 `✓ 成功拉取 N 个模型`
+- 空列表 / 解析失败有明确错误提示
+- 返回 `_debug` 字段用于诊断
+
+#### 4. Reasoning 桥接层
+- **所有模型默认启用思考链**（universal reasoning bridge）
+- Anthropic 路径：`thinking: { type: 'enabled', budget_tokens }` 始终发送
+- OpenAI-compatible 路径：`reasoning: { max_tokens }` 始终发送
+- 默认 budget：8000 tokens（如果用户设了更高值则使用用户值）
+- 四条代码路径（Anthropic 非流式/流式 + OpenAI 非流式/流式）全部统一
+- 不支持 reasoning 字段的提供商通常会忽略该参数
+
+#### 5. 关于自动创建新会话
+- 排查确认：代码中 `createSession()` 仅在用户点击"新对话"按钮时调用，无自动创建逻辑
+- 默认会话（`session-default`）在首次加载时创建，之后通过 persist 恢复
+- 如果看到空的"新的对话"，可能是因为上次删除了所有会话后自动创建的兜底会话
+
+#### 6. 气泡宽度 — 两侧等距
+- 移除 `justify-end`（用户消息右对齐）和 `justify-start`（AI 消息左对齐）
+- 气泡从 `max-w-[85%]` 改为 `w-full`，两侧等距
+- 操作按钮统一 `justify-start`
+- 消息区域 padding：移动端 `px-4`，桌面 `md:px-6`
+
+#### 7. 字体增大
+- 气泡内文字从 `text-sm`（14px）改为 `text-[15px]`
+- `leading-relaxed` 行距保持不变
+
+#### 8. 流式输出闪烁省略号
+- 新增 CSS 动画 `stream-cursor`：1s 周期，正弦渐隐渐现
+- 流式文本末尾追加 `<span class="stream-cursor">…</span>`
+- 流式思考文本末尾同样追加闪烁省略号
+- 非流式加载状态保持三点弹跳动画不变（区分"等待响应"和"正在生成"）
+
+### 文件变更
+- `src/components/chat/ChatView.tsx`：删除菜单、气泡宽度、字体、token 显示、流式省略号
+- `src/app/api/chat/route.ts`：reasoning 桥接层（4 处修改）
+- `src/app/api/models/route.ts`：多格式解析 + Anthropic 模型列表补充
+- `src/components/chat/ModelDialog.tsx`：拉取成功/失败提示增强
+- `src/styles/globals.css`：stream-cursor 动画
+
+### Debug 笔记
+- `truncateFrom` 和 `clearMessages` 需从 chatStore 额外解构（之前 ChatView 没引用）
+- Token 统计只对 `role === 'assistant'` 的消息聚合，因为 user 消息不携带 token 数据
+- reasoning 桥接对不支持 thinking 的模型（如旧版 Claude 3 Haiku）可能导致 API 错误；用户可在设置中将 thinkingBudget 设为 0 关闭，route.ts 仍会兜底到 8000——后续如有反馈再加开关
+- `stream-cursor` 用 CSS keyframes 而非 Tailwind animate-pulse，因为 pulse 的效果是缩放+透明度，不够像 Anthropic 主页的纯透明度闪烁
+- tsc --noEmit 全通过
