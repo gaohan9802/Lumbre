@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ALL_TOOLS, executeTool, ToolCallResult } from '@/server/tools'
+import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef } from '@/server/tools'
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
 你有以下能力，可以随时使用：
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (provider === 'openai-compatible') {
-      return proxyOpenAI({ messages, system, model, apiKey, baseUrl, thinking_budget })
+      return proxyOpenAI({ messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled })
     }
 
     return proxyAnthropic({
@@ -220,57 +220,154 @@ async function proxyAnthropic(params: {
   })
 }
 
-// ── OpenAI-compatible (no tools for now) ────────────────
+// ── OpenAI-compatible with tool-use loop ────────────────
+
+/** Convert Anthropic tool schema to OpenAI function-calling format */
+function toolsToOpenAI(tools: ToolDef[]) {
+  return tools.map(t => ({
+    type: 'function' as const,
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.input_schema,
+    },
+  }))
+}
 
 async function proxyOpenAI(params: {
   messages: any[]; system?: string; model: string;
-  apiKey: string; baseUrl: string; thinking_budget?: number;
+  apiKey: string; baseUrl: string; thinking_budget?: number; tools_enabled?: boolean;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true } = params
 
-  const builtMessages = [
-    ...(system?.trim() ? [{ role: 'system', content: system }] : []),
+  const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
+
+  const builtMessages: any[] = [
+    { role: 'system', content: effectiveSystem },
     ...messages.map((m: any) => ({ role: m.role, content: m.content })),
   ]
 
-  const body: any = { model, messages: builtMessages, max_tokens: 16000 }
-
-  if (typeof thinking_budget === 'number' && thinking_budget > 0) {
-    body.reasoning = { max_tokens: thinking_budget }
+  const openaiTools = toolsToOpenAI(ALL_TOOLS)
+  const url = `${normalizeOpenAIBase(baseUrl)}/chat/completions`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+    'HTTP-Referer': 'https://lumbre.zeabur.app',
+    'X-Title': 'Lumbre',
   }
 
-  const res = await fetch(`${normalizeOpenAIBase(baseUrl)}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://lumbre.zeabur.app',
-      'X-Title': 'Lumbre',
-    },
-    body: JSON.stringify(body),
-  })
+  let loopMessages = [...builtMessages]
+  let allThinking = ''
+  const allToolCalls: ToolCallResult[] = []
+  let totalUsage = { prompt: 0, completion: 0, cached: 0 }
 
-  if (!res.ok) {
-    const errText = await res.text()
-    return NextResponse.json(
-      { error: `Upstream ${res.status}: ${errText.slice(0, 800)}` },
-      { status: res.status },
+  const MAX_ITERATIONS = 15
+
+  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    const body: any = {
+      model,
+      messages: loopMessages,
+      max_tokens: 16000,
+      ...(tools_enabled ? { tools: openaiTools } : {}),
+    }
+
+    if (typeof thinking_budget === 'number' && thinking_budget > 0) {
+      body.reasoning = { max_tokens: thinking_budget }
+    }
+
+    console.log('[OPENAI CHAT]', JSON.stringify({
+      model, iter,
+      messages_count: loopMessages.length,
+      tools_count: openaiTools.length,
+    }))
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      return NextResponse.json(
+        { error: `Upstream ${res.status}: ${errText.slice(0, 800)}` },
+        { status: res.status },
+      )
+    }
+
+    const data = await res.json()
+    const usage = data.usage || {}
+    totalUsage.prompt += usage.prompt_tokens || 0
+    totalUsage.completion += usage.completion_tokens || 0
+    totalUsage.cached += usage.prompt_tokens_details?.cached_tokens || 0
+
+    const choice = data.choices?.[0]
+    const msg = choice?.message
+    if (!msg) {
+      return NextResponse.json({
+        content: '(no response from model)',
+        input_tokens: totalUsage.prompt,
+        output_tokens: totalUsage.completion,
+      })
+    }
+
+    // Collect thinking
+    const iterThinking = msg.reasoning_content || msg.reasoning || msg.thinking || ''
+    if (iterThinking) {
+      allThinking += (allThinking ? '\n---\n' : '') + iterThinking
+    }
+
+    // Extract text content
+    const iterText = Array.isArray(msg.content)
+      ? msg.content.map((p: any) => p?.text || '').join('')
+      : msg.content || ''
+
+    // Check for tool calls
+    const toolCalls = msg.tool_calls
+    if (!toolCalls || toolCalls.length === 0) {
+      return NextResponse.json({
+        content: iterText,
+        thinking: allThinking || undefined,
+        tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
+        input_tokens: totalUsage.prompt,
+        output_tokens: totalUsage.completion,
+        cache_read_tokens: totalUsage.cached || undefined,
+      })
+    }
+
+    // Execute tools in parallel
+    const toolResults = await Promise.all(
+      toolCalls.map(async (tc: any) => {
+        const fnName = tc.function?.name || ''
+        let fnArgs: Record<string, any> = {}
+        try {
+          fnArgs = JSON.parse(tc.function?.arguments || '{}')
+        } catch { /* empty */ }
+
+        const result = await executeTool(fnName, fnArgs)
+        allToolCalls.push({
+          name: fnName,
+          input: fnArgs,
+          result: result.slice(0, 2000),
+        })
+        return {
+          role: 'tool' as const,
+          tool_call_id: tc.id,
+          content: result,
+        }
+      }),
     )
-  }
 
-  const data = await res.json()
-  const msg = data.choices?.[0]?.message
-  const content = Array.isArray(msg?.content)
-    ? msg.content.map((p: any) => p?.text || '').join('')
-    : msg?.content || ''
-  const thinking = msg?.reasoning_content || msg?.reasoning || msg?.thinking || ''
-  const usage = data.usage || {}
+    // Append assistant message (with tool_calls) + tool results
+    loopMessages.push(msg)
+    loopMessages.push(...toolResults)
+  }
 
   return NextResponse.json({
-    content,
-    thinking: thinking || undefined,
-    input_tokens: usage.prompt_tokens,
-    output_tokens: usage.completion_tokens,
-    cache_read_tokens: usage.prompt_tokens_details?.cached_tokens,
+    content: '(tool loop reached max iterations)',
+    thinking: allThinking || undefined,
+    tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
+    input_tokens: totalUsage.prompt,
+    output_tokens: totalUsage.completion,
   })
 }
