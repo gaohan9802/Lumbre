@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { getNetwork } from '../../../../server/brain'
 export async function GET() {

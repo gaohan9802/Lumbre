@@ -171,6 +171,7 @@ export function loadAllBuckets(): Bucket[] {
   }
 
   const files = fs.readdirSync(BUCKETS_DIR).filter(f => f.endsWith('.json') && f !== '_index.json')
+  console.log(`[brain] loadAllBuckets: found ${files.length} files in ${BUCKETS_DIR}`)
   const map = new Map<string, Bucket>()
 
   for (const file of files) {
@@ -183,6 +184,7 @@ export function loadAllBuckets(): Bucket[] {
 
   bucketCache = map
   cacheLoadedAt = Date.now()
+  console.log(`[brain] loadAllBuckets: loaded ${map.size} buckets`)
   return Array.from(map.values())
 }
 

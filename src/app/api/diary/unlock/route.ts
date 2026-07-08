@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { unlockDiary, hasPassword } from '@/server/diary-store'
 
