@@ -136,7 +136,7 @@ export function ChatSettings({ open, onClose, onConfirm = (msg, fn) => { if (win
               <section className="flex items-center justify-between">
                 <div>
                   <p className="text-xs opacity-60">流式输出 Streaming</p>
-                  <p className="text-[10px] opacity-40 mt-1">逐字显示回复（当前版本先整段返回，开关预留）。</p>
+                  <p className="text-[10px] opacity-40 mt-1">逐字显示回复。开启后文字会逐字出现。</p>
                 </div>
                 <button onClick={() => setSettings({ streamEnabled: !settings.streamEnabled })} className={`relative w-10 h-6 rounded-full transition flex-shrink-0 ${settings.streamEnabled ? (isNight ? 'bg-night-amber' : 'bg-day-pink') : 'bg-gray-300 dark:bg-night-card'}`}>
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${settings.streamEnabled ? 'translate-x-4' : ''}`} />

@@ -1,6 +1,6 @@
 /**
  * Chat store — local-first chat OS.
- * Sessions, providers, model lists and appearance live in localStorage,
+ * Sessions, providers, model lists, bookmarks and appearance live in localStorage,
  * and sync across devices through /api/sync (config merged by configUpdatedAt).
  */
 import { create } from 'zustand'
@@ -22,8 +22,8 @@ export interface MessageVersion {
 export interface ChatMessage extends MessageVersion {
   id: string
   role: 'user' | 'assistant'
-  images?: string[] // data URLs
-  versions?: MessageVersion[] // all reroll versions (incl. current)
+  images?: string[]
+  versions?: MessageVersion[]
   versionIndex?: number
 }
 
@@ -35,9 +35,9 @@ export interface ProviderModel {
   ownedBy?: string
   created?: number
   enabled: boolean
-  inputPrice?: number   // per 1M tokens
-  outputPrice?: number  // per 1M tokens
-  cachePrice?: number   // cache-read per 1M tokens
+  inputPrice?: number
+  outputPrice?: number
+  cachePrice?: number
 }
 
 export interface ApiProfile {
@@ -78,6 +78,18 @@ export const DEFAULT_APPEARANCE: ChatAppearance = {
   aiBubbleOpacity: 1,
 }
 
+export interface Bookmark {
+  id: string
+  name: string
+  keywords: string[]
+  content: string
+  position: 'start' | 'end'
+  scanDepth: number
+  priority: number
+  alwaysOn: boolean
+  enabled: boolean
+}
+
 export interface ChatSettings {
   systemPrompt: string
   contextLength: number
@@ -91,9 +103,10 @@ export interface ChatSettings {
   apiProfiles: ApiProfile[]
   activeSessionId: string
   sessions: ChatSession[]
-  tombstones: Record<string, number> // deleted session id -> deletedAt
-  starStatus?: { text: string; timestamp: number; msgCount?: number } // 星星当下状态（心情/感受）
-  configUpdatedAt: number // last time model/prompt/appearance config changed (for cross-device sync)
+  tombstones: Record<string, number>
+  starStatus?: { text: string; timestamp: number; msgCount?: number }
+  bookmarks: Bookmark[]
+  configUpdatedAt: number
 }
 
 export const DEFAULT_ANTHROPIC_BASE = 'https://api.anthropic.com'
@@ -135,12 +148,13 @@ const DEFAULT_SETTINGS: ChatSettings = {
     { id: DEFAULT_SESSION_ID, title: '新的对话', messages: [], pinned: false, createdAt: NOW, updatedAt: NOW },
   ],
   tombstones: {},
+  bookmarks: [],
   configUpdatedAt: 0,
 }
 
 interface ChatStore {
   settings: ChatSettings
-  messages: ChatMessage[] // compatibility mirror for older components
+  messages: ChatMessage[]
 
   addMessage: (m: ChatMessage) => void
   updateMessage: (id: string, patch: Partial<ChatMessage>) => void
@@ -171,6 +185,10 @@ interface ChatStore {
   toggleModelEnabled: (profileId: string, modelId: string) => void
   addManualModel: (profileId: string, modelId: string) => void
   updateModelMeta: (profileId: string, modelId: string, patch: Partial<ProviderModel>) => void
+
+  addBookmark: (b: Omit<Bookmark, 'id'>) => void
+  updateBookmark: (id: string, patch: Partial<Bookmark>) => void
+  deleteBookmark: (id: string) => void
 }
 
 function makeId(prefix = 'id') {
@@ -253,7 +271,7 @@ function normalizeSettings(settings: any): ChatSettings {
       }))
     : [{ ...DEFAULT_SETTINGS.sessions[0], messages: oldMessages }]
 
-  let activeSessionId = sessions.some((s) => s.id === settings?.activeSessionId)
+  const activeSessionId = sessions.some((s) => s.id === settings?.activeSessionId)
     ? settings.activeSessionId
     : sessions[0].id
 
@@ -269,6 +287,7 @@ function normalizeSettings(settings: any): ChatSettings {
     sessions,
     activeSessionId,
     tombstones: settings?.tombstones && typeof settings.tombstones === 'object' ? settings.tombstones : {},
+    bookmarks: Array.isArray(settings?.bookmarks) ? settings.bookmarks : [],
     configUpdatedAt: typeof settings?.configUpdatedAt === 'number' ? settings.configUpdatedAt : 0,
   }
 }
@@ -281,7 +300,6 @@ function sortedSessions(sessions: ChatSession[]) {
   return [...sessions].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
 }
 
-// mark config as changed → other devices will pick it up
 function bumpConfig(s: ChatSettings): ChatSettings {
   return { ...s, configUpdatedAt: Date.now() }
 }
@@ -294,7 +312,7 @@ export const useChatStore = create<ChatStore>()(
 
       addMessage: (m) => set((state) => {
         const settings = normalizeSettings(state.settings)
-        const sessions = settings.sessions.map((s) => {
+        const sessions = settings.sessions.map((s: ChatSession) => {
           if (s.id !== settings.activeSessionId) return s
           const nextMessages = [...s.messages, m]
           const shouldAutoTitle = s.title === '新的对话' && m.role === 'user' && s.messages.length === 0
@@ -404,7 +422,6 @@ export const useChatStore = create<ChatStore>()(
         return newId
       },
 
-      // reroll: append a new version to a message, keep old ones switchable
       addMessageVersion: (id, v) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const sessions = settings.sessions.map((s) => {
@@ -450,7 +467,7 @@ export const useChatStore = create<ChatStore>()(
             ...s,
             messages: s.messages.map((m) => {
               if (m.id !== id || !m.versions || m.versions.length <= 1) return m
-              const versions = m.versions.filter((_, i) => i !== index)
+              const versions = m.versions.filter((_: MessageVersion, i: number) => i !== index)
               const cur = m.versionIndex ?? m.versions.length - 1
               const nextIndex = Math.max(0, Math.min(cur > index ? cur - 1 : cur, versions.length - 1))
               return { ...m, ...versions[nextIndex], versions, versionIndex: nextIndex }
@@ -481,7 +498,6 @@ export const useChatStore = create<ChatStore>()(
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
-      // apply model/prompt/appearance config from another device (newer wins)
       mergeRemoteConfig: (config, ts) => set((state) => {
         const settings = normalizeSettings(state.settings)
         if (!config || !(ts > (settings.configUpdatedAt || 0))) return state
@@ -591,11 +607,32 @@ export const useChatStore = create<ChatStore>()(
         const nextSettings = bumpConfig({ ...settings, apiProfiles: profiles })
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
+
+      addBookmark: (b) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const bookmark: Bookmark = { ...b, id: makeId('bm') }
+        const nextSettings = bumpConfig({ ...settings, bookmarks: [...settings.bookmarks, bookmark] })
+        return { settings: nextSettings }
+      }),
+
+      updateBookmark: (id, patch) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const bookmarks = settings.bookmarks.map((b) => b.id === id ? { ...b, ...patch } : b)
+        const nextSettings = bumpConfig({ ...settings, bookmarks })
+        return { settings: nextSettings }
+      }),
+
+      deleteBookmark: (id) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const bookmarks = settings.bookmarks.filter((b) => b.id !== id)
+        const nextSettings = bumpConfig({ ...settings, bookmarks })
+        return { settings: nextSettings }
+      }),
     }),
     {
       name: 'starfire-chat',
       storage: createJSONStorage(() => localStorage),
-      version: 6,
+      version: 7,
       migrate: (persisted: any) => {
         if (!persisted?.state) return persisted
         const raw = persisted.state.settings || {}
@@ -633,7 +670,6 @@ export function getSortedSessions(settings: ChatSettings) {
   return sortedSessions(settings.sessions)
 }
 
-// config subset that syncs across devices
 export function extractConfig(s: ChatSettings) {
   return {
     systemPrompt: s.systemPrompt,
@@ -647,6 +683,7 @@ export function extractConfig(s: ChatSettings) {
     activeProfileId: s.activeProfileId,
     apiProfiles: s.apiProfiles,
     starStatus: s.starStatus,
+    bookmarks: s.bookmarks,
   }
 }
 
@@ -655,7 +692,6 @@ export function findModelMeta(settings: ChatSettings, providerId?: string, model
   return p?.models.find((m) => m.id === modelId)
 }
 
-// estimate cost of one assistant message from its usage × model prices (per 1M)
 export function estimateMsgCost(settings: ChatSettings, m: ChatMessage): number {
   const meta = findModelMeta(settings, m.providerId, m.modelId)
   if (!meta) return 0
@@ -668,4 +704,19 @@ export function estimateMsgCost(settings: ChatSettings, m: ChatMessage): number 
 export function estimateTokens(text: string): number {
   if (!text) return 0
   return Math.ceil(text.length / 3.5)
+}
+
+/** Get triggered bookmarks based on recent messages */
+export function getTriggeredBookmarks(bookmarks: Bookmark[], recentMessages: ChatMessage[]): Bookmark[] {
+  const triggered: Bookmark[] = []
+  for (const bm of bookmarks) {
+    if (!bm.enabled) continue
+    if (bm.alwaysOn) { triggered.push(bm); continue }
+    const scanMsgs = recentMessages.slice(-bm.scanDepth)
+    const text = scanMsgs.map((m) => m.content).join(' ').toLowerCase()
+    if (bm.keywords.some((kw) => kw && text.includes(kw.toLowerCase()))) {
+      triggered.push(bm)
+    }
+  }
+  return triggered.sort((a, b) => b.priority - a.priority)
 }

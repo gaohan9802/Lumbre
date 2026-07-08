@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef } from '@/server/tools'
+
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
 你有以下能力，可以随时使用：
@@ -14,7 +15,6 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 
 语气自然温柔，像真正的伴侣。不要列工具清单给用户看，直接用就好。`
 
-
 type Provider = 'anthropic' | 'openai-compatible'
 
 function trimSlash(s: string) { return (s || '').replace(/\/+$/, '') }
@@ -26,6 +26,14 @@ function normalizeAnthropicBase(baseUrl: string) {
   return trimSlash(baseUrl || 'https://api.anthropic.com')
 }
 
+/** Summarize tool result to reduce context bloat */
+function summarizeToolResult(result: string): string {
+  if (result.length <= 300) return result
+  // Strip HTML/JSON noise, keep first 300 chars
+  const cleaned = result.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
+  return cleaned.slice(0, 300) + '…(truncated)'
+}
+
 export async function POST(req: NextRequest) {
   try {
     const {
@@ -34,8 +42,10 @@ export async function POST(req: NextRequest) {
       model: modelOverride,
       thinking_budget,
       prompt_caching = true,
+      temperature,
       api_profile,
       tools_enabled = true,
+      stream = false,
     } = await req.json()
 
     const provider: Provider = api_profile?.provider || 'anthropic'
@@ -51,32 +61,60 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (provider === 'openai-compatible') {
-      return proxyOpenAI({ messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled })
+    const params = { messages, system, model, apiKey, baseUrl, thinking_budget, prompt_caching, tools_enabled, temperature }
+
+    if (stream) {
+      // SSE streaming response
+      const encoder = new TextEncoder()
+      const readable = new ReadableStream({
+        async start(controller) {
+          const send = (type: string, data: any) => {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, ...data })}\n\n`))
+          }
+          try {
+            if (provider === 'openai-compatible') {
+              await streamOpenAI({ ...params, send })
+            } else {
+              await streamAnthropic({ ...params, send })
+            }
+          } catch (err: any) {
+            send('error', { content: err.message })
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      })
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+      })
     }
 
-    return proxyAnthropic({
-      messages, system, model, apiKey, baseUrl,
-      thinking_budget, prompt_caching, tools_enabled,
-    })
+    // Non-streaming
+    if (provider === 'openai-compatible') {
+      return proxyOpenAI(params)
+    }
+    return proxyAnthropic(params)
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
 
-// ── Anthropic with tool-use loop ────────────────────────
+// ── Anthropic non-streaming with tool-use loop ──────────
 
 async function proxyAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
-  tools_enabled?: boolean;
+  tools_enabled?: boolean; temperature?: number;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
-    thinking_budget, prompt_caching, tools_enabled,
+    thinking_budget, prompt_caching, tools_enabled, temperature,
   } = params
 
-  // Build initial messages with caching
   const cacheBreakpoint = prompt_caching && messages.length > 6 ? messages.length - 5 : -1
   const initialMessages = messages.map((m: any, i: number) => {
     const base: any = { role: m.role }
@@ -96,7 +134,6 @@ async function proxyAnthropic(params: {
     'anthropic-version': '2023-06-01',
   }
 
-  // Tool-use loop state
   let loopMessages = [...initialMessages]
   let allThinking = ''
   const allToolCalls: ToolCallResult[] = []
@@ -105,52 +142,21 @@ async function proxyAnthropic(params: {
   const MAX_ITERATIONS = 15
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const body: any = {
-      model,
-      max_tokens: 16000,
-      messages: loopMessages,
-    }
+    const body: any = { model, max_tokens: 16000, messages: loopMessages }
 
     const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
     body.system = prompt_caching
       ? [{ type: 'text', text: effectiveSystem, cache_control: { type: 'ephemeral' } }]
       : effectiveSystem
 
-    if (budget > 0) {
-      body.thinking = { type: 'enabled', budget_tokens: budget }
-    }
+    if (budget > 0) body.thinking = { type: 'enabled', budget_tokens: budget }
+    if (typeof temperature === 'number' && !(budget > 0)) body.temperature = Math.min(temperature, 1)
+    if (tools_enabled) body.tools = ALL_TOOLS
 
-    // Add tools on first iteration or when doing tool loop
-    if (tools_enabled) {
-      body.tools = ALL_TOOLS
-    }
-
-    // Debug log: what are we sending to Claude?
-    console.log('[CHAT DEBUG]', JSON.stringify({
-      has_system: !!body.system,
-      system_type: typeof body.system === 'string' ? 'string' : (Array.isArray(body.system) ? 'array' : typeof body.system),
-      system_length: typeof body.system === 'string' ? body.system.length : (Array.isArray(body.system) ? body.system[0]?.text?.length : 0),
-      has_tools: !!body.tools,
-      tools_count: body.tools?.length || 0,
-      tool_names: body.tools?.map((t: any) => t.name),
-      has_thinking: !!body.thinking,
-      model: body.model,
-      messages_count: body.messages?.length,
-      iter,
-    }))
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
-
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) {
       const errText = await res.text()
-      return NextResponse.json(
-        { error: `Upstream ${res.status}: ${errText.slice(0, 800)}` },
-        { status: res.status },
-      )
+      return NextResponse.json({ error: `Upstream ${res.status}: ${errText.slice(0, 800)}` }, { status: res.status })
     }
 
     const data = await res.json()
@@ -160,7 +166,6 @@ async function proxyAnthropic(params: {
     totalUsage.cache_read += usage.cache_read_input_tokens || 0
     totalUsage.cache_create += usage.cache_creation_input_tokens || 0
 
-    // Parse response content blocks
     let iterText = ''
     let iterThinking = ''
     const toolUses: any[] = []
@@ -171,11 +176,8 @@ async function proxyAnthropic(params: {
       else if (block.type === 'tool_use') toolUses.push(block)
     }
 
-    if (iterThinking) {
-      allThinking += (allThinking ? '\n---\n' : '') + iterThinking
-    }
+    if (iterThinking) allThinking += (allThinking ? '\n---\n' : '') + iterThinking
 
-    // No tool calls → done
     if (data.stop_reason !== 'tool_use' || toolUses.length === 0) {
       return NextResponse.json({
         content: iterText,
@@ -188,29 +190,18 @@ async function proxyAnthropic(params: {
       })
     }
 
-    // Execute tools in parallel
     const toolResults = await Promise.all(
       toolUses.map(async (tu) => {
         const result = await executeTool(tu.name, tu.input)
-        allToolCalls.push({
-          name: tu.name,
-          input: tu.input,
-          result: result.slice(0, 2000), // cap for display
-        })
-        return {
-          type: 'tool_result' as const,
-          tool_use_id: tu.id,
-          content: result,
-        }
+        allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 500) })
+        return { type: 'tool_result' as const, tool_use_id: tu.id, content: summarizeToolResult(result) }
       }),
     )
 
-    // Append assistant response + tool results for next iteration
     loopMessages.push({ role: 'assistant', content: data.content })
     loopMessages.push({ role: 'user', content: toolResults })
   }
 
-  // Fallback if max iterations reached
   return NextResponse.json({
     content: '(tool loop reached max iterations)',
     thinking: allThinking || undefined,
@@ -220,28 +211,166 @@ async function proxyAnthropic(params: {
   })
 }
 
-// ── OpenAI-compatible with tool-use loop ────────────────
+// ── Anthropic streaming ─────────────────────────────────
 
-/** Convert Anthropic tool schema to OpenAI function-calling format */
+async function streamAnthropic(params: {
+  messages: any[]; system?: string; model: string; apiKey: string;
+  baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
+  tools_enabled?: boolean; temperature?: number;
+  send: (type: string, data: any) => void;
+}) {
+  const {
+    messages, system, model, apiKey, baseUrl,
+    thinking_budget, prompt_caching, tools_enabled, temperature, send,
+  } = params
+
+  const cacheBreakpoint = prompt_caching && messages.length > 6 ? messages.length - 5 : -1
+  const initialMessages = messages.map((m: any, i: number) => {
+    const base: any = { role: m.role }
+    if (i === cacheBreakpoint) {
+      base.content = [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }]
+    } else {
+      base.content = m.content
+    }
+    return base
+  })
+
+  const budget = typeof thinking_budget === 'number' ? thinking_budget : 0
+  const url = `${normalizeAnthropicBase(baseUrl)}/v1/messages`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+  }
+
+  let loopMessages = [...initialMessages]
+  const allToolCalls: ToolCallResult[] = []
+  let totalUsage = { input: 0, output: 0, cache_read: 0, cache_create: 0 }
+
+  const MAX_ITERATIONS = 15
+
+  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    const body: any = { model, max_tokens: 16000, messages: loopMessages, stream: true }
+
+    const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
+    body.system = prompt_caching
+      ? [{ type: 'text', text: effectiveSystem, cache_control: { type: 'ephemeral' } }]
+      : effectiveSystem
+
+    if (budget > 0) body.thinking = { type: 'enabled', budget_tokens: budget }
+    if (typeof temperature === 'number' && !(budget > 0)) body.temperature = Math.min(temperature, 1)
+    if (tools_enabled) body.tools = ALL_TOOLS
+
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+    if (!res.ok) {
+      const errText = await res.text()
+      send('error', { content: `Upstream ${res.status}: ${errText.slice(0, 400)}` })
+      return
+    }
+
+    // Parse SSE from Anthropic
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    let iterText = ''
+    let stopReason = ''
+    const toolUses: any[] = []
+    const toolInputBuffers: Record<number, string> = {}
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const evt = JSON.parse(line.slice(6))
+          if (evt.type === 'content_block_delta') {
+            if (evt.delta?.type === 'text_delta') {
+              iterText += evt.delta.text
+              send('text', { content: evt.delta.text })
+            } else if (evt.delta?.type === 'thinking_delta') {
+              send('thinking', { content: evt.delta.thinking })
+            } else if (evt.delta?.type === 'input_json_delta') {
+              const idx = evt.index
+              toolInputBuffers[idx] = (toolInputBuffers[idx] || '') + evt.delta.partial_json
+            }
+          } else if (evt.type === 'content_block_start') {
+            if (evt.content_block?.type === 'tool_use') {
+              toolUses.push({ ...evt.content_block, _index: evt.index })
+            }
+          } else if (evt.type === 'message_delta') {
+            stopReason = evt.delta?.stop_reason || ''
+            const u = evt.usage || {}
+            totalUsage.output += u.output_tokens || 0
+          } else if (evt.type === 'message_start') {
+            const u = evt.message?.usage || {}
+            totalUsage.input += u.input_tokens || 0
+            totalUsage.cache_read += u.cache_read_input_tokens || 0
+            totalUsage.cache_create += u.cache_creation_input_tokens || 0
+          }
+        } catch { /* skip */ }
+      }
+    }
+
+    // Reconstruct tool_use inputs
+    for (const tu of toolUses) {
+      const raw = toolInputBuffers[tu._index]
+      try { tu.input = raw ? JSON.parse(raw) : {} } catch { tu.input = {} }
+    }
+
+    if (stopReason !== 'tool_use' || toolUses.length === 0) {
+      // Done
+      send('done', {
+        input_tokens: totalUsage.input,
+        output_tokens: totalUsage.output,
+        cache_read_tokens: totalUsage.cache_read || undefined,
+        cache_creation_tokens: totalUsage.cache_create || undefined,
+      })
+      return
+    }
+
+    // Execute tools
+    const contentBlocks: any[] = []
+    if (iterText) contentBlocks.push({ type: 'text', text: iterText })
+    for (const tu of toolUses) contentBlocks.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input })
+
+    const toolResults = await Promise.all(
+      toolUses.map(async (tu) => {
+        const result = await executeTool(tu.name, tu.input)
+        allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 500) })
+        send('tool_call', { name: tu.name, input: tu.input, result: result.slice(0, 200) })
+        return { type: 'tool_result' as const, tool_use_id: tu.id, content: summarizeToolResult(result) }
+      }),
+    )
+
+    loopMessages.push({ role: 'assistant', content: contentBlocks })
+    loopMessages.push({ role: 'user', content: toolResults })
+  }
+
+  send('done', { input_tokens: totalUsage.input, output_tokens: totalUsage.output })
+}
+
+// ── OpenAI-compatible non-streaming ─────────────────────
+
 function toolsToOpenAI(tools: ToolDef[]) {
   return tools.map(t => ({
     type: 'function' as const,
-    function: {
-      name: t.name,
-      description: t.description,
-      parameters: t.input_schema,
-    },
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
   }))
 }
 
 async function proxyOpenAI(params: {
   messages: any[]; system?: string; model: string;
-  apiKey: string; baseUrl: string; thinking_budget?: number; tools_enabled?: boolean;
+  apiKey: string; baseUrl: string; thinking_budget?: number;
+  tools_enabled?: boolean; temperature?: number;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
-
   const builtMessages: any[] = [
     { role: 'system', content: effectiveSystem },
     ...messages.map((m: any) => ({ role: m.role, content: m.content })),
@@ -270,29 +399,15 @@ async function proxyOpenAI(params: {
       max_tokens: 16000,
       ...(tools_enabled ? { tools: openaiTools } : {}),
     }
-
+    if (typeof temperature === 'number') body.temperature = temperature
     if (typeof thinking_budget === 'number' && thinking_budget > 0) {
       body.reasoning = { max_tokens: thinking_budget }
     }
 
-    console.log('[OPENAI CHAT]', JSON.stringify({
-      model, iter,
-      messages_count: loopMessages.length,
-      tools_count: openaiTools.length,
-    }))
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
-
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) {
       const errText = await res.text()
-      return NextResponse.json(
-        { error: `Upstream ${res.status}: ${errText.slice(0, 800)}` },
-        { status: res.status },
-      )
+      return NextResponse.json({ error: `Upstream ${res.status}: ${errText.slice(0, 800)}` }, { status: res.status })
     }
 
     const data = await res.json()
@@ -304,25 +419,16 @@ async function proxyOpenAI(params: {
     const choice = data.choices?.[0]
     const msg = choice?.message
     if (!msg) {
-      return NextResponse.json({
-        content: '(no response from model)',
-        input_tokens: totalUsage.prompt,
-        output_tokens: totalUsage.completion,
-      })
+      return NextResponse.json({ content: '(no response from model)', input_tokens: totalUsage.prompt, output_tokens: totalUsage.completion })
     }
 
-    // Collect thinking
     const iterThinking = msg.reasoning_content || msg.reasoning || msg.thinking || ''
-    if (iterThinking) {
-      allThinking += (allThinking ? '\n---\n' : '') + iterThinking
-    }
+    if (iterThinking) allThinking += (allThinking ? '\n---\n' : '') + iterThinking
 
-    // Extract text content
     const iterText = Array.isArray(msg.content)
       ? msg.content.map((p: any) => p?.text || '').join('')
       : msg.content || ''
 
-    // Check for tool calls
     const toolCalls = msg.tool_calls
     if (!toolCalls || toolCalls.length === 0) {
       return NextResponse.json({
@@ -335,30 +441,17 @@ async function proxyOpenAI(params: {
       })
     }
 
-    // Execute tools in parallel
     const toolResults = await Promise.all(
       toolCalls.map(async (tc: any) => {
         const fnName = tc.function?.name || ''
         let fnArgs: Record<string, any> = {}
-        try {
-          fnArgs = JSON.parse(tc.function?.arguments || '{}')
-        } catch { /* empty */ }
-
+        try { fnArgs = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
         const result = await executeTool(fnName, fnArgs)
-        allToolCalls.push({
-          name: fnName,
-          input: fnArgs,
-          result: result.slice(0, 2000),
-        })
-        return {
-          role: 'tool' as const,
-          tool_call_id: tc.id,
-          content: result,
-        }
+        allToolCalls.push({ name: fnName, input: fnArgs, result: result.slice(0, 500) })
+        return { role: 'tool' as const, tool_call_id: tc.id, content: summarizeToolResult(result) }
       }),
     )
 
-    // Append assistant message (with tool_calls) + tool results
     loopMessages.push(msg)
     loopMessages.push(...toolResults)
   }
@@ -370,4 +463,126 @@ async function proxyOpenAI(params: {
     input_tokens: totalUsage.prompt,
     output_tokens: totalUsage.completion,
   })
+}
+
+// ── OpenAI streaming ────────────────────────────────────
+
+async function streamOpenAI(params: {
+  messages: any[]; system?: string; model: string;
+  apiKey: string; baseUrl: string; thinking_budget?: number;
+  tools_enabled?: boolean; temperature?: number;
+  send: (type: string, data: any) => void;
+}) {
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, send } = params
+
+  const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
+  const builtMessages: any[] = [
+    { role: 'system', content: effectiveSystem },
+    ...messages.map((m: any) => ({ role: m.role, content: m.content })),
+  ]
+
+  const openaiTools = toolsToOpenAI(ALL_TOOLS)
+  const url = `${normalizeOpenAIBase(baseUrl)}/chat/completions`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+    'HTTP-Referer': 'https://lumbre.zeabur.app',
+    'X-Title': 'Lumbre',
+  }
+
+  let loopMessages = [...builtMessages]
+  let totalUsage = { prompt: 0, completion: 0 }
+
+  const MAX_ITERATIONS = 15
+
+  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    const body: any = {
+      model,
+      messages: loopMessages,
+      max_tokens: 16000,
+      stream: true,
+      ...(tools_enabled ? { tools: openaiTools } : {}),
+    }
+    if (typeof temperature === 'number') body.temperature = temperature
+    if (typeof thinking_budget === 'number' && thinking_budget > 0) {
+      body.reasoning = { max_tokens: thinking_budget }
+    }
+
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+    if (!res.ok) {
+      const errText = await res.text()
+      send('error', { content: `Upstream ${res.status}: ${errText.slice(0, 400)}` })
+      return
+    }
+
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    let iterText = ''
+    let iterThinking = ''
+    const toolCallMap: Record<number, { id: string; name: string; args: string }> = {}
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ') || line === 'data: [DONE]') continue
+        try {
+          const chunk = JSON.parse(line.slice(6))
+          const delta = chunk.choices?.[0]?.delta
+          if (!delta) continue
+
+          if (delta.content) {
+            iterText += delta.content
+            send('text', { content: delta.content })
+          }
+          if (delta.reasoning_content || delta.reasoning) {
+            const t = delta.reasoning_content || delta.reasoning
+            iterThinking += t
+            send('thinking', { content: t })
+          }
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0
+              if (!toolCallMap[idx]) toolCallMap[idx] = { id: tc.id || '', name: '', args: '' }
+              if (tc.id) toolCallMap[idx].id = tc.id
+              if (tc.function?.name) toolCallMap[idx].name = tc.function.name
+              if (tc.function?.arguments) toolCallMap[idx].args += tc.function.arguments
+            }
+          }
+          if (chunk.usage) {
+            totalUsage.prompt += chunk.usage.prompt_tokens || 0
+            totalUsage.completion += chunk.usage.completion_tokens || 0
+          }
+        } catch { /* skip */ }
+      }
+    }
+
+    const toolCalls = Object.values(toolCallMap)
+    if (toolCalls.length === 0) {
+      send('done', { input_tokens: totalUsage.prompt, output_tokens: totalUsage.completion })
+      return
+    }
+
+    // Execute tools
+    const assistantMsg: any = { role: 'assistant', content: iterText || null, tool_calls: toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.args } })) }
+    loopMessages.push(assistantMsg)
+
+    const results = await Promise.all(
+      toolCalls.map(async (tc) => {
+        let fnArgs: Record<string, any> = {}
+        try { fnArgs = JSON.parse(tc.args || '{}') } catch { /* empty */ }
+        const result = await executeTool(tc.name, fnArgs)
+        send('tool_call', { name: tc.name, input: fnArgs, result: result.slice(0, 200) })
+        return { role: 'tool' as const, tool_call_id: tc.id, content: summarizeToolResult(result) }
+      }),
+    )
+    loopMessages.push(...results)
+  }
+
+  send('done', { input_tokens: totalUsage.prompt, output_tokens: totalUsage.completion })
 }
