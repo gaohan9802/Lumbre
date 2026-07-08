@@ -609,3 +609,32 @@ OpenAI-compatible 路径 (新):
 - OpenAI 兼容 API 的 `finish_reason` 不统一（有的返回 `"tool_calls"`，有的返回 `"stop"`），所以改为直接检查 `msg.tool_calls` 是否存在，更健壮
 - `msg` 整体 push 到 `loopMessages`（保留 `tool_calls` 字段），而不是只取 content，否则后续轮次 API 会报格式错误
 - thinking 字段兼容三种命名：`reasoning_content`（OpenRouter/部分中转）、`reasoning`、`thinking`
+
+---
+
+## 2026-07-09 — 记忆前端空白修复
+
+### 问题
+- 记忆板块前端看不到内容，仅显示 1 个桶
+- Tool-use 可正常工作（通过 chat API 调用 brain.ts）
+- Shell 容器 `/persistent/buckets/` 有 613 个文件，但 Next.js 应用容器 `/persistent/buckets/` 只有 1 个真正的桶文件
+
+### 根因
+- `brain.ts` 的 `seedIfEmpty()` 条件是 `existing.length > 0`
+- 应用容器的 `/persistent/buckets/` 目录不为空——有 1 个 tool_use 创建的桶 + 旧 OmbreBrain 的配置文件（`.dashboard_auth.json`, `families.json`, `import_state.json`）和子目录（`archive`, `dynamic`, `feel`, `permanent`）
+- `.json` 文件过滤后有 4 个文件（含非桶的配置文件），`> 0` 条件成立 → seedIfEmpty 跳过 → 612 个桶从未被种入
+
+### 修复
+- `brain.ts` `seedIfEmpty()`: 将阈值从 `existing.length > 0` 改为 `existing.length >= 100`
+- 这样只要桶数少于 100，就会触发 seed 机制（种入 612 个桶）
+
+### 验证
+- 部署后 `/api/memory/status` 返回 `bucket_count: 613`（612 seed + 1 已有）
+- `/api/memory/buckets` 返回完整 613 条 IndexEntry
+- 前端 MemoryView 可正常显示所有记忆桶
+
+### Debug 笔记
+- Shell 容器和 Next.js 应用容器的 `/persistent` 是独立持久卷（Zeabur 两个服务不共享）
+- 应用容器的 `/persistent/buckets/` 里有旧 OmbreBrain 的遗留文件（子目录 + 配置 JSON），这些不是桶但会被 `.json` 过滤器匹配
+- `loadAllBuckets()` 的 `normalizeBucket()` 会正确跳过非桶 JSON 文件（无 `id` 字段返回 null）
+- seed 文件路径 `/src/src/seed/buckets.json` 在 standalone build 中通过 `outputFileTracingIncludes` 被正确包含
