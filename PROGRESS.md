@@ -566,3 +566,46 @@ git push -u origin main
 - `system` 参数为空时 `effectiveSystem` 回退到 DEFAULT_SYSTEM_PROMPT
 - shell `run` 工具用 `child_process.exec`，maxBuffer 1MB，timeout 30s
 - tsc --noEmit 全通过
+
+---
+
+## 2026-07-09 — OpenAI-compatible Tool-Use 支持
+
+### 完成
+**给 `proxyOpenAI()` 函数加上完整的 function calling 循环，使通过 OpenAI 兼容中转站的 Claude 也能使用全部 20 个工具。**
+
+#### 改动文件
+- `src/app/api/chat/route.ts`
+
+#### 改动内容
+1. **`toolsToOpenAI()` 转换函数**：将 Anthropic 格式（`{name, description, input_schema}`）转为 OpenAI 格式（`{type:"function", function:{name, description, parameters}}`）
+2. **`proxyOpenAI()` 完整 tool-use 循环**：
+   - 请求时带 `tools`（OpenAI function calling 格式）
+   - 响应中检查 `message.tool_calls`（不依赖 `finish_reason`，兼容不同中转站实现）
+   - 工具结果用 `{role:"tool", tool_call_id, content}` 格式回传
+   - 最多 15 轮迭代
+   - 累计 usage token 统计
+3. **`tools_enabled` 参数透传**：从 POST body 传入 proxyOpenAI，控制是否发送工具定义
+4. **`DEFAULT_SYSTEM_PROMPT` 回退**：OpenAI 路径也使用默认系统提示（之前没用）
+5. **`ToolDef` 类型导入**：新增 import 用于 `toolsToOpenAI` 类型标注
+
+#### 架构对比
+```
+Anthropic 路径:
+  Claude API body.tools = [{name, description, input_schema}]  (Anthropic 格式)
+  response.stop_reason = "tool_use"
+  response.content[].type = "tool_use"
+  回传: {type:"tool_result", tool_use_id, content}
+
+OpenAI-compatible 路径 (新):
+  API body.tools = [{type:"function", function:{name, description, parameters}}]  (OpenAI 格式)
+  response.message.tool_calls[].function.{name, arguments}
+  回传: {role:"tool", tool_call_id, content}
+```
+
+两条路径共享同一个 `executeTool()`，工具执行逻辑完全一致。
+
+### Debug 笔记
+- OpenAI 兼容 API 的 `finish_reason` 不统一（有的返回 `"tool_calls"`，有的返回 `"stop"`），所以改为直接检查 `msg.tool_calls` 是否存在，更健壮
+- `msg` 整体 push 到 `loopMessages`（保留 `tool_calls` 字段），而不是只取 content，否则后续轮次 API 会报格式错误
+- thinking 字段兼容三种命名：`reasoning_content`（OpenRouter/部分中转）、`reasoning`、`thinking`
