@@ -18,6 +18,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ version: 'v3-tool-debug-20260707', timestamp: Date.now() })
   }
 
+  if (testMode === 'raw') {
+    const dir = process.env.DATA_DIR || '/persistent'
+    const out: any = {}
+    try {
+      const txt = fs.readFileSync(path.join(dir, 'chat-sync.json'), 'utf-8')
+      out.fileSize = txt.length
+      out.head = txt.slice(0, 800)
+      out.tail = txt.slice(-400)
+      let parsed: any = null
+      try { parsed = JSON.parse(txt) } catch (e: any) { out.parseError = e.message }
+      if (parsed && typeof parsed === 'object') {
+        out.topKeys = Object.keys(parsed).map(k => {
+          const v = (parsed as any)[k]
+          const type = Array.isArray(v) ? `array[${v.length}]` : typeof v
+          let len: any = undefined
+          try { len = JSON.stringify(v).length } catch {}
+          return { key: k, type, jsonLen: len }
+        })
+      }
+    } catch (e: any) {
+      out.error = e.message
+    }
+    return NextResponse.json(out)
+  }
+
   if (testMode === 'sessions') {
     const dir = process.env.DATA_DIR || '/persistent'
     const out: any = { source: null, count: 0, sessions: [] }
