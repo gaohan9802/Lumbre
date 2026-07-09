@@ -47,9 +47,24 @@ export async function GET(req: NextRequest) {
     sampleDiary = { error: e.message }
   }
 
+  // chat-sync durability probe (proves the volume actually persists writes)
+  const syncFile = path.join(dataDir, 'chat-sync.json')
+  let chatSync: any = check(syncFile)
+  try {
+    const marker = path.join(dataDir, '.write-probe')
+    fs.mkdirSync(dataDir, { recursive: true })
+    fs.writeFileSync(marker, String(Date.now()))
+    fs.unlinkSync(marker)
+    chatSync = { ...chatSync, writable: true }
+  } catch (e: any) {
+    chatSync = { ...chatSync, writable: false, writeError: e.message }
+  }
+
   return NextResponse.json({
     version: 'v3-tool-debug-20260707',
     cwd, dataDir, diaryDir, notesDir,
+    chatSync,
+    chatSyncBak: check(path.join(dataDir, 'chat-sync.bak')),
     persistent: check(dataDir),
     diaries: check(diaryDir),
     notes: check(notesDir),

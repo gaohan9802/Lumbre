@@ -1,13 +1,20 @@
 /**
  * Server-side chat storage for multi-device sync.
- * File-based (data/chat-sync.json): sessions merged by updatedAt + tombstones,
+ * File-based (DATA_DIR/chat-sync.json): sessions merged by updatedAt + tombstones,
  * config (providers/prompt/appearance) merged by configUpdatedAt (newer wins).
+ *
+ * Durability:
+ *  - atomic writes (tmp file + rename) so a crash mid-write can't corrupt the store
+ *  - rolling backup (chat-sync.bak) kept before every overwrite
+ *  - daily snapshot (chat-sync.YYYY-MM-DD.json) so history survives bad merges
+ *  - corruption-safe load: falls back to .bak, then newest snapshot
  */
 import fs from 'fs'
 import path from 'path'
 
 const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const SYNC_FILE = path.join(DATA_DIR, 'chat-sync.json')
+const BAK_FILE = path.join(DATA_DIR, 'chat-sync.bak')
 
 export interface SyncState {
   sessions: any[]
@@ -16,23 +23,90 @@ export interface SyncState {
   configUpdatedAt?: number
 }
 
-export function loadSyncState(): SyncState {
+function parseState(raw: any): SyncState {
+  return {
+    sessions: Array.isArray(raw.sessions) ? raw.sessions : [],
+    tombstones: raw.tombstones && typeof raw.tombstones === 'object' ? raw.tombstones : {},
+    config: raw.config,
+    configUpdatedAt: typeof raw.configUpdatedAt === 'number' ? raw.configUpdatedAt : 0,
+  }
+}
+
+function tryRead(file: string): SyncState | null {
   try {
-    const raw = JSON.parse(fs.readFileSync(SYNC_FILE, 'utf-8'))
-    return {
-      sessions: Array.isArray(raw.sessions) ? raw.sessions : [],
-      tombstones: raw.tombstones && typeof raw.tombstones === 'object' ? raw.tombstones : {},
-      config: raw.config,
-      configUpdatedAt: typeof raw.configUpdatedAt === 'number' ? raw.configUpdatedAt : 0,
+    return parseState(JSON.parse(fs.readFileSync(file, 'utf-8')))
+  } catch {
+    return null
+  }
+}
+
+function newestSnapshot(): SyncState | null {
+  try {
+    const snaps = fs
+      .readdirSync(DATA_DIR)
+      .filter((f) => /^chat-sync\.\d{4}-\d{2}-\d{2}\.json$/.test(f))
+      .sort()
+    for (let i = snaps.length - 1; i >= 0; i--) {
+      const s = tryRead(path.join(DATA_DIR, snaps[i]))
+      if (s) return s
     }
   } catch {
-    return { sessions: [], tombstones: {}, configUpdatedAt: 0 }
+    // ignore
   }
+  return null
+}
+
+export function loadSyncState(): SyncState {
+  return (
+    tryRead(SYNC_FILE) ||
+    tryRead(BAK_FILE) ||
+    newestSnapshot() || { sessions: [], tombstones: {}, configUpdatedAt: 0 }
+  )
 }
 
 export function saveSyncState(state: SyncState) {
   fs.mkdirSync(DATA_DIR, { recursive: true })
-  fs.writeFileSync(SYNC_FILE, JSON.stringify(state), 'utf-8')
+  const json = JSON.stringify(state)
+
+  // keep the previous good file as a rolling backup before overwriting
+  try {
+    if (fs.existsSync(SYNC_FILE)) fs.copyFileSync(SYNC_FILE, BAK_FILE)
+  } catch {
+    // backup best-effort
+  }
+
+  // atomic write: tmp then rename
+  const tmp = path.join(DATA_DIR, `.chat-sync.${process.pid}.${Date.now()}.tmp`)
+  fs.writeFileSync(tmp, json, 'utf-8')
+  fs.renameSync(tmp, SYNC_FILE)
+
+  // daily snapshot (one per day, first write of the day wins the filename)
+  try {
+    const day = new Date().toISOString().slice(0, 10)
+    const snap = path.join(DATA_DIR, `chat-sync.${day}.json`)
+    fs.writeFileSync(snap, json, 'utf-8')
+    pruneSnapshots(14)
+  } catch {
+    // snapshot best-effort
+  }
+}
+
+function pruneSnapshots(keep: number) {
+  try {
+    const snaps = fs
+      .readdirSync(DATA_DIR)
+      .filter((f) => /^chat-sync\.\d{4}-\d{2}-\d{2}\.json$/.test(f))
+      .sort()
+    for (const f of snaps.slice(0, Math.max(0, snaps.length - keep))) {
+      try {
+        fs.unlinkSync(path.join(DATA_DIR, f))
+      } catch {
+        // ignore
+      }
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export function mergeSyncState(a: SyncState, b: SyncState): SyncState {

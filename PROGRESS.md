@@ -973,3 +973,38 @@ OpenAI-compatible 路径 (新):
 - 中转站流式必须显式 `stream_options.include_usage=true` 才回传 token 用量，否则静默为 0（OpenAI 官方行为，很多相容 API 也遵循）
 - 气泡 `w-fit` 需配 `max-w` + `break-words`，否则长内容不换行会溢出
 - tsc --noEmit 全通过
+
+---
+
+## 2026-07-13 — Chat 数据丢失事故排查 + 同步持久化加固
+
+### 事故
+用户报告：chat 端"自动刷新后已有对话消失"，丢失了一个名为"哥哥"的 66 条对话框。
+
+### 排查结论
+- Chat 是 local-first：zustand persist → localStorage(`starfire-chat`, version 7)。
+- `mergeRemote`（chatStore.ts:483）和服务端 `mergeSyncState` 都是**非破坏性**合并（按 updatedAt + tombstone），不会主动清空本地会话 → 排除代码 wipe。
+- 结论：localStorage 被清空（iOS PWA/Safari ITP 对长期无交互站点的自动数据驱逐是最大嫌疑），**且服务端没有可用备份** → 彻底丢失。
+- 为什么服务端没备份：`chat-sync.ts` 写 `DATA_DIR/chat-sync.json`，但仓库里**没有 volume 配置**。若 Zeabur 没把持久卷挂到 `/persistent`（或没设 `DATA_DIR`），每次 redeploy 容器 fs 重置，sync 写入等于裸跑。多设备同步实际从未持久化成功。
+- 关键点：**只要服务端持久保留了会话，被清空的设备下次 sync 时 `mergeRemote` 会自动把会话拉回来**。这条恢复路径之前因服务端不持久而失效——这次修的就是它。
+
+### 改动
+1. `src/server/chat-sync.ts` 重写，加持久化健壮性：
+   - 原子写（tmp 文件 + rename），防写一半损坏
+   - 每次覆盖前留 `chat-sync.bak` 滚动备份
+   - 每日快照 `chat-sync.YYYY-MM-DD.json`（保留最近 14 天）
+   - 读取容错：主文件坏 → `.bak` → 最新快照 → 空
+2. `src/app/api/sync/route.ts`：
+   - 新增 `GET`（pull-only），供被清空的设备先拉服务端副本再推
+   - `export const dynamic = 'force-dynamic'`，避免被静态缓存
+3. `src/components/chat/ChatSync.tsx`：挂载时 `pullOnce().then(doSync)` — 先拉服务端恢复，再推送本地，避免空状态先行。
+4. `src/app/api/debug/route.ts`：加 chat-sync 持久化探针（写入 `.write-probe` 验证卷可写 + 报告 chatSync/chatSyncBak 文件状态）。
+
+### ⚠️ 必须在 Zeabur 侧确认（代码改不了）
+- 给 Lumbre 服务挂 **Persistent Volume 到 `/persistent`**（或设环境变量 `DATA_DIR` 指向已挂载卷）。
+- 部署后访问 `/api/debug` 检查 `chatSync.writable` 是否为 `true`、`persistent.exists` 是否为 `true`。若 writable=false 或每次 redeploy 后 `chat-sync.json` 消失，说明卷没挂对，同步仍然裸跑。
+
+### Debug 笔记
+- 这个 shell 容器（shell-mcp-server）与 Lumbre 运行容器是分离的，两者 `/persistent` 不一定同卷；本容器的 `/persistent` 存的是 ombre brain 的 buckets/diaries/notes。
+- 无法从本容器直接确认 Lumbre 容器的卷挂载，只能靠部署后 `/api/debug` 验证。
+- tsc --noEmit 全通过。本地未跑 next build（内存不足）。
