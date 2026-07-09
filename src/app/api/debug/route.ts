@@ -18,6 +18,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ version: 'v3-tool-debug-20260707', timestamp: Date.now() })
   }
 
+  if (testMode === 'sessions') {
+    const dir = process.env.DATA_DIR || '/persistent'
+    const out: any = { source: null, count: 0, sessions: [] }
+    const readSessions = (file: string) => {
+      try {
+        const raw = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'))
+        const sess = Array.isArray(raw.sessions) ? raw.sessions : []
+        return sess.map((x: any) => ({
+          id: x.id,
+          title: x.title,
+          messages: Array.isArray(x.messages) ? x.messages.length : 0,
+          updatedAt: x.updatedAt,
+          firstMsg: Array.isArray(x.messages) && x.messages[0] ? String(x.messages[0].content || '').slice(0, 40) : '',
+        }))
+      } catch { return null }
+    }
+    for (const f of ['chat-sync.json', 'chat-sync.bak']) {
+      const r = readSessions(f)
+      if (r) { out.source = f; out.count = r.length; out.sessions = r; break }
+    }
+    try {
+      const snaps = fs.readdirSync(dir).filter(f => /^chat-sync\.\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort()
+      out.snapshots = snaps
+    } catch { out.snapshots = [] }
+    return NextResponse.json(out)
+  }
+
   const cwd = process.cwd()
   const dataDir = process.env.DATA_DIR || '/persistent'
   const diaryDir = path.join(dataDir, 'diaries')
