@@ -1064,3 +1064,30 @@ OpenAI-compatible 路径 (新):
 - instrumentation 的 fs/path import 必须包在 `NEXT_RUNTIME === 'nodejs'` 正分支里才能 tree-shake，反向 early-return 不行。
 - Nominatim 有 1 req/s 限流 + 强制 User-Agent，前端 30min 缓存已够温和。
 - tsc --noEmit 全通过；clean `next build` 全通过。
+
+---
+
+## 2026-07-15 — 多对话被覆盖/丢失 根因 + 修复
+
+### 现象
+用户开两个测试对话，redeploy 后只剩一个。`/api/debug?test=raw` 显示服务端 `sessions:array[2]`，其中一个是空的 `session-default`，另一个是有内容的真会话；用户第二个真对话消失。文件 100KB 几乎全是 `config`(90KB)，会话本身仅 8KB。**卷挂载正常（size 100304→112180 跨 redeploy 保留且增长），丢对话是应用层合并 bug，与挂载无关。**
+
+### 根因（两个结构性 bug 叠加）
+- **Bug A：`session-default` id 硬编码、跨设备共用**（chatStore.ts:116 `DEFAULT_SESSION_ID='session-default'`）。每台设备/被清空的 tab 冷启动都造一个 id 相同的默认会话，但各自 `updatedAt` 不同。合并按 updatedAt 新者胜 → 一个刚打开的**空** default 因时间戳更新，把另一台设备里同 id 的**有内容**会话覆盖。
+- **Bug B：合并只比 `updatedAt`，不看消息数**（server `mergeSyncState` + client `mergeRemote`）。同 id 时空会话只要时间戳新就吃掉有内容会话。
+
+### 修复
+1. `chatStore.ts`：新增 `genId()`（函数声明，提升安全），`DEFAULT_SESSION_ID` 改为 `genId('session')` 随机化，杜绝跨设备撞 id；`makeId` 复用 `genId`。
+2. 新增 `pickSession(a,b)` 合并策略：**消息多者优先，空会话永不覆盖有内容会话**，消息数相等才用 `updatedAt` 平手裁决。同时用于：
+   - `src/server/chat-sync.ts` `mergeSyncState`
+   - `src/lib/chatStore.ts` `mergeRemote`
+3. 合并循环从 `if newer updatedAt` 改为 `map.set(id, cur ? pickSession(cur, s) : s)`。union-by-id 语义不变，只是同 id 冲突时不再让空会话赢。
+
+### 效果
+- 多个对话并存、互不覆盖（union by unique id）。
+- 任何空/新建空会话都不可能覆盖掉有内容的对话。
+- 跨设备默认会话不再撞 id。
+
+### Debug 笔记
+- shell 无 node_modules，`npx tsc` 拉不到编译器；改动为纯逻辑替换 + 目视核对，未跑 tsc/build。部署前若可在有依赖环境跑一次 `rm -rf .next tsconfig.tsbuildinfo && nohup next build` 更稳。
+- 已丢失的那个对话很可能从未 push 到服务端（在 2.5s debounce / 45s tick 之前就 redeploy 了），本地 localStorage 也已被新状态覆盖 → 大概率不可恢复；若曾 push 过，可翻 `/persistent/chat-sync.2026-07-*.json` 每日快照找回。

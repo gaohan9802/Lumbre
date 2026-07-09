@@ -113,7 +113,11 @@ export const DEFAULT_ANTHROPIC_BASE = 'https://api.anthropic.com'
 export const DEFAULT_OPENAI_BASE = 'https://api.openai.com/v1'
 
 const DEFAULT_PROFILE_ID = 'anthropic-default'
-const DEFAULT_SESSION_ID = 'session-default'
+function genId(prefix = 'id') {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+const DEFAULT_SESSION_ID = genId('session')
 const NOW = Date.now()
 
 const DEFAULT_ANTHROPIC_MODELS: ProviderModel[] = [
@@ -192,9 +196,16 @@ interface ChatStore {
   deleteBookmark: (id: string) => void
 }
 
-function makeId(prefix = 'id') {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+const makeId = genId
+
+// When two sessions share an id, prefer the one carrying more messages so an
+// empty/blank session can never overwrite a real conversation. Equal message
+// counts fall back to the newer updatedAt.
+function pickSession(a: any, b: any) {
+  const am = a?.messages?.length || 0
+  const bm = b?.messages?.length || 0
+  if (bm !== am) return bm > am ? b : a
+  return (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
 }
 
 const numOr = (v: any) => (typeof v === 'number' && isFinite(v) ? v : undefined)
@@ -490,7 +501,7 @@ export const useChatStore = create<ChatStore>()(
         for (const rs of remoteSessions || []) {
           if (!rs?.id) continue
           const cur = map.get(rs.id)
-          if (!cur || (rs.updatedAt || 0) > (cur.updatedAt || 0)) map.set(rs.id, rs)
+          map.set(rs.id, cur ? pickSession(cur, rs) : rs)
         }
         let sessions = Array.from(map.values()).filter((s) => !(tombstones[s.id] && tombstones[s.id] >= (s.updatedAt || 0)))
         if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]

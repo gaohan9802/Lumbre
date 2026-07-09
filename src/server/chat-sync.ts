@@ -109,6 +109,16 @@ function pruneSnapshots(keep: number) {
   }
 }
 
+// When two sessions share an id, prefer the one carrying more messages so an
+// empty/blank session can never overwrite a real conversation. Equal message
+// counts fall back to the newer updatedAt.
+function pickSession(a: any, b: any) {
+  const am = a?.messages?.length || 0
+  const bm = b?.messages?.length || 0
+  if (bm !== am) return bm > am ? b : a
+  return (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
+}
+
 export function mergeSyncState(a: SyncState, b: SyncState): SyncState {
   const tombstones: Record<string, number> = { ...a.tombstones }
   for (const [id, ts] of Object.entries(b.tombstones || {})) {
@@ -118,7 +128,7 @@ export function mergeSyncState(a: SyncState, b: SyncState): SyncState {
   for (const s of b.sessions || []) {
     if (!s?.id) continue
     const cur = map.get(s.id)
-    if (!cur || (s.updatedAt || 0) > (cur.updatedAt || 0)) map.set(s.id, s)
+    map.set(s.id, cur ? pickSession(cur, s) : s)
   }
   const sessions = Array.from(map.values()).filter(
     (s) => !(tombstones[s.id] && tombstones[s.id] >= (s.updatedAt || 0))
