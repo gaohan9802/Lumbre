@@ -174,6 +174,30 @@ async function executeWake(config: WakeConfig, reason: string): Promise<WakeLog>
     { role: 'user', content: wakePrompt },
   ]
 
+  // Resolve API profile + system prompt from the synced chat config so the
+  // wake call uses the same provider/key the user configured in the UI.
+  let apiProfile: any = undefined
+  let systemPrompt: string | undefined = undefined
+  let modelOverride: string | undefined = undefined
+  try {
+    const syncData = JSON.parse(fs.readFileSync(CHAT_SYNC_PATH, 'utf-8'))
+    const cfg = syncData?.config
+    if (cfg) {
+      systemPrompt = cfg.systemPrompt || undefined
+      modelOverride = cfg.model || undefined
+      const profiles = Array.isArray(cfg.apiProfiles) ? cfg.apiProfiles : []
+      const active = profiles.find((p: any) => p.id === cfg.activeProfileId) || profiles[0]
+      if (active) {
+        apiProfile = {
+          provider: active.provider,
+          baseUrl: active.baseUrl,
+          apiKey: active.apiKey,
+          modelId: cfg.model || active.defaultModel,
+        }
+      }
+    }
+  } catch {}
+
   const actions: WakeAction[] = []
   let responseText = '[SILENT]'
   let silent = true
@@ -184,6 +208,9 @@ async function executeWake(config: WakeConfig, reason: string): Promise<WakeLog>
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: apiMessages,
+        system: systemPrompt,
+        model: modelOverride,
+        api_profile: apiProfile,
         tools_enabled: true,
         stream: false,
         _wake: true, // marker for the route handler

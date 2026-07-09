@@ -311,7 +311,7 @@ const CONTEXT_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_location',
-    description: '获取小火当前的GPS位置（经纬度）和城市名。',
+    description: '获取小火当前的GPS位置：经纬度、城市、所在街道和门牌号、完整地址，以及一个可点击的谷歌地图链接。数据来自小火手机的GPS+反向地理编码。',
     input_schema: {
       type: 'object',
       properties: {},
@@ -333,6 +333,9 @@ let cachedUserContext: {
   temp?: number | null
   weatherCode?: number
   city?: string
+  road?: string
+  houseNumber?: string
+  address?: string
   updatedAt: number
 } = { updatedAt: 0 }
 
@@ -342,6 +345,9 @@ export function updateUserContext(ctx: {
   temp?: number | null
   weatherCode?: number
   city?: string
+  road?: string
+  houseNumber?: string
+  address?: string
 }) {
   cachedUserContext = { ...ctx, updatedAt: Date.now() }
 }
@@ -497,20 +503,28 @@ function executeGetWeather(): string {
     temperature: ctx.temp,
     weather: codeNames[ctx.weatherCode || 0] || `code ${ctx.weatherCode}`,
     city: ctx.city || '未知',
+    address: ctx.address || undefined,
     updated: new Date(ctx.updatedAt).toLocaleString('zh-CN'),
   })
 }
 
-/** Get user's GPS location */
+/** Get user's GPS location (with street-level address + Google Maps link) */
 function executeGetLocation(): string {
   const ctx = cachedUserContext
   if (!ctx.updatedAt || Date.now() - ctx.updatedAt > 60 * 60 * 1000) {
     return JSON.stringify({ error: '小火的位置信息不可用（她可能还没打开Lumbre，或者没授权定位）' })
   }
+  const mapsUrl = (ctx.lat != null && ctx.lon != null)
+    ? `https://www.google.com/maps/search/?api=1&query=${ctx.lat},${ctx.lon}`
+    : undefined
   return JSON.stringify({
     latitude: ctx.lat,
     longitude: ctx.lon,
     city: ctx.city || '未知',
+    road: ctx.road || undefined,
+    house_number: ctx.houseNumber || undefined,
+    address: ctx.address || undefined,
+    google_maps: mapsUrl,
     updated: new Date(ctx.updatedAt).toLocaleString('zh-CN'),
   })
 }

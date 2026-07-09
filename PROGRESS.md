@@ -1008,3 +1008,59 @@ OpenAI-compatible 路径 (新):
 - 这个 shell 容器（shell-mcp-server）与 Lumbre 运行容器是分离的，两者 `/persistent` 不一定同卷；本容器的 `/persistent` 存的是 ombre brain 的 buckets/diaries/notes。
 - 无法从本容器直接确认 Lumbre 容器的卷挂载，只能靠部署后 `/api/debug` 验证。
 - tsc --noEmit 全通过。本地未跑 next build（内存不足）。
+
+---
+
+## 2026-07-14 — Chat 端 7 项优化（第二轮）
+
+### 完成
+
+#### 1. 删除键改为版本级两选项
+- 每条消息删除菜单从「删除此条/删除此前所有消息/删除全部消息」改为：
+  - **删除此版本**：多版本时删当前 `versionIndex`（调 `deleteMessageVersion`），单版本时删整条；菜单项带 `(2/3)` 版本序号提示
+  - **删除全部版本**：`deleteMessage(id)` 删掉整条消息及其所有版本（红色）
+- 移除了 `truncateFrom`/`clearMessages` 的引用（本轮不再用）
+
+#### 2. 自动唤醒（心跳）没触发 — 根因两处 + 修复
+- **根因A：引擎不会自启动**。`startWakeEngine()` 只在 POST `/api/wake`（用户在「现实与梦境」里开开关）时被调用。Zeabur 每次 redeploy 容器重启，`setInterval` 丢失，唤醒就永久停摆，直到用户再手动开一次。
+  - 修复：新增 `src/instrumentation.ts`（Next 14 instrumentation hook），服务进程启动时自动 `startWakeEngine()`。引擎内部 `shouldWakeNow()` 每 tick 复查 `config.enabled`，禁用时只空转，不会误触发。
+  - `next.config.js` 加 `experimental.instrumentationHook: true`。
+  - **注意**：instrumentation 的 node-only import 必须写在 `if (process.env.NEXT_RUNTIME === 'nodejs') { await import(...) }` 里，Next 才会把 fs/path 从 edge bundle 里 tree-shake 掉，否则 `Module not found: fs/path`。
+- **根因B：唤醒调用没带 API 凭证**。`executeWake` 之前 fetch `/api/chat` 时不传 `api_profile`，只能兜底 `process.env.CLAUDE_API_KEY`；用户的 key 是在前端 UI 配置、存到 `chat-sync.json` 的 `config`，env 里通常没有 → 唤醒直接报「还没有配置 API Key」。
+  - 修复：`executeWake` 现在从 `chat-sync.json` 的 `config` 读取 `activeProfileId` 对应的 `apiProfiles`，构造 `api_profile`（provider/baseUrl/apiKey/modelId）+ `systemPrompt` + `model` 一并传给 `/api/chat`。
+- 指令注入（唤醒文案模板 `DEFAULT_WAKE_PROMPT`）保留在 `autowake.ts`，用户可在「现实与梦境」页编辑，入口未动。
+
+#### 3. 气泡颜色首帧闪原始色
+- 根因：流式气泡（streamText）和 loading 三点气泡是**硬编码颜色**，生成完成后才切换成用户预设 `aiBubbleColor` → 视觉上先闪默认色再变预设色。
+- 修复：流式气泡、loading 气泡都改为「有预设色就用 `aiBubbleStyle`，否则用默认 class」，与最终气泡一致，从第一帧就是预设色。
+
+#### 4. 气泡对齐 — user 靠右、有参差
+- 根因：气泡是 `inline-block` + `ml-auto`，而 `inline-block` 会忽略 auto margin，所以 user 气泡其实没靠右。
+- 修复：气泡 `inline-block` → `block`（`block w-fit ml-auto` 才能真正靠右）；AI 气泡 `mr-auto` 靠左；`max-w` 从 88% 收到 80%，不铺满全屏，左右错落形成参差。
+
+#### 5. GPS 接街道级地址 + 谷歌地图链接
+- `/api/weather` 反向地理编码除了 bigdatacloud，新增 **OpenStreetMap Nominatim**（免费、无需 key，带 `User-Agent`），取 `road` + `house_number` + 更准的 `city`，拼出完整 `address`。
+- `updateUserContext` / `cachedUserContext` 扩展 `road/houseNumber/address` 字段。
+- `get_location` 现在返回：经纬度、城市、街道、门牌号、完整地址，以及 `google_maps` 链接（`https://www.google.com/maps/search/?api=1&query=lat,lon`，可点击直达谷歌地图）。`get_weather` 也附带 `address`。
+- 说明：真正的 Google Geocoding API 要付费 key，这里用 Nominatim 拿街道门牌 + 生成谷歌地图链接，等价满足「告诉 AI 在哪个城市哪条街的哪号」。
+
+#### 6. 每条 AI 回复的 tokens
+- 已在上一轮实现（气泡正下方 `↑输入 ↓输出 ↻缓存读 ⊕缓存写`），OpenAI 流式已补 `stream_options.include_usage`。本轮确认逻辑保留。
+
+#### 7. 流式输出滑动被弹回
+- 根因：scroll effect 每次 `streamText` 变化都无条件 `scrollIntoView` → 用户往上滑会被强行拽回底部。
+- 修复：新增 `scrollRef` + `stickBottomRef` + `handleScroll`。只有当用户在底部 80px 内时才自动跟随滚动；往上滑离开底部就停止跟随，屏幕跟手。发送新消息时 `stickBottomRef=true` 强制回到底部。流式时用 `behavior:'auto'` 避免 smooth 抖动。
+
+### 文件变更
+- `src/components/chat/ChatView.tsx`：删除菜单、stick-to-bottom 滚动、气泡 block 对齐、流式/loading 预设色
+- `src/server/autowake.ts`：executeWake 读取 chat-sync config 构造 api_profile + system + model
+- `src/instrumentation.ts`（新增）：boot 时启动唤醒引擎
+- `next.config.js`：`experimental.instrumentationHook: true`
+- `src/server/tools.ts`：context 增加 road/houseNumber/address，get_location 返回街道+谷歌地图链接
+- `src/app/api/weather/route.ts`：Nominatim 街道级反向地理编码
+
+### Debug 笔记
+- 反复 `next build` 被 shell 掉线打断 → 残留 `.next` / `tsconfig.tsbuildinfo` 导致假报错（`_ssgManifest.js ENOENT`、`.next/types/.../route.ts not found`）。清掉 `.next` + `tsconfig.tsbuildinfo` 后台跑 `nohup next build` 一次干净通过。**教训：build 前先 `rm -rf .next tsconfig.tsbuildinfo`，用 nohup 后台跑防掉线中断。**
+- instrumentation 的 fs/path import 必须包在 `NEXT_RUNTIME === 'nodejs'` 正分支里才能 tree-shake，反向 early-return 不行。
+- Nominatim 有 1 req/s 限流 + 强制 User-Agent，前端 30min 缓存已够温和。
+- tsc --noEmit 全通过；clean `next build` 全通过。

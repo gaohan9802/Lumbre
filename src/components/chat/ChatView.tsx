@@ -51,8 +51,7 @@ export function ChatView() {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    deleteMessage, addMessageVersion, switchMessageVersion,
-    truncateFrom, clearMessages,
+    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
@@ -84,11 +83,21 @@ export function ChatView() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const stickBottomRef = useRef(true)
 
   useEffect(() => { setMounted(true) }, [])
 
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+    stickBottomRef.current = dist < 80
+  }
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (stickBottomRef.current)
+      messagesEndRef.current?.scrollIntoView({ behavior: streamText ? 'auto' : 'smooth' })
   }, [messages, isLoading, streamText])
 
   useEffect(() => {
@@ -217,6 +226,7 @@ export function ChatView() {
       providerId: profile?.id,
       modelId: model,
     }
+    stickBottomRef.current = true
     addMessage(userMsg)
     setInput('')
     setIsLoading(true)
@@ -321,15 +331,13 @@ export function ChatView() {
   /* ── delete with options ───────────────── */
   const [deleteMenuId, setDeleteMenuId] = useState<string | null>(null)
   const handleDeleteMsg = (id: string) => { setDeleteMenuId(deleteMenuId === id ? null : id) }
-  const doDeleteSingle = (id: string) => { deleteMessage(id); setDeleteMenuId(null) }
-  const doDeleteBefore = async (id: string) => {
-    const ok = await ask('删除此条及之前的所有消息？')
-    if (ok) { truncateFrom(id); deleteMessage(id); setDeleteMenuId(null) }
+  const doDeleteVersion = (msg: ChatMessage) => {
+    const versions = msg.versions || []
+    if (versions.length > 1) deleteMessageVersion(msg.id, msg.versionIndex ?? versions.length - 1)
+    else deleteMessage(msg.id)
+    setDeleteMenuId(null)
   }
-  const doDeleteAll = async () => {
-    const ok = await ask('删除当前会话的全部消息？')
-    if (ok) { clearMessages(); setDeleteMenuId(null) }
-  }
+  const doDeleteAllVersions = (id: string) => { deleteMessage(id); setDeleteMenuId(null) }
 
   /* ── copy ─────────────────────────────── */
 
@@ -507,7 +515,7 @@ export function ChatView() {
           </div>
 
           {/* messages */}
-          <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-4" onClick={() => deleteMenuId && setDeleteMenuId(null)}>
+          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-4" onClick={() => deleteMenuId && setDeleteMenuId(null)}>
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-40">
                 <span className="text-4xl">🏠</span>
@@ -605,7 +613,7 @@ export function ChatView() {
                           </div>
                         </div>
                       ) : (
-                        <div className={`inline-block w-fit max-w-[88%] break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isUser ? 'rounded-br-md ml-auto' : 'rounded-bl-md'} ${!ap.userBubbleColor && !ap.aiBubbleColor ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
+                        <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isUser ? 'rounded-br-md ml-auto' : 'rounded-bl-md mr-auto'} ${(isUser ? !ap.userBubbleColor : !ap.aiBubbleColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (ap.userBubbleColor ? userBubbleStyle : {}) : (ap.aiBubbleColor ? aiBubbleStyle : {})}>
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>
@@ -636,9 +644,8 @@ export function ChatView() {
                         {isUser && <button onClick={() => startEditMsg(msg)} title="修改" className="p-1"><Pencil size={12} /></button>}
                         {deleteMenuId === msg.id && (
                           <div className={`absolute left-0 top-full mt-1 z-20 rounded-xl shadow-lg border py-1 min-w-[160px] ${n ? 'bg-night-card border-night-border' : 'bg-white border-gray-200'}`}>
-                            <button onClick={() => doDeleteSingle(msg.id)} className={`w-full text-left px-3 py-2 text-xs ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除此条</button>
-                            <button onClick={() => doDeleteBefore(msg.id)} className={`w-full text-left px-3 py-2 text-xs ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除此前所有消息</button>
-                            <button onClick={() => doDeleteAll()} className={`w-full text-left px-3 py-2 text-xs text-red-500 ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除全部消息</button>
+                            <button onClick={() => doDeleteVersion(msg)} className={`w-full text-left px-3 py-2 text-xs ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除此版本{(msg.versions?.length || 0) > 1 ? ` (${(msg.versionIndex ?? 0) + 1}/${msg.versions!.length})` : ''}</button>
+                            <button onClick={() => doDeleteAllVersions(msg.id)} className={`w-full text-left px-3 py-2 text-xs text-red-500 ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除全部版本</button>
                           </div>
                         )}
                       </div>
@@ -668,11 +675,11 @@ export function ChatView() {
                     </div>
                   )}
                   {streamText ? (
-                    <div className={`inline-block w-fit max-w-[88%] break-words px-4 py-3 rounded-2xl rounded-bl-md text-[13px] leading-relaxed ${n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text'}`}>
+                    <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl rounded-bl-md mr-auto text-[13px] leading-relaxed ${!ap.aiBubbleColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={ap.aiBubbleColor ? aiBubbleStyle : {}}>
                       <p className="whitespace-pre-wrap">{streamText}<span className="inline-flex ml-0.5 align-baseline"><span className="stream-cursor">…</span></span></p>
                     </div>
                   ) : (
-                    <div className={`px-4 py-3 rounded-2xl rounded-bl-md ${n ? 'bg-night-surface' : 'bg-white shadow-sm'}`}>
+                    <div className={`w-fit mr-auto px-4 py-3 rounded-2xl rounded-bl-md ${!ap.aiBubbleColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={ap.aiBubbleColor ? aiBubbleStyle : {}}>
                       <div className="flex gap-1">
                         {[0, 1, 2].map(i => (
                           <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
