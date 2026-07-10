@@ -1091,3 +1091,40 @@ OpenAI-compatible 路径 (新):
 ### Debug 笔记
 - shell 无 node_modules，`npx tsc` 拉不到编译器；改动为纯逻辑替换 + 目视核对，未跑 tsc/build。部署前若可在有依赖环境跑一次 `rm -rf .next tsconfig.tsbuildinfo && nohup next build` 更稳。
 - 已丢失的那个对话很可能从未 push 到服务端（在 2.5s debounce / 45s tick 之前就 redeploy 了），本地 localStorage 也已被新状态覆盖 → 大概率不可恢复；若曾 push 过，可翻 `/persistent/chat-sync.2026-07-*.json` 每日快照找回。
+
+---
+
+## 2026-07-10 — 修复「自动出现新的空对话框」bug
+
+### 现象
+Chat 会话列表里不断冒出多个 0 messages 的「新的对话」（截图 8 条对话，一半是空的，时间戳散布在不同启动点）。
+
+### 根因
+`chatStore.ts` 里 `DEFAULT_SESSION_ID = genId('session')` 是**模块级**变量：
+每次浏览器在**无 localStorage**的全新状态下加载（iOS PWA/Safari ITP 驱逐后、新设备、隐私模式等），
+就生成一个**全新随机 id 的空会话**（title=「新的对话」, 0 消息）。
+`ChatSync` 挂载后 `doSync` 把本地全部会话（含这个空会话）推到 `/api/sync`，
+服务器 `mergeSyncState` 合并保存 → 其他设备下次 `pullOnce/doSync` 又把它拉下来。
+每次全新启动 / 每个设备各产生一个空会话推上去，空「新的对话」在服务器无限累积并扩散到所有设备。
+（空会话永远不会被 tombstone，用户很少手动删，所以只增不减。）
+
+### 修复（空会话是纯本地草稿，不该进同步）
+新增 `isBlankSession(s)` = 0 消息 && 未置顶 && (标题为空或「新的对话」)。
+1. `ChatSync.tsx` `doSync`：推送前 `settings.sessions.filter(s => !isBlankSession(s))`，空会话不上传。
+2. `chat-sync.ts` `mergeSyncState`：合并结果 `.filter(s => !isBlankSession(s))`，服务器永不持久化空会话 → 自愈已累积的垃圾（下次任意客户端推送触发保存即清空）。
+3. `chatStore.ts` `mergeRemote`：`sessions.filter(s => s.id === activeSessionId || !isBlankSession(s))`，清理陈旧空会话；**保留 active** 使刚点「新对话」创建的空会话（createSession 会把它设为 active）不被下一次 sync 误删，避免「点了新对话 2.5s 后消失」的 UX 问题。
+
+### 为什么这样安全
+- `pickSession` 在过滤前先按「消息多者胜」合并，任一设备有内容的会话都不会被判为 blank，只有**处处皆空**的会话才被丢。
+- 空会话可随时本地重建，删掉无信息损失。
+- 本地 localStorage 里已存在的旧空会话：修复后不再增殖，且非 active 的会在下次 mergeRemote 时被清掉；当前 active 的那个保留。
+
+### 文件变更
+- `src/lib/chatStore.ts`：新增导出 `isBlankSession`；`mergeRemote` 清理陈旧空会话保留 active
+- `src/server/chat-sync.ts`：`isBlankSession` + `mergeSyncState` 丢弃空会话
+- `src/components/chat/ChatSync.tsx`：`doSync` 推送前过滤空会话
+
+### 验证
+- `tsc --noEmit` 通过
+- clean `next build`（先 rm -rf .next tsconfig.tsbuildinfo）通过
+- commit 2e7e659 已推 main，Zeabur 自动部署
