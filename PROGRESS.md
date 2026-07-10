@@ -1128,3 +1128,38 @@ Chat 会话列表里不断冒出多个 0 messages 的「新的对话」（截图
 - `tsc --noEmit` 通过
 - clean `next build`（先 rm -rf .next tsconfig.tsbuildinfo）通过
 - commit 2e7e659 已推 main，Zeabur 自动部署
+
+---
+
+## 2026-07-10 — 日记板块类型化改造 + 5 项 debug
+
+### 需求：日记分三种类型
+- 写日记先选类型：**普通日记 / 信 / 时间胶囊**（三选一，默认普通日记）。
+- **只有「时间胶囊」有延时公开**（datetime-local）。普通日记、信都取消延时。
+- **普通日记可上锁**（公开/上锁二选一，上锁= visibility `private`，需密码解锁）。
+- **信永远公开**，不能上锁也不能延时。
+- 选类型后，**标题自动补全不可修改前缀**「日记」「信」「时间胶囊」，前缀是独立 `<span>`，输入框只填自定义部分；展示时 `displayTitle()` 拼 `TYPE_PREFIX[type] + title`（老数据无 type 按 visibility 推断，已带「」前缀的不重复加）。
+- 右上角筛选新增**类型筛选**：全部/日记/信/时间胶囊，与作者筛选（全部/🐆/🦦）并存，抽到 header 下方独立 filter bar。
+
+### 数据模型
+- `DiaryEntry` 新增 `type?: 'diary'|'letter'|'capsule'`。
+- `writeDiary` 接收 `type`，并**按 type 强制归一 visibility**（letter→public、capsule→timed），防前端绕过。老数据 `effectiveType() = type || (visibility==='timed'?'capsule':'diary')`。
+- `src/lib/api.ts` diary.write 类型加 `type?`。
+
+### Debug
+1. **read_diary 看不到评论** → `src/server/tools.ts` read_diary 之前只返回 `comments: 条数`。改为返回完整 `comments[]`（author/content/time）+ `comment_count` + `tags` + `type` + `reveal_at` + `created_at`。
+2. **日记间距过大 (P1)** → 根因：卡片是 `motion.button`（默认 `display:inline-block`），多个 `w-full` inline-block 之间产生行盒空白撑高。改 `block w-fit→block w-full`、日期组 `space-y-8→space-y-5`、组内 `space-y-3`→`flex flex-col gap-2.5`、卡片 `p-4→p-3.5`。
+3. **写作丑边框 (P2)** → 根因：`globals.css` 里 `div:has(> textarea.bg-transparent:focus)` 命中了整个写作容器（title input / textarea 是 max-w-lg 容器的直接子元素）→ 聚焦时整块套上 1px inset 粉框。方案：给日记所有输入框加 `.no-frame` class，并在 4 条 focus 规则里 `:not(.no-frame)` 排除。
+4. **前端无 tag 入口** → 写作区新增标签输入行（Hash 图标，空格/逗号分隔，`split(/[\s,，]+/)`），写入走 writeDiary 的 tags。
+5. **read_diary 返回上限** → 本仓库 `/api/diary/read` + in-app read_diary 本就不截断、返回全量。带 `...` 截断/条数上限来自**外部 ombre-brain MCP 层**（不在本仓库文件系统，全盘 grep 只有 /data/heartbeat.py 指向 starfire-diary.zeabur.app），需在那个独立服务里改。本仓库这侧已确保返回完整数据。
+
+### ⚠️ 重大教训：容器重启丢工作区
+- 第一版改动全写在 `/root/Lumbre`（临时层），跑 `next build` 把容器压垮 → Zeabur 重启容器 → **`/root/Lumbre` 连同所有未提交改动被清空**，`/persistent` 也清空。只有 `/data` 是持久卷。
+- 恢复：在持久卷 `/data/Lumbre`（自带 .git+node_modules，但 HEAD 陈旧）里 `git fetch + reset --hard origin/main` 拉回 b8abf44，重做全部 5 处改动。
+- **铁律：改动落盘后先 commit+push，再考虑 build。build 只是验证，Zeabur 部署时会自己 build。绝不在 push 前跑 next build。** 工作目录用 `/data`（持久），不要用 `/root`。
+- 本次容器无 git/node，`apt-get update && apt-get install -y git nodejs` 现装（v20）。
+
+### 验证
+- `tsc --noEmit` EXIT=0 全通过（跑了两次，改动前后各一次）。
+- 未跑 `next build`（会压垮容器）；类型已过，交给 Zeabur 构建。
+- commit c09063a 已推 main。
