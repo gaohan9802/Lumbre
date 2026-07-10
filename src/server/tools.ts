@@ -124,8 +124,9 @@ const DIARY_TOOLS: ToolDef[] = [
         author: { type: 'string', description: 'star 或 fire' },
         title: { type: 'string' },
         content: { type: 'string' },
-        visibility: { type: 'string', description: 'public / private / timed' },
-        reveal_at: { type: 'string', description: '延时公开时间 YYYY-MM-DDTHH:MM（仅 timed）' },
+        type: { type: 'string', description: 'diary(普通日记) / letter(信) / capsule(时间胶囊)。只有 capsule 支持延时公开' },
+        visibility: { type: 'string', description: 'public / private(仅普通日记可上锁) / timed(仅时间胶囊)' },
+        reveal_at: { type: 'string', description: '延时公开时间 YYYY-MM-DDTHH:MM（仅时间胶囊 capsule）' },
         tags: { type: 'string', description: '标签，空格分隔' },
       },
       required: ['date', 'author', 'title', 'content'],
@@ -393,6 +394,7 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
           author: input.author,
           title: input.title,
           content: input.content,
+          type: input.type,
           visibility: input.visibility || 'public',
           reveal_at: input.reveal_at,
           tags: input.tags,
@@ -407,9 +409,19 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
         })
         return JSON.stringify(entries.map(e => ({
           date: e.date, author: e.author, title: e.title,
-          content: (e as any).locked ? '🔒' : e.content,
-          comments: e.comments?.length || 0,
+          type: (e as any).type || (e.visibility === 'timed' ? 'capsule' : 'diary'),
+          visibility: e.visibility,
+          reveal_at: e.reveal_at || null,
+          tags: e.tags || [],
+          content: (e as any).locked ? '🔒 上锁日记' : e.content,
+          comments: (e.comments || []).map((c: any) => ({
+            author: c.author || c.commenter,
+            content: c.content,
+            time: c.time || c.timestamp,
+          })),
+          comment_count: e.comments?.length || 0,
           time_id: e.time_id,
+          created_at: e.created_at,
         })))
       }
       case 'comment_diary': {

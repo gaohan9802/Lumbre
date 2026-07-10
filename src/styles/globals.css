@@ -123,24 +123,24 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* Day mode — input focus: Heartbeat 1px (spec) */
-html:not(.dark) input:focus:not(.bg-transparent):not([type="range"]),
-html:not(.dark) textarea:focus:not(.bg-transparent) {
+html:not(.dark) input:focus:not(.bg-transparent):not([type="range"]):not(.no-frame),
+html:not(.dark) textarea:focus:not(.bg-transparent):not(.no-frame) {
   box-shadow: inset 0 0 0 1px #EF4067;
   outline: none;
 }
-html:not(.dark) div:has(> input.bg-transparent:focus),
-html:not(.dark) div:has(> textarea.bg-transparent:focus) {
+html:not(.dark) div:has(> input.bg-transparent:focus:not(.no-frame)),
+html:not(.dark) div:has(> textarea.bg-transparent:focus:not(.no-frame)) {
   box-shadow: inset 0 0 0 1px #EF4067;
 }
 
 /* Night mode — input focus: Amber 1px (spec) */
-.dark input:focus:not(.bg-transparent):not([type="range"]),
-.dark textarea:focus:not(.bg-transparent) {
+.dark input:focus:not(.bg-transparent):not([type="range"]):not(.no-frame),
+.dark textarea:focus:not(.bg-transparent):not(.no-frame) {
   box-shadow: inset 0 0 0 1px #e2a84b;
   outline: none;
 }
-.dark div:has(> input.bg-transparent:focus),
-.dark div:has(> textarea.bg-transparent:focus) {
+.dark div:has(> input.bg-transparent:focus:not(.no-frame)),
+.dark div:has(> textarea.bg-transparent:focus:not(.no-frame)) {
   box-shadow: inset 0 0 0 1px #e2a84b;
 }
 

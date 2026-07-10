@@ -112,6 +112,7 @@ export interface DiaryEntry {
   author: string
   title: string
   content: string
+  type?: string
   visibility: string
   reveal_at?: string | null
   tags: string[]
@@ -181,15 +182,20 @@ export function readDiaries(viewer: string, opts: { keyword?: string; author_fil
 
 export function writeDiary(data: {
   date: string; author: string; title: string; content: string;
-  visibility: string; reveal_at?: string; tags?: string
+  visibility: string; reveal_at?: string; tags?: string; type?: string
 }): DiaryEntry {
   const tagList = data.tags ? data.tags.split(/\s+/).filter(Boolean) : []
   const now = new Date()
   const timeId = now.toTimeString().slice(0, 5).replace(':', '')
+  // Normalize by type: 信(letter) 永远公开、不上锁、不定时; 时间胶囊(capsule) 定时; 普通日记(diary) 公开或上锁
+  const type = data.type || (data.visibility === 'timed' ? 'capsule' : 'diary')
+  let visibility = data.visibility
+  if (type === 'letter') visibility = 'public'
+  else if (type === 'capsule') visibility = 'timed'
   const entry: DiaryEntry = {
     date: data.date, author: data.author, title: data.title,
-    content: data.content, visibility: data.visibility,
-    reveal_at: data.visibility === 'timed' ? (data.reveal_at || null) : null,
+    content: data.content, type, visibility,
+    reveal_at: visibility === 'timed' ? (data.reveal_at || null) : null,
     tags: tagList, comments: [], time_id: timeId,
     created_at: now.toISOString(), updated_at: null,
   }

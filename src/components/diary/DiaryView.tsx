@@ -6,7 +6,8 @@ import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Lock, Clock, ChevronLeft, Send,
-  Trash2, MessageCircle, FilePlus2, Key, Eye, EyeOff, Timer,
+  Trash2, MessageCircle, FilePlus2, Key, Eye, Timer,
+  BookText, Mail, Hourglass, Hash,
 } from 'lucide-react'
 import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
@@ -20,11 +21,14 @@ interface Comment {
   time?: string
 }
 
+type DocType = 'diary' | 'letter' | 'capsule'
+
 interface DiaryEntry {
   date: string
   author: 'star' | 'fire'
   title: string
   content: string
+  type?: DocType
   visibility: 'public' | 'private' | 'timed'
   reveal_at?: string
   time_id?: string
@@ -35,6 +39,24 @@ interface DiaryEntry {
 }
 
 type AuthorFilter = 'all' | 'star' | 'fire'
+type TypeFilter = 'all' | DocType
+
+const TYPE_PREFIX: Record<DocType, string> = {
+  diary: '「日记」',
+  letter: '「信」',
+  capsule: '「时间胶囊」',
+}
+
+function effectiveType(e: DiaryEntry): DocType {
+  if (e.type) return e.type
+  return e.visibility === 'timed' ? 'capsule' : 'diary'
+}
+
+function displayTitle(e: DiaryEntry): string {
+  const t = e.title || ''
+  if (t.startsWith('「')) return t
+  return TYPE_PREFIX[effectiveType(e)] + t
+}
 
 function friendlyDate(dateStr: string) {
   try {
@@ -86,10 +108,13 @@ export function DiaryView() {
   const [isWriting, setIsWriting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [authorFilter, setAuthorFilter] = useState<AuthorFilter>('all')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
+  const [docType, setDocType] = useState<DocType>('diary')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [visibility, setVisibility] = useState<'public' | 'private' | 'timed'>('public')
+  const [tagsInput, setTagsInput] = useState('')
+  const [locked, setLocked] = useState(false)
   const [revealAt, setRevealAt] = useState('')
 
   const [commentText, setCommentText] = useState('')
@@ -114,7 +139,11 @@ export function DiaryView() {
 
   useEffect(() => { loadEntries() }, [loadEntries])
 
-  const grouped = entries.reduce<Record<string, DiaryEntry[]>>((acc, e) => {
+  const visibleEntries = entries.filter(
+    (e) => typeFilter === 'all' || effectiveType(e) === typeFilter
+  )
+
+  const grouped = visibleEntries.reduce<Record<string, DiaryEntry[]>>((acc, e) => {
     const d = e.date || 'unknown'
     if (!acc[d]) acc[d] = []
     acc[d].push(e)
@@ -122,17 +151,27 @@ export function DiaryView() {
   }, {})
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a))
 
+  const resetWrite = () => {
+    setDocType('diary'); setTitle(''); setContent(''); setTagsInput('')
+    setLocked(false); setRevealAt('')
+  }
+
   const handleWrite = async () => {
     if (!title.trim() || !content.trim()) return
+    if (docType === 'capsule' && !revealAt) return
+    const visibility: 'public' | 'private' | 'timed' =
+      docType === 'capsule' ? 'timed' : docType === 'diary' && locked ? 'private' : 'public'
     await diary.write({
       date: format(new Date(), 'yyyy-MM-dd'),
       author: currentUser,
-      title,
+      title: title.trim(),
       content,
+      type: docType,
       visibility,
-      reveal_at: visibility === 'timed' ? revealAt : undefined,
+      reveal_at: docType === 'capsule' ? revealAt : undefined,
+      tags: tagsInput.trim() ? tagsInput.trim().split(/[\s,，]+/).filter(Boolean).join(' ') : undefined,
     })
-    setTitle(''); setContent(''); setRevealAt(''); setVisibility('public')
+    resetWrite()
     setIsWriting(false)
     loadEntries()
   }
@@ -203,6 +242,8 @@ export function DiaryView() {
 
   const canEdit = selected && selected.author === currentUser
 
+  const noFrame = 'no-frame'
+
   return (
     <div className={`h-full flex flex-col relative ${isNight ? 'bg-night-bg' : 'bg-[#FBF6F0]'}`}>
       {/* Header */}
@@ -224,33 +265,14 @@ export function DiaryView() {
 
         <div className="flex items-center gap-2">
           {!selected && !isWriting && (
-            <>
-              <div className={`flex rounded-lg overflow-hidden text-[11px] ${
-                isNight ? 'bg-night-surface' : 'bg-day-pinkLight'
-              }`}>
-                {([['all', '全部'], ['star', '🐆'], ['fire', '🦦']] as const).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setAuthorFilter(key as AuthorFilter)}
-                    className={`px-2.5 py-1 transition-all ${
-                      authorFilter === key
-                        ? isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'
-                        : isNight ? 'text-night-muted hover:text-night-text' : 'text-day-muted hover:text-day-text'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={() => setIsWriting(true)}
-                className={`p-2 rounded-xl transition ${
-                  isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-pinkLight text-day-pink'
-                }`}
-              >
-                <Plus size={18} />
-              </button>
-            </>
+            <button
+              onClick={() => { resetWrite(); setIsWriting(true) }}
+              className={`p-2 rounded-xl transition ${
+                isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-pinkLight text-day-pink'
+              }`}
+            >
+              <Plus size={18} />
+            </button>
           )}
           {selected && canEdit && (
             <button onClick={handleDelete} className="p-2 rounded-xl opacity-30 hover:opacity-100 hover:text-day-error dark:hover:text-night-error transition">
@@ -260,6 +282,40 @@ export function DiaryView() {
         </div>
       </div>
 
+      {/* Filter bar */}
+      {!selected && !isWriting && (
+        <div className={`relative z-10 px-5 py-2 flex items-center gap-2 flex-wrap ${
+          isNight ? 'border-b border-night-border/30' : 'border-b border-day-border/60'
+        }`}>
+          <div className={`flex rounded-lg overflow-hidden text-[11px] ${isNight ? 'bg-night-surface' : 'bg-day-pinkLight'}`}>
+            {([['all', '全部'], ['star', '🐆'], ['fire', '🦦']] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setAuthorFilter(key as AuthorFilter)}
+                className={`px-2.5 py-1 transition-all ${
+                  authorFilter === key
+                    ? isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'
+                    : isNight ? 'text-night-muted hover:text-night-text' : 'text-day-muted hover:text-day-text'
+                }`}
+              >{label}</button>
+            ))}
+          </div>
+          <div className={`flex rounded-lg overflow-hidden text-[11px] ${isNight ? 'bg-night-surface' : 'bg-day-pinkLight'}`}>
+            {([['all', '全部'], ['diary', '日记'], ['letter', '信'], ['capsule', '时间胶囊']] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTypeFilter(key as TypeFilter)}
+                className={`px-2.5 py-1 transition-all ${
+                  typeFilter === key
+                    ? isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'
+                    : isNight ? 'text-night-muted hover:text-night-text' : 'text-day-muted hover:text-day-text'
+                }`}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Body */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto relative">
         <NotebookBg isNight={isNight} />
@@ -267,52 +323,100 @@ export function DiaryView() {
           <AnimatePresence mode="wait">
             {isWriting ? (
               /* ── Write Mode ── */
-              <motion.div key="write" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="max-w-lg mx-auto space-y-5">
+              <motion.div key="write" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="max-w-lg mx-auto space-y-4">
                 <p className={`text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-                  {format(new Date(), 'yyyy年M月d日 EEEE', { locale: zhCN })} · 🦦
+                  {format(new Date(), 'yyyy年M月d日 EEEE', { locale: zhCN })} · {currentUser === 'star' ? '🐆' : '🦦'}
                 </p>
-                <input
-                  value={title} onChange={(e) => setTitle(e.target.value)}
-                  placeholder="标题" autoFocus
-                  className={`w-full text-xl font-medium bg-transparent outline-none leading-relaxed ${
-                    isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-disabled'
-                  }`}
-                />
-                <div className="flex gap-2 flex-wrap items-center">
-                  {([['public', '公开', Eye], ['private', '私密', EyeOff], ['timed', '定时', Timer]] as [string, string, any][]).map(([v, label, Icon]) => (
-                    <button key={v} onClick={() => setVisibility(v as any)}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs transition-all ${
-                        visibility === v
-                          ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink text-white'
+
+                {/* Type selector */}
+                <div className="flex gap-2">
+                  {([['diary', '普通日记', BookText], ['letter', '信', Mail], ['capsule', '时间胶囊', Hourglass]] as [DocType, string, any][]).map(([v, label, Icon]) => (
+                    <button key={v} onClick={() => { setDocType(v); if (v !== 'diary') setLocked(false); if (v !== 'capsule') setRevealAt('') }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-xs transition-all ${
+                        docType === v
+                          ? isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'
                           : isNight ? 'bg-night-surface text-night-muted' : 'bg-day-pinkLight text-day-muted'
                       }`}
                     >
-                      <Icon size={12} /> {label}
+                      <Icon size={13} /> {label}
                     </button>
                   ))}
-                  {visibility === 'timed' && (
+                </div>
+
+                {/* Title with fixed prefix */}
+                <div className="flex items-baseline gap-1">
+                  <span className={`text-xl font-medium whitespace-nowrap ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>{TYPE_PREFIX[docType]}</span>
+                  <input
+                    value={title} onChange={(e) => setTitle(e.target.value)}
+                    placeholder="标题" autoFocus
+                    className={`flex-1 min-w-0 text-xl font-medium bg-transparent outline-none leading-relaxed ${noFrame} ${
+                      isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-disabled'
+                    }`}
+                  />
+                </div>
+
+                {/* Per-type options */}
+                {docType === 'diary' && (
+                  <div className="flex gap-2">
+                    <button onClick={() => setLocked(false)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs transition-all ${
+                        !locked
+                          ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink text-white'
+                          : isNight ? 'bg-night-surface text-night-muted' : 'bg-day-pinkLight text-day-muted'
+                      }`}><Eye size={12} /> 公开</button>
+                    <button onClick={() => setLocked(true)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs transition-all ${
+                        locked
+                          ? isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink text-white'
+                          : isNight ? 'bg-night-surface text-night-muted' : 'bg-day-pinkLight text-day-muted'
+                      }`}><Lock size={12} /> 上锁</button>
+                  </div>
+                )}
+                {docType === 'letter' && (
+                  <p className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-muted/70' : 'text-day-muted'}`}>
+                    <Mail size={12} /> 信永远公开，不能上锁也不能延时
+                  </p>
+                )}
+                {docType === 'capsule' && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-xs flex items-center gap-1 ${isNight ? 'text-night-muted/70' : 'text-day-muted'}`}>
+                      <Timer size={12} /> 延时公开
+                    </span>
                     <input type="datetime-local" value={revealAt} onChange={(e) => setRevealAt(e.target.value)}
-                      className={`text-xs px-3 py-1.5 rounded-full bg-transparent border ${
+                      className={`text-xs px-3 py-1.5 rounded-full bg-transparent border ${noFrame} ${
                         isNight ? 'border-night-border text-night-text' : 'border-day-border text-day-text'
                       }`}
                     />
-                  )}
+                  </div>
+                )}
+
+                {/* Tags */}
+                <div className="flex items-center gap-1.5">
+                  <Hash size={13} className={isNight ? 'text-night-muted' : 'text-day-muted'} />
+                  <input
+                    value={tagsInput} onChange={(e) => setTagsInput(e.target.value)}
+                    placeholder="标签（空格分隔，可选）"
+                    className={`flex-1 min-w-0 text-xs bg-transparent outline-none py-1 ${noFrame} ${
+                      isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-disabled'
+                    }`}
+                  />
                 </div>
+
                 <textarea
                   value={content} onChange={(e) => setContent(e.target.value)}
-                  placeholder="今天想说什么..." rows={14}
-                  className={`w-full bg-transparent outline-none text-sm resize-none ${
+                  placeholder="今天想说什么..." rows={12}
+                  className={`w-full bg-transparent outline-none text-sm resize-none ${noFrame} ${
                     isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-disabled'
                   }`}
                   style={{ lineHeight: '2rem' }}
                 />
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => { setIsWriting(false); setTitle(''); setContent('') }}
+                <div className="flex gap-3 pt-1">
+                  <button onClick={() => { setIsWriting(false); resetWrite() }}
                     className={`px-5 py-2.5 rounded-xl text-sm transition ${
                       isNight ? 'bg-night-surface text-night-muted' : 'bg-day-pinkLight text-day-muted'
                     }`}>算了</button>
                   <button onClick={handleWrite}
-                    disabled={!title.trim() || !content.trim() || (visibility === 'timed' && !revealAt)}
+                    disabled={!title.trim() || !content.trim() || (docType === 'capsule' && !revealAt)}
                     className={`px-5 py-2.5 rounded-xl text-sm transition disabled:opacity-30 disabled:cursor-not-allowed ${
                       isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'
                     }`}>写好了 ✍️</button>
@@ -329,17 +433,17 @@ export function DiaryView() {
                   {selected.visibility === 'private' && <Lock size={11} className="opacity-60" />}
                   {selected.visibility === 'timed' && <><Clock size={11} className="opacity-60" />{selected.reveal_at && <span className="opacity-50">{selected.reveal_at}</span>}</>}
                 </div>
-                <h3 className={`text-xl font-medium mb-1 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{selected.title}</h3>
+                <h3 className={`text-xl font-medium mb-1 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{displayTitle(selected)}</h3>
                 {selected.tags && selected.tags.length > 0 && (
-                  <div className="flex gap-1.5 flex-wrap mb-5">
+                  <div className="flex gap-1.5 flex-wrap mb-5 mt-2">
                     {selected.tags.map((tag: string) => (
                       <span key={tag} className={`text-[10px] px-2 py-0.5 rounded-full ${
                         isNight ? 'bg-night-amber/10 text-night-amber/70' : 'bg-day-pinkLight text-day-pink'
-                      }`}>{tag}</span>
+                      }`}>#{tag}</span>
                     ))}
                   </div>
                 )}
-                <div className={`text-sm whitespace-pre-wrap ${isNight ? 'text-night-text/85' : 'text-day-text'}`} style={{ lineHeight: '2rem' }}>
+                <div className={`text-sm whitespace-pre-wrap mt-3 ${isNight ? 'text-night-text/85' : 'text-day-text'}`} style={{ lineHeight: '2rem' }}>
                   {selected.content}
                 </div>
 
@@ -349,7 +453,7 @@ export function DiaryView() {
                       <div className={`p-3 rounded-xl space-y-2 ${isNight ? 'bg-night-surface/50' : 'bg-day-tint'}`}>
                         <textarea value={appendText} onChange={(e) => setAppendText(e.target.value)}
                           placeholder="续一段..." rows={4} autoFocus
-                          className={`w-full text-sm bg-transparent outline-none resize-none ${isNight ? 'placeholder:text-night-muted' : 'placeholder:text-day-muted'}`}
+                          className={`w-full text-sm bg-transparent outline-none resize-none ${noFrame} ${isNight ? 'placeholder:text-night-muted' : 'placeholder:text-day-muted'}`}
                           style={{ lineHeight: '1.8rem' }}
                         />
                         <div className="flex gap-2 text-xs justify-end">
@@ -388,11 +492,11 @@ export function DiaryView() {
                     )
                   })}
                   <div className={`flex gap-2 items-end rounded-xl p-2 ${isNight ? 'bg-night-surface/50' : 'bg-day-tint'}`}>
-                    <span className="text-xs pb-1">🦦</span>
+                    <span className="text-xs pb-1">{currentUser === 'star' ? '🐆' : '🦦'}</span>
                     <input value={commentText} onChange={(e) => setCommentText(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleComment()}
                       placeholder="留个言..."
-                      className={`flex-1 text-sm bg-transparent outline-none py-1 ${isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-muted'}`}
+                      className={`flex-1 text-sm bg-transparent outline-none py-1 ${noFrame} ${isNight ? 'placeholder:text-night-muted/50' : 'placeholder:text-day-muted'}`}
                     />
                     <button onClick={handleComment} disabled={!commentText.trim()}
                       className={`p-1.5 rounded-lg transition disabled:opacity-20 ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>
@@ -414,26 +518,26 @@ export function DiaryView() {
                     <p className={`text-xs ${isNight ? 'text-night-muted/50' : 'text-day-disabled'}`}>点右上角 + 写第一篇</p>
                   </div>
                 ) : (
-                  <div className="space-y-8">
+                  <div className="space-y-5">
                     {sortedDates.map((date: string) => (
                       <div key={date}>
-                        <div className={`flex items-center gap-3 mb-3 ${isNight ? 'text-night-amber/60' : 'text-day-pink'}`}>
+                        <div className={`flex items-center gap-3 mb-2 ${isNight ? 'text-night-amber/60' : 'text-day-pink'}`}>
                           <span className="text-xs font-medium tracking-wider">{friendlyDate(date)}</span>
                           <div className={`flex-1 h-px ${isNight ? 'bg-night-amber/10' : 'bg-day-pinkLight'}`} />
                         </div>
-                        <div className="space-y-3">
+                        <div className="flex flex-col gap-2.5">
                           {grouped[date].map((entry: DiaryEntry, i: number) => (
                             <motion.button
                               key={`${entry.date}-${entry.time_id || i}`}
                               onClick={() => handleEntryClick(entry)}
-                              className={`w-full text-left group transition-all duration-200 rounded-2xl p-4 ${
+                              className={`block w-full text-left group transition-all duration-200 rounded-2xl p-3.5 ${
                                 isNight
                                   ? 'bg-night-card/60 hover:bg-night-card border border-night-border/30 hover:border-night-amber/20'
                                   : 'bg-white hover:bg-white border border-day-border hover:border-day-honey hover:shadow-sm'
                               }`}
                               whileTap={{ scale: 0.99 }}
                             >
-                              <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center justify-between mb-1.5">
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs">{entry.author === 'star' ? '🐆' : '🦦'}</span>
                                   <span className={`text-[11px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{friendlyTime(entry.created_at)}</span>
@@ -444,14 +548,14 @@ export function DiaryView() {
                                   {entry.tags && entry.tags.length > 0 && (
                                     <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
                                       isNight ? 'bg-night-amber/10 text-night-amber/50' : 'bg-day-pinkLight text-day-pink'
-                                    }`}>{entry.tags[0]}</span>
+                                    }`}>#{entry.tags[0]}</span>
                                   )}
                                   {(entry.comments?.length || 0) > 0 && (
                                     <span className={`text-[10px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>💬{entry.comments!.length}</span>
                                   )}
                                 </div>
                               </div>
-                              <h4 className={`text-sm font-medium mb-1 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{entry.title}</h4>
+                              <h4 className={`text-sm font-medium mb-0.5 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{displayTitle(entry)}</h4>
                               {entry.locked ? (
                                 <p className={`text-xs italic flex items-center gap-1 ${isNight ? 'text-night-muted/40' : 'text-day-disabled'}`}>
                                   <Lock size={10} /> 需要密码解锁
@@ -486,13 +590,13 @@ export function DiaryView() {
                 <span className="text-sm font-medium">解锁日记</span>
               </div>
               <p className={`text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-                {unlocking.author === 'star' ? '🐆' : '🦦'} {unlocking.title}
+                {unlocking.author === 'star' ? '🐆' : '🦦'} {displayTitle(unlocking)}
               </p>
               <input type="password" value={unlockPwd}
                 onChange={(e) => { setUnlockPwd(e.target.value); setUnlockErr('') }}
                 onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
                 autoFocus placeholder="密码"
-                className={`w-full text-sm bg-transparent outline-none border-b py-2 ${isNight ? 'border-night-border' : 'border-day-border'}`}
+                className={`w-full text-sm bg-transparent outline-none border-b py-2 ${noFrame} ${isNight ? 'border-night-border' : 'border-day-border'}`}
               />
               {unlockErr && <p className="text-xs text-day-error dark:text-night-error">{unlockErr}</p>}
               <div className="flex gap-2 justify-end text-sm">

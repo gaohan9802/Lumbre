@@ -30,6 +30,7 @@ export const diary = {
     post('/api/diary/read', { viewer, ...params }),
   write:  (entry: {
     date: string; author: string; title: string; content: string;
+    type?: 'diary' | 'letter' | 'capsule';
     visibility: 'public' | 'private' | 'timed'; reveal_at?: string; tags?: string;
   }) => post('/api/diary/write', entry),
   comment: (data: { target_date: string; target_author: string; commenter: string; content: string; time_id?: string }) =>
