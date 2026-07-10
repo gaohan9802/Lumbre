@@ -5,18 +5,20 @@
  * Push+pull to /api/sync on mount, every 45s, and 2.5s after local changes.
  */
 import { useEffect, useRef } from 'react'
-import { useChatStore, extractConfig } from '@/lib/chatStore'
+import { useChatStore, extractConfig, isBlankSession } from '@/lib/chatStore'
 
 let applyingRemote = false
 
 async function doSync() {
   try {
     const { settings } = useChatStore.getState()
+    // don't push blank scratch sessions — they'd accumulate across boots/devices
+    const syncSessions = settings.sessions.filter((s) => !isBlankSession(s))
     const res = await fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessions: settings.sessions,
+        sessions: syncSessions,
         tombstones: settings.tombstones,
         config: extractConfig(settings),
         configUpdatedAt: settings.configUpdatedAt || 0,

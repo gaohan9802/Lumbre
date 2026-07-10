@@ -208,6 +208,12 @@ function pickSession(a: any, b: any) {
   return (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
 }
 
+// A blank session (no messages, not pinned, default/empty title) is pure local
+// scratch space; it must never be synced or it accumulates across boots/devices.
+export function isBlankSession(s: any) {
+  return (s?.messages?.length || 0) === 0 && !s?.pinned && (!s?.title || s.title === '新的对话')
+}
+
 const numOr = (v: any) => (typeof v === 'number' && isFinite(v) ? v : undefined)
 
 function normalizeModelId(profile?: ApiProfile, model?: string) {
@@ -504,6 +510,9 @@ export const useChatStore = create<ChatStore>()(
           map.set(rs.id, cur ? pickSession(cur, rs) : rs)
         }
         let sessions = Array.from(map.values()).filter((s) => !(tombstones[s.id] && tombstones[s.id] >= (s.updatedAt || 0)))
+        // drop stale blank sessions (keep the active one so a freshly created empty chat survives)
+        const keepId = settings.activeSessionId
+        sessions = sessions.filter((s) => s.id === keepId || !isBlankSession(s))
         if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
         const activeSessionId = sessions.some((s) => s.id === settings.activeSessionId) ? settings.activeSessionId : sortedSessions(sessions)[0].id
         const nextSettings = { ...settings, sessions, activeSessionId, tombstones }

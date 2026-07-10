@@ -112,6 +112,10 @@ function pruneSnapshots(keep: number) {
 // When two sessions share an id, prefer the one carrying more messages so an
 // empty/blank session can never overwrite a real conversation. Equal message
 // counts fall back to the newer updatedAt.
+function isBlankSession(s: any) {
+  return (s?.messages?.length || 0) === 0 && !s?.pinned && (!s?.title || s.title === '新的对话')
+}
+
 function pickSession(a: any, b: any) {
   const am = a?.messages?.length || 0
   const bm = b?.messages?.length || 0
@@ -130,9 +134,10 @@ export function mergeSyncState(a: SyncState, b: SyncState): SyncState {
     const cur = map.get(s.id)
     map.set(s.id, cur ? pickSession(cur, s) : s)
   }
-  const sessions = Array.from(map.values()).filter(
-    (s) => !(tombstones[s.id] && tombstones[s.id] >= (s.updatedAt || 0))
-  )
+  const sessions = Array.from(map.values())
+    .filter((s) => !(tombstones[s.id] && tombstones[s.id] >= (s.updatedAt || 0)))
+    // never persist blank sessions server-side — heals accumulated empty "新的对话"
+    .filter((s) => !isBlankSession(s))
   // config: newer configUpdatedAt wins
   const aTs = a.configUpdatedAt || 0
   const bTs = b.configUpdatedAt || 0
