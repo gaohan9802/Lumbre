@@ -63,10 +63,16 @@ export interface ChatSession {
 export interface ChatAppearance {
   bgImage: string
   bgOpacity: number
+  // Day-mode bubbles
   userBubbleColor: string
   userBubbleOpacity: number
   aiBubbleColor: string
   aiBubbleOpacity: number
+  // Night-mode bubbles (independent from day)
+  userBubbleColorNight: string
+  userBubbleOpacityNight: number
+  aiBubbleColorNight: string
+  aiBubbleOpacityNight: number
 }
 
 export const DEFAULT_APPEARANCE: ChatAppearance = {
@@ -76,6 +82,10 @@ export const DEFAULT_APPEARANCE: ChatAppearance = {
   userBubbleOpacity: 1,
   aiBubbleColor: '',
   aiBubbleOpacity: 1,
+  userBubbleColorNight: '',
+  userBubbleOpacityNight: 1,
+  aiBubbleColorNight: '',
+  aiBubbleOpacityNight: 1,
 }
 
 export interface Bookmark {

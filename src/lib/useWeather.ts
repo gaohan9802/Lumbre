@@ -2,9 +2,12 @@
 
 /**
  * Weather + city for the top bar.
- * Geolocation → /api/weather (open-meteo + reverse geocode) → 30min sessionStorage cache.
+ * Geolocation → /api/weather (open-meteo + reverse geocode) → 30min cache.
+ * Refreshes automatically when the tab regains visibility/focus so weather &
+ * location stay current even if the user never opens a specific page.
+ * Location is requested silently (no custom prompt) — default authorize.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 
 export interface WeatherInfo {
   temp: number | null
@@ -30,17 +33,21 @@ export function weatherEmoji(code: number): string {
 
 export function useWeather(): WeatherInfo | null {
   const [data, setData] = useState<WeatherInfo | null>(null)
+  const fetching = useRef(false)
 
-  useEffect(() => {
+  const refresh = useCallback((force = false) => {
+    // serve fresh cache unless forced
     try {
       const cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null')
       if (cached && Date.now() - cached.at < CACHE_MS) {
         setData(cached.data)
-        return
+        if (!force) return
       }
     } catch {}
 
     if (typeof navigator === 'undefined' || !navigator.geolocation) return
+    if (fetching.current) return
+    fetching.current = true
 
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
@@ -56,11 +63,39 @@ export function useWeather(): WeatherInfo | null {
             try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), data: d })) } catch {}
           }
         } catch {}
+        fetching.current = false
       },
-      () => {},
+      () => { fetching.current = false },
       { timeout: 10000, maximumAge: 600000 }
     )
   }, [])
+
+  useEffect(() => {
+    refresh()
+
+    // Re-confirm weather + location whenever the tab becomes visible again or
+    // regains focus, but only if the cache has gone stale — cheap and avoids
+    // the "user never opens the page so it never updates" problem.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      let stale = true
+      try {
+        const cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null')
+        stale = !cached || Date.now() - cached.at >= CACHE_MS
+      } catch {}
+      if (stale) refresh(true)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    // periodic top-up while the app stays open
+    const timer = setInterval(() => refresh(true), CACHE_MS)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      clearInterval(timer)
+    }
+  }, [refresh])
 
   return data
 }

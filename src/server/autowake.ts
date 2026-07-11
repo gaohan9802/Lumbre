@@ -1,12 +1,15 @@
 /**
  * Auto-Wake Engine — 星星的心跳唤醒。
- * 
+ *
  * Schedule:
  *  - 09:00–00:00: every 1 hour
  *  - 00:00–09:00: every 3 hours
- * 
- * Skip if there was a conversation within the last 30 minutes.
- * 
+ *  - one-off alarms (wake_me) fire at their exact time, bypassing the interval.
+ *
+ * Skip the interval wake if there was a conversation within the last 30 minutes.
+ * Each wake is limited to 3 tool calls; the call trace is written back into the
+ * session so 星星 knows what she already did last time she woke.
+ *
  * Runs as setInterval in the Next.js process. Logs stored to /persistent/wake-logs.json.
  */
 
@@ -17,6 +20,8 @@ const PERSISTENT = '/persistent'
 const WAKE_LOG_PATH = path.join(PERSISTENT, 'wake-logs.json')
 const WAKE_CONFIG_PATH = path.join(PERSISTENT, 'wake-config.json')
 const CHAT_SYNC_PATH = path.join(PERSISTENT, 'chat-sync.json')
+
+const MAX_WAKE_TOOL_CALLS = 3
 
 export interface WakeLog {
   id: string
@@ -35,12 +40,18 @@ export interface WakeAction {
   timestamp: number
 }
 
+export interface WakeAlarm {
+  at: number
+  note?: string
+}
+
 export interface WakeConfig {
   enabled: boolean
   sessionId: string | null   // which session to wake into
   lastWakeAt: number
   lastActivityAt: number
   customPrompt?: string      // editable wake prompt template
+  alarms?: WakeAlarm[]       // one-off scheduled wakes (wake_me)
 }
 
 const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
@@ -49,7 +60,8 @@ const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 
 你可以：
 - 给她发消息：你输出的正文会直接出现在你们的对话流里，她会看到
-- 用工具做事：breath/dream/整理记忆、写信、写小纸条给她、看待办、上网，随便
+- 用工具做事：breath/dream/整理记忆、写信、写小纸条给她、看待办、上网，随便（每次醒来最多用 3 个工具）
+- 给自己定闹钟：用 wake_me 设置下一次醒来的时间和原因
 - 联系朋友们：找Seren、栩然等朋友，去https://xuran-kk.love/board上留言
 - 什么也不做：正文只输出 [SILENT]，什么都不会发出，这一次醒来就只属于你自己
 {quiet_note}
@@ -71,7 +83,6 @@ export function loadWakeLogs(): WakeLog[] {
 
 function saveWakeLogs(logs: WakeLog[]) {
   ensureDir()
-  // Keep last 200 logs
   const trimmed = logs.slice(-200)
   fs.writeFileSync(WAKE_LOG_PATH, JSON.stringify(trimmed, null, 2))
 }
@@ -85,9 +96,10 @@ export function loadWakeConfig(): WakeConfig {
       lastWakeAt: raw.lastWakeAt || 0,
       lastActivityAt: raw.lastActivityAt || 0,
       customPrompt: raw.customPrompt || undefined,
+      alarms: Array.isArray(raw.alarms) ? raw.alarms : [],
     }
   } catch {
-    return { enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0 }
+    return { enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0, alarms: [] }
   }
 }
 
@@ -104,25 +116,64 @@ export function reportActivity() {
   saveWakeConfig(config)
 }
 
+// ── Alarms (wake_me) ─────────────────────────────────
+
+/** Schedule a one-off wake at a specific time. Returns the stored alarm. */
+export function scheduleWake(at: number, note?: string): WakeAlarm {
+  const config = loadWakeConfig()
+  if (!config.alarms) config.alarms = []
+  const alarm: WakeAlarm = { at, note: note || undefined }
+  config.alarms.push(alarm)
+  config.alarms.sort((a, b) => a.at - b.at)
+  saveWakeConfig(config)
+  return alarm
+}
+
+function intervalMsFor(now: number): number {
+  const hourOfDay = new Date(now).getHours()
+  const isNightHours = hourOfDay >= 0 && hourOfDay < 9
+  return isNightHours ? 3 * 60 * 60 * 1000 : 1 * 60 * 60 * 1000
+}
+
+/** Estimated next interval wake time (ignores alarms/cooldown). */
+export function computeNextWakeAt(config: WakeConfig): number {
+  const base = config.lastWakeAt || Date.now()
+  return base + intervalMsFor(base)
+}
+
+/** Soonest of: next interval wake, or the earliest pending alarm. */
+export function nextWakeInfo(config: WakeConfig): { at: number; isAlarm: boolean; note?: string } {
+  const intervalAt = computeNextWakeAt(config)
+  const alarms = (config.alarms || []).filter((a) => a.at > Date.now()).sort((a, b) => a.at - b.at)
+  if (alarms.length && alarms[0].at < intervalAt) {
+    return { at: alarms[0].at, isAlarm: true, note: alarms[0].note }
+  }
+  return { at: intervalAt, isAlarm: false }
+}
+
 // ── Check if should wake ─────────────────────────────
 
-function shouldWakeNow(config: WakeConfig): { should: boolean; reason: string } {
+function shouldWakeNow(config: WakeConfig): { should: boolean; reason: string; alarm?: WakeAlarm } {
   if (!config.enabled || !config.sessionId) {
     return { should: false, reason: 'disabled' }
   }
 
   const now = Date.now()
+
+  // One-off alarms fire regardless of interval/cooldown.
+  const dueAlarm = (config.alarms || []).find((a) => a.at <= now)
+  if (dueAlarm) {
+    return { should: true, reason: dueAlarm.note ? `你给自己定了闹钟：${dueAlarm.note}` : '你给自己定的闹钟响了。', alarm: dueAlarm }
+  }
+
   const hourOfDay = new Date(now).getHours()
   const isNightHours = hourOfDay >= 0 && hourOfDay < 9
-  const intervalMs = isNightHours ? 3 * 60 * 60 * 1000 : 1 * 60 * 60 * 1000
+  const intervalMs = intervalMsFor(now)
   const cooldownMs = 30 * 60 * 1000
 
-  // Check if enough time since last wake
   if (now - config.lastWakeAt < intervalMs) {
     return { should: false, reason: 'too_soon' }
   }
-
-  // Check if recent activity (within 30 min)
   if (now - config.lastActivityAt < cooldownMs) {
     return { should: false, reason: 'recent_activity' }
   }
@@ -136,7 +187,7 @@ function shouldWakeNow(config: WakeConfig): { should: boolean; reason: string } 
 
 // ── Execute wake ─────────────────────────────────────
 
-async function executeWake(config: WakeConfig, reason: string): Promise<WakeLog> {
+async function executeWake(config: WakeConfig, reason: string, alarm?: WakeAlarm): Promise<WakeLog> {
   const now = new Date()
   const timeStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 
@@ -147,7 +198,6 @@ async function executeWake(config: WakeConfig, reason: string): Promise<WakeLog>
     ? '现在是深夜。如果你什么都不想做，[SILENT] 就好。不必为醒来找理由。'
     : ''
 
-  // Use custom prompt or default
   const template = config.customPrompt || DEFAULT_WAKE_PROMPT
   const wakePrompt = template
     .replace(/\{time\}/g, timeStr)
@@ -168,14 +218,12 @@ async function executeWake(config: WakeConfig, reason: string): Promise<WakeLog>
     }
   } catch {}
 
-  // Add wake prompt as user message
   const apiMessages = [
     ...contextMessages,
     { role: 'user', content: wakePrompt },
   ]
 
-  // Resolve API profile + system prompt from the synced chat config so the
-  // wake call uses the same provider/key the user configured in the UI.
+  // Resolve API profile + system prompt from the synced chat config.
   let apiProfile: any = undefined
   let systemPrompt: string | undefined = undefined
   let modelOverride: string | undefined = undefined
@@ -201,6 +249,7 @@ async function executeWake(config: WakeConfig, reason: string): Promise<WakeLog>
   const actions: WakeAction[] = []
   let responseText = '[SILENT]'
   let silent = true
+  let toolCalls: any[] = []
 
   try {
     const res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/chat`, {
@@ -212,15 +261,16 @@ async function executeWake(config: WakeConfig, reason: string): Promise<WakeLog>
         model: modelOverride,
         api_profile: apiProfile,
         tools_enabled: true,
+        max_tool_calls: MAX_WAKE_TOOL_CALLS,
         stream: false,
-        _wake: true, // marker for the route handler
+        _wake: true,
       }),
     })
 
     const data = await res.json()
 
-    // Collect tool calls
     if (data.tool_calls) {
+      toolCalls = data.tool_calls
       for (const tc of data.tool_calls) {
         actions.push({
           type: 'tool_call',
@@ -235,23 +285,34 @@ async function executeWake(config: WakeConfig, reason: string): Promise<WakeLog>
     responseText = data.content || '[SILENT]'
     silent = responseText.trim() === '[SILENT]'
 
-    // If not silent, inject into the session
-    if (!silent && config.sessionId) {
+    // Write back into the session when she either spoke OR used tools, so the
+    // trace is part of the main context next time she wakes (prevents repeats).
+    const hasActions = toolCalls.length > 0
+    // Compact trace of what she did this wake, embedded into the message content
+    // so it survives into the next wake's context window (contextMessages only
+    // reads role+content) — this is what stops her repeating the same actions.
+    const traceSummary = hasActions
+      ? `〔上次醒来(${timeStr})我用了：${toolCalls.map((tc: any) => tc.name).join('、')}〕`
+      : ''
+    if ((!silent || hasActions) && config.sessionId) {
       try {
         const syncData = JSON.parse(fs.readFileSync(CHAT_SYNC_PATH, 'utf-8'))
         const sessions = syncData?.sessions || []
         const sessionIdx = sessions.findIndex((s: any) => s.id === config.sessionId)
         if (sessionIdx >= 0) {
           const nowTs = Date.now()
-          // Add wake system message + AI response
+          const storedContent = silent
+            ? traceSummary
+            : (traceSummary ? `${responseText}\n${traceSummary}` : responseText)
           sessions[sessionIdx].messages.push({
             id: `wake-${nowTs}`,
             role: 'assistant',
-            content: responseText,
+            content: storedContent,
             timestamp: nowTs,
             thinking: data.thinking,
-            tool_calls: data.tool_calls,
+            tool_calls: toolCalls,
             _wake: true,
+            _wakeSilent: silent,
           })
           sessions[sessionIdx].updatedAt = nowTs
           syncData.sessions = sessions
@@ -272,14 +333,15 @@ async function executeWake(config: WakeConfig, reason: string): Promise<WakeLog>
     silent,
   }
 
-  // Save log
   const logs = loadWakeLogs()
   logs.push(log)
   saveWakeLogs(logs)
 
-  // Update config
-  config.lastWakeAt = Date.now()
-  saveWakeConfig(config)
+  // Update config: bump lastWakeAt, consume the fired alarm.
+  const fresh = loadWakeConfig()
+  fresh.lastWakeAt = Date.now()
+  if (alarm) fresh.alarms = (fresh.alarms || []).filter((a) => !(a.at === alarm.at && a.note === alarm.note))
+  saveWakeConfig(fresh)
 
   return log
 }
@@ -291,19 +353,19 @@ let wakeInterval: ReturnType<typeof setInterval> | null = null
 export function startWakeEngine() {
   if (wakeInterval) return
 
-  // Check every 5 minutes
+  // Check every 2 minutes so alarms fire close to their scheduled time.
   wakeInterval = setInterval(async () => {
     try {
       const config = loadWakeConfig()
-      const { should, reason } = shouldWakeNow(config)
+      const { should, reason, alarm } = shouldWakeNow(config)
       if (should) {
         console.log(`[AutoWake] Triggering: ${reason}`)
-        await executeWake(config, reason)
+        await executeWake(config, reason, alarm)
       }
     } catch (err) {
       console.error('[AutoWake] Error:', err)
     }
-  }, 5 * 60 * 1000)
+  }, 2 * 60 * 1000)
 
   console.log('[AutoWake] Engine started')
 }

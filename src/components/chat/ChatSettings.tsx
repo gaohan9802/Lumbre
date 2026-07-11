@@ -180,8 +180,15 @@ export function ChatSettings({ open, onClose, onConfirm = (msg, fn) => { if (win
                 </div>
                 {ap.bgImage && sliderRow('背景透明度', ap.bgOpacity, (v) => setAppearance({ bgOpacity: v }), 0.05, 1)}
 
-                {colorRow('我的气泡', ap.userBubbleColor, ap.userBubbleOpacity, (c) => setAppearance({ userBubbleColor: c }), (o) => setAppearance({ userBubbleOpacity: o }), isNight ? '#3d3524' : '#f7e8b5')}
-                {colorRow('星星的气泡', ap.aiBubbleColor, ap.aiBubbleOpacity, (c) => setAppearance({ aiBubbleColor: c }), (o) => setAppearance({ aiBubbleOpacity: o }), isNight ? '#26231d' : '#ffffff')}
+                <p className="text-[10px] opacity-40">
+                  当前正在设置<span className={isNight ? 'text-night-amber' : 'text-day-pink'}>{isNight ? '「夜间模式」' : '「日间模式」'}</span>的气泡颜色，日/夜两套配色互不影响。
+                </p>
+                {isNight
+                  ? colorRow('我的气泡（夜间）', ap.userBubbleColorNight, ap.userBubbleOpacityNight, (c) => setAppearance({ userBubbleColorNight: c }), (o) => setAppearance({ userBubbleOpacityNight: o }), '#3d3524')
+                  : colorRow('我的气泡（日间）', ap.userBubbleColor, ap.userBubbleOpacity, (c) => setAppearance({ userBubbleColor: c }), (o) => setAppearance({ userBubbleOpacity: o }), '#f7e8b5')}
+                {isNight
+                  ? colorRow('星星的气泡（夜间）', ap.aiBubbleColorNight, ap.aiBubbleOpacityNight, (c) => setAppearance({ aiBubbleColorNight: c }), (o) => setAppearance({ aiBubbleOpacityNight: o }), '#26231d')
+                  : colorRow('星星的气泡（日间）', ap.aiBubbleColor, ap.aiBubbleOpacity, (c) => setAppearance({ aiBubbleColor: c }), (o) => setAppearance({ aiBubbleOpacity: o }), '#ffffff')}
                 <button onClick={() => setSettings({ appearance: { ...DEFAULT_APPEARANCE } })} className="text-[10px] underline opacity-50 hover:opacity-100">外观全部恢复默认</button>
               </section>
 

@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   loadWakeConfig, saveWakeConfig, loadWakeLogs,
   startWakeEngine, stopWakeEngine, reportActivity,
+  nextWakeInfo, scheduleWake,
 } from '@/server/autowake'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const config = loadWakeConfig()
   const logs = loadWakeLogs().slice(-50).reverse()
-  return NextResponse.json({ config, logs })
+  const next = config.enabled && config.sessionId ? nextWakeInfo(config) : null
+  return NextResponse.json({ config, logs, next })
 }
 
 export async function POST(req: NextRequest) {
@@ -16,6 +20,11 @@ export async function POST(req: NextRequest) {
   if (body.action === 'activity') {
     reportActivity()
     return NextResponse.json({ ok: true })
+  }
+
+  if (body.action === 'schedule' && typeof body.at === 'number') {
+    const alarm = scheduleWake(body.at, body.note)
+    return NextResponse.json({ ok: true, alarm })
   }
 
   const config = loadWakeConfig()

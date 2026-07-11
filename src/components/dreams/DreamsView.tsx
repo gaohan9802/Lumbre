@@ -60,6 +60,7 @@ export function DreamsView() {
 
   const [tab, setTab] = useState<'reality' | 'dreams'>('reality')
   const [config, setConfig] = useState<WakeConfig | null>(null)
+  const [nextWake, setNextWake] = useState<{ at: number; isAlarm: boolean; note?: string } | null>(null)
   const [logs, setLogs] = useState<WakeLog[]>([])
   const [loading, setLoading] = useState(false)
   const [expandedLog, setExpandedLog] = useState<string | null>(null)
@@ -73,6 +74,7 @@ export function DreamsView() {
       const res = await fetch('/api/wake')
       const data = await res.json()
       setConfig(data.config)
+      setNextWake(data.next || null)
       setLogs(data.logs || [])
       setPromptText(data.config?.customPrompt || DEFAULT_WAKE_PROMPT)
       setPromptDirty(false)
@@ -202,6 +204,12 @@ export function DreamsView() {
               {/* Status */}
               {config && (
                 <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                  {config.enabled && nextWake && (
+                    <p className={n ? 'text-night-amber' : 'text-day-pink'}>
+                      预计下一次唤醒：{fmtTime(nextWake.at)}
+                      {nextWake.isAlarm ? ` · ⏰闹钟${nextWake.note ? '「' + nextWake.note + '」' : ''}` : ''}
+                    </p>
+                  )}
                   {config.lastWakeAt > 0 && <p>上次醒来：{fmtRelative(config.lastWakeAt)}</p>}
                   {config.lastActivityAt > 0 && <p>上次活动：{fmtRelative(config.lastActivityAt)}</p>}
                   <p>规则：白天(9-24点)每小时 · 深夜(0-9点)每3小时 · 30分钟内有对话则跳过</p>

@@ -11,6 +11,9 @@ import {
   unlockDiary, setPassword,
   listNotes, writeNote, replyNote, deleteNote,
 } from './diary-store'
+import { listPhotos, editPhoto, deletePhoto, commentPhoto } from './photo-store'
+import { getTodos, commentTodo } from './todo-store'
+import { scheduleWake } from './autowake'
 
 // ── Claude tool schema type ─────────────────────────────
 
@@ -240,7 +243,6 @@ const NOTES_TOOLS: ToolDef[] = [
       properties: {
         author: { type: 'string', description: 'star 或 fire' },
         content: { type: 'string' },
-        tags: { type: 'string', description: '标签，逗号分隔（可选）' },
       },
       required: ['author', 'content'],
     },
@@ -320,11 +322,144 @@ const CONTEXT_TOOLS: ToolDef[] = [
   },
 ]
 
+// ── Photo tools ─────────────────────────────────────────
+
+const PHOTO_TOOLS: ToolDef[] = [
+  {
+    name: 'read_foto',
+    description: '看照片墙上的照片。返回每张照片的id、作者、说明文字、评论。图片本身不返回(太大)。',
+    input_schema: {
+      type: 'object',
+      properties: { limit: { type: 'integer', description: '返回数量上限(默认20)' } },
+    },
+  },
+  {
+    name: 'edit_foto',
+    description: '编辑一张照片的说明文字(caption)。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '照片id' },
+        caption: { type: 'string', description: '新的说明文字' },
+      },
+      required: ['id', 'caption'],
+    },
+  },
+  {
+    name: 'delete_foto',
+    description: '删除一张照片。',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: '照片id' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'comment_foto',
+    description: '给一张照片写评论。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '照片id' },
+        author: { type: 'string', description: 'star 或 fire' },
+        content: { type: 'string' },
+      },
+      required: ['id', 'content'],
+    },
+  },
+]
+
+// ── Todo tools ──────────────────────────────────────────
+
+const TODO_TOOLS: ToolDef[] = [
+  {
+    name: 'read_todo',
+    description: '读某一天的待办清单(小票)。不传date=今天。返回每项待办的id、内容、是否完成、由谁写(star=🐆/fire=🦦)、评论。',
+    input_schema: {
+      type: 'object',
+      properties: { date: { type: 'string', description: 'YYYY-MM-DD，不传=今天' } },
+    },
+  },
+  {
+    name: 'comment_todo',
+    description: '评价/点评某一项待办。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '待办项id' },
+        author: { type: 'string', description: 'star 或 fire' },
+        content: { type: 'string' },
+        date: { type: 'string', description: 'YYYY-MM-DD，不传=今天' },
+      },
+      required: ['id', 'content'],
+    },
+  },
+]
+
+// ── Wake tool ───────────────────────────────────────────
+
+const WAKE_TOOLS: ToolDef[] = [
+  {
+    name: 'wake_me',
+    description: '给自己定闹钟，设置下一次自动醒来的时间。醒来时你会看到note里写的原因。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        time: { type: 'string', description: '唤醒时间，ISO格式(YYYY-MM-DDTHH:MM)或未来的毫秒时间戳' },
+        note: { type: 'string', description: '给醒来的自己留言，说明为什么要醒来(可选)' },
+      },
+      required: ['time'],
+    },
+  },
+]
+
+// ── Fetch tools (web) ───────────────────────────────────
+
+const FETCH_TOOLS: ToolDef[] = [
+  {
+    name: 'fetch_txt',
+    description: '抓取一个网页并返回纯文本(去除HTML)。用于上网查资料。',
+    input_schema: {
+      type: 'object',
+      properties: { url: { type: 'string' }, headers: { type: 'object', description: '可选请求头' } },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'fetch_markdown',
+    description: '抓取一个网页并返回Markdown格式的内容。',
+    input_schema: {
+      type: 'object',
+      properties: { url: { type: 'string' }, headers: { type: 'object', description: '可选请求头' } },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'fetch_html',
+    description: '抓取一个网页并返回原始HTML。',
+    input_schema: {
+      type: 'object',
+      properties: { url: { type: 'string' }, headers: { type: 'object', description: '可选请求头' } },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'fetch_json',
+    description: '抓取一个JSON接口并返回解析后的JSON。',
+    input_schema: {
+      type: 'object',
+      properties: { url: { type: 'string' }, headers: { type: 'object', description: '可选请求头' } },
+      required: ['url'],
+    },
+  },
+]
+
 // ── All tools ────────────────────────────────────────────
 
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
+export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
 
 // ── User context cache (set by frontend via API) ─────────
 
@@ -476,6 +611,68 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
         return r === 'ok' ? '🗑️ 纸条已删除' : r
       }
 
+      // Photos → local store
+      case 'read_foto': {
+        const photos = listPhotos({ limit: input.limit || 20 })
+        return JSON.stringify(photos.map(ph => ({
+          id: ph.id, author: ph.author, caption: ph.caption,
+          comments: (ph.comments || []).map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
+          created_at: ph.created_at,
+        })))
+      }
+      case 'edit_foto': {
+        const r = editPhoto(input.id, { caption: input.caption })
+        return r === 'ok' ? '🖊️ 照片说明已更新' : r
+      }
+      case 'delete_foto': {
+        const r = deletePhoto(input.id)
+        return r === 'ok' ? '🗑️ 照片已删除' : r
+      }
+      case 'comment_foto': {
+        const r = commentPhoto(input.id, input.author || 'star', input.content)
+        return r === 'ok' ? '💬 评论成功' : r
+      }
+
+      // Todo → local store
+      case 'read_todo': {
+        const day = getTodos(input.date)
+        return JSON.stringify({
+          date: day.date,
+          items: day.items.map(it => ({
+            id: it.id, text: it.text, done: it.done,
+            by: it.author === 'fire' ? '🦦 小火' : '🐆 星星',
+            author: it.author,
+            carried: !!it.carried,
+            comments: (it.comments || []).map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
+          })),
+        })
+      }
+      case 'comment_todo': {
+        const r = commentTodo(input.id, input.author || 'star', input.content, input.date)
+        return r === 'ok' ? '💬 已点评' : r
+      }
+
+      // Wake alarm
+      case 'wake_me': {
+        let at = 0
+        if (typeof input.time === 'number') at = input.time
+        else if (typeof input.time === 'string') {
+          const n = Number(input.time)
+          at = isFinite(n) && n > 1e12 ? n : new Date(input.time).getTime()
+        }
+        if (!at || isNaN(at)) return '时间格式无法识别，请用 ISO 格式，如 2026-07-16T09:00'
+        if (at <= Date.now()) return '闹钟时间必须在未来'
+        const alarm = scheduleWake(at, input.note)
+        return JSON.stringify({ ok: true, wake_at: new Date(alarm.at).toLocaleString('zh-CN'), note: alarm.note || null })
+      }
+
+      // Web fetch
+      case 'fetch_txt':
+      case 'fetch_markdown':
+      case 'fetch_html':
+      case 'fetch_json':
+        return await executeFetch(name, input.url, input.headers)
+
       default:
         return `Unknown tool: ${name}`
     }
@@ -599,5 +796,61 @@ function executeMemoryTool(name: string, input: Record<string, any>): string {
 
     default:
       return `Unknown memory tool: ${name}`
+  }
+}
+
+
+/** Strip HTML tags to plain text */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<\/(p|div|br|li|h[1-6]|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
+
+/** Very light HTML → Markdown-ish conversion */
+function htmlToMarkdown(html: string): string {
+  let s = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+  s = s.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h[1-6]>/gi, (_m, l, t) => '\n' + '#'.repeat(Number(l)) + ' ' + t.replace(/<[^>]+>/g, '').trim() + '\n')
+  s = s.replace(/<a[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href, t) => `[${t.replace(/<[^>]+>/g, '').trim()}](${href})`)
+  s = s.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, t) => '- ' + t.replace(/<[^>]+>/g, '').trim() + '\n')
+  s = s.replace(/<(strong|b)[^>]*>([\s\S]*?)<\/(strong|b)>/gi, (_m, _t, t2) => '**' + t2.replace(/<[^>]+>/g, '').trim() + '**')
+  return htmlToText(s)
+}
+
+/** Fetch a URL server-side; convert per tool. Result is capped to avoid token blowup. */
+async function executeFetch(tool: string, url: string, headers?: Record<string, string>): Promise<string> {
+  if (!url || !/^https?:\/\//i.test(url)) return '请提供合法的 http(s) URL'
+  const CAP = 6000
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 20000)
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Lumbre)', ...(headers || {}) },
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    if (tool === 'fetch_json') {
+      const j = await res.json().catch(() => null)
+      if (j == null) return `HTTP ${res.status}: 返回的不是合法 JSON`
+      const str = JSON.stringify(j)
+      return str.length > CAP ? str.slice(0, CAP) + '…(truncated)' : str
+    }
+    const raw = await res.text()
+    let out = raw
+    if (tool === 'fetch_txt') out = htmlToText(raw)
+    else if (tool === 'fetch_markdown') out = htmlToMarkdown(raw)
+    // fetch_html returns raw
+    out = `HTTP ${res.status} · ${url}\n\n` + out
+    return out.length > CAP ? out.slice(0, CAP) + '\n…(truncated)' : out
+  } catch (err: any) {
+    return `Fetch error: ${err.message}`
   }
 }

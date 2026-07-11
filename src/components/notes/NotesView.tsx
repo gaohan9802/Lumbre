@@ -209,24 +209,6 @@ export function NotesView() {
                     {note.content}
                   </p>
 
-                  {/* Tags */}
-                  {note.tags && note.tags.length > 0 && (
-                    <div className="flex gap-1 mt-2 flex-wrap">
-                      {note.tags.map((tag, j) => (
-                        <span
-                          key={j}
-                          className="text-[10px] px-1.5 py-0.5 rounded-full opacity-60"
-                          style={{
-                            backgroundColor: isNight ? 'rgba(226,168,75,0.2)' : '#FEDAB8',
-                            color: isNight ? '#e2a84b' : '#8D7468',
-                          }}
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
                   {/* Replies */}
                   {hasReplies && (
                     <div className="mt-3 pt-2 space-y-2" style={{

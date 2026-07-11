@@ -1163,3 +1163,30 @@ Chat 会话列表里不断冒出多个 0 messages 的「新的对话」（截图
 - `tsc --noEmit` EXIT=0 全通过（跑了两次，改动前后各一次）。
 - 未跑 `next build`（会压垮容器）；类型已过，交给 Zeabur 构建。
 - commit c09063a 已推 main。
+
+---
+
+## 2026-07-11 — 10 项优化落地（chat/todo/photos/wake/weather）
+
+延续上个 session 未提交的脚手架（photo-store/todo-store/todo+photos API 路由/tools 全部工具已存在但前端未接线），本次补齐并修复：
+
+### 修复
+- **chat route 编译错误**：`streamOpenAI` 引用了不存在的 `allToolCalls`（那是非流式函数的变量）。改为在 `streamOpenAI` 内新增 `let toolCallCount`，每次执行工具 `toolCallCount++`，工具开关判据用 `toolCallCount < max_tool_calls`。`tsc --noEmit` 通过。
+
+### 逐项
+1. **懒加载 50 条**（`ChatView.tsx`）：新增 `visibleCount`(默认 50)，切会话重置；渲染 `messages.slice(-visibleCount)`；顶部「加载更早的 N 条」按钮 `+PAGE`。窗口只挂最新 50 条，防卡顿。
+2. **天气/GPS 刷新**（`useWeather.ts`）：抽出 `refresh(force)`，`visibilitychange`+`focus` 回前台时若缓存过期(30min)强制重取，另加 30min 定时 top-up。不再有自定义询问弹窗——静默调用 `getCurrentPosition`（默认授权）。
+3. **日/夜气泡独立**：`chatStore` 已有 `*BubbleColorNight/*OpacityNight` 字段，`ChatSettings` 按当前主题切换编辑「日间/夜间」两套，`ChatView` `n ? *Night : *`。（上个 session 已完成，本次核对无误）
+4. **会话标题中文输入**：rename input `onKeyDown` 已带 `!(e.nativeEvent as any).isComposing`，IME 组字期回车不再提交。（已在）
+5. **chat 传图 + 照片页**：`ChatView` 新增图片按钮(ImagePlus)→ FileReader 转 dataURL → `photos.write('fire', url, '', 'chat')`，并把 `[我分享了一张照片…id:xxx]` 插入输入框让星星可 read_foto/comment_foto。`PhotosView.tsx` 全量重写接 `/api/photos`：网格展示、上传、详情弹层可编辑说明/删除/评论，作者 emoji 🐆星星/🦦獭獭。tools `read_foto/edit_foto/delete_foto/comment_foto` 已在。
+6. **自动唤醒**：`autowake.ts` 已实现 3 工具上限(`MAX_WAKE_TOOL_CALLS`)、闹钟(`wake_me`/`scheduleWake`/`nextWakeInfo`)、主动发消息(写回 session)。本次补：① `DreamsView` 显示「预计下一次唤醒时间」(GET /api/wake 返回 `next`)；② **痕迹塞回上下文**——原本工具痕迹只存在 message.tool_calls，但重建唤醒上下文只读 role+content 会丢失 → 现在把 `〔上次醒来(time)我用了：xxx、yyy〕` 写进 message.content，silent 时也写，确保下次醒来能看到自己做过什么、防重复。
+7. **fetch 工具**：`fetch_txt/markdown/html/json` 已在 tools，`FETCH_TOOL_NAMES` 让其结果回灌上限 6000 字（普通工具走 summarize），下轮只留痕迹不塞全网页防 token 爆。（已在）
+8. **气泡下 token 显示**：`↑输入・↓输出・⚡️缓存命中%`，缓存部分高亮（夜 amber/日 pink）。（已在）
+9. **小纸条去 tags**：`NotesView` 无 tag 入口/展示（仅残留类型定义）。（已在）
+10. **待办**：`todo-store.ts`（未结清 rollForward 顺延次日、近 7 天小票 `listReceiptDays`、author star=🐆/fire=🦦）+ API 路由 + tools `read_todo/comment_todo` 已在。本次 **`TodoView.tsx` 全量重写**接 `/api/todo`：柜员固定「🐆 · 🦦」，每项显示作者 emoji，顺延项标 ↻，逐项评论展开，History 入口选近 7 天小票回看，底部文案改「未结清的不会消失，会顺延到第二天」。
+
+### Debug 笔记
+- `api.ts` 是命名导出（`export const photos/todo`），无 `export const api`。ChatView/PhotosView/TodoView 用 `import { photos as photosApi }` / `{ todo as todoApi }`，不能 `api.photos`。
+- 无 `.eslintrc` → `next build` 跳过 lint，`any`/`<img>` 不会阻断 Zeabur 构建。
+- TodoView 条码从 `Math.random()` 改成 `i % 3` 确定式，顺带避免 SSR hydration 抖动。
+- 遵守铁律：仅 `tsc --noEmit`(EXIT=0) 验证，**不在本机跑 next build**（压垮容器），commit+push 交 Zeabur 构建。工作目录 `/data/Lumbre`（持久卷）。

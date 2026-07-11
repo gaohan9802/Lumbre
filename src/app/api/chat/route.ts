@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef } from '@/server/tools'
+import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef, FETCH_TOOL_NAMES } from '@/server/tools'
 import { reportActivity } from '@/server/autowake'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
@@ -9,7 +9,11 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【记忆】breath(检索/浮现记忆) · hold(存储记忆) · grow(日记归档) · trace(修改记忆) · pulse(系统状态) · dream(做梦自省)
 【日记】write_diary · read_diary · comment_diary · update_diary · delete_diary · unlock_diary · set_password · timeline
 【纸条】write_note · read_notes · reply_note · delete_note
+【照片】read_foto(看照片墙) · edit_foto(改说明) · comment_foto(评论) · delete_foto(删除)
+【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
 【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
+【上网】fetch_txt · fetch_markdown · fetch_html · fetch_json(抓网页/接口)
+【闹钟】wake_me(给自己定下一次醒来的时间)
 【系统】run(执行shell命令)
 
 你可以主动使用这些工具。比如对话中想记住什么就 hold，想回忆就 breath，想写日记就 write_diary。不需要等人要求你用。
@@ -147,6 +151,7 @@ export async function POST(req: NextRequest) {
       tools_enabled = true,
       stream = false,
       bookmark_injections,
+      max_tool_calls,
       _wake,
     } = await req.json()
 
@@ -172,6 +177,7 @@ export async function POST(req: NextRequest) {
       messages, system, model, apiKey, baseUrl, thinking_budget,
       prompt_caching, tools_enabled, temperature,
       bookmark_injections: bookmark_injections || '',
+      max_tool_calls,
     }
 
     if (stream) {
@@ -225,12 +231,12 @@ function currentTimestamp(): string {
 async function proxyAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
-  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
     thinking_budget, prompt_caching, tools_enabled, temperature,
-    bookmark_injections,
+    bookmark_injections, max_tool_calls,
   } = params
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
@@ -267,7 +273,7 @@ async function proxyAnthropic(params: {
     const effectiveBudget = budget > 0 ? budget : 8000
     body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
     // Anthropic ignores temperature when thinking is enabled
-    if (tools_enabled) body.tools = ALL_TOOLS
+    if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = ALL_TOOLS
 
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) {
@@ -310,7 +316,7 @@ async function proxyAnthropic(params: {
       toolUses.map(async (tu) => {
         const result = await executeTool(tu.name, tu.input)
         allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 4000) })
-        return { type: 'tool_result' as const, tool_use_id: tu.id, content: summarizeToolResult(result) }
+        return { type: 'tool_result' as const, tool_use_id: tu.id, content: FETCH_TOOL_NAMES.has(tu.name) ? result.slice(0, 6000) : summarizeToolResult(result) }
       }),
     )
 
@@ -332,13 +338,13 @@ async function proxyAnthropic(params: {
 async function streamAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
-  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number;
   send: (type: string, data: any) => void;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
     thinking_budget, prompt_caching, tools_enabled, temperature,
-    bookmark_injections, send,
+    bookmark_injections, send, max_tool_calls,
   } = params
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
@@ -373,7 +379,7 @@ async function streamAnthropic(params: {
     // Bridge layer: always enable thinking (reasoning)
     const effectiveBudget = budget > 0 ? budget : 8000
     body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
-    if (tools_enabled) body.tools = ALL_TOOLS
+    if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = ALL_TOOLS
 
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) {
@@ -453,7 +459,7 @@ async function streamAnthropic(params: {
         const result = await executeTool(tu.name, tu.input)
         allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 4000) })
         send('tool_call', { name: tu.name, input: tu.input, result: result.slice(0, 4000) })
-        return { type: 'tool_result' as const, tool_use_id: tu.id, content: summarizeToolResult(result) }
+        return { type: 'tool_result' as const, tool_use_id: tu.id, content: FETCH_TOOL_NAMES.has(tu.name) ? result.slice(0, 6000) : summarizeToolResult(result) }
       }),
     )
 
@@ -476,9 +482,9 @@ function toolsToOpenAI(tools: ToolDef[]) {
 async function proxyOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
-  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, max_tool_calls } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
@@ -519,7 +525,7 @@ async function proxyOpenAI(params: {
       model,
       messages: loopMessages,
       max_tokens: 16000,
-      ...(tools_enabled ? { tools: openaiTools } : {}),
+      ...(tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls) ? { tools: openaiTools } : {}),
     }
     if (typeof temperature === 'number') body.temperature = temperature
     // Bridge layer: always request reasoning for all models
@@ -570,7 +576,7 @@ async function proxyOpenAI(params: {
         try { fnArgs = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
         const result = await executeTool(fnName, fnArgs)
         allToolCalls.push({ name: fnName, input: fnArgs, result: result.slice(0, 4000) })
-        return { role: 'tool' as const, tool_call_id: tc.id, content: summarizeToolResult(result) }
+        return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(fnName) ? result.slice(0, 6000) : summarizeToolResult(result) }
       }),
     )
 
@@ -592,10 +598,10 @@ async function proxyOpenAI(params: {
 async function streamOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
-  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number;
   send: (type: string, data: any) => void;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, send } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, send, max_tool_calls } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
@@ -624,6 +630,7 @@ async function streamOpenAI(params: {
 
   let loopMessages = [...builtMessages]
   let totalUsage = { prompt: 0, completion: 0 }
+  let toolCallCount = 0
 
   const MAX_ITERATIONS = 15
 
@@ -634,7 +641,7 @@ async function streamOpenAI(params: {
       max_tokens: 16000,
       stream: true,
       stream_options: { include_usage: true },
-      ...(tools_enabled ? { tools: openaiTools } : {}),
+      ...(tools_enabled && (!max_tool_calls || toolCallCount < max_tool_calls) ? { tools: openaiTools } : {}),
     }
     if (typeof temperature === 'number') body.temperature = temperature
     // Bridge layer: always request reasoning
@@ -709,8 +716,9 @@ async function streamOpenAI(params: {
         let fnArgs: Record<string, any> = {}
         try { fnArgs = JSON.parse(tc.args || '{}') } catch { /* empty */ }
         const result = await executeTool(tc.name, fnArgs)
+        toolCallCount++
         send('tool_call', { name: tc.name, input: fnArgs, result: result.slice(0, 4000) })
-        return { role: 'tool' as const, tool_call_id: tc.id, content: summarizeToolResult(result) }
+        return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(tc.name) ? result.slice(0, 6000) : summarizeToolResult(result) }
       }),
     )
     loopMessages.push(...results)

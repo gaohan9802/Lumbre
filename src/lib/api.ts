@@ -56,3 +56,26 @@ export const memory = {
   search: (query?: string, params: any = {}) => post('/api/memory/search', { query, ...params }),
   pulse:  () => post('/api/memory/pulse'),
 }
+
+// ── Photos ──────────────────────────────────────────────
+async function get(path: string) {
+  const res = await fetch(path)
+  return res.json()
+}
+
+export const photos = {
+  list:    () => get('/api/photos/list'),
+  write:   (author: string, url: string, caption?: string, source?: string) => post('/api/photos/write', { author, url, caption, source }),
+  edit:    (id: string, caption: string) => post('/api/photos/edit', { id, caption }),
+  delete:  (id: string) => post('/api/photos/delete', { id }),
+  comment: (id: string, author: string, content: string) => post('/api/photos/comment', { id, author, content }),
+}
+
+// ── Todo ────────────────────────────────────────────────
+export const todo = {
+  list:    (date?: string) => get('/api/todo/list' + (date ? `?date=${date}` : '')),
+  add:     (text: string, author: string, date?: string) => post('/api/todo/add', { text, author, date }),
+  toggle:  (id: string, date?: string) => post('/api/todo/toggle', { id, date }),
+  remove:  (id: string, date?: string) => post('/api/todo/remove', { id, date }),
+  comment: (id: string, author: string, content: string, date?: string) => post('/api/todo/comment', { id, author, content, date }),
+}

@@ -6,13 +6,13 @@ import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft,
-  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked,
+  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, snapshotOfMessage,
   getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks,
 } from '@/lib/chatStore'
-import { chat } from '@/lib/api'
+import { chat, photos as photosApi } from '@/lib/api'
 import { ChatSettings } from './ChatSettings'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
@@ -83,10 +83,19 @@ export function ChatView() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const imgInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingImg, setUploadingImg] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickBottomRef = useRef(true)
 
   useEffect(() => { setMounted(true) }, [])
+
+  // Lazy-load: only render the most recent messages to keep the window snappy.
+  const PAGE = 50
+  const [visibleCount, setVisibleCount] = useState(PAGE)
+  useEffect(() => { setVisibleCount(PAGE) }, [settings.activeSessionId])
+  const hiddenCount = Math.max(0, messages.length - visibleCount)
+  const visibleMessages = hiddenCount > 0 ? messages.slice(-visibleCount) : messages
 
   const handleScroll = () => {
     const el = scrollRef.current
@@ -106,6 +115,24 @@ export function ChatView() {
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }, [input])
+
+  const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploadingImg(true)
+    const reader = new FileReader()
+    reader.onload = async () => {
+      try {
+        const res = await photosApi.write('fire', reader.result as string, '', 'chat')
+        // let 星星 know a photo was shared so she can read_foto / comment_foto / edit_foto
+        setInput((prev) => (prev ? prev + '\n' : '') + `[我分享了一张照片到照片墙 · id:${res.id}]`)
+      } catch {}
+      setUploadingImg(false)
+    }
+    reader.onerror = () => setUploadingImg(false)
+    reader.readAsDataURL(file)
+  }
 
   /* ── send ────────────────────────────── */
 
@@ -396,13 +423,18 @@ export function ChatView() {
     backgroundColor: n ? `rgba(15,20,25,${1 - ap.bgOpacity})` : `rgba(255,255,255,${1 - ap.bgOpacity})`,
   } : {}
 
+  // Theme-aware bubble colors — day and night are configured independently.
+  const uColor = n ? ap.userBubbleColorNight : ap.userBubbleColor
+  const uOpacity = n ? ap.userBubbleOpacityNight : ap.userBubbleOpacity
+  const aColor = n ? ap.aiBubbleColorNight : ap.aiBubbleColor
+  const aOpacity = n ? ap.aiBubbleOpacityNight : ap.aiBubbleOpacity
   const userBubbleStyle: React.CSSProperties = {
-    backgroundColor: ap.userBubbleColor || (n ? 'rgba(61,53,36,1)' : 'rgba(247,232,181,1)'),
-    opacity: ap.userBubbleOpacity,
+    backgroundColor: uColor || (n ? 'rgba(61,53,36,1)' : 'rgba(247,232,181,1)'),
+    opacity: uOpacity,
   }
   const aiBubbleStyle: React.CSSProperties = {
-    backgroundColor: ap.aiBubbleColor || (n ? 'rgba(36,48,64,1)' : 'rgba(255,255,255,1)'),
-    opacity: ap.aiBubbleOpacity,
+    backgroundColor: aColor || (n ? 'rgba(36,48,64,1)' : 'rgba(255,255,255,1)'),
+    opacity: aOpacity,
   }
 
   /* ── model picker ─────────────────────── */
@@ -451,7 +483,7 @@ export function ChatView() {
                 <div className="flex-1 min-w-0">
                   {editingSessionId === s.id ? (
                     <input value={editingTitle} autoFocus onChange={(e) => setEditingTitle(e.target.value)}
-                      onBlur={finishRename} onKeyDown={(e) => { if (e.key === 'Enter') finishRename(); if (e.key === 'Escape') setEditingSessionId(null) }}
+                      onBlur={finishRename} onKeyDown={(e) => { if (e.key === 'Enter' && !(e.nativeEvent as any).isComposing) finishRename(); if (e.key === 'Escape') setEditingSessionId(null) }}
                       onClick={(e) => e.stopPropagation()} className={`w-full px-2 py-1 rounded text-xs outline-none ${n ? 'bg-night-card' : 'bg-white'}`} />
                   ) : (
                     <div className="text-xs font-medium truncate flex items-center gap-1">
@@ -523,8 +555,17 @@ export function ChatView() {
               </div>
             )}
 
+            {hiddenCount > 0 && (
+              <div className="flex justify-center pb-2">
+                <button onClick={() => setVisibleCount((c) => c + PAGE)}
+                  className={`text-[11px] px-3 py-1.5 rounded-full opacity-60 hover:opacity-100 ${n ? 'bg-night-surface' : 'bg-gray-100'}`}>
+                  加载更早的 {Math.min(PAGE, hiddenCount)} 条（还有 {hiddenCount} 条）
+                </button>
+              </div>
+            )}
+
             <AnimatePresence initial={false}>
-              {messages.map((msg) => {
+              {visibleMessages.map((msg) => {
                 const isUser = msg.role === 'user'
                 const versions = msg.versions || []
                 const vIdx = msg.versionIndex ?? 0
@@ -613,8 +654,8 @@ export function ChatView() {
                           </div>
                         </div>
                       ) : (
-                        <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isUser ? 'rounded-br-md ml-auto' : 'rounded-bl-md mr-auto'} ${(isUser ? !ap.userBubbleColor : !ap.aiBubbleColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
-                          style={isUser ? (ap.userBubbleColor ? userBubbleStyle : {}) : (ap.aiBubbleColor ? aiBubbleStyle : {})}>
+                        <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isUser ? 'rounded-br-md ml-auto' : 'rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
+                          style={isUser ? (uColor ? userBubbleStyle : {}) : (aColor ? aiBubbleStyle : {})}>
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>
                       )}
@@ -623,14 +664,18 @@ export function ChatView() {
                       {!isUser && (
                         <div className={`text-[10px] px-1 flex flex-wrap gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                           {msg.modelId && <span className="opacity-40">{msg.modelId}</span>}
-                          {(msg.input_tokens != null && msg.input_tokens > 0) && (
-                            <>
-                              <span className="opacity-50" title="输入tokens">↑{msg.input_tokens.toLocaleString()}</span>
-                              <span className="opacity-50" title="输出tokens">↓{(msg.output_tokens || 0).toLocaleString()}</span>
-                              {(msg.cache_read_tokens ?? 0) > 0 && <span className="opacity-60 text-green-500" title="缓存读取">↻{msg.cache_read_tokens}</span>}
-                              {(msg.cache_creation_tokens ?? 0) > 0 && <span className="opacity-60 text-yellow-500" title="缓存写入">⊕{msg.cache_creation_tokens}</span>}
-                            </>
-                          )}
+                          {(msg.input_tokens != null && msg.input_tokens > 0) && (() => {
+                            const inp = msg.input_tokens || 0
+                            const out = msg.output_tokens || 0
+                            const cr = msg.cache_read_tokens || 0
+                            const ratio = (inp + cr) > 0 ? Math.round((cr / (inp + cr)) * 100) : 0
+                            return (
+                              <span className="opacity-60" title={`输入${inp} · 输出${out} · 缓存命中${ratio}%`}>
+                                ↑{inp.toLocaleString()}・↓{out.toLocaleString()}
+                                {cr > 0 && <span className={n ? 'text-night-amber' : 'text-day-pink'}>・⚡️{ratio}%</span>}
+                              </span>
+                            )
+                          })()}
                         </div>
                       )}
 
@@ -675,11 +720,11 @@ export function ChatView() {
                     </div>
                   )}
                   {streamText ? (
-                    <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl rounded-bl-md mr-auto text-[13px] leading-relaxed ${!ap.aiBubbleColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={ap.aiBubbleColor ? aiBubbleStyle : {}}>
+                    <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl rounded-bl-md mr-auto text-[13px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                       <p className="whitespace-pre-wrap">{streamText}<span className="inline-flex ml-0.5 align-baseline"><span className="stream-cursor">…</span></span></p>
                     </div>
                   ) : (
-                    <div className={`w-fit mr-auto px-4 py-3 rounded-2xl rounded-bl-md ${!ap.aiBubbleColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={ap.aiBubbleColor ? aiBubbleStyle : {}}>
+                    <div className={`w-fit mr-auto px-4 py-3 rounded-2xl rounded-bl-md ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                       <div className="flex gap-1">
                         {[0, 1, 2].map(i => (
                           <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
@@ -713,6 +758,11 @@ export function ChatView() {
               <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
                 placeholder="说点什么..." rows={1} enterKeyHint="enter"
                 className={`flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
+              <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
+              <button onClick={() => imgInputRef.current?.click()} disabled={uploadingImg} title="上传图片到照片墙"
+                className={`p-2 rounded-xl flex-shrink-0 opacity-60 hover:opacity-100 disabled:opacity-30 ${uploadingImg ? 'animate-pulse' : ''}`}>
+                <ImagePlus size={16} />
+              </button>
               <button onClick={handleSend} disabled={!input.trim() || isLoading}
                 className={`p-2 rounded-xl transition-all flex-shrink-0 ${input.trim() ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
                 <Send size={16} />
