@@ -11,6 +11,7 @@ import { PhotosView } from '@/components/photos/PhotosView'
 import { MemoryView } from '@/components/memory/MemoryView'
 import { CoReadingView } from '@/components/coreading/CoReadingView'
 import { DreamsView } from '@/components/dreams/DreamsView'
+import { TesisView } from '@/components/tesis/TesisView'
 import { ChatSync } from '@/components/chat/ChatSync'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -23,6 +24,7 @@ const views = {
   memory: MemoryView,
   coreading: CoReadingView,
   dreams: DreamsView,
+  tesis: TesisView,
 }
 
 export default function Home() {

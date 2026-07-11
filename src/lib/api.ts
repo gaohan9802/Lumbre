@@ -79,3 +79,12 @@ export const todo = {
   remove:  (id: string, date?: string) => post('/api/todo/remove', { id, date }),
   comment: (id: string, author: string, content: string, date?: string) => post('/api/todo/comment', { id, author, content, date }),
 }
+
+// ── Tesis (thesis progress) ─────────────────────────────
+export const tesis = {
+  list:    () => get('/api/thesis/list'),
+  add:     (title: string, totalPages: number) => post('/api/thesis/add', { title, totalPages }),
+  update:  (id: string, patch: { title?: string; totalPages?: number; currentPages?: number }) => post('/api/thesis/update', { id, ...patch }),
+  remove:  (id: string) => post('/api/thesis/remove', { id }),
+  comment: (author: string, content: string) => post('/api/thesis/comment', { author, content }),
+}

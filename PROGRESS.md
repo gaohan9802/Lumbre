@@ -1190,3 +1190,35 @@ Chat 会话列表里不断冒出多个 0 messages 的「新的对话」（截图
 - 无 `.eslintrc` → `next build` 跳过 lint，`any`/`<img>` 不会阻断 Zeabur 构建。
 - TodoView 条码从 `Math.random()` 改成 `i % 3` 确定式，顺带避免 SSR hydration 抖动。
 - 遵守铁律：仅 `tsc --noEmit`(EXIT=0) 验证，**不在本机跑 next build**（压垮容器），commit+push 交 Zeabur 构建。工作目录 `/data/Lumbre`（持久卷）。
+
+---
+
+## 2026-07-11 — 新增板块「Tesis」论文进度追踪
+
+### 需求
+让 AI 追踪小火的论文进度：章节(总页数/当前页数/完成%)、整体总页数+完成%、每日进度折线图、AI 评论区(仅日期+内容，无 tags)、AI 可查看进度的工具。
+
+### 后端
+- `src/server/thesis-store.ts`：单文件存储 `DATA_DIR/thesis/thesis.json`
+  - `chapters[]`：{id,title,totalPages,currentPages,created_at,updated_at}，currentPages 自动 clamp 到 [0,total]
+  - `progress[]`：每日快照 {date,done,total,percent}，任何页数变动都 upsert 当天点(按日期去重) → 折线图数据源
+  - `comments[]`：{id,author,content,time}，只存日期+内容
+  - API：`getThesis`(含 totals 聚合)/`addChapter`/`updateChapter`/`removeChapter`/`commentThesis`
+- API 路由(仿 todo)：`/api/thesis/list`(GET) `/add` `/update` `/remove` `/comment`(POST)
+- `src/lib/api.ts`：新增 `tesis` 客户端(list/add/update/remove/comment)
+
+### AI 工具（tools.ts）
+- `read_thesis`：查看章节+整体%+每日折线数据+评论（无参数）
+- `comment_thesis`：写评论到 AI 评论区（author 默认 star）
+- 已加入 `ALL_TOOLS` 和 executor case
+
+### 前端
+- `src/components/tesis/TesisView.tsx`：
+  - 顶部整体进度卡(总页/已完成/剩余 + 大百分比 + 进度条)
+  - 纯 SVG 折线图 `ProgressChart`(累计已完成页数 vs 日期，渐变填充+网格线+数据点+日期轴，无第三方库)
+  - 章节卡 `ChapterCard`：±1 快捷、当前页/总页可内联编辑、完成%条、删除
+  - AI 评论区：输入框(作者 emoji 🐆/🦦) + 评论列表(日期+内容，倒序)
+- 接线四处：`store.ts`(Tab+VALID_TABS，persist v4→v5)、`Sidebar.tsx`(📄 Tesis)、`TopBar.tsx`(标题)、`page.tsx`(import+views)
+
+### 验证
+- `tsc --noEmit` EXIT=0。未跑 next build（交 Zeabur）。工作目录 /data/Lumbre。

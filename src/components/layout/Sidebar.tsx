@@ -13,6 +13,7 @@ const tabs = [
   { id: 'photos' as const, label: '照片', emoji: '📷' },
   { id: 'memory' as const, label: '记忆', emoji: '✨' },
   { id: 'coreading' as const, label: '阅读', emoji: '📖' },
+  { id: 'tesis' as const, label: 'Tesis', emoji: '📄' },
   { id: 'dreams' as const, label: '现实与梦境', emoji: '🌙' },
 ]
 

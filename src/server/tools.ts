@@ -13,6 +13,7 @@ import {
 } from './diary-store'
 import { listPhotos, editPhoto, deletePhoto, commentPhoto } from './photo-store'
 import { getTodos, commentTodo } from './todo-store'
+import { getThesis, commentThesis } from './thesis-store'
 import { scheduleWake } from './autowake'
 
 // ── Claude tool schema type ─────────────────────────────
@@ -396,6 +397,28 @@ const TODO_TOOLS: ToolDef[] = [
   },
 ]
 
+// ── Tesis (thesis) tools ────────────────────────────────
+
+const THESIS_TOOLS: ToolDef[] = [
+  {
+    name: 'read_thesis',
+    description: '查看小火的论文进度：每个章节的标题、总页数、当前页数、完成百分比，以及论文整体总页数和完成百分比，还有每天的进度折线数据点和已有评论。',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'comment_thesis',
+    description: '给论文进度写一条评论(鼓励/建议/复盘)。会显示在论文页的AI评论区，带日期。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        author: { type: 'string', description: 'star 或 fire，默认 star(🐆)' },
+        content: { type: 'string', description: '评论内容' },
+      },
+      required: ['content'],
+    },
+  },
+]
+
 // ── Wake tool ───────────────────────────────────────────
 
 const WAKE_TOOLS: ToolDef[] = [
@@ -456,7 +479,7 @@ const FETCH_TOOLS: ToolDef[] = [
 
 // ── All tools ────────────────────────────────────────────
 
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -650,6 +673,25 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
       case 'comment_todo': {
         const r = commentTodo(input.id, input.author || 'star', input.content, input.date)
         return r === 'ok' ? '💬 已点评' : r
+      }
+
+      // Tesis (thesis) → local store
+      case 'read_thesis': {
+        const t = getThesis()
+        return JSON.stringify({
+          totals: t.totals,
+          chapters: t.chapters.map((c: any) => ({
+            id: c.id, title: c.title,
+            totalPages: c.totalPages, currentPages: c.currentPages,
+            percent: c.totalPages > 0 ? Math.round((c.currentPages / c.totalPages) * 100) : 0,
+          })),
+          progress: t.progress,
+          comments: t.comments.map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
+        })
+      }
+      case 'comment_thesis': {
+        const r = commentThesis(input.author || 'star', input.content)
+        return r === 'ok' ? '💬 已在论文区留下评论' : r
       }
 
       // Wake alarm
