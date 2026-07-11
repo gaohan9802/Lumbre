@@ -172,7 +172,7 @@ export function TesisView() {
 
         {/* AI comments */}
         <div className="space-y-3">
-          <h2 className="text-sm font-medium flex items-center gap-1.5"><MessageCircle size={15} /> AI 评论区</h2>
+          <h2 className="text-sm font-medium flex items-center gap-1.5"><MessageCircle size={15} /> 星星踹你一脚</h2>
           <div className={`rounded-xl border p-3 flex items-center gap-2 ${cardCls}`}>
             <span className="text-base">{emojiFor(currentUser)}</span>
             <input
