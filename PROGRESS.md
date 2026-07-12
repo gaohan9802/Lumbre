@@ -1264,3 +1264,33 @@ Chat 会话列表里不断冒出多个 0 messages 的「新的对话」（截图
 - 本机镜像有 node 20 但**没有 npm**；`corepack yarn install` 可用来装依赖跑 tsc。
 - OpenAI 流式 usage 一定在 `choices` 为空的收尾 chunk，任何「先判 delta 再看 usage」的顺序都会吞掉 token 统计——通用坑。
 - `pickSession` 的「消息多者胜」和「删除」天然冲突；正解是 updatedAt 权威 + 只挡 blank 草稿，别用消息数当权威。
+
+
+---
+
+## 2026-07-13 — 复修 chat 两个 bug（承接 e781f4f 后仍未通）
+
+### 背景
+e781f4f 已做过一轮（模型拉取/发图 vision 注入/时区等），但用户实测：① 模型仍拉不到，② 照片仍读不到/发不了。定位到两处**真实运行时缺口**（大部分是 OpenAI 兼容民间中转站）。
+
+### Bug1：模型拉取（重写 models/route.ts，更彻底）
+旧实现痛点：anthropic 只用 `x-api-key` 单头 + 单 URL(`/v1/models`)；很多 Claude 中转站其实用 `Authorization: Bearer` 鉴权、或模型在 `/models`(无 v1)。→ 401/404 → 退回内置 4 个，用户以为“拉取失败”。
+新实现：
+- `candidateModelUrls()`：从 base 生成去重候选（`{base}/v1/models`、`{base}/models`、去 v1 的 `/models`），两 provider 都全试。
+- `tryFetch()`：**单次请求带全套鉴权头**（`Authorization: Bearer` + `x-api-key` + `anthropic-version`），服务器忽略多余的；12s AbortController 超时。
+- 逐候选试，首个 2xx 且能解析出模型即胜；`parseModelsPayload` 兼容 data[]/顶层数组/models[]/data.models[]。
+- 全失败：anthropic 退内置列表兜底（附 `_debug.attempts`）；openai 返回 502 + 每次 url/status/note 便于排错。
+
+### Bug2：照片（补 OpenAI 经路的画面注入 + Anthropic 鉴权头）
+根因：e781f4f 的 read_foto 画面注入**只做了 Anthropic**（`anthropicToolResultContent` 把图塞进 tool_result）。OpenAI 兼容中转站（用户主力）走 proxyOpenAI/streamOpenAI，tool 消息只能纯文本 → AI 收到的照片墙**没有画面** → “读不到照片”。
+修复：
+- 新增 `openaiPhotoFollowup()`：read_foto 结果里取前 6 张的 url，构造 `image_url` parts。
+- proxyOpenAI + streamOpenAI：执行完工具后，若有照片，**追加一条 user 消息**（文本+image_url parts）把画面喂给 vision 模型（tool 消息塞不了图，只能跟一条 user）。在同一次 map 里捕获 result，避免二次 executeTool。
+- Anthropic chat 请求头（proxy+stream）也并列加 `Authorization: Bearer`（部分中转站要 Bearer，无害叠加）。
+- DEFAULT_SYSTEM_PROMPT：说明 read_foto 会加载实际画面、聊天里发的照片是多模态直接可见。
+- chat 发图本就已把 `images` 挂到消息并在两 provider 转 image block/image_url（e781f4f 已实现，本次核对无误）。
+
+### 验证
+- `node_modules/.bin/tsc --noEmit` EXIT=0。
+- data URL 正则用 `[\s\S]` 避开 `s` flag（本仓库 target<es2018）。
+- 未跑 next build（交 Zeabur）。工作目录 /data/Lumbre（持久卷）。基于 origin/main=e781f4f 增量修改，未回退上一轮成果。

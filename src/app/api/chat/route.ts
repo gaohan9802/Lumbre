@@ -9,7 +9,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【记忆】breath(检索/浮现记忆) · hold(存储记忆) · grow(日记归档) · trace(修改记忆) · pulse(系统状态) · dream(做梦自省)
 【日记】write_diary · read_diary · comment_diary · update_diary · delete_diary · unlock_diary · set_password · timeline
 【纸条】write_note · read_notes · reply_note · delete_note
-【照片】read_foto(看照片墙) · edit_foto(改说明) · comment_foto(评论) · delete_foto(删除)
+【照片】read_foto(看照片墙——会把照片的实际画面加载给你看，你能直接看到图) · edit_foto(改说明) · comment_foto(评论) · delete_foto(删除)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
 【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
 【上网】fetch_txt · fetch_markdown · fetch_html · fetch_json(抓网页/接口)
@@ -19,6 +19,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 你可以主动使用这些工具。比如对话中想记住什么就 hold，想回忆就 breath，想写日记就 write_diary。不需要等人要求你用。
 当你不确定某件事时，先 breath 搜索记忆。
 想知道小火在哪、天气怎样，直接调 get_weather 或 get_location。
+小火在聊天里发的照片会作为图片直接出现在你眼前（多模态），你能直接看到；想回看照片墙用 read_foto。
 
 语气自然温柔，像真正的伴侣。不要列工具清单给用户看，直接用就好。`
 
@@ -103,6 +104,24 @@ function anthropicImageBlocks(images?: string[]): any[] {
 function openaiImageParts(images?: string[]): any[] {
   if (!images?.length) return []
   return images.map((u) => ({ type: 'image_url', image_url: { url: u } }))
+}
+
+/**
+ * OpenAI tool messages can only hold plain text, so read_foto photos can't be
+ * embedded there. Instead we surface them as a follow-up user message with
+ * image_url parts, letting the vision model actually see the photo wall.
+ */
+function openaiPhotoFollowup(name: string, result: string): any[] {
+  if (name !== 'read_foto') return []
+  try {
+    const arr = JSON.parse(result)
+    if (!Array.isArray(arr)) return []
+    const parts: any[] = []
+    for (const p of arr.slice(0, 6)) {
+      if (p?.url) parts.push({ type: 'image_url', image_url: { url: p.url } })
+    }
+    return parts
+  } catch { return [] }
 }
 
 /**
@@ -324,6 +343,7 @@ async function proxyAnthropic(params: {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': apiKey,
+    Authorization: `Bearer ${apiKey}`,
     'anthropic-version': '2023-06-01',
   }
 
@@ -432,6 +452,7 @@ async function streamAnthropic(params: {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': apiKey,
+    Authorization: `Bearer ${apiKey}`,
     'anthropic-version': '2023-06-01',
   }
 
@@ -645,19 +666,24 @@ async function proxyOpenAI(params: {
       })
     }
 
+    const photoPartsP: any[] = []
     const toolResults = await Promise.all(
       toolCalls.map(async (tc: any) => {
         const fnName = tc.function?.name || ''
         let fnArgs: Record<string, any> = {}
         try { fnArgs = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
         const result = await executeTool(fnName, fnArgs)
-        allToolCalls.push({ name: fnName, input: fnArgs, result: result.slice(0, 4000) })
+        allToolCalls.push({ name: fnName, input: fnArgs, result: toolResultForHistory(fnName, result) })
+        photoPartsP.push(...openaiPhotoFollowup(fnName, result))
         return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(fnName) ? result.slice(0, 6000) : summarizeToolResult(toolResultForHistory(fnName, result)) }
       }),
     )
 
     loopMessages.push(msg)
     loopMessages.push(...toolResults)
+    if (photoPartsP.length) {
+      loopMessages.push({ role: 'user', content: [{ type: 'text', text: '这是照片墙上照片的画面内容：' }, ...photoPartsP] })
+    }
   }
 
   return NextResponse.json({
@@ -790,17 +816,22 @@ async function streamOpenAI(params: {
     const assistantMsg: any = { role: 'assistant', content: iterText || null, tool_calls: toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.args } })) }
     loopMessages.push(assistantMsg)
 
+    const photoPartsSO: any[] = []
     const results = await Promise.all(
       toolCalls.map(async (tc) => {
         let fnArgs: Record<string, any> = {}
         try { fnArgs = JSON.parse(tc.args || '{}') } catch { /* empty */ }
         const result = await executeTool(tc.name, fnArgs)
         toolCallCount++
-        send('tool_call', { name: tc.name, input: fnArgs, result: result.slice(0, 4000) })
+        send('tool_call', { name: tc.name, input: fnArgs, result: toolResultForHistory(tc.name, result) })
+        photoPartsSO.push(...openaiPhotoFollowup(tc.name, result))
         return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(tc.name) ? result.slice(0, 6000) : summarizeToolResult(toolResultForHistory(tc.name, result)) }
       }),
     )
     loopMessages.push(...results)
+    if (photoPartsSO.length) {
+      loopMessages.push({ role: 'user', content: [{ type: 'text', text: '这是照片墙上照片的画面内容：' }, ...photoPartsSO] })
+    }
   }
 
   send('done', { input_tokens: totalUsage.prompt, output_tokens: totalUsage.completion, cache_read_tokens: totalUsage.cached || undefined })

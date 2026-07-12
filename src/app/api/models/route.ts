@@ -6,17 +6,85 @@ function trimSlash(s: string) {
   return (s || '').replace(/\/+$/, '')
 }
 
-function normalizeOpenAIBase(baseUrl: string) {
-  const base = trimSlash(baseUrl || 'https://api.openai.com/v1')
-  return base.endsWith('/v1') ? base : `${base}/v1`
-}
-
 const ANTHROPIC_MODELS = [
   { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', ownedBy: 'anthropic' },
   { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', ownedBy: 'anthropic' },
   { id: 'claude-3-5-haiku-20241022', name: 'Claude Haiku 3.5', ownedBy: 'anthropic' },
   { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', ownedBy: 'anthropic' },
 ]
+
+/**
+ * Build an ordered, de-duplicated list of candidate `/models` URLs from a raw base.
+ * 民间中转站 base 五花八门：有的带 /v1，有的不带；anthropic 官方在 /v1/models。
+ * provider 只决定尝试顺序，两种路径都会试，最大化兼容。
+ */
+function candidateModelUrls(rawBase: string, provider: Provider): string[] {
+  const base = trimSlash(rawBase || (provider === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'))
+  const noV1 = base.replace(/\/v1$/, '')
+  const withV1 = base.endsWith('/v1') ? base : `${base}/v1`
+
+  const v1Url = `${withV1}/models`
+  const bareUrl = `${noV1}/models`
+  const asIsUrl = `${base}/models`
+
+  const ordered = provider === 'openai-compatible'
+    ? [v1Url, asIsUrl, bareUrl]
+    : [v1Url, asIsUrl, bareUrl]
+
+  return Array.from(new Set(ordered))
+}
+
+/** Parse many provider response shapes into a raw model array. */
+function parseModelsPayload(data: any): any[] {
+  if (Array.isArray(data?.data)) return data.data
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.models)) return data.models
+  if (Array.isArray(data?.data?.models)) return data.data.models
+  return []
+}
+
+function normalizeModels(raw: any[]) {
+  return raw
+    .map((m: any) => ({
+      id: m.id || m.model || m.name || '',
+      name: m.name || m.id || m.model || '',
+      ownedBy: m.owned_by || m.ownedBy || m.provider || m.created_by || '',
+      created: m.created,
+    }))
+    .filter((m: any) => m.id)
+    .sort((a: any, b: any) => a.id.localeCompare(b.id))
+}
+
+/** Single request with a superset of auth headers — servers ignore what they don't need. */
+async function tryFetch(url: string, apiKey: string): Promise<{ ok: boolean; status: number; models?: any[]; text?: string }> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 12000)
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        // OpenAI-style
+        Authorization: `Bearer ${apiKey}`,
+        // Anthropic-style — harmless to OpenAI servers
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'HTTP-Referer': 'https://lumbre.zeabur.app',
+        'X-Title': 'Lumbre',
+      },
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return { ok: false, status: res.status, text }
+    }
+    const data = await res.json().catch(() => null)
+    return { ok: true, status: res.status, models: parseModelsPayload(data) }
+  } catch (err: any) {
+    return { ok: false, status: 0, text: err?.name === 'AbortError' ? 'timeout' : (err?.message || 'network error') }
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,86 +94,37 @@ export async function POST(req: NextRequest) {
       apiKey?: string
     }
 
-    if (provider === 'anthropic') {
-      // Try the real /v1/models endpoint (works for Anthropic + most Claude
-      // relays); fall back to the hardcoded list if it 404s / errors.
-      if (apiKey) {
-        try {
-          const abase = trimSlash(baseUrl || 'https://api.anthropic.com')
-          const aurl = `${abase.endsWith('/v1') ? abase : `${abase}/v1`}/models?limit=1000`
-          const ares = await fetch(aurl, {
-            headers: {
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-            },
-          })
-          if (ares.ok) {
-            const adata = await ares.json()
-            const araw: any[] = Array.isArray(adata?.data) ? adata.data : []
-            const amodels = araw
-              .map((m: any) => ({
-                id: m.id || m.model || '',
-                name: m.display_name || m.name || m.id || '',
-                ownedBy: 'anthropic',
-                created: m.created_at,
-              }))
-              .filter((m: any) => m.id)
-              .sort((a: any, b: any) => a.id.localeCompare(b.id))
-            if (amodels.length) return NextResponse.json({ models: amodels })
-          }
-        } catch {
-          // fall through to hardcoded list
-        }
-      }
-      return NextResponse.json({ models: ANTHROPIC_MODELS })
-    }
-
     if (!apiKey) {
       return NextResponse.json({ error: '缺少 API Key，不能拉取模型列表。' }, { status: 400 })
     }
 
-    const base = normalizeOpenAIBase(baseUrl || 'https://api.openai.com/v1')
-    const url = `${base}/models`
-    
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://lumbre.zeabur.app',
-        'X-Title': 'Lumbre',
-      },
-    })
+    const urls = candidateModelUrls(baseUrl || '', provider)
+    const attempts: { url: string; status: number; note?: string }[] = []
 
-    if (!res.ok) {
-      const text = await res.text()
-      return NextResponse.json({ error: `Upstream ${res.status}: ${text.slice(0, 800)}` }, { status: res.status })
+    for (const url of urls) {
+      const r = await tryFetch(url, apiKey)
+      attempts.push({ url, status: r.status, note: r.ok ? undefined : (r.text || '').slice(0, 200) })
+      if (r.ok && r.models && r.models.length > 0) {
+        const models = normalizeModels(r.models)
+        if (models.length > 0) {
+          return NextResponse.json({ models, _debug: { url, rawCount: r.models.length, totalParsed: models.length } })
+        }
+      }
     }
 
-    const data = await res.json()
-    
-    // Handle various response formats from different providers
-    let raw: any[] = []
-    if (Array.isArray(data?.data)) {
-      raw = data.data
-    } else if (Array.isArray(data)) {
-      raw = data
-    } else if (data?.models && Array.isArray(data.models)) {
-      raw = data.models
-    } else if (data?.data?.models && Array.isArray(data.data.models)) {
-      raw = data.data.models
+    // 全部失败：anthropic 至少给内置列表兜底，别让用户空手而归
+    if (provider === 'anthropic') {
+      return NextResponse.json({
+        models: ANTHROPIC_MODELS,
+        _debug: { fallback: true, note: '中转站未返回模型列表，已使用内置 Claude 列表兜底。如需其它模型请手动添加模型 ID。', attempts },
+      })
     }
 
-    const models = raw
-      .map((m: any) => ({
-        id: m.id || m.model || m.name || '',
-        name: m.name || m.id || m.model || '',
-        ownedBy: m.owned_by || m.ownedBy || m.provider || m.created_by || '',
-        created: m.created,
-      }))
-      .filter((m: any) => m.id)
-      .sort((a: any, b: any) => a.id.localeCompare(b.id))
-
-    return NextResponse.json({ models, _debug: { url, rawCount: raw.length, totalParsed: models.length } })
+    const last = attempts[attempts.length - 1]
+    return NextResponse.json({
+      error: `拉取模型失败。尝试了 ${attempts.length} 个地址都没成功。最后一次：${last?.url} → ${last?.status || 'network'} ${last?.note || ''}`.trim(),
+      _debug: { attempts },
+    }, { status: 502 })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
