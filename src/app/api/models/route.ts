@@ -27,6 +27,36 @@ export async function POST(req: NextRequest) {
     }
 
     if (provider === 'anthropic') {
+      // Try the real /v1/models endpoint (works for Anthropic + most Claude
+      // relays); fall back to the hardcoded list if it 404s / errors.
+      if (apiKey) {
+        try {
+          const abase = trimSlash(baseUrl || 'https://api.anthropic.com')
+          const aurl = `${abase.endsWith('/v1') ? abase : `${abase}/v1`}/models?limit=1000`
+          const ares = await fetch(aurl, {
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+          })
+          if (ares.ok) {
+            const adata = await ares.json()
+            const araw: any[] = Array.isArray(adata?.data) ? adata.data : []
+            const amodels = araw
+              .map((m: any) => ({
+                id: m.id || m.model || '',
+                name: m.display_name || m.name || m.id || '',
+                ownedBy: 'anthropic',
+                created: m.created_at,
+              }))
+              .filter((m: any) => m.id)
+              .sort((a: any, b: any) => a.id.localeCompare(b.id))
+            if (amodels.length) return NextResponse.json({ models: amodels })
+          }
+        } catch {
+          // fall through to hardcoded list
+        }
+      }
       return NextResponse.json({ models: ANTHROPIC_MODELS })
     }
 

@@ -85,6 +85,7 @@ export function ChatView() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const imgInputRef = useRef<HTMLInputElement>(null)
   const [uploadingImg, setUploadingImg] = useState(false)
+  const [pendingImages, setPendingImages] = useState<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickBottomRef = useRef(true)
 
@@ -123,11 +124,11 @@ export function ChatView() {
     setUploadingImg(true)
     const reader = new FileReader()
     reader.onload = async () => {
-      try {
-        const res = await photosApi.write('fire', reader.result as string, '', 'chat')
-        // let 星星 know a photo was shared so she can read_foto / comment_foto / edit_foto
-        setInput((prev) => (prev ? prev + '\n' : '') + `[我分享了一张照片到照片墙 · id:${res.id}]`)
-      } catch {}
+      const dataUrl = reader.result as string
+      // Stage the image so it rides along with the next message as a real image
+      // block (the AI actually sees it), and also archive it on the photo wall.
+      setPendingImages((prev) => [...prev, dataUrl])
+      try { await photosApi.write('fire', dataUrl, '', 'chat') } catch {}
       setUploadingImg(false)
     }
     reader.onerror = () => setUploadingImg(false)
@@ -136,7 +137,7 @@ export function ChatView() {
 
   /* ── send ────────────────────────────── */
 
-  const doSend = async (sendMessages: { role: string; content: string }[], onDone: (data: any) => void) => {
+  const doSend = async (sendMessages: { role: string; content: string; images?: string[] }[], onDone: (data: any) => void) => {
     const profile = getActiveProfile(settings)
     const model = settings.model
 
@@ -241,7 +242,7 @@ export function ChatView() {
   }
 
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return
+    if ((!input.trim() && pendingImages.length === 0) || isLoading) return
     const profile = getActiveProfile(settings)
     const model = settings.model
     const now = Date.now()
@@ -250,20 +251,23 @@ export function ChatView() {
       role: 'user',
       content: input.trim(),
       timestamp: now,
+      images: pendingImages.length ? pendingImages : undefined,
       providerId: profile?.id,
       modelId: model,
     }
     stickBottomRef.current = true
     addMessage(userMsg)
     setInput('')
+    setPendingImages([])
     setIsLoading(true)
 
     const history = [...messages, userMsg]
     const slice = history.slice(-settings.contextLength)
-    // Include timestamp for AI to read
+    // Include timestamp + any attached images for AI to read
     const apiMessages = slice.map((m) => ({
       role: m.role,
       content: m.content,
+      images: m.images,
     }))
 
     await doSend(apiMessages, (data) => {
@@ -301,7 +305,7 @@ export function ChatView() {
       // Re-generate: use messages up to (but not including) this assistant message
       const idx = messages.findIndex(m => m.id === msg.id)
       const slice = messages.slice(0, idx).slice(-settings.contextLength)
-      const apiMessages = slice.map(m => ({ role: m.role, content: m.content }))
+      const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
 
       await doSend(apiMessages, (data) => {
         const newVersion: MessageVersion = {
@@ -327,7 +331,7 @@ export function ChatView() {
       const nextMsg = messages[idx + 1]
       if (nextMsg && nextMsg.role === 'assistant') {
         const slice = messages.slice(0, idx + 1).slice(-settings.contextLength)
-        const apiMessages = slice.map(m => ({ role: m.role, content: m.content }))
+        const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
 
         await doSend(apiMessages, (data) => {
           const newVersion: MessageVersion = {
@@ -656,7 +660,15 @@ export function ChatView() {
                       ) : (
                         <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isUser ? 'rounded-br-md ml-auto' : 'rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : {}) : (aColor ? aiBubbleStyle : {})}>
-                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                          {msg.images && msg.images.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mb-1.5">
+                              {msg.images.map((src, i) => (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img key={i} src={src} alt="" className="max-w-[180px] max-h-[180px] rounded-lg object-cover" />
+                              ))}
+                            </div>
+                          )}
+                          {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
                         </div>
                       )}
 
@@ -753,6 +765,22 @@ export function ChatView() {
               </div>
             </div>
 
+            {/* pending image previews */}
+            {pendingImages.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2 px-1">
+                {pendingImages.map((src, i) => (
+                  <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt="" className="w-14 h-14 object-cover rounded-lg" />
+                    <button onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
+                      className="absolute -top-1.5 -right-1.5 bg-black/60 text-white rounded-full p-0.5">
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* input area */}
             <div className={`flex items-end gap-2 px-3 py-2 rounded-2xl ${n ? 'bg-night-surface' : 'bg-gray-50'}`}>
               <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
@@ -763,8 +791,8 @@ export function ChatView() {
                 className={`p-2 rounded-xl flex-shrink-0 opacity-60 hover:opacity-100 disabled:opacity-30 ${uploadingImg ? 'animate-pulse' : ''}`}>
                 <ImagePlus size={16} />
               </button>
-              <button onClick={handleSend} disabled={!input.trim() || isLoading}
-                className={`p-2 rounded-xl transition-all flex-shrink-0 ${input.trim() ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
+              <button onClick={handleSend} disabled={(!input.trim() && pendingImages.length === 0) || isLoading}
+                className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || pendingImages.length) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
                 <Send size={16} />
               </button>
             </div>

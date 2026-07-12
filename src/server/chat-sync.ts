@@ -117,9 +117,12 @@ function isBlankSession(s: any) {
 }
 
 function pickSession(a: any, b: any) {
-  const am = a?.messages?.length || 0
-  const bm = b?.messages?.length || 0
-  if (bm !== am) return bm > am ? b : a
+  // Newer edit wins so deletions propagate; a blank scratch session never
+  // clobbers a real one.
+  const aBlank = isBlankSession(a)
+  const bBlank = isBlankSession(b)
+  if (aBlank && !bBlank) return b
+  if (bBlank && !aBlank) return a
   return (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
 }
 

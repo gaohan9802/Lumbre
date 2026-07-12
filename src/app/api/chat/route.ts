@@ -33,11 +33,76 @@ function normalizeAnthropicBase(baseUrl: string) {
   return trimSlash(baseUrl || 'https://api.anthropic.com')
 }
 
+/**
+ * Build an Anthropic tool_result content. For read_foto we inject the actual
+ * photos as image blocks (so the vision model sees them) plus a url-stripped
+ * text summary; everything else stays a plain string.
+ */
+function anthropicToolResultContent(name: string, result: string): string | any[] {
+  if (name === 'read_foto') {
+    try {
+      const arr = JSON.parse(result)
+      if (Array.isArray(arr)) {
+        const meta = arr.map((p: any) => {
+          const { url, ...rest } = p
+          return rest
+        })
+        const blocks: any[] = [{ type: 'text', text: JSON.stringify(meta) }]
+        for (const p of arr.slice(0, 6)) {
+          if (!p?.url) continue
+          const d = parseDataUrl(p.url)
+          blocks.push(
+            d
+              ? { type: 'image', source: { type: 'base64', media_type: d.media_type, data: d.data } }
+              : { type: 'image', source: { type: 'url', url: p.url } },
+          )
+        }
+        return blocks
+      }
+    } catch { /* fall through */ }
+  }
+  return FETCH_TOOL_NAMES.has(name) ? result.slice(0, 6000) : summarizeToolResult(result)
+}
+
+/** Strip heavy url payloads from a tool result before storing/echoing it. */
+function toolResultForHistory(name: string, result: string): string {
+  if (name === 'read_foto') {
+    try {
+      const arr = JSON.parse(result)
+      if (Array.isArray(arr)) return JSON.stringify(arr.map(({ url, ...rest }: any) => rest)).slice(0, 4000)
+    } catch { /* ignore */ }
+  }
+  return result.slice(0, 4000)
+}
+
 /** Summarize tool result to reduce context bloat */
 function summarizeToolResult(result: string): string {
   if (result.length <= 300) return result
   const cleaned = result.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
   return cleaned.slice(0, 300) + '…(truncated)'
+}
+
+/** Parse a data: URL into media type + base64 payload. */
+function parseDataUrl(u: string): { media_type: string; data: string } | null {
+  const m = /^data:([^;]+);base64,(.*)$/i.exec(u || '')
+  return m ? { media_type: m[1], data: m[2] } : null
+}
+
+/** Build Anthropic image blocks from a list of data:/http URLs. */
+function anthropicImageBlocks(images?: string[]): any[] {
+  if (!images?.length) return []
+  return images.map((u) => {
+    const d = parseDataUrl(u)
+    return d
+      ? { type: 'image', source: { type: 'base64', media_type: d.media_type, data: d.data } }
+      : { type: 'image', source: { type: 'url', url: u } }
+  })
+}
+
+/** Build OpenAI image_url parts from a list of data:/http URLs. */
+function openaiImageParts(images?: string[]): any[] {
+  if (!images?.length) return []
+  return images.map((u) => ({ type: 'image_url', image_url: { url: u } }))
 }
 
 /**
@@ -115,22 +180,26 @@ function buildAnthropicMessages(
 
   return messages.map((m: any, i: number) => {
     const base: any = { role: m.role }
+    const imgs = anthropicImageBlocks(m.images)
+    const textStr = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
 
     if (promptCaching && i === secondLastUserIdx && secondLastUserIdx >= 0) {
       // BP4: Rolling breakpoint on second-to-last user message
-      const textContent = typeof m.content === 'string' ? m.content : m.content
-      base.content = [{
-        type: 'text',
-        text: typeof textContent === 'string' ? textContent : JSON.stringify(textContent),
-        cache_control: { type: 'ephemeral' },
-      }]
+      base.content = [
+        ...imgs,
+        { type: 'text', text: textStr, cache_control: { type: 'ephemeral' } },
+      ]
     } else if (i === lastUserIdx) {
       // Last user message: prepend volatile context (outside cache)
       const volatile = `<gateway_volatile_context>仅供参考，勿复述：\n当前时间：${currentTimestamp}\n</gateway_volatile_context>\n\n`
-      const textContent = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-      base.content = volatile + textContent
+      base.content = imgs.length
+        ? [...imgs, { type: 'text', text: volatile + textStr }]
+        : volatile + textStr
+    } else if (imgs.length) {
+      // Historical message carrying images → block form
+      base.content = [...imgs, { type: 'text', text: textStr }]
     } else {
-      // Historical messages: pass through unchanged for stable cache prefix
+      // Historical text-only messages: pass through for stable cache prefix
       base.content = m.content
     }
 
@@ -221,9 +290,15 @@ export async function POST(req: NextRequest) {
 // ── Current timestamp (volatile — never put in cached prefix) ────
 
 function currentTimestamp(): string {
+  // Madrid local time (Europe/Madrid auto-handles CET/CEST DST), not server UTC.
   const now = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${now.getFullYear()}/${p(now.getMonth() + 1)}/${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(now).reduce((a: Record<string, string>, p) => { a[p.type] = p.value; return a }, {})
+  const wd = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Europe/Madrid', weekday: 'long' }).format(now)
+  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${wd}（马德里时间）`
 }
 
 // ── Anthropic non-streaming with tool-use loop ──────────
@@ -315,8 +390,8 @@ async function proxyAnthropic(params: {
     const toolResults = await Promise.all(
       toolUses.map(async (tu) => {
         const result = await executeTool(tu.name, tu.input)
-        allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 4000) })
-        return { type: 'tool_result' as const, tool_use_id: tu.id, content: FETCH_TOOL_NAMES.has(tu.name) ? result.slice(0, 6000) : summarizeToolResult(result) }
+        allToolCalls.push({ name: tu.name, input: tu.input, result: toolResultForHistory(tu.name, result) })
+        return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result) }
       }),
     )
 
@@ -457,9 +532,10 @@ async function streamAnthropic(params: {
     const toolResults = await Promise.all(
       toolUses.map(async (tu) => {
         const result = await executeTool(tu.name, tu.input)
-        allToolCalls.push({ name: tu.name, input: tu.input, result: result.slice(0, 4000) })
-        send('tool_call', { name: tu.name, input: tu.input, result: result.slice(0, 4000) })
-        return { type: 'tool_result' as const, tool_use_id: tu.id, content: FETCH_TOOL_NAMES.has(tu.name) ? result.slice(0, 6000) : summarizeToolResult(result) }
+        const histResult = toolResultForHistory(tu.name, result)
+        allToolCalls.push({ name: tu.name, input: tu.input, result: histResult })
+        send('tool_call', { name: tu.name, input: tu.input, result: histResult })
+        return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result) }
       }),
     )
 
@@ -494,13 +570,13 @@ async function proxyOpenAI(params: {
   const builtMessages: any[] = [
     { role: 'system', content: fullSystem },
     ...messages.map((m: any, i: number) => {
-      if (m.role === 'user' && i === messages.length - 1) {
-        return {
-          role: m.role,
-          content: `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`,
-        }
-      }
-      return { role: m.role, content: m.content }
+      const isLastUser = m.role === 'user' && i === messages.length - 1
+      const text = isLastUser
+        ? `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`
+        : m.content
+      const imgs = openaiImageParts(m.images)
+      if (imgs.length) return { role: m.role, content: [{ type: 'text', text }, ...imgs] }
+      return { role: m.role, content: text }
     }),
   ]
 
@@ -576,7 +652,7 @@ async function proxyOpenAI(params: {
         try { fnArgs = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
         const result = await executeTool(fnName, fnArgs)
         allToolCalls.push({ name: fnName, input: fnArgs, result: result.slice(0, 4000) })
-        return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(fnName) ? result.slice(0, 6000) : summarizeToolResult(result) }
+        return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(fnName) ? result.slice(0, 6000) : summarizeToolResult(toolResultForHistory(fnName, result)) }
       }),
     )
 
@@ -609,13 +685,13 @@ async function streamOpenAI(params: {
   const builtMessages: any[] = [
     { role: 'system', content: fullSystem },
     ...messages.map((m: any, i: number) => {
-      if (m.role === 'user' && i === messages.length - 1) {
-        return {
-          role: m.role,
-          content: `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`,
-        }
-      }
-      return { role: m.role, content: m.content }
+      const isLastUser = m.role === 'user' && i === messages.length - 1
+      const text = isLastUser
+        ? `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`
+        : m.content
+      const imgs = openaiImageParts(m.images)
+      if (imgs.length) return { role: m.role, content: [{ type: 'text', text }, ...imgs] }
+      return { role: m.role, content: text }
     }),
   ]
 
@@ -629,7 +705,7 @@ async function streamOpenAI(params: {
   }
 
   let loopMessages = [...builtMessages]
-  let totalUsage = { prompt: 0, completion: 0 }
+  let totalUsage = { prompt: 0, completion: 0, cached: 0 }
   let toolCallCount = 0
 
   const MAX_ITERATIONS = 15
@@ -673,6 +749,13 @@ async function streamOpenAI(params: {
         if (!line.startsWith('data: ') || line === 'data: [DONE]') continue
         try {
           const chunk = JSON.parse(line.slice(6))
+          // Usage arrives in a final chunk whose choices[] is empty — capture it
+          // BEFORE bailing on the missing delta, or tokens never get counted.
+          if (chunk.usage) {
+            totalUsage.prompt += chunk.usage.prompt_tokens || 0
+            totalUsage.completion += chunk.usage.completion_tokens || 0
+            totalUsage.cached += chunk.usage.prompt_tokens_details?.cached_tokens || 0
+          }
           const delta = chunk.choices?.[0]?.delta
           if (!delta) continue
 
@@ -694,17 +777,13 @@ async function streamOpenAI(params: {
               if (tc.function?.arguments) toolCallMap[idx].args += tc.function.arguments
             }
           }
-          if (chunk.usage) {
-            totalUsage.prompt += chunk.usage.prompt_tokens || 0
-            totalUsage.completion += chunk.usage.completion_tokens || 0
-          }
         } catch { /* skip */ }
       }
     }
 
     const toolCalls = Object.values(toolCallMap)
     if (toolCalls.length === 0) {
-      send('done', { input_tokens: totalUsage.prompt, output_tokens: totalUsage.completion })
+      send('done', { input_tokens: totalUsage.prompt, output_tokens: totalUsage.completion, cache_read_tokens: totalUsage.cached || undefined })
       return
     }
 
@@ -718,11 +797,11 @@ async function streamOpenAI(params: {
         const result = await executeTool(tc.name, fnArgs)
         toolCallCount++
         send('tool_call', { name: tc.name, input: fnArgs, result: result.slice(0, 4000) })
-        return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(tc.name) ? result.slice(0, 6000) : summarizeToolResult(result) }
+        return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(tc.name) ? result.slice(0, 6000) : summarizeToolResult(toolResultForHistory(tc.name, result)) }
       }),
     )
     loopMessages.push(...results)
   }
 
-  send('done', { input_tokens: totalUsage.prompt, output_tokens: totalUsage.completion })
+  send('done', { input_tokens: totalUsage.prompt, output_tokens: totalUsage.completion, cache_read_tokens: totalUsage.cached || undefined })
 }

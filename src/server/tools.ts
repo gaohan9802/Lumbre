@@ -12,6 +12,16 @@ import {
   listNotes, writeNote, replyNote, deleteNote,
 } from './diary-store'
 import { listPhotos, editPhoto, deletePhoto, commentPhoto } from './photo-store'
+
+/** Format an epoch/Date as Madrid local time (Europe/Madrid, auto DST). */
+function madridTime(d: Date | number = new Date()): string {
+  const date = typeof d === 'number' ? new Date(d) : d
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(date)
+}
 import { getTodos, commentTodo } from './todo-store'
 import { getThesis, commentThesis } from './thesis-store'
 import { scheduleWake } from './autowake'
@@ -636,9 +646,12 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
 
       // Photos → local store
       case 'read_foto': {
-        const photos = listPhotos({ limit: input.limit || 20 })
+        const photos = listPhotos({ limit: input.limit || 12 })
+        // `url` is included so the chat route can inject the actual image as a
+        // vision block (Anthropic). The text summary strips it to avoid bloat.
         return JSON.stringify(photos.map(ph => ({
           id: ph.id, author: ph.author, caption: ph.caption,
+          url: ph.url,
           comments: (ph.comments || []).map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
           created_at: ph.created_at,
         })))
@@ -705,7 +718,7 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
         if (!at || isNaN(at)) return '时间格式无法识别，请用 ISO 格式，如 2026-07-16T09:00'
         if (at <= Date.now()) return '闹钟时间必须在未来'
         const alarm = scheduleWake(at, input.note)
-        return JSON.stringify({ ok: true, wake_at: new Date(alarm.at).toLocaleString('zh-CN'), note: alarm.note || null })
+        return JSON.stringify({ ok: true, wake_at: madridTime(alarm.at), note: alarm.note || null })
       }
 
       // Web fetch
@@ -755,7 +768,7 @@ function executeGetWeather(): string {
     weather: codeNames[ctx.weatherCode || 0] || `code ${ctx.weatherCode}`,
     city: ctx.city || '未知',
     address: ctx.address || undefined,
-    updated: new Date(ctx.updatedAt).toLocaleString('zh-CN'),
+    updated: madridTime(ctx.updatedAt),
   })
 }
 
@@ -776,7 +789,7 @@ function executeGetLocation(): string {
     house_number: ctx.houseNumber || undefined,
     address: ctx.address || undefined,
     google_maps: mapsUrl,
-    updated: new Date(ctx.updatedAt).toLocaleString('zh-CN'),
+    updated: madridTime(ctx.updatedAt),
   })
 }
 

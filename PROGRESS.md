@@ -1222,3 +1222,45 @@ Chat 会话列表里不断冒出多个 0 messages 的「新的对话」（截图
 
 ### 验证
 - `tsc --noEmit` EXIT=0。未跑 next build（交 Zeabur）。工作目录 /data/Lumbre。
+
+---
+
+## 2026-07-12 — Chat 六项 bug 修复（删除/模型拉取/时区/tokens/图片/GPS）
+
+### 1. 聊天记录删掉会自动恢复
+- 根因：`pickSession(a,b)` 采用「消息多者胜」。删掉一条消息后本地消息数变少，服务端旧副本消息更多 → 合并时旧副本赢 → 被删的消息复活。这个启发式当初是为了「空会话别覆盖有内容会话」，但把正常删除也堵死了。
+- 修复：`pickSession` 改为「updatedAt 新者胜」，只保留一个护栏——**空白草稿会话（0 消息 + 默认标题「新的对话」）永不覆盖真实会话**（用 `isBlankSession` 判定，而非裸消息数）。删除/编辑因 `updatedAt` 更新而正常传播。同步改动落在 `src/lib/chatStore.ts` 和 `src/server/chat-sync.ts` 两处 `pickSession`。
+- `isBlankSession` 在 chatStore.ts 里上移到 `pickSession` 之前（函数引用顺序）。
+
+### 2. 模型列表拉不到
+- 根因：`provider==='anthropic'` 时 `/api/models` **直接返回 4 个硬编码模型，从不真正请求**。小火常用的是 Claude 中转站（配成 anthropic + 自定义 baseUrl），拉取只能看到写死的 4 个，等于「拉不到真实列表」。
+- 修复：anthropic 分支现在真正请求 `${base}/v1/models`（带 `x-api-key` + `anthropic-version`），解析 `data[].id/display_name`；失败或空时回落到硬编码列表。openai-compatible 路径不变。
+
+### 3. AI 时间感知是 UTC → 改马德里
+- 根因：`currentTimestamp()`（注入对话的当前时间）和 autowake 的 `getHours()`/时间串都用服务器本地时区（Zeabur=UTC）。
+- 修复：全部改用 `Intl.DateTimeFormat(timeZone:'Europe/Madrid')`，自动处理 CET/CEST 夏令时（现在 UTC+2）。
+  - `src/app/api/chat/route.ts` `currentTimestamp()` → 马德里时间 + 星期。
+  - `src/server/tools.ts` 新增 `madridTime()`，替换 `get_weather`/`get_location`/`wake_me` 的 `toLocaleString('zh-CN')`。
+  - `src/server/autowake.ts` 新增 `madridHour()`/`madridTimeStr()`，替换深夜判断与唤醒时间串。
+
+### 4. 气泡下不显示 tokens
+- 根因：**OpenAI 流式**里 usage 走的是最后一个 `choices:[]` 空 chunk，但代码 `const delta = chunk.choices?.[0]?.delta; if (!delta) continue` 在检查 usage **之前**就 continue 了 → usage 永远没被累加 → `input_tokens=0` → 前端 `input_tokens>0` 条件不满足 → 整条 token 行不显示。
+- 修复：把 `if (chunk.usage)` 累加移到 `if (!delta) continue` **之前**；`totalUsage` 增加 `cached`，两处 `done` 事件带上 `cache_read_tokens`。格式仍是 `↑输入・↓输出・⚡️缓存命中%`。
+
+### 5. 照片/发图 AI 读不到
+- **chat 发图**：以前只写进照片墙 + 插一句文本 `[我分享了一张照片…]`，AI 根本看不到像素。现在：
+  - `ChatView` 新增 `pendingImages`，上传时既存照片墙又暂存 dataURL；发送时挂到 `userMsg.images` 并随 `apiMessages` 一起送；输入框上方有缩略图预览可删除；气泡内渲染图片；只发图（无文字）也能发。
+  - `src/app/api/chat/route.ts` 新增 `anthropicImageBlocks`/`openaiImageParts`，`buildAnthropicMessages` 和两处 OpenAI 消息构造把 `images` 转成真正的图像块（base64 走 `source.base64`，http 走 `source.url` / `image_url`）。
+- **照片墙**：`read_foto` 现在返回 `url`；Anthropic 工具循环用 `anthropicToolResultContent` 把照片作为**图像块注入 tool_result**（vision 直接看到），文本摘要用 `toolResultForHistory` 剥掉 url 防 base64 撑爆；OpenAI 路径也用剥 url 后的摘要（tool 角色不支持图像块）。
+
+### 6. GPS 漂移
+- `src/lib/useWeather.ts` 重写取位置逻辑：连取 **3 次** fix（`enableHighAccuracy` + `maximumAge:0`）；用 haversine 算距离，丢掉「同时离马德里和上次位置都 >500km」的漂移点；剩余点取「离簇中位数最近、再按 accuracy」的最稳一个；接受的坐标存 `localStorage(lumbre-lastpos)` 供下次校验。base=马德里(40.4168,-3.7038)，阈值 500km。
+
+### 验证
+- `corepack yarn install` 装依赖（本机无 npm，用 corepack 的 yarn 1.22），`./node_modules/.bin/tsc --noEmit` **EXIT=0** 全通过。
+- 未跑 `next build`（遵守铁律，交 Zeabur 构建）。删除临时 yarn.lock，未污染仓库。
+
+### Debug 笔记
+- 本机镜像有 node 20 但**没有 npm**；`corepack yarn install` 可用来装依赖跑 tsc。
+- OpenAI 流式 usage 一定在 `choices` 为空的收尾 chunk，任何「先判 delta 再看 usage」的顺序都会吞掉 token 统计——通用坑。
+- `pickSession` 的「消息多者胜」和「删除」天然冲突；正解是 updatedAt 权威 + 只挡 blank 草稿，别用消息数当权威。

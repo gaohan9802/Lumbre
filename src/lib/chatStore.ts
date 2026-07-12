@@ -208,20 +208,22 @@ interface ChatStore {
 
 const makeId = genId
 
-// When two sessions share an id, prefer the one carrying more messages so an
-// empty/blank session can never overwrite a real conversation. Equal message
-// counts fall back to the newer updatedAt.
-function pickSession(a: any, b: any) {
-  const am = a?.messages?.length || 0
-  const bm = b?.messages?.length || 0
-  if (bm !== am) return bm > am ? b : a
-  return (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
-}
-
 // A blank session (no messages, not pinned, default/empty title) is pure local
 // scratch space; it must never be synced or it accumulates across boots/devices.
 export function isBlankSession(s: any) {
   return (s?.messages?.length || 0) === 0 && !s?.pinned && (!s?.title || s.title === '新的对话')
+}
+
+// When two sessions share an id, the more recent edit wins so deletions and
+// edits actually propagate (deleting a message lowers the count, so a naive
+// "more messages wins" would resurrect it). The only guard is that a blank
+// scratch session (0 msgs, default title) must never clobber a real one.
+function pickSession(a: any, b: any) {
+  const aBlank = isBlankSession(a)
+  const bBlank = isBlankSession(b)
+  if (aBlank && !bBlank) return b
+  if (bBlank && !aBlank) return a
+  return (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
 }
 
 const numOr = (v: any) => (typeof v === 'number' && isFinite(v) ? v : undefined)

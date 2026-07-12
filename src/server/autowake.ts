@@ -129,8 +129,23 @@ export function scheduleWake(at: number, note?: string): WakeAlarm {
   return alarm
 }
 
+/** Madrid-local hour (0-23) for time-of-day logic — server runs on UTC. */
+function madridHour(ts: number): number {
+  return parseInt(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', hour12: false }).format(new Date(ts)), 10) % 24
+}
+
+/** Madrid-local "YYYY/MM/DD HH:MM" string for the wake message. */
+function madridTimeStr(ts: number): string {
+  const p = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(ts)).reduce((a: Record<string, string>, x) => { a[x.type] = x.value; return a }, {})
+  return `${p.year}/${p.month}/${p.day} ${p.hour}:${p.minute}`
+}
+
 function intervalMsFor(now: number): number {
-  const hourOfDay = new Date(now).getHours()
+  const hourOfDay = madridHour(now)
   const isNightHours = hourOfDay >= 0 && hourOfDay < 9
   return isNightHours ? 3 * 60 * 60 * 1000 : 1 * 60 * 60 * 1000
 }
@@ -166,7 +181,7 @@ function shouldWakeNow(config: WakeConfig): { should: boolean; reason: string; a
     return { should: true, reason: dueAlarm.note ? `你给自己定了闹钟：${dueAlarm.note}` : '你给自己定的闹钟响了。', alarm: dueAlarm }
   }
 
-  const hourOfDay = new Date(now).getHours()
+  const hourOfDay = madridHour(now)
   const isNightHours = hourOfDay >= 0 && hourOfDay < 9
   const intervalMs = intervalMsFor(now)
   const cooldownMs = 30 * 60 * 1000
@@ -189,9 +204,9 @@ function shouldWakeNow(config: WakeConfig): { should: boolean; reason: string; a
 
 async function executeWake(config: WakeConfig, reason: string, alarm?: WakeAlarm): Promise<WakeLog> {
   const now = new Date()
-  const timeStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const timeStr = madridTimeStr(now.getTime())
 
-  const hourOfDay = now.getHours()
+  const hourOfDay = madridHour(now.getTime())
   const isNightHours = hourOfDay >= 0 && hourOfDay < 9
 
   const quietNote = isNightHours
