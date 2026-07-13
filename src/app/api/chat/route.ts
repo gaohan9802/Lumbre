@@ -799,6 +799,7 @@ async function streamOpenAI(params: {
     let buf = ''
     let iterText = ''
     let iterThinking = ''
+    let finishReason = ''
     const toolCallMap: Record<number, { id: string; name: string; args: string }> = {}
 
     while (true) {
@@ -819,6 +820,8 @@ async function streamOpenAI(params: {
             totalUsage.completion += chunk.usage.completion_tokens || 0
             totalUsage.cached += chunk.usage.prompt_tokens_details?.cached_tokens || 0
           }
+          const fr = chunk.choices?.[0]?.finish_reason
+          if (fr) finishReason = fr
           const delta = chunk.choices?.[0]?.delta
           if (!delta) continue
 
@@ -845,6 +848,13 @@ async function streamOpenAI(params: {
     }
 
     const toolCalls = Object.values(toolCallMap)
+    // Upstream aborted the stream (relay finish_reason=error) with no usable output.
+    // Common cause: the selected model channel doesn't support tool/function calling.
+    // Surface a clear error instead of a silent empty "done".
+    if (finishReason === 'error' && toolCalls.length === 0 && !iterText.trim()) {
+      send('error', { content: '上游模型返回错误（finish_reason=error），通常是当前模型渠道不支持工具调用。请在设置里换一个支持工具的模型（例如 按量寿眉-claude-opus-4-6 或 白毫-claude-opus-4-6）。' })
+      return
+    }
     if (toolCalls.length === 0) {
       send('done', { input_tokens: totalUsage.prompt, output_tokens: totalUsage.completion, cache_read_tokens: totalUsage.cached || undefined })
       return
