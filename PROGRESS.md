@@ -1391,3 +1391,33 @@ author 默认 star（🐆），AI 就是星星。
 ### 验证
 - `./node_modules/.bin/tsc --noEmit` EXIT=0（首轮 edit_wish 的 patch 需标注 `: any` 才过）。
 - 未跑 next build（交 Zeabur 构建，遵铁律）。工作目录 /data/Lumbre 持久卷，基于 origin/main=ee100fb 增量。
+
+---
+
+## 2026-07-15 — 紧急修复：读/获取类工具 terminated（relay 400）
+
+### 症状
+星星 chat 里，调用 read/获取信息类工具（breath/read_diary/read_notes/read_todo/read_foto/read_thesis/view_wish/get_weather 等）都会 terminated / 消息截断；写入类工具（comment/hold/write_note 等）却"活着"。用的是 ekan relay（openai-compatible，走 streamOpenAI）。
+
+### 根因（实测锁定，与 API 本身无关）
+- 用户把 `thinkingBudget` 设成了 **20000**，但 route.ts 四条路径的 `max_tokens` **硬编码 16000**。
+- ekan relay（api2.ekan8.com）把 OpenAI 的 `reasoning.max_tokens` 映射到 Anthropic 的 `thinking.budget_tokens`，而 Anthropic 规则是 **`max_tokens` 必须大于 `thinking.budget_tokens`**（因为 max_tokens = thinking + output 之和）。
+- 16000 < 20000 → **每个带 reasoning 的请求都 400** `"max_tokens must be greater than thinking.budget_tokens"`。
+- **为什么"写活读死"**：写工具（comment/hold）的副作用在**第一轮**工具执行时就完成了，用户看得到结果；读工具的价值在**第二轮**把数据讲出来，而第二轮 400 → 前端拿到空/截断 → 表现为 terminated。两轮其实都 400，只是写的副作用先落地。
+- 实测复现：直接打 ekan relay，`mt16000/budget8000` OK，`mt16000/budget20000` 和 `budget32000` 均 400。
+
+### 修复
+`src/app/api/chat/route.ts` 四条路径（proxyAnthropic / streamAnthropic / proxyOpenAI / streamOpenAI）：
+- 把 effectiveBudget 计算上移到 body 之前
+- `max_tokens: 16000` → `max_tokens: Math.max(16000, effectiveBudget + 4096)`
+- 保证 max_tokens 永远 > budget（budget 小于 12000 时仍是 16000，不改旧行为；budget 20000 → 24096）
+
+### 验证
+- `tsc --noEmit` EXIT=0。
+- 真实参数打 ekan relay：`mt=24096 budget=20000` 第二轮带 tool_result 正常返回（chunks=6 textlen=45），不再 400。
+- commit cf3ebd3 已推 main，Zeabur 自动部署。
+
+### Debug 笔记
+- 排查手法：从 /api/sync（pull-only GET）拉到线上 config 的 ekan profile + key，直接对 relay 复现两轮工具调用，一眼看到 400 报文。比在前端猜快得多。
+- 教训：thinking budget 与 max_tokens 是耦合的（max_tokens 含 thinking），任何允许用户调 thinkingBudget 的地方都要保证 max_tokens 跟着涨，否则用户一调高就全挂。
+- read 结果本就被 summarizeToolResult 截到 300 字，payload 不是问题；terminated 纯粹是 reasoning budget 越界。
