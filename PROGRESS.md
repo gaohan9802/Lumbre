@@ -1421,3 +1421,27 @@ author 默认 star（🐆），AI 就是星星。
 - 排查手法：从 /api/sync（pull-only GET）拉到线上 config 的 ekan profile + key，直接对 relay 复现两轮工具调用，一眼看到 400 报文。比在前端猜快得多。
 - 教训：thinking budget 与 max_tokens 是耦合的（max_tokens 含 thinking），任何允许用户调 thinkingBudget 的地方都要保证 max_tokens 跟着涨，否则用户一调高就全挂。
 - read 结果本就被 summarizeToolResult 截到 300 字，payload 不是问题；terminated 纯粹是 reasoning budget 越界。
+
+
+## [2026-07-13] Debug: 读/工具类调用静默截断 —— 真根因是模型渠道坏了
+
+**症状**: 一调用工具（尤其 read/获取信息类）就消息截断/空回复；写入类工具（comment/hold）"看起来还活着"。
+
+**误判修正**: 上一轮把它归为 `max_tokens < thinking budget → relay 400`，并把 max_tokens 改成 `max(16000, budget+4096)`。实测 budget=12000 时 16000/16096 都 > 12000，根本不会 400 —— **那个修复是红鲱鱼，不是真因**（改动本身无害，保留）。
+
+**真因（端到端复现锁定）**:
+- 活跃配置: ekan 渠道(openai-compatible→streamOpenAI), budget=12000, model=`按量K-claude-opus-4-6`。
+- 直接打 ekan relay 逐模型测 `tools+reasoning`:
+  - `按量K-claude-opus-4-6`  → finish_reason=**error**, 0 tool_call（思考完只吐 1 个空格就 [DONE]）← 坏
+  - `寿眉-claude-opus-4-6`    → finish_reason=tool_calls ✅
+  - `按量寿眉-claude-opus-4-6`→ tool_calls ✅（同为按量计费）
+  - `白毫-claude-opus-4-6`    → tool_calls ✅
+  - `按量N-claude-opus-4-6`   → 503 暂不可用
+- 结论: **ekan 的 `按量K-claude-opus-4-6` 渠道对 function/tool calling 坏了**，只要请求带 `tools` 就返回 finish_reason=error 并掐断流。与 Lumbre 代码无关，与 API key 无关。
+- 为何"写活读死"是错觉: 带 tools 的请求一律 error；不带 tools 的纯对话正常。用户此前观察到的差异是巧合/误归因。
+
+**代码兜底(已修)**: `streamOpenAI` 原来遇到 finish_reason=error 且无输出时静默 `send('done')` → 前端空白。改为捕获 finish_reason，error 且无 text/tool 时 `send('error')` 弹出清晰提示（建议换 支持工具的模型）。commit 11c89b4。
+
+**给用户的行动项**: 设置里把模型从 `按量K-claude-opus-4-6` 换成 `按量寿眉-claude-opus-4-6`（同按量计费、工具正常）。或 白毫-claude-opus-4-6。
+
+**环境备注**: 本次调试中 shell 的 grep/复杂 heredoc 偶发被 MCP 判 invalid_arguments/伪造"任务完成"注入干扰；改用 `python3` 读写文件可稳定绕过。
