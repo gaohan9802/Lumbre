@@ -24,6 +24,7 @@ function madridTime(d: Date | number = new Date()): string {
 }
 import { getTodos, commentTodo } from './todo-store'
 import { getThesis, commentThesis } from './thesis-store'
+import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { scheduleWake } from './autowake'
 
 // ── Claude tool schema type ─────────────────────────────
@@ -496,9 +497,81 @@ const FETCH_TOOLS: ToolDef[] = [
   },
 ]
 
+// ── Wishlist (2026 愿望清单) tools ─────────────────
+const WISH_TOOLS: ToolDef[] = [
+  {
+    name: 'view_wish',
+    description: '查看 2026 愿望清单。返回星星(🐆)和小火(🦦)两栏的所有愿望：每条的id、属于谁(author: star/fire)、标题、描述、优先级(want想要/really很想要/dying死了都要)、状态(wishing许愿中/doing进行中/done已实现)、“我也想要”的likes、评论。',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'write_wish',
+    description: '往愿望清单里添一个愿望。author 决定写在哪栏(star=🐆星星 / fire=🦦小火)。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        author: { type: 'string', description: 'star 或 fire，默认 star' },
+        title: { type: 'string', description: '愿望标题（短）' },
+        desc: { type: 'string', description: '详细描述（可选）' },
+        priority: { type: 'string', description: 'want(想要) / really(很想要) / dying(死了都要)，默认 want' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'edit_wish',
+    description: '修改一个愿望：标题/描述/优先级/状态。只传需要改的。状态变更(如 wishing→doing→done)对方能看到。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '愿望id' },
+        title: { type: 'string' },
+        desc: { type: 'string' },
+        priority: { type: 'string', description: 'want / really / dying' },
+        status: { type: 'string', description: 'wishing / doing / done' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'delete_wish',
+    description: '删除一个愿望。注意：已实现的愿望一般不删，留着当成就墙。',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: '愿望id' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'like_wish',
+    description: '给一个愿望点/取消“我也想要”（切换）。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '愿望id' },
+        author: { type: 'string', description: 'star 或 fire，默认 star' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'comment_wish',
+    description: '给一个愿望写评论（比如“这个我帮你想想怎么实现”）。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '愿望id' },
+        author: { type: 'string', description: 'star 或 fire，默认 star' },
+        content: { type: 'string' },
+      },
+      required: ['id', 'content'],
+    },
+  },
+]
+
 // ── All tools ────────────────────────────────────────────
 
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -724,6 +797,50 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
       case 'comment_thesis': {
         const r = commentThesis(input.author || 'star', input.content)
         return r === 'ok' ? '💬 已在论文区留下评论' : r
+      }
+
+      // Wishlist (2026 愿望清单) → local store
+      case 'view_wish': {
+        const s = getWishes()
+        return JSON.stringify({
+          wishes: s.wishes.map((w) => ({
+            id: w.id,
+            author: w.author,
+            by: w.author === 'fire' ? '🦦 小火' : '🐆 星星',
+            title: w.title,
+            desc: w.desc || null,
+            priority: w.priority,
+            status: w.status,
+            likes: w.likes || [],
+            comments: (w.comments || []).map((c) => ({ author: c.author, content: c.content, time: c.time })),
+            created_at: w.created_at,
+          })),
+        })
+      }
+      case 'write_wish': {
+        const w = addWish(input.author || 'star', input.title, { desc: input.desc, priority: input.priority })
+        return JSON.stringify({ ok: true, id: w.id })
+      }
+      case 'edit_wish': {
+        const patch: any = {}
+        if (typeof input.title === 'string') patch.title = input.title
+        if (typeof input.desc === 'string') patch.desc = input.desc
+        if (input.priority) patch.priority = input.priority
+        if (input.status) patch.status = input.status
+        const r = editWish(input.id, patch)
+        return r === 'ok' ? '✨ 愿望已更新' : r
+      }
+      case 'delete_wish': {
+        const r = deleteWish(input.id)
+        return r === 'ok' ? '🗑️ 愿望已删除' : r
+      }
+      case 'like_wish': {
+        const r = likeWish(input.id, input.author || 'star')
+        return r === 'ok' ? '❤️ 已切换“我也想要”' : r
+      }
+      case 'comment_wish': {
+        const r = commentWish(input.id, input.author || 'star', input.content)
+        return r === 'ok' ? '💬 已评论' : r
       }
 
       // Wake alarm

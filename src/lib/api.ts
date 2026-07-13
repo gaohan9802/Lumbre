@@ -88,3 +88,16 @@ export const tesis = {
   remove:  (id: string) => post('/api/thesis/remove', { id }),
   comment: (author: string, content: string) => post('/api/thesis/comment', { author, content }),
 }
+
+// ── Wishlist (2026 愿望清单) ───────────────────────────
+export const wish = {
+  list: () => get('/api/wish/list'),
+  add: (author: string, title: string, opts: { desc?: string; priority?: string } = {}) =>
+    post('/api/wish/add', { author, title, ...opts }),
+  edit: (id: string, patch: { title?: string; desc?: string; priority?: string; status?: string }) =>
+    post('/api/wish/edit', { id, ...patch }),
+  remove: (id: string) => post('/api/wish/delete', { id }),
+  like: (id: string, author: string) => post('/api/wish/like', { id, author }),
+  comment: (id: string, author: string, content: string) =>
+    post('/api/wish/comment', { id, author, content }),
+}

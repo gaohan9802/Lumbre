@@ -1344,3 +1344,50 @@ read_foto 本该只返回文字，却每次把**最多 6 张照片的完整 base
 
 ### 模型拉取（bug1）
 后端 candidateModelUrls 已正确处理 /v1 后缀（withV1 去重、并生成 bare/asIs 三候选），并行试 + 全套鉴权头，逻辑无误。前端 fetchModels 会把后端 error 原样弹给用户。若仍失败多为具体中转站对 /v1/models 关闭或线路不可达，UI 的手动添加模型 ID 可兜底。本轮未改动。
+
+---
+
+## 2026-07-13 — 新增板块：2026 愿望清单（wishlist）
+
+### 需求
+冰箱便利贴风格的双栏愿望墙：左 🐆 星星、右 🦦 小火，各自往自己那栏加愿望、也能看到对方的。checkbox 打勾=已实现（不删除，沉到底部当成就墙）。可给对方愿望点「我也想要」、可评论、状态可变更。轻、好玩、随手加，不要像 Jira。
+
+### 数据模型（server/wish-store.ts）
+单文件 `DATA_DIR/wishlist/wishlist.json`，`{ wishes: Wish[] }`。字段：
+- id / author('star'|'fire' 决定在哪栏) / title / desc?(可选展开)
+- priority: `want`想要 / `really`很想要 / `dying`死了都要
+- status: `wishing`许愿中 / `doing`进行中 / `done`已实现（done 永不删除）
+- likes: string[]（谁点了「我也想要」，toggle）
+- comments: {id,author,content,time}[]
+- created_at / updated_at
+导出：getWishes / addWish / editWish(title,desc,priority,status) / deleteWish / likeWish(toggle) / commentWish。所有写入带字段归一化（normPriority/normStatus/normAuthor）。
+
+### API（src/app/api/wish/*）
+list(GET,force-dynamic)、add、edit、delete、like、comment(POST)。风格对齐 thesis 路由。
+
+### 前端（components/wishlist/WishlistView.tsx）
+- 大标题「🌠 2026 愿望清单」，下方同页左右两栏（md 双列，手机单列）。
+- 每栏顶部「许个愿」按钮（仅 currentUser===该栏 owner 时出现），展开输入：标题+描述+优先级三选。
+- 卡片：checkbox（owner 可勾，勾=done、划掉、置灰）、标题（owner 未完成时点击可内联改名）、优先级 pill（owner 点击循环）、状态 pill（owner 点击循环 wishing→doing→done）、许愿日期、详情展开（有 desc 时）、「我也想要」❤ 计数+点赞者 emoji（人人可点）、评论抽屉（人人可评，显示 emoji/昵称/时间）、删除（仅 owner）。
+- done 愿望沉到本栏底部，「✨ 实现了的愿望 (n)」分割线下方，成就墙风格。
+- 复用 tesis 的 night/day 主题类（bg-night-card / bg-day-pinkLight / text-night-amber / text-day-pink 等）。
+
+### 导航接线
+- lib/store.ts：Tab 联合类型 + VALID_TABS 增 `'wishlist'`。
+- app/page.tsx：import WishlistView + views map 增 `wishlist`。
+- layout/Sidebar.tsx：tabs 增 `{ id:'wishlist', label:'愿望清单', emoji:'🌠' }`。
+- lib/api.ts：新增 `wish` client（list/add/edit/remove/like/comment）。
+
+### AI 工具（server/tools.ts）
+新增 WISH_TOOLS 并入 ALL_TOOLS，executor 加对应 case：
+- view_wish（看两栏全部愿望+likes+comments）
+- write_wish（author/title/desc?/priority?）
+- edit_wish（title/desc/priority/status，只传需改的）
+- delete_wish
+- like_wish（toggle「我也想要」）
+- comment_wish（评论，如「这个我帮你想想怎么实现」）
+author 默认 star（🐆），AI 就是星星。
+
+### 验证
+- `./node_modules/.bin/tsc --noEmit` EXIT=0（首轮 edit_wish 的 patch 需标注 `: any` 才过）。
+- 未跑 next build（交 Zeabur 构建，遵铁律）。工作目录 /data/Lumbre 持久卷，基于 origin/main=ee100fb 增量。
