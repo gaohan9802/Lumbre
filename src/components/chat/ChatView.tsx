@@ -170,8 +170,16 @@ export function ChatView() {
       // rides along with the next message as a real image block, and archive
       // the compressed copy on the photo wall.
       const dataUrl = await compressImage(raw)
-      setPendingImages((prev) => [...prev, dataUrl])
-      try { await photosApi.write('fire', dataUrl, '', 'chat') } catch {}
+      // Archive the compressed copy on the photo wall, then reference it by a
+      // small http URL (/api/photos/raw/<id>) instead of shipping the base64 in
+      // every request. Base64 data URLs bloat the payload and some relays choke
+      // on them (silent truncation). Fall back to the data URL if the write fails.
+      let ref = dataUrl
+      try {
+        const r = await photosApi.write('fire', dataUrl, '', 'chat')
+        if (r?.id) ref = `/api/photos/raw/${r.id}`
+      } catch {}
+      setPendingImages((prev) => [...prev, ref])
       setUploadingImg(false)
     }
     reader.onerror = () => setUploadingImg(false)

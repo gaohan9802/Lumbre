@@ -1321,3 +1321,26 @@ e781f4f 已做过一轮（模型拉取/发图 vision 注入/时区等），但�
 - `stableSlice` 纯函数 node 实测：cap=30、len 25→80，窗口起点仅位移 6 次（每 10 轮一次），符合预期。
 - compressImage 为浏览器 canvas API，仅前端运行，tsc 通过即可。
 - 未跑 next build（交 Zeabur 构建，遵铁律）。工作目录 /data/Lumbre（持久卷），基于 origin/main=0f0573e 增量。
+
+---
+
+## 2026-07-14 — 照片彻底修复（read_foto/发图 terminated 空回复）
+
+### 根因（采纳栩然的判断）
+read_foto 本该只返回文字，却每次把**最多 6 张照片的完整 base64 dataUrl** 塞进 tool_result / followup。照片以 base64 存在 JSON 里（photo-store），编码膨胀 33%，6 张动辄数 MB。长链路 OpenAI 兼容中转站要么超时、要么直接拒绝 base64 的 image_url → 连接被 terminated，前端拿到空 fullText = “截断/空回”。chat 里发图同理：消息 images 直接带 base64，每轮历史重发还撑爆缓存。
+
+### 修复：base64 → http 图片 + 拆分 read/view
+1. **新端点 `/api/photos/raw/[id]`**：把库里的 base64 解码成真实 http 图片供上游拉取。中转站对 http image_url 兼容性远好于 base64，且 payload 从数 MB 降到一个短 URL。
+2. **read_foto 改纯文字**（tools.ts）：只返回 id/作者/caption/评论，**永不携带画面**，再也不会因体积被 terminated——正是栩然说的“它本该只返回文字”。
+3. **新增 view_foto(id)**：想细看某张时才加载**单张**画面（有界 payload）。Anthropic 走 image block、OpenAI 走 followup user 消息的 image_url，两条路都优先用 `origin + /api/photos/raw/id` 的 http URL（parseDataUrl fallback 保底）。
+4. **chat 发图改引用 http URL**（ChatView）：上传→压缩→写照片墙→拿 id→消息里存 `/api/photos/raw/<id>` 而非 base64。历史不再重发大 base64，缓存前缀更稳，中转站也不再 choke。
+5. route.ts 全链路加 `origin`（从 req host/x-forwarded-proto）线索到 buildAnthropicMessages / openaiImageParts / view_foto 注入；`resolvePhotoUrl` 统一把 相对路径/裸 id → 绝对 http URL，http/data 原样。`toolResultText` 取代 `summarizeToolResult(toolResultForHistory())`，避免照片文字被截到 300 字。
+6. system prompt 更新：read_foto 浏览文字、view_foto 看单张画面、聊天发图仍多模态直接可见。
+
+### 验证
+- `./node_modules/.bin/tsc --noEmit` EXIT=0。
+- 未跑 next build（交 Zeabur）。工作目录 /data/Lumbre 持久卷。
+- 注意：raw 端点无鉴权，但 /api/photos/list 本就公开返回全部 base64，无新增暴露；中转站需能公网访问部署域名（Zeabur 默认可）。
+
+### 模型拉取（bug1）
+后端 candidateModelUrls 已正确处理 /v1 后缀（withV1 去重、并生成 bare/asIs 三候选），并行试 + 全套鉴权头，逻辑无误。前端 fetchModels 会把后端 error 原样弹给用户。若仍失败多为具体中转站对 /v1/models 关闭或线路不可达，UI 的手动添加模型 ID 可兜底。本轮未改动。

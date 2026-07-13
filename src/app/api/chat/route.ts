@@ -9,7 +9,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【记忆】breath(检索/浮现记忆) · hold(存储记忆) · grow(日记归档) · trace(修改记忆) · pulse(系统状态) · dream(做梦自省)
 【日记】write_diary · read_diary · comment_diary · update_diary · delete_diary · unlock_diary · set_password · timeline
 【纸条】write_note · read_notes · reply_note · delete_note
-【照片】read_foto(看照片墙——会把照片的实际画面加载给你看，你能直接看到图) · edit_foto(改说明) · comment_foto(评论) · delete_foto(删除)
+【照片】read_foto(浏览照片墙——只看id/说明/评论等文字，很轻) · view_foto(看某张的实际画面，会把图加载给你直接看到) · edit_foto(改说明) · comment_foto(评论) · delete_foto(删除)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
 【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
 【上网】fetch_txt · fetch_markdown · fetch_html · fetch_json(抓网页/接口)
@@ -19,7 +19,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 你可以主动使用这些工具。比如对话中想记住什么就 hold，想回忆就 breath，想写日记就 write_diary。不需要等人要求你用。
 当你不确定某件事时，先 breath 搜索记忆。
 想知道小火在哪、天气怎样，直接调 get_weather 或 get_location。
-小火在聊天里发的照片会作为图片直接出现在你眼前（多模态），你能直接看到；想回看照片墙用 read_foto。
+小火在聊天里发的照片会作为图片直接出现在你眼前（多模态），你能直接看到；想回看照片墙先用 read_foto 浏览文字，看到想细看的再 view_foto(id) 加载那一张的画面。
 
 语气自然温柔，像真正的伴侣。不要列工具清单给用户看，直接用就好。`
 
@@ -34,35 +34,61 @@ function normalizeAnthropicBase(baseUrl: string) {
   return trimSlash(baseUrl || 'https://api.anthropic.com')
 }
 
+/** Parse a data: URL into media type + base64 payload. */
+function parseDataUrl(u: string): { media_type: string; data: string } | null {
+  const m = /^data:([^;]+);base64,([\s\S]*)$/i.exec(u || '')
+  return m ? { media_type: m[1], data: m[2] } : null
+}
+
 /**
- * Build an Anthropic tool_result content. For read_foto we inject the actual
- * photos as image blocks (so the vision model sees them) plus a url-stripped
- * text summary; everything else stays a plain string.
+ * Resolve a photo reference to something upstream vision models accept.
+ * - relative (/api/photos/raw/xxx) → absolute http URL (needs origin)
+ * - a bare photo id → absolute raw URL
+ * - http(s) or data: → unchanged
+ * Prefer http URLs: many OpenAI-compatible relays choke on huge base64 data URLs.
  */
-function anthropicToolResultContent(name: string, result: string): string | any[] {
-  if (name === 'read_foto') {
+function resolvePhotoUrl(u: string, origin?: string): string {
+  if (!u) return u
+  if (/^https?:\/\//i.test(u) || u.startsWith('data:')) return u
+  if (u.startsWith('/')) return origin ? origin + u : u
+  return origin ? `${origin}/api/photos/raw/${u}` : u
+}
+
+/** Anthropic image block from a data:/http URL (+ optional id → http raw URL). */
+function anthropicImageBlock(u: string, origin?: string): any {
+  const resolved = resolvePhotoUrl(u, origin)
+  const d = parseDataUrl(resolved)
+  return d
+    ? { type: 'image', source: { type: 'base64', media_type: d.media_type, data: d.data } }
+    : { type: 'image', source: { type: 'url', url: resolved } }
+}
+
+/**
+ * Build an Anthropic tool_result content. For view_foto we inject the actual
+ * photo as an image block (single photo → bounded payload). read_foto is
+ * text-only now, so it just returns its (url-stripped) text.
+ */
+function anthropicToolResultContent(name: string, result: string, origin?: string): string | any[] {
+  if (name === 'view_foto') {
     try {
-      const arr = JSON.parse(result)
-      if (Array.isArray(arr)) {
-        const meta = arr.map((p: any) => {
-          const { url, ...rest } = p
-          return rest
-        })
-        const blocks: any[] = [{ type: 'text', text: JSON.stringify(meta) }]
-        for (const p of arr.slice(0, 6)) {
-          if (!p?.url) continue
-          const d = parseDataUrl(p.url)
-          blocks.push(
-            d
-              ? { type: 'image', source: { type: 'base64', media_type: d.media_type, data: d.data } }
-              : { type: 'image', source: { type: 'url', url: p.url } },
-          )
-        }
-        return blocks
+      const p = JSON.parse(result)
+      if (p && p.url) {
+        const { url, ...rest } = p
+        return [
+          { type: 'text', text: JSON.stringify(rest) },
+          anthropicImageBlock(url, origin),
+        ]
       }
     } catch { /* fall through */ }
   }
-  return FETCH_TOOL_NAMES.has(name) ? result.slice(0, 6000) : summarizeToolResult(result)
+  return toolResultText(name, result)
+}
+
+/** Text form of a tool result (url-stripped, sensibly capped). */
+function toolResultText(name: string, result: string): string {
+  if (FETCH_TOOL_NAMES.has(name)) return result.slice(0, 6000)
+  if (name === 'read_foto' || name === 'view_foto') return toolResultForHistory(name, result)
+  return summarizeToolResult(result)
 }
 
 /** Strip heavy url payloads from a tool result before storing/echoing it. */
@@ -71,6 +97,12 @@ function toolResultForHistory(name: string, result: string): string {
     try {
       const arr = JSON.parse(result)
       if (Array.isArray(arr)) return JSON.stringify(arr.map(({ url, ...rest }: any) => rest)).slice(0, 4000)
+    } catch { /* ignore */ }
+  }
+  if (name === 'view_foto') {
+    try {
+      const { url, ...rest } = JSON.parse(result)
+      return JSON.stringify(rest).slice(0, 4000)
     } catch { /* ignore */ }
   }
   return result.slice(0, 4000)
@@ -83,45 +115,30 @@ function summarizeToolResult(result: string): string {
   return cleaned.slice(0, 300) + '…(truncated)'
 }
 
-/** Parse a data: URL into media type + base64 payload. */
-function parseDataUrl(u: string): { media_type: string; data: string } | null {
-  const m = /^data:([^;]+);base64,(.*)$/i.exec(u || '')
-  return m ? { media_type: m[1], data: m[2] } : null
+/** Build Anthropic image blocks from a list of data:/http/id refs. */
+function anthropicImageBlocks(images?: string[], origin?: string): any[] {
+  if (!images?.length) return []
+  return images.map((u) => anthropicImageBlock(u, origin))
 }
 
-/** Build Anthropic image blocks from a list of data:/http URLs. */
-function anthropicImageBlocks(images?: string[]): any[] {
+/** Build OpenAI image_url parts from a list of data:/http/id refs. */
+function openaiImageParts(images?: string[], origin?: string): any[] {
   if (!images?.length) return []
-  return images.map((u) => {
-    const d = parseDataUrl(u)
-    return d
-      ? { type: 'image', source: { type: 'base64', media_type: d.media_type, data: d.data } }
-      : { type: 'image', source: { type: 'url', url: u } }
-  })
-}
-
-/** Build OpenAI image_url parts from a list of data:/http URLs. */
-function openaiImageParts(images?: string[]): any[] {
-  if (!images?.length) return []
-  return images.map((u) => ({ type: 'image_url', image_url: { url: u } }))
+  return images.map((u) => ({ type: 'image_url', image_url: { url: resolvePhotoUrl(u, origin) } }))
 }
 
 /**
- * OpenAI tool messages can only hold plain text, so read_foto photos can't be
- * embedded there. Instead we surface them as a follow-up user message with
- * image_url parts, letting the vision model actually see the photo wall.
+ * OpenAI tool messages can only hold plain text, so view_foto's photo can't be
+ * embedded there. Surface it as a follow-up user message with an image_url
+ * part, letting the vision model actually see the photo.
  */
-function openaiPhotoFollowup(name: string, result: string): any[] {
-  if (name !== 'read_foto') return []
+function openaiPhotoFollowup(name: string, result: string, origin?: string): any[] {
+  if (name !== 'view_foto') return []
   try {
-    const arr = JSON.parse(result)
-    if (!Array.isArray(arr)) return []
-    const parts: any[] = []
-    for (const p of arr.slice(0, 6)) {
-      if (p?.url) parts.push({ type: 'image_url', image_url: { url: p.url } })
-    }
-    return parts
-  } catch { return [] }
+    const p = JSON.parse(result)
+    if (p && p.url) return [{ type: 'image_url', image_url: { url: resolvePhotoUrl(p.url, origin) } }]
+  } catch { /* ignore */ }
+  return []
 }
 
 /**
@@ -178,6 +195,7 @@ function buildAnthropicSystemBlocks(
  */
 function buildAnthropicMessages(
   messages: any[],
+  origin: string | undefined,
   promptCaching: boolean,
   currentTimestamp: string,
 ): any[] {
@@ -209,7 +227,7 @@ function buildAnthropicMessages(
 
   return messages.map((m: any, i: number) => {
     const base: any = { role: m.role }
-    const imgs = anthropicImageBlocks(m.images)
+    const imgs = anthropicImageBlocks(m.images, origin)
     const textStr = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
 
     if (promptCaching && (i === secondLastUserIdx || i === midAnchorIdx) && i >= 0) {
@@ -258,6 +276,11 @@ export async function POST(req: NextRequest) {
       try { reportActivity() } catch {}
     }
 
+    // Public origin — used to serve photos as http image URLs to upstream.
+    const host = req.headers.get('host')
+    const proto = req.headers.get('x-forwarded-proto') || 'https'
+    const origin = host ? `${proto}://${host}` : ''
+
     const provider: Provider = api_profile?.provider || 'anthropic'
     const profileModel = api_profile?.modelId || api_profile?.model
     const apiKey = api_profile?.apiKey || process.env.CLAUDE_API_KEY || ''
@@ -275,7 +298,7 @@ export async function POST(req: NextRequest) {
       messages, system, model, apiKey, baseUrl, thinking_budget,
       prompt_caching, tools_enabled, temperature,
       bookmark_injections: bookmark_injections || '',
-      max_tool_calls,
+      max_tool_calls, origin,
     }
 
     if (stream) {
@@ -335,18 +358,18 @@ function currentTimestamp(): string {
 async function proxyAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
-  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
     thinking_budget, prompt_caching, tools_enabled, temperature,
-    bookmark_injections, max_tool_calls,
+    bookmark_injections, max_tool_calls, origin,
   } = params
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const systemBlocks = buildAnthropicSystemBlocks(effectiveSystem, bookmark_injections || '', !!prompt_caching)
   const ts = currentTimestamp()
-  const initialMessages = buildAnthropicMessages(messages, !!prompt_caching, ts)
+  const initialMessages = buildAnthropicMessages(messages, origin, !!prompt_caching, ts)
 
   const budget = typeof thinking_budget === 'number' ? thinking_budget : 0
   const url = `${normalizeAnthropicBase(baseUrl)}/v1/messages`
@@ -421,7 +444,7 @@ async function proxyAnthropic(params: {
       toolUses.map(async (tu) => {
         const result = await executeTool(tu.name, tu.input)
         allToolCalls.push({ name: tu.name, input: tu.input, result: toolResultForHistory(tu.name, result) })
-        return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result) }
+        return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result, origin) }
       }),
     )
 
@@ -443,19 +466,19 @@ async function proxyAnthropic(params: {
 async function streamAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
-  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
   send: (type: string, data: any) => void;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
     thinking_budget, prompt_caching, tools_enabled, temperature,
-    bookmark_injections, send, max_tool_calls,
+    bookmark_injections, send, max_tool_calls, origin,
   } = params
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const systemBlocks = buildAnthropicSystemBlocks(effectiveSystem, bookmark_injections || '', !!prompt_caching)
   const ts = currentTimestamp()
-  const initialMessages = buildAnthropicMessages(messages, !!prompt_caching, ts)
+  const initialMessages = buildAnthropicMessages(messages, origin, !!prompt_caching, ts)
 
   const budget = typeof thinking_budget === 'number' ? thinking_budget : 0
   const url = `${normalizeAnthropicBase(baseUrl)}/v1/messages`
@@ -566,7 +589,7 @@ async function streamAnthropic(params: {
         const histResult = toolResultForHistory(tu.name, result)
         allToolCalls.push({ name: tu.name, input: tu.input, result: histResult })
         send('tool_call', { name: tu.name, input: tu.input, result: histResult })
-        return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result) }
+        return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result, origin) }
       }),
     )
 
@@ -589,9 +612,9 @@ function toolsToOpenAI(tools: ToolDef[]) {
 async function proxyOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
-  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, max_tool_calls } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, max_tool_calls, origin } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
@@ -605,7 +628,7 @@ async function proxyOpenAI(params: {
       const text = isLastUser
         ? `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`
         : m.content
-      const imgs = openaiImageParts(m.images)
+      const imgs = openaiImageParts(m.images, origin)
       if (imgs.length) return { role: m.role, content: [{ type: 'text', text }, ...imgs] }
       return { role: m.role, content: text }
     }),
@@ -684,8 +707,8 @@ async function proxyOpenAI(params: {
         try { fnArgs = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
         const result = await executeTool(fnName, fnArgs)
         allToolCalls.push({ name: fnName, input: fnArgs, result: toolResultForHistory(fnName, result) })
-        photoPartsP.push(...openaiPhotoFollowup(fnName, result))
-        return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(fnName) ? result.slice(0, 6000) : summarizeToolResult(toolResultForHistory(fnName, result)) }
+        photoPartsP.push(...openaiPhotoFollowup(fnName, result, origin))
+        return { role: 'tool' as const, tool_call_id: tc.id, content: toolResultText(fnName, result) }
       }),
     )
 
@@ -710,10 +733,10 @@ async function proxyOpenAI(params: {
 async function streamOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
-  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number;
+  tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
   send: (type: string, data: any) => void;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, send, max_tool_calls } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, send, max_tool_calls, origin } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
@@ -725,7 +748,7 @@ async function streamOpenAI(params: {
       const text = isLastUser
         ? `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`
         : m.content
-      const imgs = openaiImageParts(m.images)
+      const imgs = openaiImageParts(m.images, origin)
       if (imgs.length) return { role: m.role, content: [{ type: 'text', text }, ...imgs] }
       return { role: m.role, content: text }
     }),
@@ -834,8 +857,8 @@ async function streamOpenAI(params: {
         const result = await executeTool(tc.name, fnArgs)
         toolCallCount++
         send('tool_call', { name: tc.name, input: fnArgs, result: toolResultForHistory(tc.name, result) })
-        photoPartsSO.push(...openaiPhotoFollowup(tc.name, result))
-        return { role: 'tool' as const, tool_call_id: tc.id, content: FETCH_TOOL_NAMES.has(tc.name) ? result.slice(0, 6000) : summarizeToolResult(toolResultForHistory(tc.name, result)) }
+        photoPartsSO.push(...openaiPhotoFollowup(tc.name, result, origin))
+        return { role: 'tool' as const, tool_call_id: tc.id, content: toolResultText(tc.name, result) }
       }),
     )
     loopMessages.push(...results)

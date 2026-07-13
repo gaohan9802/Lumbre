@@ -11,7 +11,7 @@ import {
   unlockDiary, setPassword,
   listNotes, writeNote, replyNote, deleteNote,
 } from './diary-store'
-import { listPhotos, editPhoto, deletePhoto, commentPhoto } from './photo-store'
+import { listPhotos, getPhoto, editPhoto, deletePhoto, commentPhoto } from './photo-store'
 
 /** Format an epoch/Date as Madrid local time (Europe/Madrid, auto DST). */
 function madridTime(d: Date | number = new Date()): string {
@@ -338,10 +338,19 @@ const CONTEXT_TOOLS: ToolDef[] = [
 const PHOTO_TOOLS: ToolDef[] = [
   {
     name: 'read_foto',
-    description: '看照片墙上的照片。返回每张照片的id、作者、说明文字、评论。图片本身不返回(太大)。',
+    description: '浏览照片墙。只返回每张照片的id、作者、说明文字、评论等文字信息(不含画面，很轻)。想看某张的实际画面，用 view_foto(id)。',
     input_schema: {
       type: 'object',
       properties: { limit: { type: 'integer', description: '返回数量上限(默认20)' } },
+    },
+  },
+  {
+    name: 'view_foto',
+    description: '看某一张照片的实际画面(会把图片加载给你，你能直接看到)。先用 read_foto 拿到 id 再看。',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: '照片id' } },
+      required: ['id'],
     },
   },
   {
@@ -646,15 +655,25 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
 
       // Photos → local store
       case 'read_foto': {
-        const photos = listPhotos({ limit: input.limit || 12 })
-        // `url` is included so the chat route can inject the actual image as a
-        // vision block (Anthropic). The text summary strips it to avoid bloat.
+        // Text-only: never carries the base64 image, so it can't blow up the
+        // request payload / get terminated by a relay. Use view_foto to see one.
+        const photos = listPhotos({ limit: input.limit || 20 })
         return JSON.stringify(photos.map(ph => ({
           id: ph.id, author: ph.author, caption: ph.caption,
-          url: ph.url,
           comments: (ph.comments || []).map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
           created_at: ph.created_at,
         })))
+      }
+      case 'view_foto': {
+        const ph = getPhoto(input.id)
+        if (!ph) return JSON.stringify({ error: 'not_found', id: input.id })
+        // Include url so the chat route injects the actual image (single photo →
+        // bounded payload). The text history strips it.
+        return JSON.stringify({
+          id: ph.id, author: ph.author, caption: ph.caption, url: ph.url,
+          comments: (ph.comments || []).map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
+          created_at: ph.created_at,
+        })
       }
       case 'edit_foto': {
         const r = editPhoto(input.id, { caption: input.caption })
