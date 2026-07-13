@@ -58,7 +58,7 @@ function normalizeModels(raw: any[]) {
 /** Single request with a superset of auth headers — servers ignore what they don't need. */
 async function tryFetch(url: string, apiKey: string): Promise<{ ok: boolean; status: number; models?: any[]; text?: string }> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 12000)
+  const timer = setTimeout(() => controller.abort(), 9000)
   try {
     const res = await fetch(url, {
       method: 'GET',
@@ -101,8 +101,10 @@ export async function POST(req: NextRequest) {
     const urls = candidateModelUrls(baseUrl || '', provider)
     const attempts: { url: string; status: number; note?: string }[] = []
 
-    for (const url of urls) {
-      const r = await tryFetch(url, apiKey)
+    // Fire all candidates concurrently — a slow/unreachable station shouldn't
+    // block the others (sequential 3×9s could stall the whole request).
+    const results = await Promise.all(urls.map(async (url) => ({ url, r: await tryFetch(url, apiKey) })))
+    for (const { url, r } of results) {
       attempts.push({ url, status: r.status, note: r.ok ? undefined : (r.text || '').slice(0, 200) })
       if (r.ok && r.models && r.models.length > 0) {
         const models = normalizeModels(r.models)

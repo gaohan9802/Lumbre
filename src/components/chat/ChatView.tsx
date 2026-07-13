@@ -33,6 +33,46 @@ const fmtShortDate = (ts: number) => {
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
+/* ── stable context window (cache-friendly) ──
+ * 每轮 slice(-N) 会让消息数组的头部逐条前移，导致 Anthropic/OpenAI 的
+ * 前缀缓存整段失效（缓存靠字节级前缀匹配）。这里把窗口起点量化到 STEP 的
+ * 整数倍，窗口只在每 STEP 轮跳一次，其余轮次前缀完全稳定 → 命中缓存。 */
+function stableSlice<T>(arr: T[], cap: number): T[] {
+  const c = Math.max(4, cap || 30)
+  if (arr.length <= c) return arr
+  const STEP = Math.max(10, Math.floor(c / 3))
+  const start = Math.floor((arr.length - c) / STEP) * STEP
+  return arr.slice(start)
+}
+
+/* ── image compression ──────────────────────
+ * 手机原图常是 HEIC/超大 JPEG，直接塞进 vision 请求会因格式不支持或超过
+ * 5MB 上限被上游拒绝 → 回复被截断/为空。统一压成 ≤1568px 的 JPEG。 */
+function compressImage(dataUrl: string, maxDim = 1568, quality = 0.85): Promise<string> {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image()
+      img.onload = () => {
+        let { width, height } = img
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height)
+          width = Math.round(width * scale)
+          height = Math.round(height * scale)
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return resolve(dataUrl)
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.onerror = () => resolve(dataUrl)
+      img.src = dataUrl
+    } catch { resolve(dataUrl) }
+  })
+}
+
 /* ── confirm dialog ─────────────────────── */
 
 function useConfirm() {
@@ -124,9 +164,12 @@ export function ChatView() {
     setUploadingImg(true)
     const reader = new FileReader()
     reader.onload = async () => {
-      const dataUrl = reader.result as string
-      // Stage the image so it rides along with the next message as a real image
-      // block (the AI actually sees it), and also archive it on the photo wall.
+      const raw = reader.result as string
+      // Compress to a vision-safe JPEG (≤1568px, <5MB) so upstream doesn't
+      // reject it (which would silently truncate the reply). Stage it so it
+      // rides along with the next message as a real image block, and archive
+      // the compressed copy on the photo wall.
+      const dataUrl = await compressImage(raw)
       setPendingImages((prev) => [...prev, dataUrl])
       try { await photosApi.write('fire', dataUrl, '', 'chat') } catch {}
       setUploadingImg(false)
@@ -203,6 +246,7 @@ export function ChatView() {
               if (evt.type === 'text') { fullText += evt.content; setStreamText(fullText) }
               else if (evt.type === 'thinking') { fullThinking += evt.content; setStreamThinking(fullThinking) }
               else if (evt.type === 'tool_call') { toolCalls.push(evt) }
+              else if (evt.type === 'error') { fullText += (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了'); setStreamText(fullText) }
               else if (evt.type === 'done') { usage = evt }
             } catch { /* ignore parse errors */ }
           }
@@ -262,7 +306,7 @@ export function ChatView() {
     setIsLoading(true)
 
     const history = [...messages, userMsg]
-    const slice = history.slice(-settings.contextLength)
+    const slice = stableSlice(history, settings.contextLength)
     // Include timestamp + any attached images for AI to read
     const apiMessages = slice.map((m) => ({
       role: m.role,
@@ -304,7 +348,7 @@ export function ChatView() {
     if (msg.role === 'assistant') {
       // Re-generate: use messages up to (but not including) this assistant message
       const idx = messages.findIndex(m => m.id === msg.id)
-      const slice = messages.slice(0, idx).slice(-settings.contextLength)
+      const slice = stableSlice(messages.slice(0, idx), settings.contextLength)
       const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
 
       await doSend(apiMessages, (data) => {
@@ -330,7 +374,7 @@ export function ChatView() {
       const idx = messages.findIndex(m => m.id === msg.id)
       const nextMsg = messages[idx + 1]
       if (nextMsg && nextMsg.role === 'assistant') {
-        const slice = messages.slice(0, idx + 1).slice(-settings.contextLength)
+        const slice = stableSlice(messages.slice(0, idx + 1), settings.contextLength)
         const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
 
         await doSend(apiMessages, (data) => {

@@ -197,13 +197,23 @@ function buildAnthropicMessages(
     }
   }
 
+  // BP3: a further-back user message (~20 before BP4) as a stable mid anchor.
+  // Gives a guaranteed cache-read point even when the tail re-processes, and
+  // stays inside Anthropic's 4-breakpoint budget (BP1 system, BP2 bookmark).
+  let midAnchorIdx = -1
+  if (promptCaching && secondLastUserIdx > 20) {
+    for (let i = secondLastUserIdx - 20; i >= 0; i--) {
+      if (messages[i].role === 'user') { midAnchorIdx = i; break }
+    }
+  }
+
   return messages.map((m: any, i: number) => {
     const base: any = { role: m.role }
     const imgs = anthropicImageBlocks(m.images)
     const textStr = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
 
-    if (promptCaching && i === secondLastUserIdx && secondLastUserIdx >= 0) {
-      // BP4: Rolling breakpoint on second-to-last user message
+    if (promptCaching && (i === secondLastUserIdx || i === midAnchorIdx) && i >= 0) {
+      // BP3/BP4: rolling + mid cache breakpoints on user messages
       base.content = [
         ...imgs,
         { type: 'text', text: textStr, cache_control: { type: 'ephemeral' } },

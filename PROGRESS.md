@@ -1294,3 +1294,30 @@ e781f4f 已做过一轮（模型拉取/发图 vision 注入/时区等），但�
 - `node_modules/.bin/tsc --noEmit` EXIT=0。
 - data URL 正则用 `[\s\S]` 避开 `s` flag（本仓库 target<es2018）。
 - 未跑 next build（交 Zeabur）。工作目录 /data/Lumbre（持久卷）。基于 origin/main=e781f4f 增量修改，未回退上一轮成果。
+
+---
+
+## 2026-07-13 — 缓存命中率 + 发图截断 + 模型拉取（三修）
+
+### Bug3（核心）：缓存命中率只有 30% → 客户端滑动窗口是元凶
+- 根因：`ChatView` 每轮都 `messages.slice(-contextLength)`（默认 30）。会话一旦超 30 条，**每轮丢掉最旧一条 → 发给模型的消息数组头部逐条前移 → 前缀整段变化**。Anthropic/OpenAI 的 prompt cache 是严格前缀匹配（一个字节不同、后面全废），所以除了 system(BP1)/书签(BP2)，历史消息缓存每轮全失效 → 命中率≈只剩 system 的那点，30% 出头。完全对应攻略「元凶1：滑动窗口」。
+- 修复：新增 `stableSlice(arr, cap)`（ChatView.tsx 顶部）——把窗口**起点量化到 STEP=max(10,cap/3) 的整数倍**，窗口只在每 STEP 轮跳一次，其余轮次前缀字节级稳定。实测 cap=30 时每 10 轮才位移一次 → ~90% 轮次命中缓存。三处调用（send/retry-assistant/retry-user）全部改用 `stableSlice`。
+- 服务端 BP 布局本就正确（volatile 时间戳只注入最后一条 user、在 BP4 之后；历史消息不改写；跨轮不回传 tool_use/tool_result，避免攻略「元凶2」）。本轮**额外加 BP3 中间锚点**：`buildAnthropicMessages` 在 BP4（倒数第二条 user）往前约 20 条找一条 user 消息打 `cache_control`，作为重锚时的保底命中点，仍在 Anthropic 4 断点预算内（BP1 system+BP2 书签+BP3+BP4）。
+
+### Bug2：发图截断回复 / read_foto 读不到
+- 根因A（截断）：手机原图常是 HEIC / 超大 JPEG，直接塞进 vision 请求会因**格式不支持或超 5MB 上限被上游拒绝**；而**流式前端只处理 text/thinking/tool_call/done，从不处理 `error` 事件** → 上游报错被静默吞掉 → 前端拿到空 `fullText` → 显示「…」= 看起来「回复被截断」。
+- 修复：
+  1. `compressImage()`：上传时把图统一压成 ≤1568px 的 JPEG（quality 0.85）——vision 安全格式 + 体积可控，既防上游拒绝也顺带减小请求体/缓存膨胀。`handleUploadImage` 先压再入 pendingImages/照片墙。
+  2. 流式循环新增 `evt.type==='error'` 分支：把上游错误拼进气泡（⚠️ 前缀）并 setStreamText，不再空回复。
+- read_foto 服务端注入本就正确（Anthropic 走 image block 进 tool_result；OpenAI 走 followup user 消息带 image_url）。压缩后新存的照片体积可控，注入 6 张也不会超限。
+
+### Bug1：模型拉取（并行化 + 缩短超时）
+- 现状核对：线上 `/api/models` 已是 0f0573e 版本，用坏 token 打 makelove/xn-- 站点均返回 newapi 的 401「Invalid token」——**说明鉴权头正确、有效 key 下 `/v1/models` 会 200 返回列表**，逻辑本身通。youkies.space 从测试机超时（地域/线路），是站点可达性问题非代码问题。
+- 优化：`tryFetch` 超时 12s→9s；候选 URL 从**顺序试改为 `Promise.all` 并行**，避免某个慢/不可达站点把整个请求拖到 27s+。首个返回可解析模型的胜出。
+- 兜底仍在：anthropic 失败退内置 4 模型 + `_debug.attempts`；openai 失败返回 502 带每个 url/status/note。若某 newapi 管理员对 token 关闭了 `/v1/models`，用户仍可在「手动添加模型 ID」输入框直接填（UI 已支持）。
+
+### 验证
+- `./node_modules/.bin/tsc --noEmit` EXIT=0。
+- `stableSlice` 纯函数 node 实测：cap=30、len 25→80，窗口起点仅位移 6 次（每 10 轮一次），符合预期。
+- compressImage 为浏览器 canvas API，仅前端运行，tsc 通过即可。
+- 未跑 next build（交 Zeabur 构建，遵铁律）。工作目录 /data/Lumbre（持久卷），基于 origin/main=0f0573e 增量。
