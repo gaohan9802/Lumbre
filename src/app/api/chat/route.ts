@@ -388,17 +388,18 @@ async function proxyAnthropic(params: {
   const MAX_ITERATIONS = 15
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    // Bridge layer: always enable thinking (reasoning) for all models
+    const effectiveBudget = budget > 0 ? budget : 8000
     const body: any = {
       model,
-      max_tokens: 16000,
+      // max_tokens must exceed thinking budget (it counts thinking + output)
+      max_tokens: Math.max(16000, effectiveBudget + 4096),
       messages: loopMessages,
       system: systemBlocks,
       // Sticky routing for cache hit
       metadata: { user_id: 'lumbre-starfire' },
     }
 
-    // Bridge layer: always enable thinking (reasoning) for all models
-    const effectiveBudget = budget > 0 ? budget : 8000
     body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
     // Anthropic ignores temperature when thinking is enabled
     if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = ALL_TOOLS
@@ -496,17 +497,18 @@ async function streamAnthropic(params: {
   const MAX_ITERATIONS = 15
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    // Bridge layer: always enable thinking (reasoning)
+    const effectiveBudget = budget > 0 ? budget : 8000
     const body: any = {
       model,
-      max_tokens: 16000,
+      // max_tokens must exceed thinking budget (it counts thinking + output)
+      max_tokens: Math.max(16000, effectiveBudget + 4096),
       messages: loopMessages,
       stream: true,
       system: systemBlocks,
       metadata: { user_id: 'lumbre-starfire' },
     }
 
-    // Bridge layer: always enable thinking (reasoning)
-    const effectiveBudget = budget > 0 ? budget : 8000
     body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
     if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = ALL_TOOLS
 
@@ -651,15 +653,16 @@ async function proxyOpenAI(params: {
   const MAX_ITERATIONS = 15
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    // Bridge layer: always request reasoning for all models
+    const effectiveBudget = (typeof thinking_budget === 'number' && thinking_budget > 0) ? thinking_budget : 8000
     const body: any = {
       model,
       messages: loopMessages,
-      max_tokens: 16000,
+      // max_tokens must exceed reasoning budget (relay maps it to thinking.budget_tokens)
+      max_tokens: Math.max(16000, effectiveBudget + 4096),
       ...(tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls) ? { tools: openaiTools } : {}),
     }
     if (typeof temperature === 'number') body.temperature = temperature
-    // Bridge layer: always request reasoning for all models
-    const effectiveBudget = (typeof thinking_budget === 'number' && thinking_budget > 0) ? thinking_budget : 8000
     body.reasoning = { max_tokens: effectiveBudget }
 
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
@@ -770,17 +773,18 @@ async function streamOpenAI(params: {
   const MAX_ITERATIONS = 15
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    // Bridge layer: always request reasoning
+    const effectiveStreamBudget = (typeof thinking_budget === 'number' && thinking_budget > 0) ? thinking_budget : 8000
     const body: any = {
       model,
       messages: loopMessages,
-      max_tokens: 16000,
+      // max_tokens must exceed reasoning budget (relay maps it to thinking.budget_tokens)
+      max_tokens: Math.max(16000, effectiveStreamBudget + 4096),
       stream: true,
       stream_options: { include_usage: true },
       ...(tools_enabled && (!max_tool_calls || toolCallCount < max_tool_calls) ? { tools: openaiTools } : {}),
     }
     if (typeof temperature === 'number') body.temperature = temperature
-    // Bridge layer: always request reasoning
-    const effectiveStreamBudget = (typeof thinking_budget === 'number' && thinking_budget > 0) ? thinking_budget : 8000
     body.reasoning = { max_tokens: effectiveStreamBudget }
 
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
