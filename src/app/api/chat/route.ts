@@ -193,6 +193,37 @@ function buildAnthropicSystemBlocks(
  * Second-to-last user message gets cache_control (BP4).
  * Current time + volatile context injected as last user message prefix.
  */
+const EMPTY_TEXT_PLACEHOLDER = '…'
+
+/**
+ * Anthropic rejects any text content block whose text is empty/whitespace-only
+ * ("text content blocks must contain non-whitespace text"). This can happen when
+ * replaying history that captured a broken upstream turn (e.g. a lone space) or
+ * when a tool returns an empty string. Strip/patch such blocks before sending.
+ */
+function sanitizeTextBlocks(content: any): any {
+  if (typeof content === 'string') {
+    return content.trim() ? content : EMPTY_TEXT_PLACEHOLDER
+  }
+  if (!Array.isArray(content)) return content
+  const cleaned = content
+    .map((b: any) => {
+      if (b && b.type === 'tool_result') {
+        return { ...b, content: sanitizeTextBlocks(b.content) }
+      }
+      return b
+    })
+    .filter((b: any) => {
+      if (b && b.type === 'text') return !!(b.text && String(b.text).trim())
+      return true
+    })
+  return cleaned.length ? cleaned : [{ type: 'text', text: EMPTY_TEXT_PLACEHOLDER }]
+}
+
+function sanitizeAnthropicMessages(msgs: any[]): any[] {
+  return msgs.map((m: any) => ({ ...m, content: sanitizeTextBlocks(m.content) }))
+}
+
 function buildAnthropicMessages(
   messages: any[],
   origin: string | undefined,
@@ -394,7 +425,7 @@ async function proxyAnthropic(params: {
       model,
       // max_tokens must exceed thinking budget (it counts thinking + output)
       max_tokens: Math.max(16000, effectiveBudget + 4096),
-      messages: loopMessages,
+      messages: sanitizeAnthropicMessages(loopMessages),
       system: systemBlocks,
       // Sticky routing for cache hit
       metadata: { user_id: 'lumbre-starfire' },
@@ -503,7 +534,7 @@ async function streamAnthropic(params: {
       model,
       // max_tokens must exceed thinking budget (it counts thinking + output)
       max_tokens: Math.max(16000, effectiveBudget + 4096),
-      messages: loopMessages,
+      messages: sanitizeAnthropicMessages(loopMessages),
       stream: true,
       system: systemBlocks,
       metadata: { user_id: 'lumbre-starfire' },
@@ -582,7 +613,7 @@ async function streamAnthropic(params: {
     }
 
     const contentBlocks: any[] = []
-    if (iterText) contentBlocks.push({ type: 'text', text: iterText })
+    if (iterText.trim()) contentBlocks.push({ type: 'text', text: iterText })
     for (const tu of toolUses) contentBlocks.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input })
 
     const toolResults = await Promise.all(

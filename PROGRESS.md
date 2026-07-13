@@ -1445,3 +1445,28 @@ author 默认 star（🐆），AI 就是星星。
 **给用户的行动项**: 设置里把模型从 `按量K-claude-opus-4-6` 换成 `按量寿眉-claude-opus-4-6`（同按量计费、工具正常）。或 白毫-claude-opus-4-6。
 
 **环境备注**: 本次调试中 shell 的 grep/复杂 heredoc 偶发被 MCP 判 invalid_arguments/伪造"任务完成"注入干扰；改用 `python3` 读写文件可稳定绕过。
+
+## 2026-07-16 — Debug: 官方 Claude API 400 "text content blocks must contain non-whitespace text"
+
+### 症状
+星星 chat 换用 Claude 官方 API（Anthropic native 路径），返回
+`Upstream 400: messages: text content blocks must contain non-whitespace text (request_id req_011CczDhBVieusK5gYer9cnK)`。
+
+### 根因
+回灌给官方 API 的 `messages` 里含**纯空白的 text content block**。官方 API 严格校验，任何 `text` 为空/全空白的块直接 400（ekan relay 不校验所以之前没暴露）。空白块来源：
+1. 历史里存了坏渠道吐的"一个空格"turn（见 2026-07-13 笔记，`按量K` 渠道 finish_reason=error 只吐一个空格）→ `buildAnthropicMessages` 第 250 行原样透传 `m.content`。
+2. `streamAnthropic` 组装 assistant content 用 `if (iterText)` 判断——空格是 truthy → 把 `{type:'text',text:' '}` 推进 loopMessages，下一轮请求就 400。
+3. tool 返回空字符串 → tool_result content 为 `""`，同样触发。
+
+### 修复（src/app/api/chat/route.ts）
+- 新增 `sanitizeTextBlocks` / `sanitizeAnthropicMessages`：递归清洗，空白 text 块剔除（保留 tool_use/image），空白 string→占位 `…`，tool_result 内层同样处理，清空后兜底占位块。
+- 两条 Anthropic 路径（proxyAnthropic/streamAnthropic）发送前 `messages: sanitizeAnthropicMessages(loopMessages)`，一处覆盖历史+循环内新增。
+- `streamAnthropic` 组装 `if (iterText)` → `if (iterText.trim())`，杜绝未来再写入空白块。
+- OpenAI 路径不动（非本次 bug，格式不同，最小改动）。
+
+### 验证
+- node 纯逻辑单测覆盖 7 种 case（空格串/空串/空白块+tool_use/正常/空 tool_result/tool_result 内空白/null）全部正确，**未跑 API**。
+- 本地无 node_modules 未跑 tsc；改动均为标注 `any` 的简单 TS。交 Zeabur 构建。
+
+### 笔记
+- 官方 API 比 relay 严格得多。历史数据被坏渠道污染过，光换 API 不清洗历史就会撞这个 400。sanitizer 放在发送前统一兜底，比逐个数据源清洗稳。
