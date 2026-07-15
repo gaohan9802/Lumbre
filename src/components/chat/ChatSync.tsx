@@ -9,19 +9,43 @@ import { useChatStore, extractConfig, isBlankSession } from '@/lib/chatStore'
 
 let applyingRemote = false
 
+// Incremental push: remember each session's last-pushed updatedAt so a boot
+// with hundreds of unchanged sessions only uploads the ones that actually
+// changed. The server merge (mergeSyncState) keeps sessions it didn't receive
+// untouched and deletions still propagate via tombstones (always sent), so
+// sending a subset is safe and makes sync cost independent of history length.
+let pushedSnapshot: Record<string, number> = {}
+let pushedConfigAt = -1
+
 async function doSync() {
   try {
     const { settings } = useChatStore.getState()
     // don't push blank scratch sessions — they'd accumulate across boots/devices
     const syncSessions = settings.sessions.filter((s) => !isBlankSession(s))
+    // only push sessions whose updatedAt changed since the last successful push
+    const changed = syncSessions.filter((s) => pushedSnapshot[s.id] !== s.updatedAt)
+    const configAt = settings.configUpdatedAt || 0
+    const configChanged = configAt !== pushedConfigAt
+    // nothing local changed — skip the heavy upload, but still pull so changes
+    // from other devices arrive; then re-baseline the snapshot to any sessions
+    // the pull merged in, so we don't echo server-origin edits back on next push
+    if (changed.length === 0 && !configChanged) {
+      await pullOnce()
+      const merged = useChatStore.getState().settings
+      const snap: Record<string, number> = {}
+      for (const s of merged.sessions) if (!isBlankSession(s)) snap[s.id] = s.updatedAt
+      pushedSnapshot = snap
+      pushedConfigAt = merged.configUpdatedAt || 0
+      return
+    }
     const res = await fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessions: syncSessions,
+        sessions: changed,
         tombstones: settings.tombstones,
         config: extractConfig(settings),
-        configUpdatedAt: settings.configUpdatedAt || 0,
+        configUpdatedAt: configAt,
       }),
     })
     if (!res.ok) return
@@ -34,6 +58,12 @@ async function doSync() {
       useChatStore.getState().mergeRemoteConfig(data.config, data.configUpdatedAt)
     }
     applyingRemote = false
+    // record what's now synced so the next push only carries fresh changes
+    const after = useChatStore.getState().settings
+    const snap: Record<string, number> = {}
+    for (const s of after.sessions) if (!isBlankSession(s)) snap[s.id] = s.updatedAt
+    pushedSnapshot = snap
+    pushedConfigAt = after.configUpdatedAt || 0
   } catch {
     // offline is fine — local-first
   }

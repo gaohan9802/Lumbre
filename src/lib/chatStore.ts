@@ -343,22 +343,30 @@ function bumpConfig(s: ChatSettings): ChatSettings {
  * (/api/sync) is the real source of truth, so persistence is best-effort:
  * never throw, and when the quota is hit, drop the heavy base64 images from
  * the persisted copy and retry so at least the text survives a reload. */
+// Remove only heavy base64 data-URL images from the persisted string, keeping
+// lightweight /api/photos/raw/<id> URL references intact (so images still show
+// on a cold start before the server pull). Base64 only appears as a fallback
+// when the photo-wall write failed; the server sync holds the real copy either
+// way, so dropping it locally is safe and never touches in-memory state.
+const stripBase64Images = (value: string): string =>
+  value
+    .replace(/,"data:image\/[^"]*"/g, '')
+    .replace(/"data:image\/[^"]*",/g, '')
+    .replace(/"data:image\/[^"]*"/g, '')
+
 const quotaSafeStorage = {
   getItem: (name: string): string | null => {
     try { return localStorage.getItem(name) } catch { return null }
   },
   setItem: (name: string, value: string): void => {
+    // Always strip base64 images before writing so a long conversation with
+    // pasted images can never overflow the ~5MB mobile localStorage quota.
+    const slim = stripBase64Images(value)
     try {
-      localStorage.setItem(name, value)
-      return
+      localStorage.setItem(name, slim)
     } catch {
-      // Quota exceeded — retry without the base64 image payloads.
-      try {
-        const stripped = value.replace(/"images":\[[^\]]*\]/g, '"images":[]')
-        localStorage.setItem(name, stripped)
-      } catch {
-        // Still too big — give up silently; server sync keeps the data.
-      }
+      // Still too big even without images — give up silently; server sync
+      // (/api/sync) is the source of truth and restores on next load.
     }
   },
   removeItem: (name: string): void => {
