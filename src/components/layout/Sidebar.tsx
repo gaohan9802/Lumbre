@@ -7,6 +7,7 @@ import { X } from 'lucide-react'
 
 const tabs = [
   { id: 'chat' as const, label: '星星', emoji: '🐆' },
+  { id: 'trio' as const, label: '双星', emoji: '✨' },
   { id: 'diary' as const, label: '日记', emoji: '📔' },
   { id: 'notes' as const, label: '小纸条', emoji: '📌' },
   { id: 'todo' as const, label: '待办', emoji: '🧾' },

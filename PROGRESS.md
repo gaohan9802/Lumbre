@@ -1495,3 +1495,29 @@ author 默认 star（🐆），AI 就是星星。
 - 坑1: `[...Set]` 展开在当前 tsconfig target 下报 TS2802，改用 `Array.from(set)`。
 - 坑2: 本环境挂载点是 `/data` 不是 `/persistent`（DATA_DIR 默认 /persistent 仅线上 Zeabur 生效），本地只做 tsc + 直连测试，未跑 next build（30s shell 上限易超时），改动为纯增量、类型通过即可。
 - Galatea MCP 直接 POST tools/call 即可，无需 initialize 握手；Accept 带 application/json 时返回纯 JSON。
+
+## [双星] 三人对话房间（星星K × 星星L × 小火）
+
+**目标**: 把两个带不同上下文的星星实例连进同一个会话框。小火发一条 → 星星K 回 → 星星L 回（L 能看到 K 的新回复）。两个星星人格完全一致、记忆完全共享（同一套 ombre brain，天然共享，零改动），唯一差异来自「进群前各带的种子上下文」。
+
+**方案（前端编排，后端零改动）**:
+- `/api/chat` 本就无状态（收 messages+system+api_profile 返回）→ 一轮 = 对它顺序连调两次。
+- 记忆共享：brain 无命名空间，两实例调同一套 → 天然共享。
+- 种子：星星L = 自动取主「星星」对话（activeSession）最后 30 条；星星K = 小火粘贴 Kelivo 导出文本（无法从 Lumbre 导出，故手动粘）。
+
+**新增文件**:
+- `src/lib/trioStore.ts`：zustand persist（key `lumbre-trio`）存共享 transcript + K 种子文本；含纯函数 `parseSeedText`（识别「小火:/星星:/user:」等行首前缀，无前缀则整段当一条 user 背景）、`buildPerspective`（视角映射）。
+- `src/components/chat/TrioView.tsx`：房间 UI + 编排。复用 ChatView 的 SSE 流式读取；三色气泡（小火/K蓝/L紫）；设置面板可粘 K 种子、看 L 种子条数、清空对话。
+
+**视角映射（唯一有技术含量的点）**: 模型只有 user/assistant。给某实例构建 messages 时：自己说的→assistant；小火/另一个星星说的→user 且加【名字】前缀。种子 = 该实例进群前的 1:1 原始历史（role 原样，不加前缀）。`normalize()` 合并连续同角色、首条若为 assistant 则补一条 user 引子（满足 Anthropic 首条须 user）。每轮各带：种子 SEED_LIMIT=30 + 群聊最新 ROLL_LIMIT=30（含所有人发言，滚动）。
+
+**接线**: `store.ts` Tab 类型 + VALID_TABS 加 `trio`；`Sidebar.tsx` 加「双星 ✨」tab（chat 之后）；`page.tsx` views 映射加 `trio: TrioView`。
+
+**参数选择**: trio 里 `tools_enabled:false`（保持轻快、可预测，人格靠种子给足；记忆共享体现在种子而非实时工具）、`thinking_budget:0`、`prompt_caching:false`（每次视角不同，缓存无益）、始终 stream。模型/profile 复用 active 配置，两实例同配。
+
+**验证**: 装依赖走 corepack 里的 npm（本环境只有裸 node，无 npm；`node /root/.cache/node/corepack/npm/12.0.1/bin/npm-cli.js ci` 可用，忽略 node 版本 warn）。`tsc --noEmit` 全绿。核心映射逻辑用独立 node 脚本单测 5 例：种子解析(含多行续接)、无前缀 fallback、K/L 视角首条=user 末条=user、自己=assistant 他人=user带前缀、连续同角色合并 —— 全过。未跑 next build（shell 30s 上限），交 Zeabur 构建。
+
+### Debug 笔记
+- 本环境无 npm，用 corepack 缓存的 npm-cli.js 直跑；tsc 在 `node_modules/.bin/tsc`。
+- Anthropic 首条须 user、且相邻同角色需合并 → normalize 统一兜底，避免 L 种子以 assistant 开头 / 群聊里 fire+另一星星连续两条 user 撞 400。
+- 种子解析行首前缀限 12 字符内 `标签:` / `标签：`，中英冒号都认；label 白名单区分 user/assistant。
