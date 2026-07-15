@@ -1604,3 +1604,69 @@ author 默认 star（🐆），AI 就是星星。
 - 本环境无 npx/npm/pnpm，tsc 用 `node node_modules/typescript/bin/tsc`。
 - 有两个克隆：`/data/Lumbre`（带 origin 无 token，真实工作区）与 `/tmp/Lumbre`（带 token 但落后）。推送用 `git push https://<token>@github.com/...`。
 - 上一轮我口头报了假 commit `40f8bcd` 却没真跑工具——这轮全程 git log/grep/tsc 留证据。
+
+---
+
+## 2025-07-11: 共读系统 (CoReading) 完整实现
+
+### 完成内容
+
+**后端 (src/server/coread-store.ts)**
+- JSON文件存储于 `/persistent/coread/books/` 和 `/persistent/coread/chats/`
+- 数据模型: Book, Chapter, Annotation, ChatMessage
+- 核心功能:
+  - 书籍CRUD (导入/列表/删除)
+  - 章节管理 + 自动章节分割 (中文"第X章"模式 + 通用heading)
+  - 批注系统 (用户/AI双方, AI批注需校验原文子串防编造)
+  - 章节摘要 (digest) 懒生成
+  - 故事弧线 (storyArc) 只到读者进度为止 → 防剧透
+  - 聊天历史持久化
+  - Prompt构建: passageWindow(真原文窗口), timeAnchor(时间感知), buildSystemPrompt
+  - 记忆余温: recentBrief() 可被其他会话注入
+
+**API Routes (src/app/api/coread/)**
+| Route | Method | 功能 |
+|-------|--------|------|
+| /api/coread/books | GET | 列出所有书 |
+| /api/coread/books | POST | 获取某书章节列表 |
+| /api/coread/import | POST | 导入书籍 (text/chapters) |
+| /api/coread/chapter | POST | 获取章节内容+批注 |
+| /api/coread/chat | GET | 获取聊天历史 |
+| /api/coread/chat | POST | 发送消息 (SSE流式) |
+| /api/coread/annotate | POST | 添加/删除批注 |
+| /api/coread/digest | POST | 获取/设置摘要, 获取story arc |
+| /api/coread/delete | POST | 删除书籍 |
+
+**前端 (src/components/coreading/CoReadingView.tsx)**
+- 三层视图: 书架 → 目录 → 阅读
+- EPUB客户端解析 (jszip动态import)
+- 纯文本导入 (支持手动粘贴, 自动章节分割)
+- 阅读界面: 批注高亮(用户=紫色底色, AI=下划线), 章节导航
+- 聊天面板: SSE流式显示, 选中文本→讨论, 历史持久化
+- 选中操作条: 批注 / 聊这句
+- 响应式: 移动端聊天全屏, 桌面端左右分栏
+
+**设计要点 (来自 coread 架构)**
+1. AI不靠训练印象——每轮喂真实原文窗口 (selection ±300字)
+2. 章节摘要伪造"读过全书" → 截止线=读者进度=防剧透线
+3. 时间锚: 距上次聊>3h就提醒模型别把旧讨论当刚刚
+4. 用户消息先落库 → 生成失败不丢用户那半边
+5. AI [批注:原文|内容] 标记自动提取, 原文必须真是子串才入库
+6. SSE全链路 + 15s心跳 → 防反代掐断
+7. 懒digest: 串行慢补, 失败即停
+
+**依赖新增**
+- `jszip@3.10.1` (package.json, 前端EPUB解析用)
+
+**环境变量 (共读聊天需要)**
+- `LLM_BASE_URL` — OpenAI兼容端点
+- `LLM_API_KEY` — API密钥  
+- `LLM_MODEL` — 聊天模型 (默认 deepseek-chat)
+- `DIGEST_MODEL` — 可选, 摘要用便宜模型
+
+### 待完善
+- [ ] 记忆回写: 每轮共读结束写入 OmbreBrain
+- [ ] 人设从 persona.md 加载
+- [ ] 批注删除UI (目前只有后端接口)
+- [ ] 进度同步 (双人各自的进度)
+- [ ] 导出/备份功能
