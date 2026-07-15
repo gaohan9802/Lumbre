@@ -53,7 +53,7 @@
   }
 
   .receipt-paper {
-    background-color: theme('colors.receipt.paper');
+    background-color: #F5F0E8;
     color: theme('colors.receipt.ink');
     font-family: theme('fontFamily.receipt');
   }
@@ -89,8 +89,8 @@
 }
 
 .receipt-edge-top {
-  background: linear-gradient(135deg, theme('colors.receipt.paper') 33.33%, transparent 33.33%) -6px 0,
-              linear-gradient(225deg, theme('colors.receipt.paper') 33.33%, transparent 33.33%) -6px 0;
+  background: linear-gradient(135deg, #F5F0E8 33.33%, transparent 33.33%) -6px 0,
+              linear-gradient(225deg, #F5F0E8 33.33%, transparent 33.33%) -6px 0;
   background-size: 12px 12px;
 }
 

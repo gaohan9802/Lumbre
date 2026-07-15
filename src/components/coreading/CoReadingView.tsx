@@ -209,7 +209,7 @@ export function CoReadingView() {
     // Parse epub in browser using simple approach
     // Read as arrayBuffer, parse the container.xml and content
     try {
-      const JSZip = (await import('jszip')).default
+      const JSZip = (await import('jszip') as any).default
       const zip = await JSZip.loadAsync(file)
       
       // Find container.xml
@@ -234,18 +234,18 @@ export function CoReadingView() {
       const spineItems: string[] = []
       const spineMatch = opf.match(/<spine[^>]*>([\s\S]*?)<\/spine>/)
       if (spineMatch) {
-        const refs = spineMatch[1].matchAll(/idref="([^"]+)"/g)
-        for (const m of refs) spineItems.push(m[1])
+        const refs = Array.from(spineMatch[1].matchAll(/idref="([^"]+)"/g))
+        refs.forEach((m: any) => spineItems.push(m[1]))
       }
       
       // Parse manifest
       const manifest: Record<string, string> = {}
-      const itemMatches = opf.matchAll(/<item\s+[^>]*id="([^"]+)"[^>]*href="([^"]+)"[^>]*/>/g)
-      for (const m of itemMatches) manifest[m[1]] = m[2]
+      const itemMatches = opf.matchAll(new RegExp('<item\\s+[^>]*id="([^"]+)"[^>]*href="([^"]+)"[^>]*\/>', 'g'))
+      Array.from(itemMatches).forEach((m: any) => { manifest[m[1]] = m[2] })
       
       // Also try alternate attribute order
-      const itemMatches2 = opf.matchAll(/<item\s+[^>]*href="([^"]+)"[^>]*id="([^"]+)"[^>]*/>/g)
-      for (const m of itemMatches2) manifest[m[2]] = m[1]
+      const itemMatches2 = opf.matchAll(new RegExp('<item\\s+[^>]*href="([^"]+)"[^>]*id="([^"]+)"[^>]*/>', 'g'))
+      Array.from(itemMatches2).forEach((m: any) => { manifest[m[2]] = m[1] })
       
       // Extract chapters
       const chapters: { title: string; content: string }[] = []
@@ -262,7 +262,7 @@ export function CoReadingView() {
           .replace(/<[^>]+>/g, '')
           .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
           .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-          .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+          .replace(/&#(\d+);/g, (_: string, n: string) => String.fromCharCode(Number(n)))
           .replace(/\n{3,}/g, '\n\n').trim()
         
         if (text.length < 20) continue
