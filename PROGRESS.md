@@ -1544,3 +1544,29 @@ author 默认 star（🐆），AI 就是星星。
 ### 笔记
 - 「非流式长请求 + 移动端空闲连接掐断」是移动 web 经典坑；流式是标准解法（首字节秒到 + 心跳保活）。
 - textarea 无 Enter 发送是早先刻意设计（enterKeyHint=enter=换行），本次不动。
+
+## 2026-07-16 (续) — Debug 真凶: localStorage 配额溢出（上一轮流式修复没打中）
+
+### 新线索（决定性）
+上一轮流式改动上线后**手机仍发不出**。关键新观察：手机端**新建/小会话完全正常**，唯独那个 **900+ 层的老会话**「消息秒进框但不调 API、无报错」。→ 与消息数量/上下文长度强相关，**不是连接层**。
+
+### 真根因：QuotaExceededError 打断 handleSend
+`src/lib/chatStore.ts` 的 zustand `persist` 用 `createJSONStorage(() => localStorage)`，把**所有 session 的全部消息**（含 base64 图片 / thinking / tool_calls）整包 `JSON.stringify` 写 localStorage，**无任何错误处理**。
+- 移动端 WebKit 的 localStorage 配额只有 ~5MB（桌面大得多）。900 层带图片的会话整包早超 5MB。
+- 发送时 `addMessage(userMsg)` → zustand `set()` → persist **同步**调 `localStorage.setItem()` → 抛 **QuotaExceededError** → 异常从 `addMessage()` 冒出 → `handleSend` 在走到 `doSend`(fetch) **之前**就中断。
+- 完美吻合全部症状：① 消息秒进框（React state 在 persist 写盘前已更新渲染）② 不调 API（异常打断 handleSend，没到 fetch）③ 无报错（async 未捕获 rejection 被吞）④ 只手机（配额小）⑤ 只那个 900 层窗口（小会话塞得下）⑥ 1 小时后 heartbeat 能读到（内存态照样被 ChatSync push 到 /api/sync，服务器才是真源）。
+- 反证 persist 是同步抛：若异步，异常不会阻断 handleSend 的同步续行，doSend 仍会跑 → 与「不调 API」矛盾。故必为同步抛，catch 即解。
+
+### 修复（`src/lib/chatStore.ts`）
+新增 `quotaSafeStorage` 包装（替换 `createJSONStorage(() => localStorage)` 为 `createJSONStorage(() => quotaSafeStorage)`）：
+- `setItem`：try 正常写；**catch 到配额溢出 → 用正则 `/"images":\[[^\]]*\]/g` 剥掉所有 base64 图片再重试**；仍失败则静默放弃（服务器 /api/sync 保底，不影响使用）。**关键是永不抛异常**，send 流程不再被打断。
+- `getItem`/`removeItem` 同样 try/catch 兜底。
+
+### 验证
+- `tsc --noEmit` 全绿（`node_modules/.bin/tsc`；本环境无 npx/npm，用 corepack 缓存）。未跑 next build，交 Zeabur。
+- 需手机端用那个 900 层会话实测发送。
+
+### 笔记
+- 上一轮流式+keepalive 改动保留（对「长请求空闲掐断」仍有价值），但**本 bug 真凶是 localStorage 配额**，非连接层。教训：先复现差异（新会话 OK / 老会话挂）比猜连接层更快定位。
+- 服务器 /api/sync 是数据真源，localStorage 仅本地缓存 → 降级为 best-effort 安全。
+- 后续可选优化：persist 时 `partialize` 只存最近 N 层 / 不存 base64 图片，从根上避免逼近配额。

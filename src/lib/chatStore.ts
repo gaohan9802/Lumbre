@@ -334,6 +334,38 @@ function bumpConfig(s: ChatSettings): ChatSettings {
   return { ...s, configUpdatedAt: Date.now() }
 }
 
+/* ── quota-safe localStorage ──
+ * Mobile WebKit caps localStorage at ~5MB. A long conversation (hundreds of
+ * messages + base64 images) overflows it, and a raw setItem then throws
+ * QuotaExceededError synchronously — which on send would propagate out of
+ * addMessage() and abort the whole flow BEFORE the API call, leaving the
+ * message stuck in the box with no reply and no error. The server sync
+ * (/api/sync) is the real source of truth, so persistence is best-effort:
+ * never throw, and when the quota is hit, drop the heavy base64 images from
+ * the persisted copy and retry so at least the text survives a reload. */
+const quotaSafeStorage = {
+  getItem: (name: string): string | null => {
+    try { return localStorage.getItem(name) } catch { return null }
+  },
+  setItem: (name: string, value: string): void => {
+    try {
+      localStorage.setItem(name, value)
+      return
+    } catch {
+      // Quota exceeded — retry without the base64 image payloads.
+      try {
+        const stripped = value.replace(/"images":\[[^\]]*\]/g, '"images":[]')
+        localStorage.setItem(name, stripped)
+      } catch {
+        // Still too big — give up silently; server sync keeps the data.
+      }
+    }
+  },
+  removeItem: (name: string): void => {
+    try { localStorage.removeItem(name) } catch { /* ignore */ }
+  },
+}
+
 export const useChatStore = create<ChatStore>()(
   persist(
     (set, get) => ({
@@ -672,7 +704,7 @@ export const useChatStore = create<ChatStore>()(
     }),
     {
       name: 'starfire-chat',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => quotaSafeStorage),
       version: 7,
       migrate: (persisted: any) => {
         if (!persisted?.state) return persisted
