@@ -12,7 +12,7 @@ import {
   useChatStore, ChatMessage, MessageVersion, snapshotOfMessage,
   getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks,
 } from '@/lib/chatStore'
-import { chat, photos as photosApi } from '@/lib/api'
+import { photos as photosApi } from '@/lib/api'
 import { ChatSettings } from './ChatSettings'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
@@ -204,92 +204,77 @@ export function ChatView() {
       systemPrompt = (systemPrompt || '') + prefix + suffix
     }
 
-    if (settings.streamEnabled) {
-      // Streaming mode
-      setStreamText('')
-      setStreamThinking('')
-      try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: sendMessages,
-            system: systemPrompt,
-            model,
-            thinking_budget: settings.thinkingBudget,
-            prompt_caching: settings.promptCaching,
-            temperature: settings.temperature,
-            stream: true,
-            api_profile: profile ? {
-              provider: profile.provider, baseUrl: profile.baseUrl,
-              apiKey: profile.apiKey, modelId: model,
-            } : undefined,
-          }),
-        })
-        if (!res.ok) {
-          const errText = await res.text()
-          onDone({ content: `Error ${res.status}: ${errText.slice(0, 200)}`, error: true })
-          return
-        }
-        const reader = res.body!.getReader()
-        const decoder = new TextDecoder()
-        let buf = ''
-        let fullText = ''
-        let fullThinking = ''
-        let toolCalls: any[] = []
-        let usage: any = {}
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buf += decoder.decode(value, { stream: true })
-          const lines = buf.split('\n')
-          buf = lines.pop() || ''
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            const raw = line.slice(6)
-            if (raw === '[DONE]') continue
-            try {
-              const evt = JSON.parse(raw)
-              if (evt.type === 'text') { fullText += evt.content; setStreamText(fullText) }
-              else if (evt.type === 'thinking') { fullThinking += evt.content; setStreamThinking(fullThinking) }
-              else if (evt.type === 'tool_call') { toolCalls.push(evt) }
-              else if (evt.type === 'error') { fullText += (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了'); setStreamText(fullText) }
-              else if (evt.type === 'done') { usage = evt }
-            } catch { /* ignore parse errors */ }
-          }
-        }
-        onDone({
-          content: fullText,
-          thinking: fullThinking || undefined,
-          tool_calls: toolCalls.length ? toolCalls : undefined,
-          input_tokens: usage.input_tokens,
-          output_tokens: usage.output_tokens,
-          cache_read_tokens: usage.cache_read_tokens,
-          cache_creation_tokens: usage.cache_creation_tokens,
-        })
-      } catch (err: any) {
-        onDone({ content: err?.message || '连接失败了…', error: true })
-      }
-    } else {
-      // Non-streaming
-      try {
-        const data = await chat.send({
+    // Always stream the transport. A non-streaming /api/chat returns zero bytes
+    // until the whole tool loop finishes (30-90s), which iOS Safari / mobile
+    // networks silently drop as an idle connection -> fetch hangs, no reply, no
+    // error (desktop tolerates it, mobile doesn't). Streaming keeps bytes
+    // flowing so the connection stays alive on mobile. `live` only controls
+    // whether the UI renders progressively; when off we just show loading dots.
+    const live = settings.streamEnabled
+    setStreamText('')
+    setStreamThinking('')
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           messages: sendMessages,
           system: systemPrompt,
           model,
           thinking_budget: settings.thinkingBudget,
           prompt_caching: settings.promptCaching,
           temperature: settings.temperature,
+          stream: true,
           api_profile: profile ? {
             provider: profile.provider, baseUrl: profile.baseUrl,
             apiKey: profile.apiKey, modelId: model,
           } : undefined,
-        })
-        onDone(data)
-      } catch (err: any) {
-        onDone({ content: err?.message || '连接失败了…', error: true })
+        }),
+      })
+      if (!res.ok) {
+        const errText = await res.text()
+        onDone({ content: `Error ${res.status}: ${errText.slice(0, 200)}`, error: true })
+        return
       }
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      let fullText = ''
+      let fullThinking = ''
+      let toolCalls: any[] = []
+      let usage: any = {}
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() || ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6)
+          if (raw === '[DONE]') continue
+          try {
+            const evt = JSON.parse(raw)
+            if (evt.type === 'text') { fullText += evt.content; if (live) setStreamText(fullText) }
+            else if (evt.type === 'thinking') { fullThinking += evt.content; if (live) setStreamThinking(fullThinking) }
+            else if (evt.type === 'tool_call') { toolCalls.push(evt) }
+            else if (evt.type === 'error') { fullText += (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了'); if (live) setStreamText(fullText) }
+            else if (evt.type === 'done') { usage = evt }
+          } catch { /* ignore parse errors (incl. keepalive comments) */ }
+        }
+      }
+      onDone({
+        content: fullText,
+        thinking: fullThinking || undefined,
+        tool_calls: toolCalls.length ? toolCalls : undefined,
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_tokens,
+        cache_creation_tokens: usage.cache_creation_tokens,
+      })
+    } catch (err: any) {
+      onDone({ content: err?.message || '连接失败了…', error: true })
     }
   }
 

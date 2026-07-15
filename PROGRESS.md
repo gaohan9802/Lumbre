@@ -1521,3 +1521,26 @@ author 默认 star（🐆），AI 就是星星。
 - 本环境无 npm，用 corepack 缓存的 npm-cli.js 直跑；tsc 在 `node_modules/.bin/tsc`。
 - Anthropic 首条须 user、且相邻同角色需合并 → normalize 统一兜底，避免 L 种子以 assistant 开头 / 群聊里 fire+另一星星连续两条 user 撞 400。
 - 种子解析行首前缀限 12 字符内 `标签:` / `标签：`，中英冒号都认；label 白名单区分 user/assistant。
+## 2026-07-16 — Debug: 手机端 chat 发消息「进框但不调 API / 不唤醒」
+
+### 症状
+电脑网页端 chat 正常。手机（PWA / 网页 / 无痕）全部：消息能打进 chat 框（气泡出现、且被 /api/sync 同步到服务端，1 小时后 heartbeat 自主唤醒时读上下文能读到这条），**但不触发 AI 回复、无报错**。表现像「发进框了但没调 API」。
+
+### 定位
+- 消息气泡出现 + 被同步 = `handleSend → addMessage` 确实跑了 → `doSend`（同函数内紧随其后）也必然被调用。所以问题不在事件绑定层（Send 按钮 onClick 正常；textarea 本就无 Enter 发送，靠点按钮，桌面手机一致）。
+- config（含 `streamEnabled`）跨设备 /api/sync 同步，两端代码+配置**完全一致**，唯一差异是运行环境 → WebKit(iOS) + 移动网络。
+- 真根因：`streamEnabled` 默认 **false** → `doSend` 走非流式 `chat.send()` → `/api/chat` 在整个工具循环（thinking + 多次 tool call，40+ 工具，30–90s）结束前**零字节返回**。桌面能扛这种长空闲连接；**iOS Safari / PWA / 移动网络会把长时间无数据的空闲连接静默掐断** → fetch promise 挂起（不 resolve 也不 reject）→ 无回复、无 catch、无错误气泡。与后端渠道/API key/代码逻辑无关，纯连接层。
+
+### 修复
+1. **前端 `src/components/chat/ChatView.tsx` `doSend`**：传输层**始终走流式**（`stream:true`），删除非流式分支（连带移除未用的 `chat` import）。`streamEnabled` 降级为「UI 是否逐字渲染」开关——新增 `const live = settings.streamEnabled`，仅当 `live` 时才 `setStreamText/setStreamThinking`；关时照旧只显示 loading 三点，回复在结束时一次性渲染。流式让字节持续到达 → 移动端连接保活。
+2. **后端 `src/app/api/chat/route.ts` 流式响应**：
+   - 立即发首字节 `: keepalive`；工具执行/思考的长间隔期每 10s 发一次 SSE 注释心跳（`: keepalive\n\n`，客户端 `!startsWith('data: ')` 直接跳过，兼容）。`closed` flag + `clearInterval` 防重复 enqueue。
+   - 响应头加 `X-Accel-Buffering: no`（禁 Zeabur/nginx 反代缓冲，否则 chunk 被攒到结束才发，等于没流式）+ `Cache-Control: no-cache, no-transform`。
+
+### 验证
+- `tsc --noEmit` 通过。未跑 next build（内存易 OOM，交 Zeabur）。
+- 需手机端实测：发消息应即时出现 loading→回复（thinking 会先到，秒级首字节保活连接）。
+
+### 笔记
+- 「非流式长请求 + 移动端空闲连接掐断」是移动 web 经典坑；流式是标准解法（首字节秒到 + 心跳保活）。
+- textarea 无 Enter 发送是早先刻意设计（enterKeyHint=enter=换行），本次不动。

@@ -336,9 +336,20 @@ export async function POST(req: NextRequest) {
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
+          let closed = false
           const send = (type: string, data: any) => {
+            if (closed) return
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, ...data })}\n\n`))
           }
+          // First byte immediately + periodic heartbeat: some tool loop turns have
+          // long gaps (tool exec, model thinking) where no data flows. iOS Safari /
+          // mobile networks drop idle connections, so we emit an SSE comment every
+          // 10s to keep the socket warm. Comments are ignored by the client parser.
+          controller.enqueue(encoder.encode(': keepalive\n\n'))
+          const heartbeat = setInterval(() => {
+            if (closed) return
+            try { controller.enqueue(encoder.encode(': keepalive\n\n')) } catch { /* closed */ }
+          }, 10000)
           try {
             if (provider === 'openai-compatible') {
               await streamOpenAI({ ...params, send })
@@ -348,6 +359,8 @@ export async function POST(req: NextRequest) {
           } catch (err: any) {
             send('error', { content: err.message })
           }
+          clearInterval(heartbeat)
+          closed = true
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()
         },
@@ -355,8 +368,11 @@ export async function POST(req: NextRequest) {
       return new Response(readable, {
         headers: {
           'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive',
+          // Disable reverse-proxy buffering (Zeabur/nginx) so chunks reach the
+          // client immediately instead of being held until the response ends.
+          'X-Accel-Buffering': 'no',
         },
       })
     }
