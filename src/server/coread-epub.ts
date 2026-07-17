@@ -90,7 +90,7 @@ export function parseEpub(buf: Buffer): { title: string; author: string; chapter
 
   // 3. manifest id → href
   const manifest: Record<string, string> = {}
-  for (const m of opf.matchAll(/<item\b[^>]*>/gi)) {
+  for (const m of Array.from(opf.matchAll(/<item\b[^>]*>/gi))) {
     const tag = m[0]
     const id = tag.match(/\bid="([^"]+)"/i)?.[1]
     const href = tag.match(/\bhref="([^"]+)"/i)?.[1]
@@ -99,7 +99,7 @@ export function parseEpub(buf: Buffer): { title: string; author: string; chapter
 
   // 4. spine order
   const spine: string[] = []
-  for (const m of opf.matchAll(/<itemref\b[^>]*>/gi)) {
+  for (const m of Array.from(opf.matchAll(/<itemref\b[^>]*>/gi))) {
     const idref = m[0].match(/\bidref="([^"]+)"/i)?.[1]
     if (idref && manifest[idref]) spine.push(manifest[idref])
   }

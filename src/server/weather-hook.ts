@@ -53,8 +53,8 @@ function getCity(): string {
     // Use GPS city if available and recent
     return ctx.city
   }
-  // Default city — user is in Lianyungang based on context
-  return 'Lianyungang'
+  // Default city — user is in Madrid
+  return 'Madrid'
 }
 
 function num(v: any, def: number | null = null): number | null {
