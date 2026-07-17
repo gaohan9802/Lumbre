@@ -102,6 +102,16 @@ export const wish = {
     post('/api/wish/comment', { id, author, content }),
 }
 
+
+// ── Period tracking ───────────────────────────────────
+export const period = {
+  get: () => get('/api/period'),
+  start: (date: string) => post('/api/period', { action: 'start', date }),
+  end: (date: string) => post('/api/period', { action: 'end', date }),
+  config: (cycle_days?: number, period_length?: number) =>
+    post('/api/period', { action: 'config', cycle_days, period_length }),
+}
+
 // ── CoReading (共读) ──────────────────────────────────
 export const coread = {
   books: () => get('/api/coread/books'),

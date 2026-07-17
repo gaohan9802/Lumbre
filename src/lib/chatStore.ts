@@ -6,6 +6,15 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
+/** A content block in a message — renders inline in order */
+export interface ContentBlock {
+  type: 'thinking' | 'text' | 'tool_call'
+  content?: string       // for text/thinking
+  name?: string          // for tool_call
+  input?: Record<string, any>  // for tool_call
+  result?: string        // for tool_call
+}
+
 export interface MessageVersion {
   content: string
   thinking?: string
@@ -15,6 +24,7 @@ export interface MessageVersion {
   cache_read_tokens?: number
   cache_creation_tokens?: number
   tool_calls?: { name: string; input: Record<string, any>; result: string }[]
+  content_blocks?: ContentBlock[]  // ordered inline blocks (thinking/text/tool interleaved)
   providerId?: string
   modelId?: string
 }

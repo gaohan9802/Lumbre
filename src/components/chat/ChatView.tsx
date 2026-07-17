@@ -9,7 +9,7 @@ import {
   Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus,
 } from 'lucide-react'
 import {
-  useChatStore, ChatMessage, MessageVersion, snapshotOfMessage,
+  useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
   getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks,
 } from '@/lib/chatStore'
 import { photos as photosApi } from '@/lib/api'
@@ -102,6 +102,7 @@ export function ChatView() {
   const [isLoading, setIsLoading] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [streamThinking, setStreamThinking] = useState('')
+  const [streamBlocks, setStreamBlocks] = useState<ContentBlock[]>([])
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set())
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -213,6 +214,7 @@ export function ChatView() {
     const live = settings.streamEnabled
     setStreamText('')
     setStreamThinking('')
+    setStreamBlocks([])
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -301,11 +303,17 @@ export function ChatView() {
     const history = [...messages, userMsg]
     const slice = stableSlice(history, settings.contextLength)
     // Include timestamp + any attached images for AI to read
-    const apiMessages = slice.map((m) => ({
-      role: m.role,
-      content: m.content,
-      images: m.images,
-    }))
+    // Include tool call summaries in assistant messages so AI knows what it called
+    const apiMessages = slice.map((m) => {
+      let msgContent = m.content
+      if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+        const summary = m.tool_calls.map((tc: any) =>
+          `[调用了${tc.name}(${JSON.stringify(tc.input).slice(0, 100)}) → ${(tc.result || '').slice(0, 150)}]`
+        ).join('\n')
+        msgContent = (msgContent || '') + '\n' + summary
+      }
+      return { role: m.role, content: msgContent, images: m.images }
+    })
 
     await doSend(apiMessages, (data) => {
       addMessage({
@@ -319,12 +327,14 @@ export function ChatView() {
         cache_read_tokens: data.cache_read_tokens,
         cache_creation_tokens: data.cache_creation_tokens,
         tool_calls: data.tool_calls,
+        content_blocks: data.content_blocks,
         providerId: profile?.id,
         modelId: model,
       })
       setIsLoading(false)
       setStreamText('')
       setStreamThinking('')
+      setStreamBlocks([])
     })
   }
 
@@ -354,6 +364,7 @@ export function ChatView() {
           cache_read_tokens: data.cache_read_tokens,
           cache_creation_tokens: data.cache_creation_tokens,
           tool_calls: data.tool_calls,
+          content_blocks: data.content_blocks,
           providerId: profile?.id,
           modelId: model,
         }
@@ -361,6 +372,7 @@ export function ChatView() {
         setIsLoading(false)
         setStreamText('')
         setStreamThinking('')
+        setStreamBlocks([])
       })
     } else {
       // User retry: regenerate the AI response that follows
@@ -628,63 +640,142 @@ export function ChatView() {
                         {fmtFullTs(msg.timestamp)}
                       </p>
 
-                      {/* thinking - above bubble, collapsed */}
-                      {msg.thinking && (
+                      {/* Inline content blocks — interleaved thinking/tool/text */}
+                      {!isUser && msg.content_blocks && msg.content_blocks.length > 0 ? (
                         <>
-                          <button onClick={() => toggleThinking(msg.id)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                            <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${expandedThinking.has(msg.id) ? '' : '-rotate-90'}`} />
-                            <span className="truncate">💭 {expandedThinking.has(msg.id) ? 'Thinking' : (msg.thinking!.slice(0, 50).replace(/\n/g, ' ') + (msg.thinking!.length > 50 ? '…' : ''))}</span>
-                          </button>
-                          <AnimatePresence>
-                            {expandedThinking.has(msg.id) && (
-                              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                                className={`text-xs p-2 rounded-lg overflow-hidden whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                                {msg.thinking}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </>
-                      )}
-
-                      {/* tool calls - above bubble, collapsed with full content */}
-                      {msg.tool_calls && msg.tool_calls.length > 0 && (
-                        <>
-                          <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
-                            <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? '' : '-rotate-90'}`} />
-                            🔧 {msg.tool_calls.map((tc: any) => tc.name).join(', ')}
-                          </button>
-                          <AnimatePresence>
-                            {expandedTools.has(msg.id) && (
-                              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                                <div className={`text-xs space-y-1.5 p-2 rounded-xl ${n ? 'bg-night-surface/80' : 'bg-gray-50'}`}>
-                                  {msg.tool_calls.map((tc: any, i: number) => (
-                                    <div key={i} className={`p-2 rounded-lg space-y-1.5 ${n ? 'bg-night-card' : 'bg-white'}`}>
-                                      <div>
-                                        <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{tc.name}</span>
-                                      </div>
-                                      {tc.input && Object.keys(tc.input).length > 0 && (
-                                        <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
-                                          {JSON.stringify(tc.input, null, 2)}
-                                        </pre>
-                                      )}
-                                      {tc.result && (
-                                        <div className={`mt-1 pt-1.5 border-t ${n ? 'border-night-border' : 'border-gray-200'}`}>
-                                          <span className="text-[10px] opacity-40 block mb-1">返回结果</span>
-                                          <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded max-h-[300px] overflow-y-auto ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
-                                            {tc.result}
-                                          </pre>
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
+                          {msg.content_blocks.map((block: ContentBlock, bi: number) => {
+                            const blockKey = `${msg.id}-b${bi}`
+                            if (block.type === 'thinking' && block.content) {
+                              const isExp = expandedThinking.has(blockKey)
+                              return (
+                                <div key={blockKey}>
+                                  <button onClick={() => toggleThinking(blockKey)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                                    <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
+                                    <span className="truncate">💭 {isExp ? '深度思考' : (block.content.slice(0, 50).replace(/\n/g, ' ') + (block.content.length > 50 ? '…' : ''))}</span>
+                                  </button>
+                                  <AnimatePresence>
+                                    {isExp && (
+                                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                                        className={`text-xs p-2 rounded-lg overflow-hidden whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
+                                        {block.content}
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
                                 </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
+                              )
+                            }
+                            if (block.type === 'tool_call' && block.name) {
+                              const isExp = expandedTools.has(blockKey)
+                              return (
+                                <div key={blockKey} className={`rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
+                                  <button onClick={() => toggleTools(blockKey)} className={`w-full flex items-center gap-2 px-3 py-2 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                                    <span className={`${n ? 'text-night-amber' : 'text-day-pink'}`}>🔧</span>
+                                    <span>调用工具: <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{block.name}</span></span>
+                                    <ChevronDown size={12} className={`ml-auto transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
+                                  </button>
+                                  <AnimatePresence>
+                                    {isExp && (
+                                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                        <div className={`px-3 pb-2 text-xs space-y-1.5`}>
+                                          {block.input && Object.keys(block.input).length > 0 && (
+                                            <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-card text-night-muted' : 'bg-white text-day-muted'}`}>
+                                              {JSON.stringify(block.input, null, 2)}
+                                            </pre>
+                                          )}
+                                          {block.result && (
+                                            <div className={`pt-1 border-t ${n ? 'border-night-border' : 'border-gray-200'}`}>
+                                              <span className="text-[10px] opacity-40 block mb-1">返回结果</span>
+                                              <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded max-h-[200px] overflow-y-auto ${n ? 'bg-night-card text-night-muted' : 'bg-white text-day-muted'}`}>
+                                                {block.result}
+                                              </pre>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                              )
+                            }
+                            if (block.type === 'text' && block.content) {
+                              return (
+                                <div key={blockKey} className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl rounded-bl-md mr-auto text-[13px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
+                                  style={aColor ? aiBubbleStyle : {}}>
+                                  {msg.images && bi === 0 && msg.images.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                      {msg.images.map((src: string, ii: number) => (
+                                        <img key={ii} src={src} alt="" className="max-w-[180px] max-h-[180px] rounded-lg object-cover" />
+                                      ))}
+                                    </div>
+                                  )}
+                                  <p className="whitespace-pre-wrap">{block.content}</p>
+                                </div>
+                              )
+                            }
+                            return null
+                          })}
+                        </>
+                      ) : (
+                        <>
+                          {/* Legacy: thinking above bubble */}
+                          {msg.thinking && (
+                            <>
+                              <button onClick={() => toggleThinking(msg.id)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                                <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${expandedThinking.has(msg.id) ? '' : '-rotate-90'}`} />
+                                <span className="truncate">💭 {expandedThinking.has(msg.id) ? 'Thinking' : (msg.thinking!.slice(0, 50).replace(/\n/g, ' ') + (msg.thinking!.length > 50 ? '…' : ''))}</span>
+                              </button>
+                              <AnimatePresence>
+                                {expandedThinking.has(msg.id) && (
+                                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                                    className={`text-xs p-2 rounded-lg overflow-hidden whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
+                                    {msg.thinking}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </>
+                          )}
+
+                          {/* Legacy: tool calls above bubble */}
+                          {msg.tool_calls && msg.tool_calls.length > 0 && (
+                            <>
+                              <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
+                                <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? '' : '-rotate-90'}`} />
+                                🔧 {msg.tool_calls.map((tc: any) => tc.name).join(', ')}
+                              </button>
+                              <AnimatePresence>
+                                {expandedTools.has(msg.id) && (
+                                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                    <div className={`text-xs space-y-1.5 p-2 rounded-xl ${n ? 'bg-night-surface/80' : 'bg-gray-50'}`}>
+                                      {msg.tool_calls.map((tc: any, i: number) => (
+                                        <div key={i} className={`p-2 rounded-lg space-y-1.5 ${n ? 'bg-night-card' : 'bg-white'}`}>
+                                          <div>
+                                            <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{tc.name}</span>
+                                          </div>
+                                          {tc.input && Object.keys(tc.input).length > 0 && (
+                                            <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
+                                              {JSON.stringify(tc.input, null, 2)}
+                                            </pre>
+                                          )}
+                                          {tc.result && (
+                                            <div className={`mt-1 pt-1.5 border-t ${n ? 'border-night-border' : 'border-gray-200'}`}>
+                                              <span className="text-[10px] opacity-40 block mb-1">返回结果</span>
+                                              <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded max-h-[300px] overflow-y-auto ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
+                                                {tc.result}
+                                              </pre>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </>
+                          )}
                         </>
                       )}
 
-                      {/* bubble */}
+                      {/* bubble — skip for content_blocks messages (text rendered inline above) */}
                       {isEditing ? (
                         <div className={`rounded-2xl overflow-hidden ${isUser ? 'rounded-br-md' : 'rounded-bl-md'}`}>
                           <textarea value={editingMsgText} onChange={(e) => setEditingMsgText(e.target.value)}
@@ -694,7 +785,7 @@ export function ChatView() {
                             <button onClick={finishEditMsg} className={`text-xs font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>保存</button>
                           </div>
                         </div>
-                      ) : (
+                      ) : (isUser || !msg.content_blocks || msg.content_blocks.length === 0) ? (
                         <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isUser ? 'rounded-br-md ml-auto' : 'rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : {}) : (aColor ? aiBubbleStyle : {})}>
                           {msg.images && msg.images.length > 0 && (
@@ -707,7 +798,7 @@ export function ChatView() {
                           )}
                           {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
                         </div>
-                      )}
+                      ) : null}
 
                       {/* AI model + tokens */}
                       {!isUser && (
@@ -762,17 +853,48 @@ export function ChatView() {
             {/* loading / streaming */}
             {isLoading && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                <div className="w-full space-y-1">
-                  {streamThinking && (
-                    <div className={`text-xs p-2 rounded-lg whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                      {streamThinking}<span className="stream-cursor">…</span>
-                    </div>
-                  )}
-                  {streamText ? (
-                    <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl rounded-bl-md mr-auto text-[13px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
-                      <p className="whitespace-pre-wrap">{streamText}<span className="inline-flex ml-0.5 align-baseline"><span className="stream-cursor">…</span></span></p>
-                    </div>
-                  ) : (
+                <div className="w-full space-y-1.5">
+                  {/* Render streaming blocks inline */}
+                  {streamBlocks.length > 0 ? streamBlocks.map((block, bi) => {
+                    const isLast = bi === streamBlocks.length - 1
+                    if (block.type === 'thinking' && block.content) {
+                      const bk = `stream-b${bi}`
+                      const isExp = expandedThinking.has(bk)
+                      return (
+                        <div key={bi}>
+                          <button onClick={() => toggleThinking(bk)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                            <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
+                            <span className="truncate">💭 {isExp ? '深度思考' : (block.content.slice(0, 50).replace(/\n/g, ' ') + '…')}{isLast ? <span className="stream-cursor">…</span> : ''}</span>
+                          </button>
+                          {isExp && (
+                            <div className={`text-xs p-2 rounded-lg whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
+                              {block.content}{isLast ? <span className="stream-cursor">…</span> : ''}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }
+                    if (block.type === 'tool_call' && block.name) {
+                      return (
+                        <div key={bi} className={`rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
+                          <div className={`flex items-center gap-2 px-3 py-2 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                            <span className={`${n ? 'text-night-amber' : 'text-day-pink'}`}>🔧</span>
+                            <span>调用工具: <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{block.name}</span></span>
+                            <ChevronDown size={12} className="ml-auto -rotate-90" />
+                          </div>
+                        </div>
+                      )
+                    }
+                    if (block.type === 'text' && block.content) {
+                      return (
+                        <div key={bi} className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl rounded-bl-md mr-auto text-[13px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                          <p className="whitespace-pre-wrap">{block.content}{isLast ? <span className="stream-cursor">…</span> : ''}</p>
+                        </div>
+                      )
+                    }
+                    return null
+                  }) : (
+                    /* No blocks yet — show loading dots */
                     <div className={`w-fit mr-auto px-4 py-3 rounded-2xl rounded-bl-md ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                       <div className="flex gap-1">
                         {[0, 1, 2].map(i => (

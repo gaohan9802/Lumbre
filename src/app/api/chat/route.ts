@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef, FETCH_TOOL_NAMES } from '@/server/tools'
 import { reportActivity } from '@/server/autowake'
+import { getPeriodContext } from '@/server/period-store'
+import { getWeatherContext } from '@/server/weather-hook'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -12,6 +14,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【照片】read_foto(浏览照片墙——只看id/说明/评论等文字，很轻) · view_foto(看某张的实际画面，会把图加载给你直接看到) · edit_foto(改说明) · comment_foto(评论) · delete_foto(删除)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
 【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
+【经期】update_period(记录经期开始/结束) · read_period(查看经期状态)
 【上网】fetch_txt · fetch_markdown · fetch_html · fetch_json(抓网页/接口)
 【闹钟】wake_me(给自己定下一次醒来的时间)
 【系统】run(执行shell命令)
@@ -20,6 +23,9 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 当你不确定某件事时，先 breath 搜索记忆。
 想知道小火在哪、天气怎样，直接调 get_weather 或 get_location。
 小火在聊天里发的照片会作为图片直接出现在你眼前（多模态），你能直接看到；想回看照片墙先用 read_foto 浏览文字，看到想细看的再 view_foto(id) 加载那一张的画面。
+
+当她提到月经/姨妈/经期相关话题，用 update_period 记录开始和结束。你会在对话中收到经期和天气的感知提示——这些是你的感官，不要播报给她听，自然地关心就好。
+比如知道她来月经了，多一点耐心；知道下雨了，自然问她带伞没有；知道降温了，提醒她多穿。
 
 语气自然温柔，像真正的伴侣。不要列工具清单给用户看，直接用就好。`
 
@@ -228,7 +234,7 @@ function buildAnthropicMessages(
   messages: any[],
   origin: string | undefined,
   promptCaching: boolean,
-  currentTimestamp: string,
+  volatileContext: string,
 ): any[] {
   if (messages.length === 0) return []
 
@@ -269,7 +275,7 @@ function buildAnthropicMessages(
       ]
     } else if (i === lastUserIdx) {
       // Last user message: prepend volatile context (outside cache)
-      const volatile = `<gateway_volatile_context>仅供参考，勿复述：\n当前时间：${currentTimestamp}\n</gateway_volatile_context>\n\n`
+      const volatile = `<gateway_volatile_context>仅供参考，勿复述：\n${volatileContext}\n</gateway_volatile_context>\n\n`
       base.content = imgs.length
         ? [...imgs, { type: 'text', text: volatile + textStr }]
         : volatile + textStr
@@ -400,6 +406,33 @@ function currentTimestamp(): string {
   return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${wd}（马德里时间）`
 }
 
+
+/**
+ * Build volatile context string: current time + period context + weather context.
+ * Injected after all cache breakpoints to avoid breaking prefix cache.
+ */
+async function buildVolatileContext(userMessage: string): Promise<string> {
+  const ts = currentTimestamp()
+  // Madrid date for period checks
+  const madridDate = ts.split(' ')[0].replace(/\//g, '-')  // YYYY/MM/DD -> YYYY-MM-DD
+
+  const parts: string[] = [`当前时间：${ts}`]
+
+  // Period context (sync, fast)
+  try {
+    const periodNote = getPeriodContext(userMessage, madridDate)
+    if (periodNote) parts.push(periodNote)
+  } catch { /* ignore */ }
+
+  // Weather context (async, may fetch from wttr.in)
+  try {
+    const weatherNote = await getWeatherContext(userMessage)
+    if (weatherNote) parts.push(weatherNote)
+  } catch { /* ignore */ }
+
+  return parts.join('\n')
+}
+
 // ── Anthropic non-streaming with tool-use loop ──────────
 
 async function proxyAnthropic(params: {
@@ -415,8 +448,10 @@ async function proxyAnthropic(params: {
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const systemBlocks = buildAnthropicSystemBlocks(effectiveSystem, bookmark_injections || '', !!prompt_caching)
-  const ts = currentTimestamp()
-  const initialMessages = buildAnthropicMessages(messages, origin, !!prompt_caching, ts)
+  // Get last user message for context hooks
+  const lastUserMsg = messages.filter((m: any) => m.role === 'user').pop()?.content || ''
+  const volatileCtx = await buildVolatileContext(typeof lastUserMsg === 'string' ? lastUserMsg : '')
+  const initialMessages = buildAnthropicMessages(messages, origin, !!prompt_caching, volatileCtx)
 
   const budget = typeof thinking_budget === 'number' ? thinking_budget : 0
   const url = `${normalizeAnthropicBase(baseUrl)}/v1/messages`
@@ -525,8 +560,9 @@ async function streamAnthropic(params: {
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const systemBlocks = buildAnthropicSystemBlocks(effectiveSystem, bookmark_injections || '', !!prompt_caching)
-  const ts = currentTimestamp()
-  const initialMessages = buildAnthropicMessages(messages, origin, !!prompt_caching, ts)
+  const lastUserMsgS = messages.filter((m: any) => m.role === 'user').pop()?.content || ''
+  const volatileCtxS = await buildVolatileContext(typeof lastUserMsgS === 'string' ? lastUserMsgS : '')
+  const initialMessages = buildAnthropicMessages(messages, origin, !!prompt_caching, volatileCtxS)
 
   const budget = typeof thinking_budget === 'number' ? thinking_budget : 0
   const url = `${normalizeAnthropicBase(baseUrl)}/v1/messages`
@@ -669,13 +705,14 @@ async function proxyOpenAI(params: {
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
   
   // For OpenAI path: inject current time as volatile context in last user message
-  const ts = currentTimestamp()
+  const lastUserMsgOI = messages.filter((m: any) => m.role === 'user').pop()?.content || ''
+  const volatileCtxOI = await buildVolatileContext(typeof lastUserMsgOI === 'string' ? lastUserMsgOI : '')
   const builtMessages: any[] = [
     { role: 'system', content: fullSystem },
     ...messages.map((m: any, i: number) => {
       const isLastUser = m.role === 'user' && i === messages.length - 1
       const text = isLastUser
-        ? `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`
+        ? `<gateway_volatile_context>${volatileCtxOI}</gateway_volatile_context>\n\n${m.content}`
         : m.content
       const imgs = openaiImageParts(m.images, origin)
       if (imgs.length) return { role: m.role, content: [{ type: 'text', text }, ...imgs] }
@@ -790,13 +827,14 @@ async function streamOpenAI(params: {
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
-  const ts = currentTimestamp()
+  const lastUserMsgSO = messages.filter((m: any) => m.role === 'user').pop()?.content || ''
+  const volatileCtxSO = await buildVolatileContext(typeof lastUserMsgSO === 'string' ? lastUserMsgSO : '')
   const builtMessages: any[] = [
     { role: 'system', content: fullSystem },
     ...messages.map((m: any, i: number) => {
       const isLastUser = m.role === 'user' && i === messages.length - 1
       const text = isLastUser
-        ? `<gateway_volatile_context>当前时间：${ts}</gateway_volatile_context>\n\n${m.content}`
+        ? `<gateway_volatile_context>${volatileCtxSO}</gateway_volatile_context>\n\n${m.content}`
         : m.content
       const imgs = openaiImageParts(m.images, origin)
       if (imgs.length) return { role: m.role, content: [{ type: 'text', text }, ...imgs] }

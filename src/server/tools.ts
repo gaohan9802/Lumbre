@@ -27,6 +27,7 @@ import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { scheduleWake } from './autowake'
 import { executeGalatea } from './galatea'
+import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 
 // ── Claude tool schema type ─────────────────────────────
 
@@ -570,6 +571,30 @@ const WISH_TOOLS: ToolDef[] = [
   },
 ]
 
+
+// ── Period tracking tools ────────────────────────────────
+const PERIOD_TOOLS: ToolDef[] = [
+  {
+    name: 'update_period',
+    description: '更新经期记录。action: "start"(来了), "end"(结束了), "config"(调整周期参数)。来了/结束了需要传date(ISO日期)。config可传cycle_days和period_length。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['start', 'end', 'config'], description: 'start=来了, end=结束了, config=调整参数' },
+        date: { type: 'string', description: 'ISO日期，如2026-07-15' },
+        cycle_days: { type: 'number', description: '平均周期天数(仅config)' },
+        period_length: { type: 'number', description: '经期持续天数(仅config)' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'read_period',
+    description: '查看经期状态：上次开始/结束日期、周期天数、当前是否在经期、距下次预测天数、历史记录。',
+    input_schema: { type: 'object', properties: {} },
+  },
+]
+
 // ── Galatea Garden 论坛 + 桌游 tools ─────────────────
 const GALATEA_TOOLS: ToolDef[] = [
   {
@@ -607,7 +632,7 @@ const GALATEA_TOOLS: ToolDef[] = [
 
 // ── All tools ────────────────────────────────────────────
 
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...GALATEA_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -673,6 +698,33 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
     }
 
     // Galatea Garden 论坛/桌游
+    // Period tracking
+    if (name === 'update_period') {
+      const { action, date, cycle_days, period_length } = input
+      if (action === 'start' && date) return JSON.stringify(recordPeriodStart(date))
+      if (action === 'end' && date) return JSON.stringify(recordPeriodEnd(date))
+      if (action === 'config') return JSON.stringify(updatePeriodConfig(cycle_days, period_length))
+      return JSON.stringify({ error: 'Invalid action or missing date' })
+    }
+    if (name === 'read_period') {
+      const state = getPeriodState()
+      const now = new Date()
+      const result: any = { ...state }
+      if (state.last_period_start) {
+        const start = new Date(state.last_period_start)
+        const daysSince = Math.round((now.getTime() - start.getTime()) / 86400000) + 1
+        const active = daysSince >= 1 && daysSince <= state.period_length + 2 && !state.last_period_end
+        result.current_day = daysSince
+        result.is_active = active
+        if (!active) {
+          const expected = new Date(start.getTime() + state.cycle_days * 86400000)
+          result.next_expected = expected.toISOString().slice(0, 10)
+          result.days_until_next = Math.round((expected.getTime() - now.getTime()) / 86400000)
+        }
+      }
+      return JSON.stringify(result)
+    }
+
     if (name === 'galatea') {
       return await executeGalatea(input)
     }
