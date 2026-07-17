@@ -1670,3 +1670,98 @@ author 默认 star（🐆），AI 就是星星。
 - [ ] 批注删除UI (目前只有后端接口)
 - [ ] 进度同步 (双人各自的进度)
 - [ ] 导出/备份功能
+
+---
+
+## 2026-07-17 — Chat 内联工具调用 + 经期模块 + 天气 Hook
+
+### 完成
+
+#### 1. Chat 内联工具调用（content_blocks）
+
+**问题**：之前工具调用（thinking/tool_call）全部堆在气泡上方，AI 多轮工具调用时用户看不到调用顺序，且 AI 不知道自己之前调用过什么工具（上下文里没有工具摘要）。
+
+**改动**：
+- **数据模型**：`chatStore.ts` 新增 `ContentBlock` 接口（`type: 'thinking' | 'text' | 'tool_call'`），`MessageVersion` 新增可选 `content_blocks?: ContentBlock[]`
+- **流式收集**：`ChatView.tsx` 的 `doSend` 在接收 SSE 事件时，按顺序构建 `blocks[]` 数组。`thinking` 事件追加到当前 thinking block，`text` 追加到当前 text block，`tool_call` 插入新 block——当事件类型切换时自动开新 block，保证 thinking→text→tool_call→thinking→text 的真实顺序
+- **内联渲染**：如果 `msg.content_blocks` 存在，按顺序渲染每个 block：
+  - `thinking` = 可折叠，默认收起，显示"💭 前50字预览"
+  - `tool_call` = 圆角卡片，默认折叠只显示"🔧 调用工具: tool_name"，展开显示参数 JSON + 返回结果
+  - `text` = 正常气泡样式
+  - 参考图片效果：工具调用卡片有边框，点 chevron 展开细节
+- **流式渲染**：`streamBlocks` state 实时更新，流式过程中也能看到 thinking/tool_call/text 按顺序出现
+- **Legacy 兼容**：没有 `content_blocks` 的旧消息走原有渲染（thinking 和 tool_calls 在气泡上方）
+- **上下文回塞**：`apiMessages` 构建时，assistant 消息如果有 `tool_calls`，会在 content 末尾追加 `[调用了xxx(params) → result]` 摘要，确保 AI 知道自己调用过什么
+
+#### 2. 经期模块
+
+**文件**：
+- `src/server/period-store.ts`（226行）—— 经期数据存储 + 智能上下文注入
+- `src/app/api/period/route.ts` —— GET 读取 / POST 更新
+- `src/server/tools.ts` 新增 `PERIOD_TOOLS`（`update_period` + `read_period`）
+
+**数据存储**：`/persistent/period/state.json`
+- `last_period_start` / `last_period_end` / `cycle_days` / `period_length` / `history[]`
+- 每次记录新周期自动归档旧周期，从历史计算平均周期天数（15-60天有效区间取均值，clamp到20-45）
+- 提醒状态 `/persistent/period/notes.json` 防重复提醒
+
+**智能上下文注入**（`getPeriodContext()`，在 `buildVolatileContext` 中调用）：
+- 场景1：她主动提到月经/姨妈/经期 → 给出完整信息（"这次从X开始，今天第N天"）
+- 场景2：经期头两天 → 每天只提醒一次（"自然关心她疼不疼、吃了没"）
+- 场景3：快结束了 → 每隔两天最多问一次
+- 场景4：下次快来了 → 整个周期只主动问一次
+- 场景5：排卵期（周期天数-14 ±2天）→ 提醒多一点耐心
+
+**AI 工具**：
+- `update_period(action, date)` —— action=start/end/config
+- `read_period()` —— 返回当前状态 + is_active + next_expected + days_until_next
+
+#### 3. 天气 Hook
+
+**文件**：`src/server/weather-hook.ts`（200行）
+
+**设计**：
+- 用 [wttr.in](https://wttr.in) 免费 API，不需要注册
+- 白天看今天，晚上（20点后）切换到明天预报
+- 每天只查一次，天气变化（突然下雨/温差≥4℃）才再查
+- 用户问天气时强制查询
+
+**内置关心动作**：
+- 降雨概率≥40% 或下雨 → "如果她要出门，自然问她带伞没有"
+- 最高温≥30℃ → "今天偏热，记得提醒她少晒、补水"
+- 最低温≤12℃ → "今天偏凉，记得提醒她加衣服"
+- 晚上模式额外：明天下雨→提醒放伞；明天降温→提醒多穿；明天升温→别穿太厚
+
+**城市选择**：优先用 GPS 缓存的城市，fallback Lianyungang
+
+#### 4. 上下文注入架构
+
+```
+用户消息 → buildVolatileContext(userMessage)
+         ├── currentTimestamp()        马德里时间
+         ├── getPeriodContext()        经期感知（同步，快）
+         └── getWeatherContext()       天气感知（异步，可能 fetch）
+         
+→ 注入到 <gateway_volatile_context> 标签内
+→ 排在所有缓存断点之后（不破坏前缀缓存）
+→ AI 收到但不播报，像感官一样自然使用
+```
+
+四条路径（Anthropic 非流式/流式 + OpenAI 非流式/流式）全部更新。
+
+### 文件变更
+- `src/lib/chatStore.ts`：+ContentBlock 接口 +content_blocks 字段
+- `src/components/chat/ChatView.tsx`：内联 block 渲染 + 流式 block 收集 + 工具摘要回塞上下文
+- `src/app/api/chat/route.ts`：+buildVolatileContext() + period/weather 导入 + 系统提示更新
+- `src/server/period-store.ts`（新增）
+- `src/server/weather-hook.ts`（新增）
+- `src/server/tools.ts`：+PERIOD_TOOLS + executor
+- `src/app/api/period/route.ts`（新增）
+- `src/lib/api.ts`：+period client
+
+### Debug 笔记
+- Python string replacement 里 backtick 需要特别注意转义：`\`` 在 Python raw string 里不需要转义但在替换目标中是 literal，`${` 不需要转义
+- `content_blocks` 是可选字段，旧消息没有它时走 legacy 渲染路径（thinking+tool_calls 在气泡上方），新旧数据平滑共存
+- 天气 hook 的 `wttr.in` 返回 JSON 格式（`?format=j1`），不需要解析 ASCII art
+- 经期提醒状态用独立文件而非内存变量，防止容器重启丢失
+- tsc --noEmit 全绿（排除 coread 预存的 3 个 jszip/matchAll 类型错误）
