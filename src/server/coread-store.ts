@@ -317,8 +317,9 @@ export function getStoryArc(bookId: string, uptoCnum: number, cap = 2600): strin
 
 // ── Chat History ──
 
-export function getChatHistory(bookId: string, limit = 40): ChatMessage[] {
-  const chats = loadChats(bookId)
+export function getChatHistory(bookId: string, limit = 40, cnum?: number): ChatMessage[] {
+  let chats = loadChats(bookId)
+  if (cnum !== undefined) chats = chats.filter(c => c.cnum === cnum)
   return chats.slice(-limit)
 }
 

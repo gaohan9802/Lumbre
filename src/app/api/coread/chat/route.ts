@@ -2,27 +2,50 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   getBook, getChapter, getAnnotations, getChatHistory,
-  addChatMessage, updateProgress, buildSystemPrompt,
-  extractAnnotations, setDigest, getDigest
+  addChatMessage, updateProgress, buildSystemPrompt, extractAnnotations,
 } from '@/server/coread-store'
+import { streamLLM, LLMProfile } from '@/server/coread-llm'
+import { ensureDigest } from '@/server/coread-digest'
 
-// GET /api/coread/chat?bookId=xxx — get chat history
+// GET /api/coread/chat?bookId=xxx[&cnum=n] — get chat history
 export async function GET(req: NextRequest) {
   const bookId = req.nextUrl.searchParams.get('bookId')
+  const cnumRaw = req.nextUrl.searchParams.get('cnum')
   if (!bookId) return NextResponse.json({ error: 'missing bookId' }, { status: 400 })
   try {
-    const items = getChatHistory(bookId, 40)
+    const cnum = cnumRaw != null ? parseInt(cnumRaw, 10) : undefined
+    const items = getChatHistory(bookId, 40, Number.isFinite(cnum as number) ? cnum : undefined)
     return NextResponse.json({ items })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
 
+/**
+ * Resolve the LLM profile: prefer the client's active API profile (unified with
+ * the 星星 module), fall back to env vars for backward compatibility.
+ */
+function resolveProfile(apiProfile: any): LLMProfile | null {
+  if (apiProfile?.apiKey) {
+    return {
+      provider: apiProfile.provider === 'anthropic' ? 'anthropic' : 'openai-compatible',
+      baseUrl: apiProfile.baseUrl || '',
+      apiKey: apiProfile.apiKey,
+      model: apiProfile.modelId || apiProfile.model || 'claude-sonnet-4-20250514',
+    }
+  }
+  const baseUrl = process.env.LLM_BASE_URL || process.env.COREAD_LLM_BASE_URL || ''
+  const apiKey = process.env.LLM_API_KEY || process.env.COREAD_LLM_API_KEY || ''
+  const model = process.env.LLM_MODEL || process.env.COREAD_LLM_MODEL || 'deepseek-chat'
+  if (!baseUrl || !apiKey) return null
+  return { provider: 'openai-compatible', baseUrl, apiKey, model }
+}
+
 // POST /api/coread/chat — send a message (SSE streaming)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { bookId, chapterNum, message, selection, ann } = body
+    const { bookId, chapterNum, message, selection, ann, api_profile } = body
 
     if (!bookId || !message?.trim()) {
       return NextResponse.json({ error: '缺少 bookId 或 message' }, { status: 400 })
@@ -32,10 +55,14 @@ export async function POST(req: NextRequest) {
     const bookData = getBook(bookId)
     if (!bookData) return NextResponse.json({ error: '没这本书' }, { status: 404 })
 
+    const profile = resolveProfile(api_profile)
+    if (!profile) {
+      return NextResponse.json({ error: '模型未配置（请在星星里选好模型和 API，共读会复用同一套）' }, { status: 500 })
+    }
+
     const chapter = getChapter(bookId, cnum)
     const annotations = getAnnotations(bookId, cnum)
 
-    // Build system prompt (coread-style)
     const systemPrompt = buildSystemPrompt({
       bookId,
       bookTitle: bookData.book.title,
@@ -48,62 +75,22 @@ export async function POST(req: NextRequest) {
       annotations,
     })
 
-    // Build message history from stored chats
-    const history = getChatHistory(bookId, 24)
+    // Channel isolation: only this chapter's prior discussion feeds the model.
+    const history = getChatHistory(bookId, 24, cnum)
     const messages = [
-      { role: 'system', content: systemPrompt },
-      ...history.map(c => ({
-        role: c.who === 'user' ? 'user' : 'assistant',
-        content: c.text
-      })),
-      { role: 'user', content: message.slice(0, 4000) }
+      ...history.map(c => ({ role: (c.who === 'user' ? 'user' : 'assistant') as 'user' | 'assistant', content: c.text })),
+      { role: 'user' as const, content: message.slice(0, 4000) },
     ]
 
-    // Save user message first (before generation — survive failures)
+    // Persist user message before generation so failures don't lose it.
     addChatMessage(bookId, cnum, 'user', message.slice(0, 4000))
     updateProgress(bookId, cnum)
 
-    // Trigger digest generation if needed (lazy, non-blocking)
-    if (chapter && !chapter.digest && chapter.content.length >= 200) {
-      triggerDigest(bookId, cnum, chapter.content)
-    }
+    // Backfill this chapter's digest (deduped, non-blocking).
+    if (chapter && !chapter.digest) void ensureDigest(profile, bookId, cnum)
 
-    // Call LLM via SSE
-    const llmBaseUrl = process.env.LLM_BASE_URL || process.env.COREAD_LLM_BASE_URL || ''
-    const llmApiKey = process.env.LLM_API_KEY || process.env.COREAD_LLM_API_KEY || ''
-    const llmModel = process.env.LLM_MODEL || process.env.COREAD_LLM_MODEL || 'deepseek-chat'
-
-    if (!llmBaseUrl || !llmApiKey) {
-      return NextResponse.json({ error: 'LLM 未配置 (需要 LLM_BASE_URL + LLM_API_KEY)' }, { status: 500 })
-    }
-
-    const url = llmBaseUrl.replace(/\/$/, '') + '/chat/completions'
-    const llmRes = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${llmApiKey}`,
-      },
-      body: JSON.stringify({
-        model: llmModel,
-        messages,
-        stream: true,
-        temperature: 0.8,
-      }),
-    })
-
-    if (!llmRes.ok) {
-      const errText = await llmRes.text()
-      return NextResponse.json({ error: `LLM ${llmRes.status}: ${errText.slice(0, 200)}` }, { status: 502 })
-    }
-
-    // Stream response as SSE to client
     const encoder = new TextEncoder()
-    const reader = llmRes.body!.getReader()
-    const decoder = new TextDecoder()
-
-    let fullReply = ''
-    let sseBuffer = ''
+    const chContent = chapter?.content || ''
 
     const readable = new ReadableStream({
       async start(controller) {
@@ -111,50 +98,37 @@ export async function POST(req: NextRequest) {
           try { controller.enqueue(encoder.encode(': hb\n\n')) } catch {}
         }, 15000)
 
+        let fullReply = ''
         try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            sseBuffer += decoder.decode(value, { stream: true })
-
-            const lines = sseBuffer.split('\n')
-            sseBuffer = lines.pop() || ''
-
-            for (const line of lines) {
-              if (!line.startsWith('data: ') || line === 'data: [DONE]') continue
+          fullReply = await streamLLM(
+            profile,
+            messages,
+            systemPrompt,
+            (delta) => {
+              fullReply += delta
               try {
-                const chunk = JSON.parse(line.slice(6))
-                const delta = chunk.choices?.[0]?.delta?.content
-                if (delta) {
-                  fullReply += delta
-                  controller.enqueue(encoder.encode(`event: live\ndata: ${JSON.stringify({ t: fullReply })}\n\n`))
-                }
-              } catch { /* skip partial frames */ }
-            }
-          }
+                controller.enqueue(encoder.encode(`event: live\ndata: ${JSON.stringify({ t: fullReply })}\n\n`))
+              } catch {}
+            },
+            { maxTokens: 2048, temperature: 0.8 },
+          )
 
-          // Process annotations from final reply
-          const chContent = chapter?.content || ''
           const ex = extractAnnotations(fullReply, bookId, cnum, chContent)
           fullReply = ex.text
-
-          // Save AI reply
-          if (fullReply) {
-            addChatMessage(bookId, cnum, 'ai', fullReply)
-          }
+          if (fullReply) addChatMessage(bookId, cnum, 'ai', fullReply)
 
           controller.enqueue(encoder.encode(
             `event: final\ndata: ${JSON.stringify({ reply: fullReply || '（没接住，再说一遍？）', ann: ex.count })}\n\n`
           ))
         } catch (e: any) {
           controller.enqueue(encoder.encode(
-            `event: final\ndata: ${JSON.stringify({ error: '（没接住：' + e.message + '）' })}\n\n`
+            `event: final\ndata: ${JSON.stringify({ error: '（没接住：' + (e?.message || e) + '）' })}\n\n`
           ))
         }
 
         clearInterval(hb)
         controller.close()
-      }
+      },
     })
 
     return new Response(readable, {
@@ -168,37 +142,4 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
-}
-
-// Lazy digest generation (non-blocking)
-function triggerDigest(bookId: string, chapterNum: number, content: string) {
-  const llmBaseUrl = process.env.LLM_BASE_URL || process.env.COREAD_LLM_BASE_URL || ''
-  const llmApiKey = process.env.LLM_API_KEY || process.env.COREAD_LLM_API_KEY || ''
-  const digestModel = process.env.DIGEST_MODEL || process.env.LLM_MODEL || process.env.COREAD_LLM_MODEL || 'deepseek-chat'
-
-  if (!llmBaseUrl || !llmApiKey) return
-
-  const raw = content.replace(/\s+/g, ' ').slice(0, 7000)
-  const url = llmBaseUrl.replace(/\/$/, '') + '/chat/completions'
-
-  fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${llmApiKey}`,
-    },
-    body: JSON.stringify({
-      model: digestModel,
-      messages: [{ role: 'user', content: '下面是一本书某一章的原文。写一段不超过120字的情节脉络摘要（发生了什么、出场人物、关键转折），纯叙述、无标题无列表无markdown，直接输出正文：\n\n' + raw }],
-      max_tokens: 220,
-      temperature: 0.3,
-    }),
-  }).then(async (res) => {
-    if (!res.ok) return
-    const data = await res.json()
-    const digest = data.choices?.[0]?.message?.content?.trim()
-    if (digest && digest.length > 10) {
-      setDigest(bookId, chapterNum, digest)
-    }
-  }).catch(() => { /* silent fail — next time it'll retry */ })
 }

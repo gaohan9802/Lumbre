@@ -1765,3 +1765,47 @@ author 默认 star（🐆），AI 就是星星。
 - 天气 hook 的 `wttr.in` 返回 JSON 格式（`?format=j1`），不需要解析 ASCII art
 - 经期提醒状态用独立文件而非内存变量，防止容器重启丢失
 - tsc --noEmit 全绿（排除 coread 预存的 3 个 jszip/matchAll 类型错误）
+
+---
+
+## 共读系统 v2 优化（模型统一 + 章节隔离 + digest 蓄积 + 外观自定义）
+
+### 后端修复
+1. **LLM 层统一** `src/server/coread-llm.ts`
+   - `callLLM`(非流式, digest 用) + `streamLLM`(SSE 流式, 讨论用)
+   - 支持 Anthropic + OpenAI-compatible 双 provider，StringDecoder 保证 UTF-8 安全分帧
+   - 死代码接上：chat/digest 不再内联 fetch
+2. **模型配置与星星模块打通**
+   - 前端 `apiProfilePayload()` 从 `getActiveProfile(settings)` 取 active profile + `settings.model`，随请求发到后端 `api_profile`
+   - 后端 `resolveProfile()`：优先客户端 profile，回退环境变量（向后兼容）
+   - 不再写死 `LLM_BASE_URL`，共读与星星复用同一套模型/API
+3. **digest 并发去重 + 顺序蓄积** `src/server/coread-digest.ts`
+   - `ensureDigest()` 用 `inFlight` Map 去重，同一 (book,ch) 只有一个在途请求
+   - **翻页也蓄积**：打开第 N 章时后台补第 N-1 章 digest（chapter 路由），纯阅读不聊天也能攒故事弧
+   - chat 路由发消息时补当前章 digest；不再 fire-and-forget 重复触发
+4. **聊天历史按章节隔离**
+   - `getChatHistory(bookId, limit, cnum?)` 支持按章过滤
+   - chat GET 接受 `?cnum=`，POST 只把本章讨论喂给模型，避免跨章串味
+5. **批注高亮重写** `ChapterContent`
+   - 从 `dangerouslySetInnerHTML`+indexOf 改为 React 节点分段（非重叠 range，longest-first）
+   - 跨换行选区不再匹配失败；点击批注弹 `AnnotationPopover`（聊这条 / 删除）
+   - 前端接上 `deleteAnnotation`（后端早有，之前没接）
+
+### 前端外观（新增）
+- `src/lib/coreadAppearance.ts`：zustand+persist，与星星外观隔离
+  - 背景图上传（`fileToDataUrl` 自动压缩 >900KB 的图到 1920px/jpeg 0.82）+ 背景不透明度滑块
+  - 聊天气泡颜色 + 透明度，**日/夜两套独立配置**
+- `AppearancePanel`：右侧抽屉，日夜切换 + 背景 + 气泡自定义 + 恢复默认
+- 日夜模式：复用 `useTheme`（day/night），三视图（书架/目录/阅读）全部适配
+
+### 文件变更
+- 新增 `src/server/coread-digest.ts`、`src/lib/coreadAppearance.ts`
+- 重写 `src/server/coread-llm.ts`（接上死代码）
+- 改 `src/server/coread-store.ts`（getChatHistory +cnum）
+- 改 `src/app/api/coread/chat/route.ts`、`chapter/route.ts`（resolveProfile + ensureDigest + 隔离）
+- 重写 `src/components/coreading/CoReadingView.tsx`（+206 行：外观、日夜、批注节点化、模型 payload）
+
+### Debug 笔记
+- tsc --noEmit 全绿（jszip/matchAll 之前的报错已在 4e1bd05 修掉）
+- `next build` Compiled successfully；prerender "Cannot find module" 报错是本地 jest-worker 环境 artifact，**所有** api route（photos/thesis/wish 等未改动的也一样）都报，非本次代码问题，Zeabur 构建正常
+- 气泡自定义色时 className 里的默认 bg 要清空（`uColor ? '' : 默认类`），否则默认背景色会盖住自定义 style
