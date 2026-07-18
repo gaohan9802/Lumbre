@@ -1809,3 +1809,36 @@ author 默认 star（🐆），AI 就是星星。
 - tsc --noEmit 全绿（jszip/matchAll 之前的报错已在 4e1bd05 修掉）
 - `next build` Compiled successfully；prerender "Cannot find module" 报错是本地 jest-worker 环境 artifact，**所有** api route（photos/thesis/wish 等未改动的也一样）都报，非本次代码问题，Zeabur 构建正常
 - 气泡自定义色时 className 里的默认 bg 要清空（`uColor ? '' : 默认类`），否则默认背景色会盖住自定义 style
+
+## 共读 v3：陪读的就是星星本人（方案B — 记忆/工具接入）
+
+### 背景
+共读 AI 之前是独立的裸 LLM（coread-llm 的 PERSONA「陪读伙伴」），
+既不是星星、也调不了 breath/hold 等记忆工具。小火希望陪她读书的是星星，
+带着「我们的记忆」。
+
+### 方案（B）
+不新造管道，把 `/api/coread/chat` 的生成转发到星星主管道 `/api/chat`：
+- 星星人格 + 全套 `ALL_TOOLS`（记忆/日记/纸条/照片…）由 /api/chat 提供，零改动那 970 行。
+- 读书上下文（正在读的真实原文窗、故事弧防剧透、已有批注、[批注:] 规则）
+  通过 `bookmark_injections` 注入到星星系统提示之后。
+- 章节隔离历史 + 当前消息作为 `messages` 传入。
+- 转发 SSE 时把星星的 `type:'text'` 增量翻成共读前端认的 `data:{t:...}`，
+  结束再做 `extractAnnotations` + 落 ai 消息 + `data:{reply,ann}`。
+  thinking / tool_call 事件不透传给阅读 UI（星星读书时静默用记忆）。
+- 工具调用不设上限（小火要求先体验），后续再调。
+
+### 文件变更
+- `src/server/coread-store.ts`：`buildSystemPrompt`+`PERSONA` → `buildReadingContext`
+  （去掉通用陪读人格，改成"星星此刻在陪读"的上下文附录）。
+- `src/app/api/coread/chat/route.ts`：POST 重写为转发 `/api/chat`（同host内部 fetch）。
+  digest 仍用 `resolveProfile`+`ensureDigest`（非工具、非流式，保留）。
+- `src/server/coread-llm.ts`：删除已无引用的 `streamLLM` + `string_decoder` import，
+  只留 `callLLM`（供 digest 用）。
+
+### Debug 笔记
+- 前端 SSE 只认 `data: ` 行、读 `d.t/d.reply/d.ann/d.error`，忽略 `event:` 行 →
+  转发格式完全兼容，无需改前端。
+- 内部 fetch 用 host+x-forwarded-proto 组 origin，Zeabur 同 host 可达。
+- 未加 `_wake`：读书是用户活动，应正常 reportActivity，避免星星读书时自动醒来打断。
+- tsc --noEmit 全绿；next build ✓ Compiled successfully，/api/coread/chat 为动态函数。

@@ -2,9 +2,9 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   getBook, getChapter, getAnnotations, getChatHistory,
-  addChatMessage, updateProgress, buildSystemPrompt, extractAnnotations,
+  addChatMessage, updateProgress, buildReadingContext, extractAnnotations,
 } from '@/server/coread-store'
-import { streamLLM, LLMProfile } from '@/server/coread-llm'
+import { LLMProfile } from '@/server/coread-llm'
 import { ensureDigest } from '@/server/coread-digest'
 
 // GET /api/coread/chat?bookId=xxx[&cnum=n] — get chat history
@@ -22,8 +22,8 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * Resolve the LLM profile: prefer the client's active API profile (unified with
- * the 星星 module), fall back to env vars for backward compatibility.
+ * Resolve a plain LLMProfile for digest generation (non-tool, non-stream).
+ * Prefers the client's active API profile, falls back to env vars.
  */
 function resolveProfile(apiProfile: any): LLMProfile | null {
   if (apiProfile?.apiKey) {
@@ -41,7 +41,14 @@ function resolveProfile(apiProfile: any): LLMProfile | null {
   return { provider: 'openai-compatible', baseUrl, apiKey, model }
 }
 
-// POST /api/coread/chat — send a message (SSE streaming)
+/**
+ * POST /api/coread/chat — send a message (SSE streaming).
+ *
+ * 方案B：共读不再用独立的裸 LLM，而是转发到星星的主管道 /api/chat。
+ * 这样陪读的就是星星本人——带着全部记忆(breath/hold)、日记、纸条等工具。
+ * 读书上下文（正在读的原文、故事弧、防剧透、批注规则）通过 bookmark_injections
+ * 注入到星星的系统提示之后；星星的人格与工具由 /api/chat 提供。
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -55,15 +62,14 @@ export async function POST(req: NextRequest) {
     const bookData = getBook(bookId)
     if (!bookData) return NextResponse.json({ error: '没这本书' }, { status: 404 })
 
-    const profile = resolveProfile(api_profile)
-    if (!profile) {
+    if (!api_profile?.apiKey) {
       return NextResponse.json({ error: '模型未配置（请在星星里选好模型和 API，共读会复用同一套）' }, { status: 500 })
     }
 
     const chapter = getChapter(bookId, cnum)
     const annotations = getAnnotations(bookId, cnum)
 
-    const systemPrompt = buildSystemPrompt({
+    const readingContext = buildReadingContext({
       bookId,
       bookTitle: bookData.book.title,
       bookAuthor: bookData.book.author,
@@ -87,7 +93,30 @@ export async function POST(req: NextRequest) {
     updateProgress(bookId, cnum)
 
     // Backfill this chapter's digest (deduped, non-blocking).
-    if (chapter && !chapter.digest) void ensureDigest(profile, bookId, cnum)
+    const digestProfile = resolveProfile(api_profile)
+    if (digestProfile && chapter && !chapter.digest) void ensureDigest(digestProfile, bookId, cnum)
+
+    // Forward to the 星星 pipeline on the same host.
+    const host = req.headers.get('host')
+    const proto = req.headers.get('x-forwarded-proto') || 'https'
+    const origin = host ? `${proto}://${host}` : ''
+
+    const upstream = await fetch(`${origin}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages,
+        api_profile,
+        stream: true,
+        tools_enabled: true,
+        bookmark_injections: readingContext,
+      }),
+    })
+
+    if (!upstream.ok || !upstream.body) {
+      const errText = await upstream.text().catch(() => '')
+      return NextResponse.json({ error: `星星管道错误 ${upstream.status}: ${errText.slice(0, 300)}` }, { status: 500 })
+    }
 
     const encoder = new TextEncoder()
     const chContent = chapter?.content || ''
@@ -98,32 +127,59 @@ export async function POST(req: NextRequest) {
           try { controller.enqueue(encoder.encode(': hb\n\n')) } catch {}
         }, 15000)
 
+        const reader = upstream.body!.getReader()
+        const decoder = new TextDecoder()
+        let buf = ''
         let fullReply = ''
-        try {
-          fullReply = await streamLLM(
-            profile,
-            messages,
-            systemPrompt,
-            (delta) => {
-              fullReply += delta
-              try {
-                controller.enqueue(encoder.encode(`event: live\ndata: ${JSON.stringify({ t: fullReply })}\n\n`))
-              } catch {}
-            },
-            { maxTokens: 2048, temperature: 0.8 },
-          )
+        let doneEmitted = false
 
+        const emitLive = () => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ t: fullReply })}\n\n`))
+          } catch {}
+        }
+        const finalize = (errMsg?: string) => {
+          if (doneEmitted) return
+          doneEmitted = true
+          if (errMsg) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: '（没接住：' + errMsg + '）' })}\n\n`))
+            return
+          }
           const ex = extractAnnotations(fullReply, bookId, cnum, chContent)
           fullReply = ex.text
           if (fullReply) addChatMessage(bookId, cnum, 'ai', fullReply)
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({ reply: fullReply || '（没接住，再说一遍？）', ann: ex.count })}\n\n`
+          ))
+        }
 
-          controller.enqueue(encoder.encode(
-            `event: final\ndata: ${JSON.stringify({ reply: fullReply || '（没接住，再说一遍？）', ann: ex.count })}\n\n`
-          ))
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buf += decoder.decode(value, { stream: true })
+            const lines = buf.split('\n')
+            buf = lines.pop() || ''
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue
+              const payload = line.slice(6)
+              if (payload === '[DONE]') continue
+              try {
+                const evt = JSON.parse(payload)
+                if (evt.type === 'text' && evt.content) {
+                  fullReply += evt.content
+                  emitLive()
+                } else if (evt.type === 'error') {
+                  finalize(evt.content || '上游错误')
+                }
+                // thinking / tool_call events are intentionally not surfaced to
+                // the reading UI — 星星 uses memory silently while reading.
+              } catch {}
+            }
+          }
+          finalize()
         } catch (e: any) {
-          controller.enqueue(encoder.encode(
-            `event: final\ndata: ${JSON.stringify({ error: '（没接住：' + (e?.message || e) + '）' })}\n\n`
-          ))
+          finalize(e?.message || String(e))
         }
 
         clearInterval(hb)

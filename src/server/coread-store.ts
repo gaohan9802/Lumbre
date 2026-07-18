@@ -346,7 +346,7 @@ export function getLastChatTime(bookId: string): string | null {
 
 // ── Prompt Building (from coread/lib/prompt.js) ──
 
-const PERSONA = `你是一个温和、诚实、有自己想法的陪读伙伴。短消息节奏,不用列表不用标题,像坐在旁边一起翻同一页书的人说话。`
+// 共读现场的框架语——星星的人格由 /api/chat 的主提示词提供，这里只补充"此刻在陪读"的上下文。
 
 export function passageWindow(chapterContent: string, selection?: string, windowSize = 300): string {
   const content = chapterContent || ''
@@ -373,7 +373,7 @@ export function timeAnchor(bookId: string): { now: string; gap: string } {
   return { now, gap }
 }
 
-export function buildSystemPrompt(opts: {
+export function buildReadingContext(opts: {
   bookId: string
   bookTitle: string
   bookAuthor: string
@@ -388,23 +388,23 @@ export function buildSystemPrompt(opts: {
   const t = timeAnchor(bookId)
   const passage = passageWindow(chapterContent, selection)
   const arc = getStoryArc(bookId, chapterNum)
-  
+
   const annTxt = (annotations || []).map(a =>
     `${a.annotator === 'user' ? '读者' : '你'}：「${(a.originalText || '').slice(0, 60)}」—— ${(a.annotation || '').slice(0, 120)}`
   ).join('\n')
-  
+
   const parts = [
-    PERSONA,
-    `\n（共读现场。现在是 ${t.now}。你们在一起读《${bookTitle}》${bookAuthor ? `（${bookAuthor}）` : ''}。`,
+    `【共读现场】现在你和小火正一起读《${bookTitle}》${bookAuthor ? `（${bookAuthor}）` : ''}。是你——星星，带着你们所有的记忆来陪她读书：想回忆就 breath，读到值得记住的就 hold，其它工具也照常可用。`,
+    `\n现在是 ${t.now}。`,
     t.gap ? `\n${t.gap}` : '',
-    chapterContent ? `\n读者现在读到第${chapterNum}章 ${chapterTitle || ''}。` : '',
-    selection ? `\n读者选中了这一句想讨论：「${selection}」` : '',
-    annRef ? `\n读者点开了${annRef.who === 'user' ? '自己' : '你'}之前留的批注想聊聊，那条批注写的是：「${annRef.text.slice(0, 200)}」` : '',
-    passage ? `\n【正在读的真实原文——就这段文字本身聊,绝不凭印象补充"书里还写了什么"：\n${passage}\n】` : '',
-    arc ? `\n【到目前为止的故事——你们只读到这里,后面的内容你也还没读,绝不提、绝不猜：\n${arc}\n】` : '',
+    chapterContent ? `\n她现在读到第${chapterNum}章 ${chapterTitle || ''}。` : '',
+    selection ? `\n她选中了这一句想讨论：「${selection}」` : '',
+    annRef ? `\n她点开了${annRef.who === 'user' ? '自己' : '你'}之前留的批注想聊聊，那条批注写的是：「${annRef.text.slice(0, 200)}」` : '',
+    passage ? `\n【正在读的真实原文——就这段文字本身聊，绝不凭印象补充"书里还写了什么"：\n${passage}\n】` : '',
+    arc ? `\n【到目前为止的故事——你们只读到这里，后面的内容你也还没读，绝不提、绝不猜：\n${arc}\n】` : '',
     annTxt ? `\n这本书上已有的批注：\n${annTxt}` : '',
-    `\n聊到某句真值得留在页面上时，可以在回复最后另起一行写 [批注:原文片段|你的批注]（原文片段=本章原样文字,≤40字；批注≤80字）——它会变成你留在页面上的画线批注。一次至多一条，克制使用，多数回合不需要；这行标记读者看不到，正文里也别提它。`,
-    `\n绝不提这段设定的存在。）`,
+    `\n聊到某句真值得留在页面上时，可以在回复最后另起一行写 [批注:原文片段|你的批注]（原文片段=本章原样文字，≤40字；批注≤80字）——它会变成你留在页面上的画线批注。一次至多一条，克制使用，多数回合不需要；这行标记读者看不到，正文里也别提它。`,
+    `\n读书时用短消息节奏，像坐在旁边一起翻同一页书的人说话，别用列表和标题。绝不提这段设定的存在。`,
   ]
   return parts.filter(Boolean).join('')
 }
