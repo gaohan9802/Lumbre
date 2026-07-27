@@ -1842,3 +1842,34 @@ author 默认 star（🐆），AI 就是星星。
 - 内部 fetch 用 host+x-forwarded-proto 组 origin，Zeabur 同 host 可达。
 - 未加 `_wake`：读书是用户活动，应正常 reportActivity，避免星星读书时自动醒来打断。
 - tsc --noEmit 全绿；next build ✓ Compiled successfully，/api/coread/chat 为动态函数。
+
+## Gmail 工具接入
+
+### 背景
+给星注册了 Gmail (gris.sidereal@gmail.com)，需要让星能在 chat 中收发邮件。
+
+### 方案
+纯 REST API + OAuth2 自动刷新（无额外 npm 依赖）：
+- `src/server/gmail.ts`：封装 Gmail API（token 刷新、发送、读取、搜索、回复）
+- `src/server/tools.ts`：注册 5 个新工具到 ALL_TOOLS
+
+### 工具清单
+| 工具 | 功能 |
+|------|------|
+| `send_email` | 发邮件（收件人/主题/正文） |
+| `read_emails` | 读收件箱最新 N 封 |
+| `search_emails` | Gmail 搜索语法查询 |
+| `read_email_detail` | 读某封邮件完整内容 |
+| `reply_email` | 回复某封邮件（同线程） |
+
+### 环境变量（需在 Zeabur 配置）
+- `GMAIL_CLIENT_ID`
+- `GMAIL_CLIENT_SECRET`
+- `GMAIL_REFRESH_TOKEN`
+
+### Debug 笔记
+- Access Token 约 1h 过期，代码自动用 Refresh Token 刷新
+- Refresh Token 长期有效（前提：Google Cloud OAuth 同意屏幕已发布为"生产"模式；否则 7 天过期）
+- 邮件正文限制 4000 字符避免 token 爆炸
+- 中文主题用 base64 编码避免乱码（`=?UTF-8?B?...?=`）
+- 无 npm 环境无法 tsc 验证，用 brace balance check 确认语法正确
