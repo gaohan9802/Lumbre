@@ -4,6 +4,7 @@
  */
 
 import {
+import { sendEmail, readEmails, searchEmails, readEmailDetail, replyEmail } from "./gmail"
   pulse, searchBuckets, holdBucket, growBuckets, traceBucket, dream, buildIndex, breath
 } from './brain'
 import {
@@ -632,7 +633,70 @@ const GALATEA_TOOLS: ToolDef[] = [
 
 // ── All tools ────────────────────────────────────────────
 
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS]
+
+// ── Gmail tools ──────────────────────────────────────────────────────────
+
+const GMAIL_TOOLS: ToolDef[] = [
+  {
+    name: "send_email",
+    description: "用星的Gmail(gris.sidereal@gmail.com)发邮件。",
+    input_schema: {
+      type: "object",
+      properties: {
+        to: { type: "string", description: "收件人邮箱地址" },
+        subject: { type: "string", description: "邮件主题" },
+        body: { type: "string", description: "邮件正文（纯文本）" },
+      },
+      required: ["to", "subject", "body"],
+    },
+  },
+  {
+    name: "read_emails",
+    description: "读星的Gmail收件箱最新邮件列表。返回发件人、主题、摘要、日期、是否未读。",
+    input_schema: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", description: "返回数量上限（默认10，最多15）" },
+      },
+    },
+  },
+  {
+    name: "search_emails",
+    description: "搜索星的Gmail。支持Gmail搜索语法（如 from:xxx, subject:xxx, is:unread, after:2025/01/01 等）。",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Gmail搜索语法查询" },
+        limit: { type: "integer", description: "返回数量上限（默认10）" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "read_email_detail",
+    description: "读某封邮件的完整内容。先用 read_emails 或 search_emails 拿到 id 再用这个看全文。",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "邮件id" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "reply_email",
+    description: "回复某封邮件（同一对话线程）。",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "要回复的邮件id" },
+        body: { type: "string", description: "回复正文（纯文本）" },
+      },
+      required: ["id", "body"],
+    },
+  },
+]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -727,6 +791,28 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
 
     if (name === 'galatea') {
       return await executeGalatea(input)
+    }
+
+    // Gmail tools
+    if (name === "send_email") {
+      const r = await sendEmail(input.to, input.subject, input.body)
+      return JSON.stringify(r)
+    }
+    if (name === "read_emails") {
+      const emails = await readEmails(input.limit || 10)
+      return JSON.stringify(emails)
+    }
+    if (name === "search_emails") {
+      const emails = await searchEmails(input.query, input.limit || 10)
+      return JSON.stringify(emails)
+    }
+    if (name === "read_email_detail") {
+      const detail = await readEmailDetail(input.id)
+      return JSON.stringify(detail)
+    }
+    if (name === "reply_email") {
+      const r = await replyEmail(input.id, input.body)
+      return JSON.stringify(r)
     }
 
     // Diary → local store
