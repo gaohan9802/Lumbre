@@ -3,8 +3,8 @@
  * Routes tool_use calls to local Brain engine or diary/notes handlers.
  */
 
-import {
 import { sendEmail, readEmails, searchEmails, readEmailDetail, replyEmail } from "./gmail"
+import {
   pulse, searchBuckets, holdBucket, growBuckets, traceBucket, dream, buildIndex, breath
 } from './brain'
 import {
