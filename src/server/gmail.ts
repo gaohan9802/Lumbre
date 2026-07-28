@@ -4,9 +4,9 @@
  * No extra dependencies — uses native fetch + Gmail REST API.
  */
 
-const GMAIL_CLIENT_ID = process.env.GMAIL_CLIENT_ID || ''
-const GMAIL_CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET || ''
-const GMAIL_REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN || ''
+const GMAIL_CLIENT_ID = (process.env.GMAIL_CLIENT_ID || '').trim()
+const GMAIL_CLIENT_SECRET = (process.env.GMAIL_CLIENT_SECRET || '').trim()
+const GMAIL_REFRESH_TOKEN = (process.env.GMAIL_REFRESH_TOKEN || '').trim()
 const GMAIL_ADDRESS = 'gris.sidereal@gmail.com'
 
 let cachedAccessToken = ''
@@ -14,43 +14,65 @@ let tokenExpiresAt = 0
 
 /** Refresh the access token using the long-lived refresh token */
 async function getAccessToken(): Promise<string> {
-  console.log("[Gmail Debug] client_id length:", GMAIL_CLIENT_ID.length, "starts:", GMAIL_CLIENT_ID.slice(0,10))
-  console.log("[Gmail Debug] client_secret length:", GMAIL_CLIENT_SECRET.length, "starts:", GMAIL_CLIENT_SECRET.slice(0,6))
-  console.log("[Gmail Debug] refresh_token length:", GMAIL_REFRESH_TOKEN.length, "starts:", GMAIL_REFRESH_TOKEN.slice(0,6))
   if (cachedAccessToken && Date.now() < tokenExpiresAt - 60000) {
     return cachedAccessToken
   }
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: GMAIL_CLIENT_ID,
-      client_secret: GMAIL_CLIENT_SECRET,
-      refresh_token: GMAIL_REFRESH_TOKEN,
-      grant_type: 'refresh_token',
-    }),
+
+  console.log("[Gmail] Refreshing access token...")
+  console.log("[Gmail] client_id length:", GMAIL_CLIENT_ID.length, "starts:", GMAIL_CLIENT_ID.slice(0, 10))
+  console.log("[Gmail] client_secret length:", GMAIL_CLIENT_SECRET.length)
+  console.log("[Gmail] refresh_token length:", GMAIL_REFRESH_TOKEN.length)
+
+  const body = new URLSearchParams({
+    client_id: GMAIL_CLIENT_ID,
+    client_secret: GMAIL_CLIENT_SECRET,
+    refresh_token: GMAIL_REFRESH_TOKEN,
+    grant_type: 'refresh_token',
   })
+
+  let res: Response
+  try {
+    res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    })
+  } catch (err: any) {
+    console.error("[Gmail] Fetch error during token refresh:", err.message, err.cause || '')
+    throw new Error(`Gmail token refresh network error: ${err.message}`)
+  }
+
   if (!res.ok) {
     const text = await res.text()
+    console.error("[Gmail] Token refresh failed:", res.status, text)
     throw new Error(`Token refresh failed (${res.status}): ${text}`)
   }
+
   const data = await res.json()
   cachedAccessToken = data.access_token
   tokenExpiresAt = Date.now() + (data.expires_in || 3600) * 1000
+  console.log("[Gmail] Access token refreshed successfully")
   return cachedAccessToken
 }
 
 /** Make an authenticated request to Gmail API */
 async function gmailFetch(path: string, options: RequestInit = {}): Promise<any> {
   const token = await getAccessToken()
-  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+    })
+  } catch (err: any) {
+    console.error("[Gmail] Fetch error during API call:", path, err.message)
+    throw new Error(`Gmail API network error (${path}): ${err.message}`)
+  }
+
   if (!res.ok) {
     const text = await res.text()
     throw new Error(`Gmail API error (${res.status}): ${text}`)
@@ -104,7 +126,7 @@ function extractBody(payload: any): string {
   return ''
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────
+// ─── Public API ─────────────────────────────────────────────────────────
 
 export interface EmailSummary {
   id: string
