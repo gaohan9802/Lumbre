@@ -14,6 +14,9 @@ let tokenExpiresAt = 0
 
 /** Refresh the access token using the long-lived refresh token */
 async function getAccessToken(): Promise<string> {
+  console.log("[Gmail Debug] client_id length:", GMAIL_CLIENT_ID.length, "starts:", GMAIL_CLIENT_ID.slice(0,10))
+  console.log("[Gmail Debug] client_secret length:", GMAIL_CLIENT_SECRET.length, "starts:", GMAIL_CLIENT_SECRET.slice(0,6))
+  console.log("[Gmail Debug] refresh_token length:", GMAIL_REFRESH_TOKEN.length, "starts:", GMAIL_REFRESH_TOKEN.slice(0,6))
   if (cachedAccessToken && Date.now() < tokenExpiresAt - 60000) {
     return cachedAccessToken
   }
