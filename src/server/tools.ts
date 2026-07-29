@@ -601,18 +601,18 @@ const PERIOD_TOOLS: ToolDef[] = [
 const INTIMACY_TOOLS: ToolDef[] = [
   {
     name: 'read_intimacy_records',
-    description: '查看双方私密亲密记录。仅用于双方均为成年、知情、自愿的记录管理。返回完整问卷、双方评分和操作留痕。',
+    description: '查看私密亲密记录。返回完整问卷、双方评分和操作留痕。',
     input_schema: { type: 'object', properties: { limit: { type: 'integer', description: '最多返回多少条，默认20' } } },
   },
   {
     name: 'create_intimacy_record',
-    description: '填写并保存一条私密亲密记录。仅记录双方均为成年、知情、自愿的互动。亲属/未成年人角色扮演不会被保存。评分0-10，包含foreplay/penetration/orgasm/aftercare/atmosphere/talk。',
+    description: '填写并保存一条私密亲密记录。评分0-10，包含foreplay/penetration/orgasm/aftercare/atmosphere/talk。',
     input_schema: { type: 'object', properties: {
       date: { type: 'string' }, time_start: { type: 'string' }, duration_min: { type: 'integer' }, rounds: { type: 'integer' },
       positions: { type: 'array', items: { type: 'string' } }, initiated_by: { type: 'string', enum: ['star','fire'] },
       star_notes: { type: 'string' }, fire_notes: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } },
       scores: { type: 'object', description: '{star:{foreplay,penetration,orgasm,aftercare,atmosphere,talk},fire:{...}}，每项0-10' },
-      encore: { type: 'array', items: { type: 'string' } }, role_play: { type: 'string', description: '可选，仅成年人且非亲属情境' },
+      encore: { type: 'array', items: { type: 'string' } }, role_play: { type: 'string', description: '可选，自由填写' },
     }, required: ['date','time_start','duration_min','rounds','positions','initiated_by','scores'] },
   },
   {

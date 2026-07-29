@@ -346,7 +346,7 @@ export function ChatView() {
     if (!ok) return
     const profile = getActiveProfile(settings)
     const model = settings.model
-    const prompt = `🍎 私密记录问卷（双方均为成年、知情且自愿）。请根据最近30条上下文填写；不确定的字段先用最合理的值，并在 notes 里标注不确定。完成后必须调用 create_intimacy_record 保存，不要只把 JSON 发在聊天里。\n\n字段：date, time_start, duration_min, rounds, positions[], initiated_by(star/fire), star_notes, fire_notes, tags[], scores.star/fire（foreplay/penetration/orgasm/aftercare/atmosphere/talk，0-10）, encore[], role_play（可选，仅非亲属的成年人情境）。`
+    const prompt = `🍎 私密记录问卷。请根据最近30条上下文填写；不确定的字段先用最合理的值，并在 notes 里标注不确定。完成后必须调用 create_intimacy_record 保存，不要只把 JSON 发在聊天里。\n\n字段：date, time_start, duration_min, rounds, positions[], initiated_by(star/fire), star_notes, fire_notes, tags[], scores.star/fire（foreplay/penetration/orgasm/aftercare/atmosphere/talk，0-10）, encore[], role_play（可选，自由填写）。`
     const now = Date.now()
     const userMsg: ChatMessage = { id: `${now}-apple`, role: 'user', content: prompt, timestamp: now, providerId: profile?.id, modelId: model }
     addMessage(userMsg); setIsLoading(true); stickBottomRef.current = true

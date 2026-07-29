@@ -30,7 +30,6 @@ const ROOT = process.env.DATA_DIR || '/persistent'
 const DIR = path.join(ROOT, 'intimacy')
 const FILE = path.join(DIR, 'records.json')
 const SCORE_KEYS: ScoreKey[] = ['foreplay', 'penetration', 'orgasm', 'aftercare', 'atmosphere', 'talk']
-const SAFE_ROLE_PLAYS = ['陌生人', '师生（均为成年人）', '上司与下属', '医生与病人', '审讯者与嫌疑人', '主人与服从者（均为成年人）', '角色互换', '制服', '其他']
 
 function uid(prefix: string) { return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` }
 function ensure() { fs.mkdirSync(DIR, { recursive: true }); if (!fs.existsSync(FILE)) fs.writeFileSync(FILE, JSON.stringify({ records: [] }, null, 2)) }
@@ -44,13 +43,7 @@ function scores(v: any): IntimacyScores {
   for (const who of ['star', 'fire'] as Actor[]) for (const k of SCORE_KEYS) out[who][k] = clamp(v?.[who]?.[k], 0, 10, 0)
   return out
 }
-function cleanRolePlay(v: any): string | undefined {
-  const x = String(v || '').trim()
-  if (!x) return undefined
-  const blocked = /(母子|父女|兄妹|姐弟|姐夫|嫂子|继父|继母|叔侄|姑侄|亲属|未成年)/
-  if (blocked.test(x)) return undefined
-  return x.slice(0, 80)
-}
+
 function normalize(input: any, base?: IntimacyRecord): IntimacyRecord {
   const now = new Date().toISOString()
   return {
@@ -60,7 +53,7 @@ function normalize(input: any, base?: IntimacyRecord): IntimacyRecord {
     positions: arr(input.positions ?? base?.positions), initiated_by: actor(input.initiated_by ?? base?.initiated_by),
     star_notes: String(input.star_notes ?? base?.star_notes ?? '').slice(0, 4000), fire_notes: String(input.fire_notes ?? base?.fire_notes ?? '').slice(0, 4000),
     tags: arr(input.tags ?? base?.tags), scores: scores(input.scores ?? base?.scores), encore: arr(input.encore ?? base?.encore),
-    role_play: cleanRolePlay(input.role_play ?? base?.role_play), created_at: base?.created_at || now, updated_at: now,
+    role_play: ((v) => { const x = String(v || '').trim(); return x || undefined })(input.role_play ?? base?.role_play), created_at: base?.created_at || now, updated_at: now,
     created_by: base?.created_by || actor(input.actor || input.created_by), audit: base?.audit || [],
   }
 }
@@ -85,4 +78,4 @@ export function listIntimacyActivity() {
   const deleted = loadDeletedIntimacyRecords().reduce((all: any[], r: any) => all.concat((r.audit || []).map((a: any) => ({ ...a, record_id: r.id, record_date: r.date, deleted: true }))), [])
   return active.concat(deleted).sort((a: any, b: any) => String(b.at).localeCompare(String(a.at))).slice(0, 200)
 }
-export function intimacyOptions() { return { score_keys: SCORE_KEYS, role_play_options: SAFE_ROLE_PLAYS } }
+export function intimacyOptions() { return { score_keys: SCORE_KEYS } }
