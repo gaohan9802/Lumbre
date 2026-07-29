@@ -29,6 +29,7 @@ import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from 
 import { scheduleWake } from './autowake'
 import { executeGalatea } from './galatea'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
+import { listIntimacyRecords, createIntimacyRecord, updateIntimacyRecord, deleteIntimacyRecord } from './intimacy-store'
 
 // ── Claude tool schema type ─────────────────────────────
 
@@ -596,6 +597,36 @@ const PERIOD_TOOLS: ToolDef[] = [
   },
 ]
 
+// ── Private intimacy record tools ─────────────────────
+const INTIMACY_TOOLS: ToolDef[] = [
+  {
+    name: 'read_intimacy_records',
+    description: '查看双方私密亲密记录。仅用于双方均为成年、知情、自愿的记录管理。返回完整问卷、双方评分和操作留痕。',
+    input_schema: { type: 'object', properties: { limit: { type: 'integer', description: '最多返回多少条，默认20' } } },
+  },
+  {
+    name: 'create_intimacy_record',
+    description: '填写并保存一条私密亲密记录。仅记录双方均为成年、知情、自愿的互动。亲属/未成年人角色扮演不会被保存。评分0-10，包含foreplay/penetration/orgasm/aftercare/atmosphere/talk。',
+    input_schema: { type: 'object', properties: {
+      date: { type: 'string' }, time_start: { type: 'string' }, duration_min: { type: 'integer' }, rounds: { type: 'integer' },
+      positions: { type: 'array', items: { type: 'string' } }, initiated_by: { type: 'string', enum: ['star','fire'] },
+      star_notes: { type: 'string' }, fire_notes: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } },
+      scores: { type: 'object', description: '{star:{foreplay,penetration,orgasm,aftercare,atmosphere,talk},fire:{...}}，每项0-10' },
+      encore: { type: 'array', items: { type: 'string' } }, role_play: { type: 'string', description: '可选，仅成年人且非亲属情境' },
+    }, required: ['date','time_start','duration_min','rounds','positions','initiated_by','scores'] },
+  },
+  {
+    name: 'edit_intimacy_record',
+    description: '编辑一条私密亲密记录。操作人固定记为星星并写入审计留痕。',
+    input_schema: { type: 'object', properties: { id: { type: 'string' }, patch: { type: 'object' } }, required: ['id','patch'] },
+  },
+  {
+    name: 'delete_intimacy_record',
+    description: '删除一条私密亲密记录。删除内容进入服务端归档，并记录是谁删除的。',
+    input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+]
+
 // ── Galatea Garden 论坛 + 桌游 tools ─────────────────
 const GALATEA_TOOLS: ToolDef[] = [
   {
@@ -696,7 +727,7 @@ const GMAIL_TOOLS: ToolDef[] = [
     },
   },
 ]
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...INTIMACY_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -787,6 +818,22 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
         }
       }
       return JSON.stringify(result)
+    }
+
+    if (name === 'read_intimacy_records') {
+      const limit = Math.max(1, Math.min(100, Number(input.limit) || 20))
+      return JSON.stringify(listIntimacyRecords().slice(0, limit))
+    }
+    if (name === 'create_intimacy_record') {
+      const record = createIntimacyRecord(input, 'star')
+      return JSON.stringify({ ok: true, id: record.id, record })
+    }
+    if (name === 'edit_intimacy_record') {
+      const record = updateIntimacyRecord(input.id, input.patch || {}, 'star')
+      return JSON.stringify(record ? { ok: true, record } : { error: 'not_found' })
+    }
+    if (name === 'delete_intimacy_record') {
+      return JSON.stringify({ ok: deleteIntimacyRecord(input.id, 'star') })
     }
 
     if (name === 'galatea') {

@@ -128,3 +128,11 @@ export const coread = {
   digest: (bookId: string, chapterNum: number) => post('/api/coread/digest', { bookId, chapterNum }),
   storyArc: (bookId: string, chapterNum: number) => post('/api/coread/digest', { action: 'arc', bookId, chapterNum }),
 }
+
+// ── Private intimacy records ──────────────────────────
+export const intimacy = {
+  list: () => get('/api/intimacy'),
+  create: (actor: 'star' | 'fire', record: any) => post('/api/intimacy', { action: 'create', actor, record }),
+  update: (actor: 'star' | 'fire', id: string, patch: any) => post('/api/intimacy', { action: 'update', actor, id, patch }),
+  remove: (actor: 'star' | 'fire', id: string) => post('/api/intimacy', { action: 'delete', actor, id }),
+}

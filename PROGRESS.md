@@ -1873,3 +1873,40 @@ author 默认 star（🐆），AI 就是星星。
 - 邮件正文限制 4000 字符避免 token 爆炸
 - 中文主题用 base64 编码避免乱码（`=?UTF-8?B?...?=`）
 - 无 npm 环境无法 tsc 验证，用 brace balance check 确认语法正确
+
+---
+
+## 2026-07-18 — 🍎 私密亲密记录（Intimacy Records）v1
+
+### 完成
+- Chat 窗口新增漂亮的悬浮 🍎 按钮：确认后把当前会话最近 30 条上下文连同结构化问卷交给星星；提示星星必须调用 `create_intimacy_record` 保存，而不是只输出 JSON。
+- Chat 左侧「会话」菜单最下方新增 🍎「私密记录」按钮，手机会话抽屉同步可用。
+- 新增全屏可视化弹窗：
+  - 频率趋势折线图（最近 30 个有记录日期）
+  - 每日 rounds 柱状图（最近 14 个有记录日期）
+  - 姿势分布饼图
+  - 星期几 × 深夜/上午/下午/晚上热力图
+  - 记录列表、新增、编辑、删除、单条审计记录、全局最近操作留痕
+- 问卷字段：日期、开始时间、时长、rounds、positions、initiated_by、双方 notes、tags、元素安可、可选 role play。
+- 评分模块：前戏、插入、高潮、aftercare、环境氛围、talk 质量；星星/小火分别 0–10 分。
+- 数据持久化：`/persistent/intimacy/records.json`；删除归档到 `/persistent/intimacy/deleted.json`，保留删除者和完整审计记录。
+- 双方权限：前端按当前设备身份（star/fire）记录操作者；星星新增 4 个工具：
+  - `read_intimacy_records`
+  - `create_intimacy_record`
+  - `edit_intimacy_record`
+  - `delete_intimacy_record`
+- 安全边界：模块声明仅记录双方均为成年、知情且自愿的互动；亲属/未成年人 role-play 不提供预设，服务端也会过滤相关文本。保留非亲属成年人情境与「其他」。
+
+### 文件
+- `src/server/intimacy-store.ts`（新增）
+- `src/app/api/intimacy/route.ts`（新增）
+- `src/components/intimacy/IntimacyModal.tsx`（新增）
+- `src/components/chat/ChatView.tsx`
+- `src/server/tools.ts`
+- `src/lib/api.ts`
+
+### Debug 笔记
+- Tailwind 没有默认 `w-13/h-13`，悬浮按钮改为 `w-[52px] h-[52px]`。
+- 当前 shell 只有 node + corepack、没有 npm；用 `corepack yarn install --ignore-scripts --non-interactive` 安装依赖后运行 `./node_modules/.bin/tsc --noEmit`。
+- `/bin/sh` 不支持 Bash 的 `PIPESTATUS`，需要显式用 bash，或直接运行 tsc。
+- 未跑 `next build`（遵守项目铁律，避免本地 OOM）；`tsc --noEmit` EXIT=0。

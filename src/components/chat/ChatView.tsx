@@ -16,6 +16,7 @@ import { photos as photosApi } from '@/lib/api'
 import { ChatSettings } from './ChatSettings'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
+import { IntimacyModal } from '@/components/intimacy/IntimacyModal'
 
 /* ── helpers ────────────────────────────── */
 
@@ -108,6 +109,7 @@ export function ChatView() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
+  const [intimacyOpen, setIntimacyOpen] = useState(false)
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [sessionSearch, setSessionSearch] = useState('')
@@ -338,6 +340,23 @@ export function ChatView() {
     })
   }
 
+  const handleAppleQuestionnaire = async () => {
+    if (isLoading) return
+    const ok = await ask('把最近 30 条上下文交给星星，并请他填写一份 🍎 私密问卷？')
+    if (!ok) return
+    const profile = getActiveProfile(settings)
+    const model = settings.model
+    const prompt = `🍎 私密记录问卷（双方均为成年、知情且自愿）。请根据最近30条上下文填写；不确定的字段先用最合理的值，并在 notes 里标注不确定。完成后必须调用 create_intimacy_record 保存，不要只把 JSON 发在聊天里。\n\n字段：date, time_start, duration_min, rounds, positions[], initiated_by(star/fire), star_notes, fire_notes, tags[], scores.star/fire（foreplay/penetration/orgasm/aftercare/atmosphere/talk，0-10）, encore[], role_play（可选，仅非亲属的成年人情境）。`
+    const now = Date.now()
+    const userMsg: ChatMessage = { id: `${now}-apple`, role: 'user', content: prompt, timestamp: now, providerId: profile?.id, modelId: model }
+    addMessage(userMsg); setIsLoading(true); stickBottomRef.current = true
+    const slice = [...messages.slice(-30), userMsg].map(m => ({ role: m.role, content: m.content, images: m.images }))
+    await doSend(slice, (data) => {
+      addMessage({ id: `${Date.now()}-apple-reply`, role: 'assistant', content: data.content || data.error || '...', timestamp: Date.now(), thinking: data.thinking, input_tokens: data.input_tokens, output_tokens: data.output_tokens, cache_read_tokens: data.cache_read_tokens, cache_creation_tokens: data.cache_creation_tokens, tool_calls: data.tool_calls, content_blocks: data.content_blocks, providerId: profile?.id, modelId: model })
+      setIsLoading(false); setStreamText(''); setStreamThinking(''); setStreamBlocks([])
+    })
+  }
+
   /* ── retry ────────────────────────────── */
 
   const handleRetry = async (msg: ChatMessage) => {
@@ -559,7 +578,11 @@ export function ChatView() {
           )
         })}
       </div>
-      {/* removed bottom "模型/人设/上下文" entry per requirement #3 */}
+      <div className={`p-3 border-t ${n ? 'border-night-border' : 'border-day-border'}`}>
+        <button onClick={() => { setIntimacyOpen(true); if (mobile) setSessionDrawerOpen(false) }} className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs transition ${n ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-day-pinkLight hover:bg-day-lemon'}`}>
+          <span className="text-base">🍎</span><span>私密记录</span>
+        </button>
+      </div>
     </div>
   )
 
@@ -910,6 +933,8 @@ export function ChatView() {
             <div ref={messagesEndRef} />
           </div>
 
+          <button onClick={handleAppleQuestionnaire} disabled={isLoading} title="把最近30条上下文交给星星填写问卷" className={`absolute right-4 bottom-[176px] z-20 w-[52px] h-[52px] rounded-full text-xl shadow-[0_10px_35px_rgba(0,0,0,.28)] border transition hover:-translate-y-1 active:scale-95 disabled:opacity-40 ${n ? 'bg-gradient-to-br from-night-amberGlow to-night-amberDim border-night-amber/50' : 'bg-gradient-to-br from-[#ff8aa1] to-day-pink border-white/70'}`}>🍎</button>
+
           {/* footer */}
           <div className={`p-4 border-t backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
             {/* total layers */}
@@ -1062,6 +1087,7 @@ export function ChatView() {
           <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={async (msg, fn) => { const ok = await ask(msg); if (ok) fn() }} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
+          <IntimacyModal open={intimacyOpen} onClose={() => setIntimacyOpen(false)} />
         </>,
         document.body,
       )}
