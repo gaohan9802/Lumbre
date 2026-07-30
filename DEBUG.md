@@ -49,3 +49,10 @@
 tail -20 /persistent/chat-upstream-errors.jsonl
 ```
 重点对比 `upstreamOrigin`、`model`、`iteration`、`hadOutput`、`causeCode` 和 `bytesRead`。
+
+---
+
+## 2026-07-04 — Sidebar visual refresh
+- Sidebar 呼吸光斑必须尊重 `prefers-reduced-motion`；动画只使用 transform/opacity。
+- Tailwind 自定义 opacity 使用 `/[0.18]`，不要写未配置的 `/18`。
+- active pill 的 `layoutId` 放在 button 内部的 absolute span，button 自身必须是 `relative`，避免旧版选中竖条相对错误祖先定位。

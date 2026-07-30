@@ -154,3 +154,29 @@ html:not(.dark) div:has(> textarea.bg-transparent:focus:not(.no-frame)) {
   font-weight: bold;
   margin-left: 1px;
 }
+
+/* Sidebar ambient motion — slow and quiet, like breathing. */
+@keyframes sidebarBreathe {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(0.96); opacity: 0.55; }
+  50% { transform: translate3d(-7px, 8px, 0) scale(1.08); opacity: 0.9; }
+}
+
+@keyframes sidebarBreatheDelayed {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.04); opacity: 0.45; }
+  50% { transform: translate3d(9px, -7px, 0) scale(0.94); opacity: 0.75; }
+}
+
+.sidebar-breathe {
+  animation: sidebarBreathe 8s ease-in-out infinite;
+}
+
+.sidebar-breathe-delayed {
+  animation: sidebarBreatheDelayed 10s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-breathe,
+  .sidebar-breathe-delayed {
+    animation: none;
+  }
+}

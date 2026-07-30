@@ -2085,3 +2085,22 @@ author 默认 star（🐆），AI 就是星星。
 ### 验证
 - `./node_modules/.bin/tsc --noEmit` 通过。
 - `git diff --check` 通过。
+
+---
+
+## 2026-07-04 — Sidebar 童趣呼吸感改版
+
+### 完成
+- Sidebar 从平面导航改成「会呼吸的小屋目录」：顶部 Lumbre 火苗品牌卡、分区引导语、底部完整昼夜切换卡。
+- 每个入口新增童趣副标题，图标使用独立软方糖底座；hover 有轻微偏移、旋转与缩放，按下有回弹。
+- 选中态改为 Framer Motion spring 共享浮动胶囊，配合柔和边框、阴影与微光圆点，修复旧版 activeTab absolute 元素缺少定位参照的问题。
+- 日间采用白色奶油浮层 + 桃粉阴影；夜间采用深蓝黑底 + 琥珀微光，保持「雪豹夜行」主题。
+- 背景加入两枚 8s/10s 超慢模糊光斑，形成低干扰呼吸感；支持 `prefers-reduced-motion`，系统减少动态效果时自动停用。
+- 手机侧栏加宽至 280px、遮罩加入轻量 backdrop blur；桌面 rail 保留 88px，宽屏展开为 272px。
+- 导航滚动条隐藏，安全区、移动端抽屉关闭和原有响应式行为保留。
+
+### Debug 笔记
+- Tailwind 非默认透明度不能写 `/18`，改用 arbitrary opacity `/[0.18]`，避免生产构建时该样式不生成。
+- 呼吸效果只动画 `transform/opacity`，避免持续触发布局与 repaint；装饰层全部 `pointer-events-none`，不会挡住点击。
+- 本次仅修改 Sidebar 与全局动效 CSS，未改 tab id / store / 页面映射，因此不会影响已有板块与持久化数据。
+- 验证：`tsc --noEmit` 通过；按项目约定不在低内存 shell 执行 `next build`。
