@@ -250,7 +250,22 @@ export function ChatView() {
       let fullText = ''
       let fullThinking = ''
       let toolCalls: any[] = []
+      let contentBlocks: ContentBlock[] = []
       let usage: any = {}
+
+      // Keep the exact event order from the tool loop. Text/thinking chunks are
+      // merged only while they are adjacent; a tool call closes the current
+      // block, so the next model text stays after that tool in the saved reply.
+      const appendContentBlock = (block: ContentBlock) => {
+        const last = contentBlocks[contentBlocks.length - 1]
+        if ((block.type === 'text' || block.type === 'thinking') &&
+            last?.type === block.type && block.content) {
+          last.content = (last.content || '') + block.content
+        } else {
+          contentBlocks.push(block)
+        }
+        if (live) setStreamBlocks(contentBlocks.map((item) => ({ ...item })))
+      }
 
       while (true) {
         const { done, value } = await reader.read()
@@ -266,39 +281,20 @@ export function ChatView() {
             const evt = JSON.parse(raw)
             if (evt.type === 'text') {
               fullText += evt.content
-              if (live) {
-                setStreamText(fullText)
-                setStreamBlocks(prev => {
-                  const last = prev[prev.length - 1]
-                  if (last && last.type === 'text') return [...prev.slice(0, -1), { ...last, content: (last.content || '') + evt.content }]
-                  return [...prev, { type: 'text', content: evt.content }]
-                })
-              }
+              appendContentBlock({ type: 'text', content: evt.content })
+              if (live) setStreamText(fullText)
             } else if (evt.type === 'thinking') {
               fullThinking += evt.content
-              if (live) {
-                setStreamThinking(fullThinking)
-                setStreamBlocks(prev => {
-                  const last = prev[prev.length - 1]
-                  if (last && last.type === 'thinking') return [...prev.slice(0, -1), { ...last, content: (last.content || '') + evt.content }]
-                  return [...prev, { type: 'thinking', content: evt.content }]
-                })
-              }
+              appendContentBlock({ type: 'thinking', content: evt.content })
+              if (live) setStreamThinking(fullThinking)
             } else if (evt.type === 'tool_call') {
               toolCalls.push(evt)
-              if (live) {
-                setStreamBlocks(prev => [...prev, { type: 'tool_call', name: evt.name, input: evt.input, result: evt.result }])
-              }
+              appendContentBlock({ type: 'tool_call', name: evt.name, input: evt.input, result: evt.result })
             } else if (evt.type === 'error') {
-              fullText += (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
-              if (live) {
-                setStreamText(fullText)
-                setStreamBlocks(prev => {
-                  const last = prev[prev.length - 1]
-                  if (last && last.type === 'text') return [...prev.slice(0, -1), { ...last, content: (last.content || '') + '\n\n⚠️ ' + (evt.content || '出错了') }]
-                  return [...prev, { type: 'text', content: '⚠️ ' + (evt.content || '出错了') }]
-                })
-              }
+              const errorText = (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
+              fullText += errorText
+              appendContentBlock({ type: 'text', content: errorText })
+              if (live) setStreamText(fullText)
             } else if (evt.type === 'done') { usage = evt }
           } catch { /* ignore parse errors (incl. keepalive comments) */ }
         }
@@ -307,6 +303,7 @@ export function ChatView() {
         content: fullText,
         thinking: fullThinking || undefined,
         tool_calls: toolCalls.length ? toolCalls : undefined,
+        content_blocks: contentBlocks.length ? contentBlocks : undefined,
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
         cache_read_tokens: usage.cache_read_tokens,
@@ -446,6 +443,7 @@ export function ChatView() {
             cache_read_tokens: data.cache_read_tokens,
             cache_creation_tokens: data.cache_creation_tokens,
             tool_calls: data.tool_calls,
+            content_blocks: data.content_blocks,
             providerId: profile?.id,
             modelId: model,
           }

@@ -1910,3 +1910,19 @@ author 默认 star（🐆），AI 就是星星。
 - 当前 shell 只有 node + corepack、没有 npm；用 `corepack yarn install --ignore-scripts --non-interactive` 安装依赖后运行 `./node_modules/.bin/tsc --noEmit`。
 - `/bin/sh` 不支持 Bash 的 `PIPESTATUS`，需要显式用 bash，或直接运行 tsc。
 - 未跑 `next build`（遵守项目铁律，避免本地 OOM）；`tsc --noEmit` EXIT=0。
+
+---
+
+## 2026-07-30 — Chat 流式工具调用完成后位置保持
+
+### 完成
+- 修复流式回复结束后，工具调用从对话中间跳回回复顶部的问题。
+- Chat 客户端现在按 SSE 实际到达顺序持续构建并保存 `content_blocks`：thinking / text / tool_call。
+- 相邻的文字或思考增量只在同类型且连续时合并；工具调用会切断文字块，因此工具前后的回复完成后仍保持原位置。
+- 普通发送、问卷发送、assistant 重生成和 user 重试生成均会保留有序内容块。
+- 顺手清理已删除 Trio 模块在 `page.tsx` 中遗留的失效 import，恢复仓库类型检查。
+
+### Debug 笔记
+- 根因：流式阶段虽然按顺序展示事件，但 `doSend` 完成时只返回聚合 `content`、`thinking` 和 `tool_calls`，没有返回 `content_blocks`；持久化后的消息因此走 legacy 渲染，把所有工具统一放在气泡顶部。
+- 修复原则：展示态和持久化态必须复用同一份有序块数组，不能在结束时根据聚合字段重新推断顺序。
+- 验证：`./node_modules/.bin/tsc --noEmit` 通过；`git diff --check` 通过。遵守项目约定，未在本机运行 Next build。
