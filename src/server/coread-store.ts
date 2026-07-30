@@ -33,6 +33,8 @@ export interface Book {
   progress: number
   totalChars: number
   createdAt: string
+  lastOffset?: number
+  readingMode?: 'scroll' | 'page'
 }
 
 export type CoreadAuthor = 'star' | 'fire'
@@ -71,6 +73,14 @@ export interface Annotation {
   author?: CoreadAuthor
   kind?: CoreadAnnotationKind
   color?: string
+  createdAt: string
+  replies?: AnnotationReply[]
+}
+
+export interface AnnotationReply {
+  id: string
+  author: CoreadAuthor
+  content: string
   createdAt: string
 }
 
@@ -187,11 +197,13 @@ export function getChapterList(bookId: string): { chapterNum: number; title: str
   }))
 }
 
-export function updateProgress(bookId: string, chapterNum: number, progress?: number): void {
+export function updateProgress(bookId: string, chapterNum: number, progress?: number, offset?: number, readingMode?: 'scroll' | 'page'): void {
   const data = loadBookData(bookId)
   if (!data) return
   data.book.lastChapter = chapterNum
   data.book.lastReadAt = nowStr()
+  if (typeof offset === 'number') data.book.lastOffset = Math.max(0, Math.floor(offset))
+  if (readingMode === 'scroll' || readingMode === 'page') data.book.readingMode = readingMode
   const chapterIndex = Math.max(0, data.chapters.findIndex(c => c.chapterNum === chapterNum))
   const chapterProgress = typeof progress === 'number' ? Math.max(0, Math.min(100, progress)) : 0
   data.book.progress = data.chapters.length
@@ -318,6 +330,16 @@ export function addAnnotation(bookId: string, chapterNum: number, originalText: 
     createdAt: nowStr(),
   }
   data.annotations.push(ann)
+  saveBookData(data)
+  return ann
+}
+
+export function replyAnnotation(bookId: string, annId: string, content: string, author: CoreadAuthor = 'fire'): Annotation | null {
+  const data = loadBookData(bookId)
+  if (!data || !content.trim()) return null
+  const ann = data.annotations.find(a => a.id === annId)
+  if (!ann) return null
+  ann.replies = [...(ann.replies || []), { id: crypto.randomUUID(), author, content: content.trim().slice(0, 2000), createdAt: nowStr() }]
   saveBookData(data)
   return ann
 }

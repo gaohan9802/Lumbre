@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { getChapter, getAnnotations, updateProgress } from '@/server/coread-store'
+import { getBook, getChapter, getAnnotations, updateProgress } from '@/server/coread-store'
 import { ensureDigest } from '@/server/coread-digest'
 import { LLMProfile } from '@/server/coread-llm'
 
@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'missing bookId or chapterNum' }, { status: 400 })
     }
 
+    const bookData = getBook(bookId)
     const chapter = getChapter(bookId, chapterNum)
     if (!chapter) {
       return NextResponse.json({ error: '章节不存在' }, { status: 404 })
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
         digest: chapter.digest,
       },
       annotations,
+      readingPosition: { offset: bookData?.book.lastChapter === Number(chapterNum) ? (bookData.book.lastOffset || 0) : 0, mode: bookData?.book.readingMode || 'scroll' },
     })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })

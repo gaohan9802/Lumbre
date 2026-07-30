@@ -30,7 +30,7 @@ import { scheduleWake } from './autowake'
 import { executeGalatea } from './galatea'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { listIntimacyRecords, createIntimacyRecord, updateIntimacyRecord, deleteIntimacyRecord } from './intimacy-store'
-import { listBooks as listCoreadBooks, getBook as getCoreadBook, getAnnotations as getCoreadAnnotations, addAnnotation as addCoreadAnnotation, readCoreadNotes, writeCoreadNote, getCoreadStats, findBookByTitle } from './coread-store'
+import { listBooks as listCoreadBooks, getBook as getCoreadBook, getAnnotations as getCoreadAnnotations, addAnnotation as addCoreadAnnotation, replyAnnotation as replyCoreadAnnotation, readCoreadNotes, writeCoreadNote, getCoreadStats, findBookByTitle } from './coread-store'
 
 // ── Claude tool schema type ─────────────────────────────
 
@@ -328,11 +328,11 @@ const COREAD_TOOLS: ToolDef[] = [
   },
   {
     name: 'comment_coread',
-    description: '给某本书的真实原文添加评论/划线/书签。评论会进入共读统计并在阅读页高亮。original_text 必须是该章真实原文。',
+    description: '给某本书的真实原文添加评论/划线/书签，或用 reply_to 回复已有批注。新批注的 original_text 必须是该章真实原文。',
     input_schema: { type: 'object', properties: {
       book_name: { type: 'string' }, book_id: { type: 'string' }, chapter: { type: 'integer' }, original_text: { type: 'string' },
-      content: { type: 'string' }, kind: { type: 'string', enum: ['highlight','comment','bookmark'] }, color: { type: 'string' }, author: { type: 'string', enum: ['star','fire'] },
-    }, required: ['chapter','original_text'] },
+      content: { type: 'string' }, kind: { type: 'string', enum: ['highlight','comment','bookmark'] }, color: { type: 'string' }, author: { type: 'string', enum: ['star','fire'] }, reply_to: { type: 'string', description: '要回复的批注ID；填写后content作为回复内容' },
+    }, required: ['chapter'] },
   },
   {
     name: 'read_comments_coread',
@@ -963,7 +963,9 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
     if (name === 'comment_coread') {
       const book = input.book_id ? getCoreadBook(input.book_id)?.book : findBookByTitle(input.book_name || '')
       if (!book) return JSON.stringify({ error: 'book_not_found' })
-      const ann = addCoreadAnnotation(book.id, Number(input.chapter), String(input.original_text || ''), String(input.content || ''), input.author === 'fire' ? 'user' : 'ai', input.kind || 'comment', input.color || '')
+      const ann = input.reply_to
+        ? replyCoreadAnnotation(book.id, String(input.reply_to), String(input.content || ''), input.author === 'fire' ? 'fire' : 'star')
+        : addCoreadAnnotation(book.id, Number(input.chapter), String(input.original_text || ''), String(input.content || ''), input.author === 'fire' ? 'user' : 'ai', input.kind || 'comment', input.color || '')
       return JSON.stringify(ann ? { ok: true, annotation: ann } : { error: '原文不匹配或添加失败' })
     }
     if (name === 'read_comments_coread') {

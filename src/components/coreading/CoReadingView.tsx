@@ -2,8 +2,9 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
-import { BookOpen, ArrowLeft, ChevronLeft, ChevronRight, Send, Plus, Trash2, MessageSquare, BookMarked, Upload, FileText, Palette, Sun, Moon, ImagePlus, X, Search, Grid3X3, List, BarChart3, Headphones, Pause, Settings2, Highlighter, Bookmark, Library, SlidersHorizontal } from 'lucide-react'
-import { useChatStore, getActiveProfile } from '@/lib/chatStore'
+import { BookOpen, ArrowLeft, ChevronLeft, ChevronRight, Send, Plus, Trash2, MessageSquare, BookMarked, Upload, FileText, Palette, Sun, Moon, ImagePlus, X, Search, Grid3X3, List, BarChart3, Headphones, Pause, Settings2, Highlighter, Bookmark, Library, Download, Reply, Columns3 } from 'lucide-react'
+import { useChatStore, getActiveProfile, getSortedSessions } from '@/lib/chatStore'
+import { ChatView } from '@/components/chat/ChatView'
 import { useCoreadAppearance, fileToDataUrl } from '@/lib/coreadAppearance'
 
 // ── Types ──
@@ -19,8 +20,8 @@ interface Annotation {
   id: string; bookId: string; chapterNum: number
   originalText: string; annotation: string
   annotator: 'user' | 'ai'; author?: 'star' | 'fire'; kind?: 'highlight' | 'comment' | 'bookmark'; color?: string; createdAt: string
+  replies?: { id: string; author: 'star' | 'fire'; content: string; createdAt: string }[]
 }
-interface ChatMsg { who: 'user' | 'ai'; text: string; cnum: number; createdAt: string }
 interface BookStat { bookId: string; title: string; progress: number; highlights: number; comments: number; bookmarks: number; starComments: number; fireComments: number; discussions: number; readingNotes: number }
 
 type View = 'shelf' | 'toc' | 'reading'
@@ -29,6 +30,8 @@ export function CoReadingView() {
   const { theme, toggle: toggleTheme } = useTheme()
   const isNight = theme === 'night'
   const settings = useChatStore((s) => s.settings)
+  const ensureSession = useChatStore((s) => s.ensureSession)
+  const setActiveSession = useChatStore((s) => s.setActiveSession)
   const { ap } = useCoreadAppearance()
 
   const [view, setView] = useState<View>('shelf')
@@ -42,10 +45,6 @@ export function CoReadingView() {
   const [chapters, setChapters] = useState<ChapterListItem[]>([])
   const [chapter, setChapter] = useState<ChapterData | null>(null)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
-  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([])
-  const [chatInput, setChatInput] = useState('')
-  const [streaming, setStreaming] = useState(false)
-  const [liveText, setLiveText] = useState('')
   const [selection, setSelection] = useState('')
   const [showChat, setShowChat] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -57,17 +56,21 @@ export function CoReadingView() {
   const [pageWidth, setPageWidth] = useState(680)
   const [readingProgress, setReadingProgress] = useState(0)
   const [ttsSpeaking, setTtsSpeaking] = useState(false)
-  const [selectedModelKey, setSelectedModelKey] = useState(`${settings.activeProfileId}::${settings.model}`)
-  const chatEndRef = useRef<HTMLDivElement>(null)
+  const [ttsMode, setTtsMode] = useState<'cloud' | 'system'>('cloud')
+  const [ttsSpeed, setTtsSpeed] = useState(1)
+  const [readingMode, setReadingMode] = useState<'scroll' | 'page'>('scroll')
+  const [restoreOffset, setRestoreOffset] = useState(0)
+  const [chatSessionId, setChatSessionId] = useState('')
+  const [replyText, setReplyText] = useState('')
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  // Active API profile, shared with the 星星 module.
+  // Active API profile, exactly the same profile/model currently selected in Chat.
   const apiProfilePayload = useCallback(() => {
-    const [profileId, modelId] = selectedModelKey.split('::')
-    const profile = settings.apiProfiles.find(p => p.id === profileId) || getActiveProfile(settings)
+    const profile = getActiveProfile(settings)
     if (!profile?.apiKey) return undefined
-    return { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: modelId || settings.model }
-  }, [settings, selectedModelKey])
+    return { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: settings.model }
+  }, [settings])
 
   // ── Load books ──
   const loadBooks = useCallback(async () => {
@@ -78,10 +81,6 @@ export function CoReadingView() {
   }, [])
 
   useEffect(() => { loadBooks() }, [loadBooks])
-  useEffect(() => {
-    const valid = settings.apiProfiles.some(p => p.models.some(m => `${p.id}::${m.id}` === selectedModelKey && m.enabled))
-    if (!valid) setSelectedModelKey(`${settings.activeProfileId}::${settings.model}`)
-  }, [settings.activeProfileId, settings.model, settings.apiProfiles, selectedModelKey])
 
   // ── Open book (TOC) ──
   const openBook = async (book: Book) => {
@@ -107,97 +106,16 @@ export function CoReadingView() {
     if (data.chapter) {
       setChapter(data.chapter)
       setAnnotations(data.annotations || [])
+      setReadingMode(data.readingPosition?.mode === 'page' ? 'page' : 'scroll')
+      setRestoreOffset(Number(data.readingPosition?.offset) || 0)
       setView('reading')
       setShowChat(false)
-      loadChatHistory(cnum)
     }
   }
 
-  // ── Load chat history (isolated to the current chapter) ──
-  const loadChatHistory = async (cnum: number) => {
-    if (!currentBook) return
-    const res = await fetch(`/api/coread/chat?bookId=${currentBook.id}&cnum=${cnum}`)
-    const data = await res.json()
-    if (data.items) setChatMsgs(data.items)
-    else setChatMsgs([])
-  }
-
-  // ── Text selection ──
   const handleTextSelect = () => {
-    const sel = window.getSelection()?.toString().trim() || ''
-    if (sel) setSelection(sel.slice(0, 500))
-  }
-
-  // ── Send chat message (SSE) ──
-  const sendChat = async (annRef?: { who: string; text: string }) => {
-    if (!chatInput.trim() || !currentBook || !chapter || streaming) return
-    const msg = chatInput.trim()
-    setChatInput('')
-    setChatMsgs(prev => [...prev, { who: 'user', text: msg, cnum: chapter.chapterNum, createdAt: new Date().toISOString() }])
-    setStreaming(true)
-    setLiveText('')
-
-    try {
-      const res = await fetch('/api/coread/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bookId: currentBook.id,
-          chapterNum: chapter.chapterNum,
-          message: msg,
-          selection: selection || undefined,
-          ann: annRef,
-          api_profile: apiProfilePayload(),
-          system: settings.systemPrompt,
-          thinking_budget: settings.thinkingBudget,
-          temperature: settings.temperature,
-          prompt_caching: settings.promptCaching,
-        })
-      })
-
-      if (!res.ok) {
-        const err = await res.json()
-        setChatMsgs(prev => [...prev, { who: 'ai', text: `（错误：${err.error || '未知'}）`, cnum: chapter.chapterNum, createdAt: new Date().toISOString() }])
-        setStreaming(false)
-        return
-      }
-
-      const reader = res.body!.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      let finalReply = ''
-      let annCount = 0
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const d = JSON.parse(line.slice(6))
-            if (d.t) { setLiveText(d.t); finalReply = d.t }
-            if (d.reply) { finalReply = d.reply }
-            if (typeof d.ann === 'number') annCount = d.ann
-            if (d.error) { finalReply = d.error }
-          } catch {}
-        }
-      }
-
-      if (finalReply) {
-        setChatMsgs(prev => [...prev, { who: 'ai', text: finalReply, cnum: chapter.chapterNum, createdAt: new Date().toISOString() }])
-      }
-      setSelection('')
-      // If the AI left a page annotation, refresh so it shows up highlighted.
-      if (annCount > 0) reloadAnnotations()
-    } catch (e: any) {
-      setChatMsgs(prev => [...prev, { who: 'ai', text: `（连接失败：${e.message}）`, cnum: chapter.chapterNum, createdAt: new Date().toISOString() }])
-    }
-    setStreaming(false)
-    setLiveText('')
+    const selected = window.getSelection()?.toString().trim() || ''
+    if (selected) setSelection(selected.slice(0, 500))
   }
 
   const reloadAnnotations = async () => {
@@ -335,19 +253,47 @@ export function CoReadingView() {
     }
   }
 
-  const currentStat = stats.find(s => s.bookId === currentBook?.id)
-  const availableModels = settings.apiProfiles.flatMap(p => p.models.filter(m => m.enabled).map(m => ({ key: `${p.id}::${m.id}`, id: m.id, label: `${p.name} · ${m.name || m.id}` })))
+  const handleImportDocument = async (file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    try {
+      if (ext === 'epub') return handleImportEpub(file)
+      let text = ''
+      if (ext === 'pdf') {
+        const pdfjs: any = await (new Function('url', 'return import(url)'))('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs')
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs`
+        const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
+        const pages: string[] = []
+        for (let i=1;i<=pdf.numPages;i++) { const page=await pdf.getPage(i); const c=await page.getTextContent(); pages.push(c.items.map((x:any)=>x.str).join(' ')) }
+        text = pages.join('\n\n')
+      } else if (ext === 'mobi' || ext === 'azw' || ext === 'azw3') {
+        text = extractMobiText(new Uint8Array(await file.arrayBuffer()))
+      } else text = await file.text()
+      if (!text.trim()) throw new Error('没有提取到可读文字')
+      await handleImportText(file.name.replace(/\.[^.]+$/, ''), '', text)
+    } catch (e:any) { alert(`${ext?.toUpperCase()} 导入失败：${e.message}`) }
+  }
 
-  const toggleTTS = () => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !chapter) return
+  const currentStat = stats.find(s => s.bookId === currentBook?.id)
+  const toggleTTS = async () => {
+    if (!chapter) return
     if (ttsSpeaking) {
-      window.speechSynthesis.cancel(); setTtsSpeaking(false); return
+      window.speechSynthesis?.cancel(); audioRef.current?.pause(); audioRef.current = null; setTtsSpeaking(false); return
     }
-    const utter = new SpeechSynthesisUtterance(selection || chapter.content)
-    utter.lang = /[\u4e00-\u9fff]/.test(chapter.content) ? 'zh-CN' : 'en-US'
-    utter.rate = 0.95
-    utter.onend = () => setTtsSpeaking(false)
-    utter.onerror = () => setTtsSpeaking(false)
+    const text = selection || chapter.content
+    const profile = apiProfilePayload()
+    if (ttsMode === 'cloud' && profile?.provider === 'openai-compatible') {
+      try {
+        setTtsSpeaking(true)
+        const res = await fetch('/api/coread/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, speed: ttsSpeed, api_profile: profile }) })
+        if (!res.ok) throw new Error('cloud tts unavailable')
+        const audio = new Audio(URL.createObjectURL(await res.blob()))
+        audioRef.current = audio; audio.onended = () => setTtsSpeaking(false); audio.onerror = () => setTtsSpeaking(false); await audio.play(); return
+      } catch { setTtsSpeaking(false) }
+    }
+    if (!('speechSynthesis' in window)) return
+    const utter = new SpeechSynthesisUtterance(text)
+    utter.lang = /[\u4e00-\u9fff]/.test(text) ? 'zh-CN' : 'en-US'; utter.rate = ttsSpeed
+    utter.onend = () => setTtsSpeaking(false); utter.onerror = () => setTtsSpeaking(false)
     window.speechSynthesis.cancel(); window.speechSynthesis.speak(utter); setTtsSpeaking(true)
   }
 
@@ -363,24 +309,62 @@ export function CoReadingView() {
     setSelection(''); loadBooks()
   }
 
+  const currentTextOffset = (viewport: HTMLDivElement) => {
+    const root = viewport.querySelector('[data-reader-body]')
+    if (!root) return 0
+    const x = Math.min(window.innerWidth - 24, Math.max(24, viewport.getBoundingClientRect().left + 32))
+    const y = Math.min(window.innerHeight - 24, viewport.getBoundingClientRect().top + 54)
+    const doc: any = document
+    const pos = doc.caretPositionFromPoint?.(x, y) || doc.caretRangeFromPoint?.(x, y)
+    const node = pos?.offsetNode || pos?.startContainer
+    const offset = pos?.offset ?? pos?.startOffset ?? 0
+    if (!node || !root.contains(node)) { const at = readingMode === 'page' ? viewport.scrollLeft : viewport.scrollTop; const max = readingMode === 'page' ? viewport.scrollWidth - viewport.clientWidth : viewport.scrollHeight - viewport.clientHeight; return Math.round((at / Math.max(1, max)) * (chapter?.content.length || 0)) }
+    const range = document.createRange(); range.setStart(root, 0); range.setEnd(node, offset)
+    return range.toString().length
+  }
+
   const handleReaderScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget
-    const pct = el.scrollHeight <= el.clientHeight ? 100 : Math.round((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100)
-    setReadingProgress(pct)
+    const horizontal = readingMode === 'page'
+    const max = horizontal ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight
+    const at = horizontal ? el.scrollLeft : el.scrollTop
+    setReadingProgress(max <= 0 ? 100 : Math.round((at / max) * 100))
   }
 
   useEffect(() => {
     if (!currentBook || !chapter || view !== 'reading') return
     const t = setTimeout(() => {
-      fetch('/api/coread/progress', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: currentBook.id, chapterNum: chapter.chapterNum, progress: readingProgress }) }).catch(() => {})
+      fetch('/api/coread/progress', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: currentBook.id, chapterNum: chapter.chapterNum, progress: readingProgress, offset: contentRef.current ? currentTextOffset(contentRef.current) : 0, readingMode }) }).catch(() => {})
     }, 800)
     return () => clearTimeout(t)
-  }, [readingProgress, currentBook, chapter, view])
+  }, [readingProgress, currentBook, chapter, view, readingMode])
 
-  // Auto-scroll chat
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMsgs, liveText])
+    if (view !== 'reading' || !chapter || !restoreOffset) return
+    const timer = setTimeout(() => {
+      const viewport = contentRef.current
+      const root = viewport?.querySelector('[data-reader-body]')
+      if (!viewport || !root) return
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      let left = restoreOffset
+      let node: Node | null
+      while ((node = walker.nextNode())) {
+        const len = node.textContent?.length || 0
+        if (left > len) {
+          left -= len
+          continue
+        }
+        const range = document.createRange()
+        range.setStart(node, Math.max(0, left))
+        range.collapse(true)
+        const rect = range.getBoundingClientRect()
+        if (readingMode === 'page') viewport.scrollLeft = Math.max(0, rect.left - root.getBoundingClientRect().left)
+        else viewport.scrollTop += rect.top - viewport.getBoundingClientRect().top - 36
+        break
+      }
+    }, 120)
+    return () => clearTimeout(timer)
+  }, [view, chapter, restoreOffset, readingMode])
 
   // ── Appearance-derived styles ──
   const hasBg = !!ap.bgImage
@@ -428,7 +412,7 @@ export function CoReadingView() {
     content = (
       <div className={`h-full overflow-y-auto ${tx}`}>
         <div className={`sticky top-0 z-20 px-4 pt-4 pb-3 backdrop-blur-xl border-b ${border} ${isNight ? 'bg-[#1e1e1d]/90' : 'bg-[#faf9f7]/90'}`}>
-          <div className="max-w-6xl mx-auto">
+          <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between gap-3">
               <div><h2 className="text-2xl font-serif flex items-center gap-2"><Library size={22} /> 共读书架</h2><p className={`text-xs mt-1 ${soft}`}>和星星收藏、阅读、讨论每一本书</p></div>
               <div className="flex items-center gap-1.5">{themeToggleBtn}{appearanceBtn}<button onClick={() => setShowStats(!showStats)} className={`p-2 rounded-lg ${showStats ? 'bg-[#b0543f]/15 text-[#b0543f]' : card}`} title="阅读统计"><BarChart3 size={16} /></button><button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-[#b0543f] text-white"><Plus size={14} /> 导入</button></div>
@@ -440,12 +424,12 @@ export function CoReadingView() {
             </div>
           </div>
         </div>
-        <div className="max-w-6xl mx-auto p-4 md:p-6">
+        <div className="max-w-7xl mx-auto px-5 py-8 md:px-10 md:py-12">
           {showStats && <StatsPanel stats={stats} isNight={isNight} onClose={() => setShowStats(false)} />}
-          {filteredBooks.length === 0 ? <div className={`text-center py-20 ${soft}`}><BookOpen size={48} className="mx-auto mb-4 opacity-30"/><p className="text-base">书架还是空的</p><p className="text-sm mt-1">导入 EPUB 或纯文本，封面会像真正的书一样摆上书架</p></div> : shelfMode === 'grid' ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-8">
+          {filteredBooks.length === 0 ? <div className={`text-center py-20 ${soft}`}><BookOpen size={48} className="mx-auto mb-4 opacity-30"/><p className="text-base">书架还是空的</p><p className="text-sm mt-1">导入 EPUB、PDF、MOBI 或纯文本，把想一起读的书慢慢摆进来</p></div> : shelfMode === 'grid' ? (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-x-5 md:gap-x-7 gap-y-10 md:gap-y-12">
               {filteredBooks.map((book, index) => { const st = stats.find(x => x.bookId === book.id); return <div key={book.id} className="group cursor-pointer" onClick={() => openBook(book)}>
-                <div className="relative aspect-[2/3] rounded-r-lg rounded-l-sm overflow-hidden shadow-[8px_10px_22px_rgba(0,0,0,.25)] transition-transform group-hover:-translate-y-1 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[5px] before:bg-black/15">
+                <div className="relative aspect-[2/3] rounded-r-lg rounded-l-sm overflow-hidden shadow-[6px_9px_18px_rgba(0,0,0,.20)] transition-transform group-hover:-translate-y-1 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[5px] before:bg-black/15">
                   {book.cover ? <img src={book.cover} alt={book.title} className="w-full h-full object-cover"/> : <div className="w-full h-full p-4 flex flex-col justify-between text-white" style={{background: `linear-gradient(145deg, ${['#765c48','#405d67','#735566','#496653','#75554b'][index%5]}, #262626)`}}><span className="text-[10px] opacity-60 tracking-[.2em]">LUMBRE LIBRARY</span><div><div className="font-serif text-lg leading-tight">{book.title}</div><div className="text-xs opacity-70 mt-2">{book.author || '佚名'}</div></div><BookOpen size={22} className="opacity-35"/></div>}
                   <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20"><div className="h-full bg-[#e7b45c]" style={{width: `${book.progress || 0}%`}}/></div>
                   <button onClick={e => { e.stopPropagation(); handleDeleteBook(book.id) }} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/45 text-white opacity-0 group-hover:opacity-100"><Trash2 size={13}/></button>
@@ -465,7 +449,7 @@ export function CoReadingView() {
             <button onClick={() => { loadBooks(); setView('shelf'); setCurrentBook(null) }} className={`flex items-center gap-1 text-sm ${soft} hover:opacity-80`}>
               <ArrowLeft size={14} /> 书架
             </button>
-            <div className="flex items-center gap-2">{themeToggleBtn}{appearanceBtn}</div>
+            <div className="flex items-center gap-2"><a href={`/api/coread/export?bookId=${currentBook?.id || ''}`} title="导出阅读笔记" className={`p-1.5 rounded-lg ${soft} ${card}`}><Download size={15}/></a>{themeToggleBtn}{appearanceBtn}</div>
           </div>
           <div className={`flex gap-5 p-4 rounded-2xl border ${border} ${card} mb-5`}>
             <div className="w-24 aspect-[2/3] shrink-0 rounded-r-lg overflow-hidden shadow-lg bg-[#765c48]">{currentBook?.cover ? <img src={currentBook.cover} alt="" className="w-full h-full object-cover"/> : <div className="h-full p-3 text-white font-serif flex items-end">{currentBook?.title}</div>}</div>
@@ -505,6 +489,7 @@ export function CoReadingView() {
             {chapter?.title || `第${chapter?.chapterNum}章`}
           </span>
           <div className="flex items-center gap-1.5">
+            {readingMode === 'page' && <><button onClick={()=>contentRef.current?.scrollBy({left:-contentRef.current.clientWidth,behavior:'smooth'})} className={`p-1.5 rounded-lg ${soft} ${card}`} title="上一页"><ChevronLeft size={15}/></button><button onClick={()=>contentRef.current?.scrollBy({left:contentRef.current.clientWidth,behavior:'smooth'})} className={`p-1.5 rounded-lg ${soft} ${card}`} title="下一页"><ChevronRight size={15}/></button></>}
             {themeToggleBtn}
             <button onClick={toggleTTS} title={ttsSpeaking ? '停止朗读' : '语音朗读'} className={`p-1.5 rounded-lg ${ttsSpeaking ? 'text-[#b0543f] bg-[#b0543f]/15' : soft} ${card}`}>{ttsSpeaking ? <Pause size={16}/> : <Headphones size={16}/>}</button>
             <button onClick={() => setShowReaderSettings(!showReaderSettings)} title="阅读设置" className={`p-1.5 rounded-lg ${showReaderSettings ? accent : soft} ${card}`}><Settings2 size={16}/></button>
@@ -515,12 +500,12 @@ export function CoReadingView() {
           </div>
           <div className="absolute left-0 bottom-0 h-[2px] bg-[#b0543f] transition-all" style={{width: `${readingProgress}%`}} />
         </div>
-        {showReaderSettings && <div className={`absolute right-3 top-12 z-40 w-64 p-4 rounded-xl shadow-xl border ${border} ${isNight ? 'bg-[#292927]' : 'bg-white'}`}><div className="text-sm font-medium mb-3">阅读设置</div><label className="text-xs opacity-60">字号 {fontSize}px</label><input className="w-full accent-[#b0543f]" type="range" min="14" max="28" value={fontSize} onChange={e=>setFontSize(Number(e.target.value))}/><label className="text-xs opacity-60">行距 {lineHeight.toFixed(1)}</label><input className="w-full accent-[#b0543f]" type="range" min="1.4" max="2.6" step="0.1" value={lineHeight} onChange={e=>setLineHeight(Number(e.target.value))}/><label className="text-xs opacity-60">页面宽度 {pageWidth}px</label><input className="w-full accent-[#b0543f]" type="range" min="480" max="900" step="20" value={pageWidth} onChange={e=>setPageWidth(Number(e.target.value))}/><div className={`mt-3 pt-3 border-t ${border} text-[11px] ${soft}`}>TTS 使用系统语音，可朗读整章或当前选中文字。</div></div>}
+        {showReaderSettings && <div className={`absolute right-3 top-12 z-40 w-64 p-4 rounded-xl shadow-xl border ${border} ${isNight ? 'bg-[#292927]' : 'bg-white'}`}><div className="text-sm font-medium mb-3">阅读设置</div><label className="text-xs opacity-60">字号 {fontSize}px</label><input className="w-full accent-[#b0543f]" type="range" min="14" max="28" value={fontSize} onChange={e=>setFontSize(Number(e.target.value))}/><label className="text-xs opacity-60">行距 {lineHeight.toFixed(1)}</label><input className="w-full accent-[#b0543f]" type="range" min="1.4" max="2.6" step="0.1" value={lineHeight} onChange={e=>setLineHeight(Number(e.target.value))}/><label className="text-xs opacity-60">页面宽度 {pageWidth}px</label><input className="w-full accent-[#b0543f]" type="range" min="480" max="900" step="20" value={pageWidth} onChange={e=>setPageWidth(Number(e.target.value))}/><div className={`mt-3 pt-3 border-t ${border} space-y-2 text-[11px] ${soft}`}><div className="flex gap-2"><button onClick={()=>setReadingMode('scroll')} className={`flex-1 py-1.5 rounded-lg ${readingMode==='scroll'?'bg-[#b0543f]/15 text-[#b0543f]':card}`}>卷轴</button><button onClick={()=>setReadingMode('page')} className={`flex-1 py-1.5 rounded-lg ${readingMode==='page'?'bg-[#b0543f]/15 text-[#b0543f]':card}`}>仿真翻页</button></div><div className="flex gap-2"><select value={ttsMode} onChange={e=>setTtsMode(e.target.value as any)} className={`flex-1 p-1.5 rounded-lg bg-transparent border ${border}`}><option value="cloud">云端 TTS</option><option value="system">系统语音</option></select><select value={ttsSpeed} onChange={e=>setTtsSpeed(Number(e.target.value))} className={`p-1.5 rounded-lg bg-transparent border ${border}`}><option value={.8}>0.8×</option><option value={1}>1.0×</option><option value={1.2}>1.2×</option><option value={1.5}>1.5×</option></select></div><div>云端语音使用当前 OpenAI-compatible API 的 /audio/speech，不支持时自动回退系统语音。</div></div></div>}
 
         <div className="flex-1 flex overflow-hidden">
-          <div className={`flex-1 overflow-y-auto p-4 ${showChat ? 'hidden md:block md:w-1/2' : ''}`}
+          <div className={`flex-1 p-4 ${readingMode === 'page' ? 'overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory' : 'overflow-y-auto'} ${showChat ? 'hidden md:block md:w-1/2' : ''}`}
             ref={contentRef} onScroll={handleReaderScroll} onMouseUp={handleTextSelect} onTouchEnd={handleTextSelect}>
-            <div className="mx-auto" style={{maxWidth: pageWidth}}>
+            <div className={`mx-auto ${readingMode === 'page' ? `h-full rounded-[22px] px-6 py-5 ${isNight ? 'bg-[#252523] shadow-[0_18px_45px_rgba(0,0,0,.28)]' : 'bg-[#fffdf8] shadow-[0_18px_45px_rgba(94,67,46,.14)]'}` : ''}`} style={readingMode === 'page' ? { width: `min(${pageWidth}px, calc(100vw - 40px))`, minWidth: `min(${pageWidth}px, calc(100vw - 40px))`, height: '100%' } : {maxWidth: pageWidth}}>
               <p className={`text-xs ${soft} mb-5`}>{currentBook?.title} · #{chapter?.chapterNum}</p>
 
               <ChapterContent
@@ -530,6 +515,8 @@ export function CoReadingView() {
                 onAnnClick={(a) => setActiveAnn(a)}
                 fontSize={fontSize}
                 lineHeight={lineHeight}
+                readingMode={readingMode}
+                pageWidth={pageWidth}
               />
 
               {selection && (
@@ -559,60 +546,14 @@ export function CoReadingView() {
           </div>
 
           {showChat && (
-            <div className={`w-full md:w-1/2 flex flex-col border-l ${border} ${hasBg ? '' : card}`}>
-              <div className={`px-3 py-2 border-b ${border} flex items-center justify-between gap-2`}><div><div className="text-sm font-medium">🐆 星星陪读</div><div className={`text-[10px] ${soft}`}>对话自动同步到 Chat 的「📖 共读 · {currentBook?.title}」</div></div><select value={selectedModelKey} onChange={e=>setSelectedModelKey(e.target.value)} className={`max-w-[48%] text-[11px] px-2 py-1.5 rounded-lg border ${border} ${isNight ? 'bg-[#292927]' : 'bg-white'}`}>{availableModels.length ? availableModels.map(m=><option key={m.key} value={m.key}>{m.label}</option>) : <option value={`${settings.activeProfileId}::${settings.model}`}>{settings.model}</option>}</select></div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {chatMsgs.length === 0 && !streaming && (
-                  <div className={`text-center py-8 ${soft} text-sm`}>
-                    <p>选中一句话，或直接开聊</p>
-                    <p className="text-xs mt-1">AI 只就你正读的内容讨论，不会剧透</p>
-                  </div>
-                )}
-                {chatMsgs.map((m, i) => (
-                  <div key={i} className={`text-sm ${m.who === 'user' ? 'text-right' : ''}`}>
-                    <div
-                      className={`inline-block max-w-[85%] px-3 py-2 rounded-xl ${
-                        m.who === 'user'
-                          ? (uColor ? '' : (isNight ? 'bg-purple-900/30' : 'bg-purple-100'))
-                          : (aColor ? '' : (isNight ? 'bg-[#f5f4f1]/8' : 'bg-white shadow-sm'))
-                      }`}
-                      style={m.who === 'user' ? userBubbleStyle : aiBubbleStyle}
-                    >
-                      <p className="whitespace-pre-wrap">{m.text}</p>
-                    </div>
-                  </div>
-                ))}
-                {streaming && liveText && (
-                  <div className="text-sm">
-                    <div className={`inline-block max-w-[85%] px-3 py-2 rounded-xl ${aColor ? '' : (isNight ? 'bg-[#f5f4f1]/8' : 'bg-white shadow-sm')}`} style={aiBubbleStyle}>
-                      <p className="whitespace-pre-wrap">{liveText}</p>
-                      <span className="inline-block w-1.5 h-4 bg-current opacity-50 animate-pulse ml-0.5" />
-                    </div>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
+            <div className={`w-full md:w-1/2 min-w-0 flex flex-col border-l ${border} ${hasBg ? '' : card}`}>
+              <div className={`px-3 py-2 border-b ${border} flex items-center gap-2`}>
+                <div className="min-w-0 flex-1"><div className="text-sm font-medium">🐆 星星陪读</div><div className={`text-[10px] ${soft}`}>完整复用 Chat：删除、重 Roll、版本、图片、模型与工具都一致</div></div>
+                <select value={chatSessionId} onChange={e=>{setChatSessionId(e.target.value);setActiveSession(e.target.value)}} className={`max-w-[48%] text-[11px] px-2 py-1.5 rounded-lg border ${border} ${isNight ? 'bg-[#292927]' : 'bg-white'}`}>
+                  {getSortedSessions(settings).map(session=><option key={session.id} value={session.id}>{session.title}</option>)}
+                </select>
               </div>
-
-              {selection && (
-                <div className={`px-3 py-1 text-xs ${soft} border-t ${border} truncate`}>
-                  💬 讨论：「{selection.slice(0, 60)}...」
-                </div>
-              )}
-
-              <div className={`p-2 border-t ${border} flex gap-2`}>
-                <input
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
-                  placeholder={selection ? '聊聊这句...' : '说点什么...'}
-                  disabled={streaming}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm ${card} border ${border} bg-transparent outline-none`}
-                />
-                <button onClick={() => sendChat()} disabled={streaming || !chatInput.trim()}
-                  className={`p-2 rounded-lg ${accent} disabled:opacity-30`}>
-                  <Send size={16} />
-                </button>
-              </div>
+              <div className="flex-1 min-h-0"><ChatView embedded title={`共读 · ${currentBook?.title || ''}`} inputPlaceholder={selection ? `聊聊「${selection.slice(0,24)}…」` : '和星星聊这一页…'} contextInjection={readingChatContext(currentBook, chapter, selection, annotations)} onTurn={(role, content) => { if (currentBook && chapter) fetch('/api/coread/turn', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: currentBook.id, chapterNum: chapter.chapterNum, role, content }) }).then(() => { if (role === 'assistant') return reloadAnnotations() }).catch(() => {}) }} /></div>
             </div>
           )}
         </div>
@@ -631,17 +572,18 @@ export function CoReadingView() {
           <AnnotationPopover ann={activeAnn} isNight={isNight}
             onClose={() => setActiveAnn(null)}
             onDelete={() => deleteAnnotation(activeAnn.id)}
+            replyText={replyText} onReplyText={setReplyText}
+            onReply={async()=>{ if(!replyText.trim()||!currentBook)return; const res=await fetch('/api/coread/annotate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reply',bookId:currentBook.id,annId:activeAnn.id,content:replyText,author:'fire'})});const data=await res.json();if(data.annotation){setAnnotations(prev=>prev.map(a=>a.id===data.annotation.id?data.annotation:a));setActiveAnn(data.annotation);setReplyText('')}}}
             onChat={() => {
               setShowChat(true)
               setActiveAnn(null)
-              setChatInput(prev => prev || '聊聊这条批注')
             }}
           />
         )}
       </AnimatePresence>
 
       <AnimatePresence>
-        {showImport && <ImportModal onClose={() => setShowImport(false)} onImportText={handleImportText} onImportEpub={handleImportEpub} isNight={isNight} />}
+        {showImport && <ImportModal onClose={() => setShowImport(false)} onImportText={handleImportText} onImportEpub={handleImportEpub} onImportFile={handleImportDocument} isNight={isNight} />}
       </AnimatePresence>
 
       <AnimatePresence>
@@ -649,6 +591,49 @@ export function CoReadingView() {
       </AnimatePresence>
     </div>
   )
+}
+
+function readingChatContext(book: Book | null, chapter: ChapterData | null, selection: string, annotations: Annotation[]) {
+  if (!book || !chapter) return ''
+  const selected = selection ? `\n小火当前选中：「${selection}」` : ''
+  const nearby = selection ? chapter.content.slice(Math.max(0, chapter.content.indexOf(selection) - 300), chapter.content.indexOf(selection) + selection.length + 300) : chapter.content.slice(0, 800)
+  const anns = annotations.slice(-8).map(a => `${a.author === 'star' || a.annotator === 'ai' ? '星星' : '小火'}在「${a.originalText.slice(0,40)}」旁写：${a.annotation}`).join('\n')
+  return `【共读现场】你和小火正在读《${book.title}》（${book.author || '作者未知'}），第${chapter.chapterNum}章《${chapter.title}》。只依据下方真实原文讨论，绝不剧透后文。${selected}\n【当前页原文】\n${nearby}\n${anns ? `【本章最近批注】\n${anns}` : ''}\n保持星星本人的人格、记忆和全部工具能力。像坐在旁边一起读，短消息自然聊天。`
+}
+
+function extractMobiText(bytes: Uint8Array) {
+  if (bytes.length < 100) throw new Error('文件太小')
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const records = dv.getUint16(76, false)
+  const offsets: number[] = []
+  for (let i=0;i<records;i++) offsets.push(dv.getUint32(78+i*8, false))
+  offsets.push(bytes.length)
+  const first = offsets[0] || 0
+  const compression = dv.getUint16(first, false)
+  const textRecords = dv.getUint16(first + 8, false)
+  const decoder = new TextDecoder('utf-8', { fatal: false })
+  const chunks: Uint8Array[] = []
+  for (let i=1;i<=Math.min(textRecords, records-1);i++) {
+    const raw=bytes.slice(offsets[i], offsets[i+1])
+    if (compression === 1) chunks.push(raw)
+    else if (compression === 2) chunks.push(decompressPalmDoc(raw))
+    else throw new Error(`暂不支持 MOBI 压缩类型 ${compression}`)
+  }
+  const size=chunks.reduce((n,c)=>n+c.length,0), joined=new Uint8Array(size); let at=0
+  for(const c of chunks){joined.set(c,at);at+=c.length}
+  return decoder.decode(joined).replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/\s{3,}/g,'\n\n').trim()
+}
+
+function decompressPalmDoc(src: Uint8Array) {
+  const out: number[]=[]
+  for(let i=0;i<src.length;){ const c=src[i++]
+    if(c===0) out.push(0)
+    else if(c<=8){for(let n=0;n<c&&i<src.length;n++)out.push(src[i++])}
+    else if(c<=0x7f) out.push(c)
+    else if(c>=0xc0){out.push(32,c^0x80)}
+    else {const c2=src[i++]||0, pair=(c<<8)|c2, distance=(pair>>3)&0x7ff, length=(pair&7)+3; for(let n=0;n<length;n++)out.push(out[out.length-distance]||32)}
+  }
+  return new Uint8Array(out)
 }
 
 // ── Reading statistics ──
@@ -664,9 +649,9 @@ function StatsPanel({ stats, isNight, onClose }: { stats: BookStat[]; isNight: b
 }
 
 // ── Chapter Content: React-node segmentation (cross-line safe, clickable) ──
-function ChapterContent({ content, annotations, isNight, onAnnClick, fontSize, lineHeight }: {
+function ChapterContent({ content, annotations, isNight, onAnnClick, fontSize, lineHeight, readingMode, pageWidth }: {
   content: string; annotations: Annotation[]; isNight: boolean
-  onAnnClick: (a: Annotation) => void; fontSize: number; lineHeight: number
+  onAnnClick: (a: Annotation) => void; fontSize: number; lineHeight: number; readingMode: 'scroll' | 'page'; pageWidth: number
 }) {
   if (!content) return null
 
@@ -704,15 +689,15 @@ function ChapterContent({ content, annotations, isNight, onAnnClick, fontSize, l
   if (cursor < content.length) nodes.push(<Fragment key={k++}>{content.slice(cursor)}</Fragment>)
 
   return (
-    <div className="font-serif" style={{ whiteSpace: 'pre-wrap', fontSize, lineHeight }}>
+    <div data-reader-body className={`font-serif ${readingMode === 'page' ? 'h-[calc(100dvh-180px)]' : ''}`} style={{ whiteSpace: 'pre-wrap', fontSize, lineHeight, ...(readingMode === 'page' ? { columnWidth: Math.max(280, pageWidth - 48), columnGap: 80, columnFill: 'auto' as const } : {}) }}>
       {nodes}
     </div>
   )
 }
 
 // ── Annotation popover ──
-function AnnotationPopover({ ann, isNight, onClose, onDelete, onChat }: {
-  ann: Annotation; isNight: boolean; onClose: () => void; onDelete: () => void; onChat: () => void
+function AnnotationPopover({ ann, isNight, onClose, onDelete, onChat, replyText, onReplyText, onReply }: {
+  ann: Annotation; isNight: boolean; onClose: () => void; onDelete: () => void; onChat: () => void; replyText: string; onReplyText: (v: string) => void; onReply: () => void
 }) {
   const bg = isNight ? 'bg-[#2a2a29] text-[#f5f4f1]' : 'bg-white text-[#1f1f1e]'
   const border = isNight ? 'border-[#f5f4f1]/10' : 'border-[#1f1f1e]/10'
@@ -730,7 +715,7 @@ function AnnotationPopover({ ann, isNight, onClose, onDelete, onChat }: {
         {ann.originalText && (
           <p className="text-xs opacity-60 mb-2 border-l-2 border-current/20 pl-2 line-clamp-3">「{ann.originalText}」</p>
         )}
-        <p className="text-sm whitespace-pre-wrap mb-4">{ann.annotation}</p>
+        <p className="text-sm whitespace-pre-wrap mb-3">{ann.annotation}</p>{ann.replies?.length ? <div className={`mb-3 space-y-2 border-t ${border} pt-3`}>{ann.replies.map(r=><div key={r.id} className="text-xs"><span className="opacity-50">{r.author==='star'?'🐆 星星':'🦦 小火'}：</span>{r.content}</div>)}</div>:null}<div className="flex gap-2 mb-3"><input value={replyText} onChange={e=>onReplyText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')onReply()}} placeholder="回复这条批注…" className={`flex-1 px-3 py-2 rounded-lg text-xs border ${border} bg-transparent outline-none`}/><button onClick={onReply} className="p-2 rounded-lg bg-[#b0543f]/15 text-[#b0543f]"><Reply size={13}/></button></div>
         <div className="flex gap-2">
           <button onClick={onChat} className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-blue-500/20 text-blue-400">💬 聊这条</button>
           <button onClick={onDelete} className="px-3 py-1.5 text-xs rounded-lg bg-red-500/20 text-red-400 flex items-center gap-1">
@@ -836,13 +821,14 @@ function AppearancePanel({ onClose, isNight, onToggleTheme }: { onClose: () => v
 }
 
 // ── Import Modal ──
-function ImportModal({ onClose, onImportText, onImportEpub, isNight }: {
+function ImportModal({ onClose, onImportText, onImportEpub, onImportFile, isNight }: {
   onClose: () => void
   onImportText: (title: string, author: string, content: string) => void
   onImportEpub: (file: File) => void
+  onImportFile: (file: File) => void
   isNight: boolean
 }) {
-  const [tab, setTab] = useState<'epub' | 'text'>('epub')
+  const [tab, setTab] = useState<'file' | 'text'>('file')
   const [title, setTitle] = useState('')
   const [author, setAuthor] = useState('')
   const [text, setText] = useState('')
@@ -860,19 +846,19 @@ function ImportModal({ onClose, onImportText, onImportEpub, isNight }: {
         onClick={e => e.stopPropagation()}>
         <h3 className="text-lg mb-3">导入书籍</h3>
         <div className="flex gap-2 mb-4">
-          <button onClick={() => setTab('epub')} className={`px-3 py-1 rounded-lg text-sm ${tab === 'epub' ? 'bg-purple-500/20' : card}`}>
-            <Upload size={12} className="inline mr-1" /> EPUB
+          <button onClick={() => setTab('file')} className={`px-3 py-1 rounded-lg text-sm ${tab === 'file' ? 'bg-purple-500/20' : card}`}>
+            <Upload size={12} className="inline mr-1" /> 文件
           </button>
           <button onClick={() => setTab('text')} className={`px-3 py-1 rounded-lg text-sm ${tab === 'text' ? 'bg-purple-500/20' : card}`}>
             <FileText size={12} className="inline mr-1" /> 纯文本
           </button>
         </div>
 
-        {tab === 'epub' ? (
+        {tab === 'file' ? (
           <div>
-            <p className="text-sm opacity-60 mb-3">选择一个 .epub 文件（请用公版书或你有权使用的书）</p>
-            <input ref={fileRef} type="file" accept=".epub"
-              onChange={e => { const f = e.target.files?.[0]; if (f) onImportEpub(f) }}
+            <p className="text-sm opacity-60 mb-3">支持 EPUB、PDF、TXT，以及实验性的 MOBI/AZW/AZW3（请使用你有权阅读的文件）</p>
+            <input ref={fileRef} type="file" accept=".epub,.pdf,.mobi,.azw,.azw3,.txt"
+              onChange={e => { const f = e.target.files?.[0]; if (f) onImportFile(f) }}
               className="text-sm" />
           </div>
         ) : (

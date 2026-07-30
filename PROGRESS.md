@@ -1982,3 +1982,56 @@ author 默认 star（🐆），AI 就是星星。
 - `write_note_coread.progress` 是全书绝对百分比，而页面滚动是章内百分比：新增 `updateAbsoluteProgress()`，避免把绝对进度重复按章节折算。
 - 划线/书签允许空评论正文，annotate route 校验需按 kind 放行；普通 comment 仍要求正文。
 - 验证：`./node_modules/.bin/tsc --noEmit` EXIT=0；`git diff --check` 通过。遵守项目约定，未在本机运行 Next build，交 Zeabur 自动构建。
+
+---
+
+## 2026-08-01 — 共读 v5：审美书架 + Chat 本体复用 + 精确阅读/导入/导出
+
+### 完成
+
+#### 1. 更小、更有呼吸感的书架
+- 网格由桌面 5 列提升到 6–7 列，手机 3 列；封面整体缩小，横纵留白加大。
+- 页面最大宽度扩展到 `max-w-7xl`，内容区使用更宽松的内边距和 10–12 的纵向书距。
+- 封面阴影减轻，保留书脊但减少压迫感；空书架文案同步支持 EPUB/PDF/MOBI/TXT。
+
+#### 2. 共读聊天直接复用 ChatView
+- `ChatView` 新增 embedded 模式、阅读上下文注入和 turn callback，不再维护共读专用残缺聊天 UI。
+- 共读端因此与 Chat 端共用同一套：消息删除、重 Roll、版本切换、复制、编辑、图片发送、thinking、工具调用、模型选择与 token 展示。
+- 共读聊天顶部可选择任意 Chat 会话；每本书仍自动建立默认 `📖 共读 · 书名` 会话。
+- 当前书名、章节、选中文字、真实原文窗口和本章批注通过 `bookmark_injections` 注入 Chat 主管道，星星人格和全部工具不变。
+- 共读 turn 同时写入该书独立讨论记录，用于统计；星星回复中的 `[批注:原文|批注]` 仍可落到页面。
+
+#### 3. 阅读体验
+- 新增卷轴/仿真翻页两种模式；翻页模式使用多栏纸页排版、横向分页、翻页按钮、平滑滚动和纸张阴影。
+- 新增章节内精确位置恢复：保存字符 offset + 阅读模式，不再只记章节百分比；老书无字段时自动兼容。
+- 阅读进度保存同时记录 `lastOffset/readingMode` 到 `/persistent/coread/books/*.json`。
+
+#### 4. 批注回复与导出
+- Annotation 新增 replies 数组；批注弹窗可直接回复并显示星星/小火回复串。
+- `comment_coread` 工具新增 `reply_to`，星星也能回复已有批注。
+- 新增 Markdown/JSON 阅读笔记导出 API，包含书籍信息、划线、评论、书签、回复串和独立阅读笔记。
+
+#### 5. TTS 与文件导入
+- 新增 OpenAI-compatible 云端 TTS：调用当前 API 的 `/audio/speech`，支持 0.8/1.0/1.2/1.5 倍速；不支持时回退浏览器系统语音。
+- EPUB 保持原有封面/章节解析。
+- PDF 使用浏览器端 PDF.js 动态加载并逐页提取文本。
+- MOBI/AZW/AZW3 新增实验性 PalmDOC/MOBI 文本解析；未加密、常见 PalmDOC 压缩文件可导入，不支持 DRM/特殊压缩时明确报错。
+- TXT 继续支持自动分章。
+
+### 新增 API
+- `POST /api/coread/turn`
+- `POST /api/coread/tts`
+- `GET /api/coread/export?bookId=...&format=markdown|json`
+
+### 数据兼容
+- 新字段均为可选：`Book.lastOffset`、`Book.readingMode`、`Annotation.replies`。
+- 永久数据仍全部位于 Zeabur `/persistent/coread/`；没有迁移脚本要求。
+
+### Debug 笔记
+- 共读若单独复制 Chat UI，功能会持续漂移；正确做法是给 `ChatView` 增加 embedded/context/onTurn 边界，直接复用状态、消息版本和发送管道。
+- 选择同步窗口不能只做“额外复制”：共读嵌入 Chat 后，应直接把目标会话设为 active session，消息本身只落一份，避免重复和两边编辑不一致。
+- 阅读精确恢复用 DOM Range 从视口左上采样到字符 offset；获取 caret 失败时才按滚动百分比估算，兼容 Safari/PDF 提取文本。
+- PDF.js 改为运行时 CDN dynamic import，避免为了一个按需导入器给主包增加大依赖；离线环境下 PDF 导入会明确失败，EPUB/TXT/MOBI 不受影响。
+- MOBI 是容器家族而非单一纯文本格式；本版实现 PalmDOC compression 1/2，DRM、HUFF/CDIC 和复杂 AZW3 仍不承诺支持，UI 标为实验性。
+- 云端 TTS 不能假设所有 OpenAI-compatible 站都实现 `/audio/speech`，失败后必须自动回退系统 SpeechSynthesis。
+- 验证：`./node_modules/.bin/tsc --noEmit` EXIT=0；`git diff --check` 通过。遵守项目约定，未本地运行 Next build。

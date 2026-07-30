@@ -187,6 +187,7 @@ interface ChatStore {
   resetSettings: () => void
 
   createSession: () => string
+  ensureSession: (id: string, title: string, activate?: boolean) => string
   setActiveSession: (id: string) => void
   deleteMessage: (id: string) => void
   truncateFrom: (id: string) => void
@@ -431,6 +432,18 @@ export const useChatStore = create<ChatStore>()(
           const settings = normalizeSettings(state.settings)
           const nextSession = { id, title: '新的对话', messages: [], pinned: false, createdAt: now, updatedAt: now }
           return { settings: { ...settings, sessions: [nextSession, ...settings.sessions], activeSessionId: id }, messages: [] }
+        })
+        return id
+      },
+
+      ensureSession: (id, title, activate = true) => {
+        const now = Date.now()
+        set((state) => {
+          const settings = normalizeSettings(state.settings)
+          const existing = settings.sessions.find((session) => session.id === id)
+          const sessions = existing ? settings.sessions : [{ id, title, messages: [], pinned: false, createdAt: now, updatedAt: now }, ...settings.sessions]
+          const nextSettings = { ...settings, sessions, activeSessionId: activate ? id : settings.activeSessionId }
+          return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
         })
         return id
       },

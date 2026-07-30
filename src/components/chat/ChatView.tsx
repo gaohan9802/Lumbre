@@ -85,7 +85,15 @@ function useConfirm() {
 
 /* ── main component ─────────────────────── */
 
-export function ChatView() {
+export interface ChatViewProps {
+  embedded?: boolean
+  contextInjection?: string
+  title?: string
+  inputPlaceholder?: string
+  onTurn?: (role: 'user' | 'assistant', content: string) => void
+}
+
+export function ChatView({ embedded = false, contextInjection = '', title, inputPlaceholder = '说点什么...', onTurn }: ChatViewProps = {}) {
   const { theme } = useTheme()
   const n = theme === 'night'
   const {
@@ -210,6 +218,8 @@ export function ChatView() {
       const suffix = endInjections.length ? '\n\n[书签提醒]\n' + endInjections.join('\n---\n') : ''
       systemPrompt = (systemPrompt || '') + prefix + suffix
     }
+    const readingInjection = contextInjection.trim()
+    const bookmarkInjections = readingInjection
 
     // Always stream the transport. A non-streaming /api/chat returns zero bytes
     // until the whole tool loop finishes (30-90s), which iOS Safari / mobile
@@ -233,6 +243,7 @@ export function ChatView() {
           prompt_caching: settings.promptCaching,
           temperature: settings.temperature,
           stream: true,
+          bookmark_injections: bookmarkInjections,
           api_profile: profile ? {
             provider: profile.provider, baseUrl: profile.baseUrl,
             apiKey: profile.apiKey, modelId: model,
@@ -330,6 +341,7 @@ export function ChatView() {
     }
     stickBottomRef.current = true
     addMessage(userMsg)
+    onTurn?.('user', userMsg.content)
     setInput('')
     setPendingImages([])
     setIsLoading(true)
@@ -350,10 +362,11 @@ export function ChatView() {
     })
 
     await doSend(apiMessages, (data) => {
+      const assistantContent = data.content || data.error || '...'
       addMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.content || data.error || '...',
+        content: assistantContent,
         timestamp: Date.now(),
         thinking: data.thinking,
         input_tokens: data.input_tokens,
@@ -365,6 +378,7 @@ export function ChatView() {
         providerId: profile?.id,
         modelId: model,
       })
+      onTurn?.('assistant', assistantContent)
       setIsLoading(false)
       setStreamText('')
       setStreamThinking('')
@@ -627,33 +641,33 @@ export function ChatView() {
         {/* background overlay for opacity */}
         {ap.bgImage && <div className="absolute inset-0 pointer-events-none z-0" style={bgOverlayStyle} />}
 
-        <div className="hidden lg:block h-full relative z-10">
+        {!embedded && <div className="hidden lg:block h-full relative z-10">
           <SidebarContent />
-        </div>
+        </div>}
 
         <div className="flex flex-col h-full flex-1 min-w-0 relative z-10">
           {/* desktop header */}
-          <div className="hidden md:flex px-6 py-3 items-center justify-between border-b border-current/5">
+          {!embedded && <div className="hidden md:flex px-6 py-3 items-center justify-between border-b border-current/5">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setSessionDrawerOpen(true)} className={`lg:hidden p-2 rounded-xl ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-100'}`}>
                 <PanelLeft size={16} />
               </button>
-              <h2 className="text-sm font-medium opacity-80 truncate">{activeSession?.title || '对话'}</h2>
+              <h2 className="text-sm font-medium opacity-80 truncate">{title || activeSession?.title || '对话'}</h2>
             </div>
             <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl transition ${n ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
               <Settings2 size={16} />
             </button>
-          </div>
+          </div>}
 
           {/* mobile header */}
-          <div className="md:hidden flex justify-between items-center px-4 pt-3 pb-1">
+          {!embedded && <div className="md:hidden flex justify-between items-center px-4 pt-3 pb-1">
             <button onClick={() => setSessionDrawerOpen(true)} className={`p-2 rounded-xl ${n ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
               <PanelLeft size={16} />
             </button>
             <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl ${n ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
               <Settings2 size={16} />
             </button>
-          </div>
+          </div>}
 
           {/* messages */}
           <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-4" onClick={() => deleteMenuId && setDeleteMenuId(null)}>
@@ -966,7 +980,7 @@ export function ChatView() {
             <div ref={messagesEndRef} />
           </div>
 
-          <button onClick={handleAppleQuestionnaire} disabled={isLoading} title="把最近30条上下文交给星星填写问卷" className={`absolute right-4 bottom-[176px] z-20 w-[52px] h-[52px] rounded-full text-2xl opacity-30 hover:opacity-90 disabled:opacity-10 transition`}>🍎</button>
+          {!embedded && <button onClick={handleAppleQuestionnaire} disabled={isLoading} title="把最近30条上下文交给星星填写问卷" className={`absolute right-4 bottom-[176px] z-20 w-[52px] h-[52px] rounded-full text-2xl opacity-30 hover:opacity-90 disabled:opacity-10 transition`}>🍎</button>}
 
           {/* footer */}
           <div className={`p-4 border-t backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
@@ -1015,7 +1029,7 @@ export function ChatView() {
             {/* input area */}
             <div className={`flex items-end gap-2 px-3 py-2 rounded-2xl ${n ? 'bg-night-surface' : 'bg-gray-50'}`}>
               <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
-                placeholder="说点什么..." rows={1} enterKeyHint="enter"
+                placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
                 className={`flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
               <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
               <button onClick={() => imgInputRef.current?.click()} disabled={uploadingImg} title="上传图片到照片墙"
