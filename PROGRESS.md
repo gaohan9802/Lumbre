@@ -2064,3 +2064,24 @@ author 默认 star（🐆），AI 就是星星。
 ### 数据兼容
 - `/persistent/coread/books/*.json` 继续原位使用；新增批注 offset 字段均为可选。
 - 老书的 `lastOffset/readingMode` 缺失时自动回退 0/卷轴；老批注自动搜索原文兼容。
+
+---
+
+## 2026-08-02 — Chat `⚠️ terminated` 上游断流诊断
+
+### 排查结论
+- 前端的 `⚠️ terminated` 来自 `/api/chat` SSE 的 `error` 事件，并非 ChatView 主动 abort，也不是会话数据损坏。
+- 服务端读取模型上游 SSE 时，Node/Undici 在远端 socket 非正常关闭时抛出 `TypeError: terminated`（常见 cause 为 `UND_ERR_SOCKET` / `ECONNRESET`）。原实现直接透传 `err.message`，所以 UI 只看到含糊的 `terminated`。
+- 高概率触发条件：中转站临时断流、长 thinking/长回复、多轮工具调用后的第二次或后续模型请求、较大的上下文/图片请求；若固定集中在某个渠道，则优先判断该渠道稳定性。
+- Lumbre 自己没有对 chat 主请求设置 AbortController；服务端到浏览器已有 10 秒 heartbeat，因此该词不是本地 10/20 秒超时产生的。
+
+### 修复
+- Anthropic 与 OpenAI-compatible 两条流式读取路径分别捕获 reader 异常，不再把裸 `terminated` 透传给用户。
+- 按 socket 断开、超时、DNS/连接失败分类为可理解的中文提示；已收到的部分回复明确保留并提示可重 Roll。
+- 新增永久诊断日志 `/persistent/chat-upstream-errors.jsonl`，记录时间、provider、model、上游 origin、工具循环轮次、是否已产生输出、工具调用数和 Undici cause/socket 字节统计。
+- 日志严格不记录 API Key、system prompt、聊天正文和请求 body；超过 1 MiB 自动轮转为 `.1`。
+- 顶层 SSE catch 也增加友好兜底，确保未知路径不再显示裸 `terminated`。
+
+### 验证
+- `./node_modules/.bin/tsc --noEmit` 通过。
+- `git diff --check` 通过。

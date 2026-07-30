@@ -3,6 +3,8 @@ import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef, FETCH_TOOL_NAMES } fro
 import { reportActivity } from '@/server/autowake'
 import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
+import fs from 'fs'
+import path from 'path'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -30,6 +32,81 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 语气自然温柔，像真正的伴侣。不要列工具清单给用户看，直接用就好。`
 
 type Provider = 'anthropic' | 'openai-compatible'
+
+const CHAT_UPSTREAM_ERROR_LOG = path.join('/persistent', 'chat-upstream-errors.jsonl')
+
+function errorDetails(err: any) {
+  const cause = err?.cause
+  return {
+    name: String(err?.name || ''),
+    message: String(err?.message || err || 'unknown error'),
+    causeName: String(cause?.name || ''),
+    causeMessage: String(cause?.message || ''),
+    causeCode: String(cause?.code || cause?.errno || ''),
+    causeSocket: cause?.socket ? {
+      localAddress: cause.socket.localAddress,
+      localPort: cause.socket.localPort,
+      remoteAddress: cause.socket.remoteAddress,
+      remotePort: cause.socket.remotePort,
+      bytesWritten: cause.socket.bytesWritten,
+      bytesRead: cause.socket.bytesRead,
+    } : undefined,
+  }
+}
+
+/**
+ * Keep intermittent relay/socket failures diagnosable across Zeabur restarts.
+ * Never log API keys, request bodies, system prompts, or message contents.
+ */
+function logUpstreamStreamError(meta: {
+  provider: Provider; model: string; baseUrl: string; iteration: number;
+  hadOutput: boolean; toolCallCount: number; error: any;
+}) {
+  const safeBase = (() => {
+    try { return new URL(meta.baseUrl).origin } catch { return '(invalid base URL)' }
+  })()
+  const line = JSON.stringify({
+    at: new Date().toISOString(),
+    provider: meta.provider,
+    model: meta.model,
+    upstreamOrigin: safeBase,
+    iteration: meta.iteration,
+    hadOutput: meta.hadOutput,
+    toolCallCount: meta.toolCallCount,
+    ...errorDetails(meta.error),
+  }) + '\n'
+  try {
+    fs.mkdirSync(path.dirname(CHAT_UPSTREAM_ERROR_LOG), { recursive: true })
+    // Bound the permanent log: keep the previous ~1 MiB as a single backup.
+    try {
+      if (fs.statSync(CHAT_UPSTREAM_ERROR_LOG).size > 1024 * 1024) {
+        fs.renameSync(CHAT_UPSTREAM_ERROR_LOG, CHAT_UPSTREAM_ERROR_LOG + '.1')
+      }
+    } catch { /* file does not exist yet */ }
+    fs.appendFileSync(CHAT_UPSTREAM_ERROR_LOG, line, 'utf8')
+  } catch {
+    console.error('[chat upstream stream error]', line.trim())
+  }
+}
+
+function friendlyStreamError(err: any, hadOutput: boolean): string {
+  const d = errorDetails(err)
+  const raw = `${d.name} ${d.message} ${d.causeName} ${d.causeMessage} ${d.causeCode}`.toLowerCase()
+  if (/terminated|socket|other side closed|econnreset|und_err_socket|premature close|aborted/.test(raw)) {
+    return hadOutput
+      ? '上游模型连接中途断开了，前面已收到的内容已保留。通常是模型中转站临时断流、长思考/长回复或多轮工具调用导致；可以直接点重 Roll。'
+      : '上游模型连接在返回内容前断开了。通常是模型中转站临时断流或当前渠道不稳定，请重试；若连续出现，换同模型的另一个渠道。'
+  }
+  if (/timeout|timed out|etimedout/.test(raw)) {
+    return hadOutput
+      ? '上游模型响应超时，前面已收到的内容已保留。可以点重 Roll，或临时降低思考预算。'
+      : '上游模型响应超时了。请重试，或临时降低思考预算/缩短上下文。'
+  }
+  if (/fetch failed|enotfound|eai_again|connect/.test(raw)) {
+    return 'Zeabur 暂时无法连接模型上游。请稍后重试；若连续出现，检查 API 渠道地址或换一个渠道。'
+  }
+  return `上游模型流异常：${d.message || '未知连接错误'}`
+}
 
 function trimSlash(s: string) { return (s || '').replace(/\/+$/, '') }
 function normalizeOpenAIBase(baseUrl: string) {
@@ -363,7 +440,9 @@ export async function POST(req: NextRequest) {
               await streamAnthropic({ ...params, send })
             }
           } catch (err: any) {
-            send('error', { content: err.message })
+            // Last-resort guard. Provider readers normally classify/log the error
+            // closer to the failing iteration, but never expose bare `terminated`.
+            send('error', { content: friendlyStreamError(err, false) })
           }
           clearInterval(heartbeat)
           closed = true
@@ -610,14 +689,16 @@ async function streamAnthropic(params: {
     const toolUses: any[] = []
     const toolInputBuffers: Record<number, string> = {}
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop() || ''
+    let iterThinking = ''
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() || ''
 
-      for (const line of lines) {
+        for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         try {
           const evt = JSON.parse(line.slice(6))
@@ -626,6 +707,7 @@ async function streamAnthropic(params: {
               iterText += evt.delta.text
               send('text', { content: evt.delta.text })
             } else if (evt.delta?.type === 'thinking_delta') {
+              iterThinking += evt.delta.thinking || ''
               send('thinking', { content: evt.delta.thinking })
             } else if (evt.delta?.type === 'input_json_delta') {
               const idx = evt.index
@@ -645,8 +727,18 @@ async function streamAnthropic(params: {
             totalUsage.cache_read += u.cache_read_input_tokens || 0
             totalUsage.cache_create += u.cache_creation_input_tokens || 0
           }
-        } catch { /* skip */ }
+          } catch { /* skip malformed upstream event */ }
+        }
       }
+    } catch (err: any) {
+      const hadOutput = !!(iterText.trim() || iterThinking.trim())
+      logUpstreamStreamError({
+        provider: 'anthropic', model, baseUrl, iteration: iter + 1,
+        hadOutput, toolCallCount: allToolCalls.length, error: err,
+      })
+      send('error', { content: friendlyStreamError(err, hadOutput) })
+      try { await reader.cancel() } catch {}
+      return
     }
 
     for (const tu of toolUses) {
@@ -887,14 +979,15 @@ async function streamOpenAI(params: {
     let finishReason = ''
     const toolCallMap: Record<number, { id: string; name: string; args: string }> = {}
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop() || ''
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() || ''
 
-      for (const line of lines) {
+        for (const line of lines) {
         if (!line.startsWith('data: ') || line === 'data: [DONE]') continue
         try {
           const chunk = JSON.parse(line.slice(6))
@@ -928,8 +1021,18 @@ async function streamOpenAI(params: {
               if (tc.function?.arguments) toolCallMap[idx].args += tc.function.arguments
             }
           }
-        } catch { /* skip */ }
+          } catch { /* skip malformed upstream chunk */ }
+        }
       }
+    } catch (err: any) {
+      const hadOutput = !!(iterText.trim() || iterThinking.trim())
+      logUpstreamStreamError({
+        provider: 'openai-compatible', model, baseUrl, iteration: iter + 1,
+        hadOutput, toolCallCount, error: err,
+      })
+      send('error', { content: friendlyStreamError(err, hadOutput) })
+      try { await reader.cancel() } catch {}
+      return
     }
 
     const toolCalls = Object.values(toolCallMap)

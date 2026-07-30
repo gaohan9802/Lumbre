@@ -23,3 +23,29 @@
 - **目录页数**：粗略字数估算只用于后台实测尚未完成时的即时占位；每章随后使用同一 DOM 分页器计算真实页数组并缓存。页码明确属于当前设备/当前排版。
 - **选择文本 trim 坑**：直接对 selection.toString() 做 trim 后仍用原 Range 起点，会让 offset 包含前导空白、end 却按 trim 后长度算，范围错位；现在把 `raw.length - raw.trimStart().length` 加回起点。
 - **验证**：`./node_modules/.bin/tsc --noEmit` EXIT=0；`git diff --check` 通过；确认代码内已无 columnWidth/columnGap/横向 scrollBy 旧分页路径。按项目约定未在低内存环境执行 Next build。
+
+## 2026-08-02 — Chat 偶发 `⚠️ terminated`
+
+### 结论
+- `terminated` 是 Node 20 内置 Undici 在上游 response body 尚未正常结束、远端 socket 被关闭时常见的读取异常文案。
+- 异常发生在模型上游 SSE 的 `await reader.read()`，不是 HTTP 非 2xx，所以只检查 `res.ok` 无法捕获。
+- 前端没有主动 abort Chat 请求；Lumbre → 浏览器已有 10 秒 SSE heartbeat，但 heartbeat 只能保活这一段，不能阻止“模型中转站 → Lumbre”断流。
+
+### 常见触发条件
+- 中转站瞬时不稳定、重启或负载过高。
+- 长 thinking、长回复、上下文过大或带图片。
+- 多轮工具调用：一次用户消息可能产生 2–15 次独立上游 completion，任一后续轮断流都会终止当前 turn。
+- 若只在某个 baseUrl/model 组合出现，优先判断该模型渠道兼容性或稳定性。
+
+### 本次处理
+- Anthropic/OpenAI-compatible reader 分别捕获异常并分类成中文提示。
+- 写入 `/persistent/chat-upstream-errors.jsonl`；不记录 Key、prompt、正文或请求 body。
+- 日志字段：时间、provider、model、upstreamOrigin、iteration、hadOutput、toolCallCount、causeCode、socket 字节统计。
+- 超过 1 MiB 自动轮转到 `.1`。
+- 不自动重试已经开始输出的 turn：否则可能重复回答，写工具已经执行时还可能产生重复副作用。保留部分输出并让用户手动重 Roll更安全。
+
+### 下次再现的排查命令
+```sh
+tail -20 /persistent/chat-upstream-errors.jsonl
+```
+重点对比 `upstreamOrigin`、`model`、`iteration`、`hadOutput`、`causeCode` 和 `bytesRead`。
