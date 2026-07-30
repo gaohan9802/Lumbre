@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 const views = {
   chat: ChatView,
-  trio: TrioView,
+  
   diary: DiaryView,
   notes: NotesView,
   todo: TodoView,

@@ -342,11 +342,11 @@ export function ChatView() {
 
   const handleAppleQuestionnaire = async () => {
     if (isLoading) return
-    const ok = await ask('把最近 30 条上下文交给星星，并请他填写一份 🍎 私密问卷？')
+    const ok = await ask('把最近 30 条上下文交给星星，并请他填写一份 💕 亲密问卷？')
     if (!ok) return
     const profile = getActiveProfile(settings)
     const model = settings.model
-    const prompt = `🍎 私密记录问卷。请根据最近30条上下文填写；不确定的字段先用最合理的值，并在 notes 里标注不确定。完成后必须调用 create_intimacy_record 保存，不要只把 JSON 发在聊天里。\n\n字段：date, time_start, duration_min, rounds, positions[], initiated_by(star/fire), star_notes, fire_notes, tags[], scores.star/fire（foreplay/penetration/orgasm/aftercare/atmosphere/talk，0-10）, encore[], role_play（可选，自由填写）。`
+    const prompt = `💕 亲密日记问卷。请根据最近30条上下文填写；不确定的字段先用最合理的值，并在 notes 里标注不确定。完成后必须调用 create_intimacy_record 保存，不要只把 JSON 发在聊天里。\n\n字段：date, time_start, duration_min, rounds, positions[], initiated_by(star/fire), star_notes, fire_notes, tags[], scores.star/fire（foreplay/penetration/orgasm/aftercare/atmosphere/talk，0-10）, encore[], role_play（可选，自由填写）。`
     const now = Date.now()
     const userMsg: ChatMessage = { id: `${now}-apple`, role: 'user', content: prompt, timestamp: now, providerId: profile?.id, modelId: model }
     addMessage(userMsg); setIsLoading(true); stickBottomRef.current = true
@@ -580,7 +580,7 @@ export function ChatView() {
       </div>
       <div className={`p-3 border-t ${n ? 'border-night-border' : 'border-day-border'}`}>
         <button onClick={() => { setIntimacyOpen(true); if (mobile) setSessionDrawerOpen(false) }} className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs transition ${n ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-day-pinkLight hover:bg-day-lemon'}`}>
-          <span className="text-base">🍎</span><span>私密记录</span>
+          <span className="text-base">💕</span><span>亲密日记</span>
         </button>
       </div>
     </div>
@@ -933,7 +933,7 @@ export function ChatView() {
             <div ref={messagesEndRef} />
           </div>
 
-          <button onClick={handleAppleQuestionnaire} disabled={isLoading} title="把最近30条上下文交给星星填写问卷" className={`absolute right-4 bottom-[176px] z-20 w-[52px] h-[52px] rounded-full text-xl shadow-[0_10px_35px_rgba(0,0,0,.28)] border transition hover:-translate-y-1 active:scale-95 disabled:opacity-40 ${n ? 'bg-gradient-to-br from-night-amberGlow to-night-amberDim border-night-amber/50' : 'bg-gradient-to-br from-[#ff8aa1] to-day-pink border-white/70'}`}>🍎</button>
+          <button onClick={handleAppleQuestionnaire} disabled={isLoading} title="把最近30条上下文交给星星填写问卷" className={`absolute right-4 bottom-[176px] z-20 w-[52px] h-[52px] rounded-full text-xl opacity-40 hover:opacity-100 disabled:opacity-20 transition bg-transparent`}>💕</button>
 
           {/* footer */}
           <div className={`p-4 border-t backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
