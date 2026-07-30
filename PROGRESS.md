@@ -1926,3 +1926,59 @@ author 默认 star（🐆），AI 就是星星。
 - 根因：流式阶段虽然按顺序展示事件，但 `doSend` 完成时只返回聚合 `content`、`thinking` 和 `tool_calls`，没有返回 `content_blocks`；持久化后的消息因此走 legacy 渲染，把所有工具统一放在气泡顶部。
 - 修复原则：展示态和持久化态必须复用同一份有序块数组，不能在结束时根据聚合字段重新推断顺序。
 - 验证：`./node_modules/.bin/tsc --noEmit` 通过；`git diff --check` 通过。遵守项目约定，未在本机运行 Next build。
+
+---
+
+## 2026-07-31 — 共读 v4：微信读书式书架 + 星星全权限陪读 + 共读工具/统计
+
+### 完成
+
+#### 1. 书架与阅读器升级
+- 书架改成真实封面书架：2:3 立体书封、书脊阴影、无封面自动生成渐变封面。
+- EPUB 导入时自动从 OPF manifest 提取 cover-image，并以 data URL 持久化到书籍 JSON。
+- 支持书名/作者搜索、最近阅读/进度/书名排序、网格/列表切换。
+- 每本书直接显示总体进度、划线数、评论数；目录页显示封面、作者、进度、划线/评论/书签数和“继续阅读”。
+- 阅读器新增字号、行距、版心宽度调节，顶部实时阅读进度条。
+- 新增浏览器原生 SpeechSynthesis TTS：朗读整章或当前选中文字，可随时停止。
+- 选中文本操作扩展为：划线、评论、书签、和星星聊这句。
+- 批注渲染区分：划线=黄色高亮、书签=绿色底线、小火评论=紫色、星星评论=砖红下划线。
+
+#### 2. 共读中的星星与 Chat 完全打通
+- 共读仍转发 `/api/chat` 星星主管道，因此使用与 Chat 相同的默认 system prompt、全部工具权限。
+- 共读请求新增透传 Chat 设置：`systemPrompt`、`thinkingBudget`、`temperature`、`promptCaching`。
+- 共读聊天头部新增模型选择器，可在所有启用的 API profile/model 间单独选择，不影响 Chat 当前选择。
+- 每本书自动对应 Chat 端一个固定会话：`📖 共读 · 书名`（session id=`coread-<bookId>`）。
+- 共读中的小火消息和星星回复会实时追加到 `/persistent/chat-sync.json`，普通 Chat 端下一次同步即可看到并继续该读书会话。
+- 同步消息带书名和章节前缀，避免离开共读窗口后失去阅读语境。
+
+#### 3. 星星新增共读工具
+加入 `ALL_TOOLS`，因此共读窗口和普通 Chat 窗口的星星都可调用：
+- `read_books_coread`：查看书架、当前章节、总进度。
+- `write_note_coread`：按书名/bookId、日期、章节、进度、内容、类型写共读记录。
+- `read_note_coread`：按书名、日期、作者筛选读取记录。
+- `comment_coread`：给真实原文添加划线/评论/书签。
+- `read_comments_coread`：读取一本书/某章的双方批注。
+- `read_stats_coread`：读取每本书进度、划线、评论、书签、双方评论数和讨论数。
+
+#### 4. 独立共读数据与统计
+- 独立记录文件：`/persistent/coread/reading-notes.json`，与章节聊天/书籍文件分离。
+- 每条记录包含：bookId、书名、author(star/fire)、日期、章节、总进度、内容、kind(note/progress/reflection)、创建/更新时间。
+- 新增共读统计面板：总划线、总评论、总讨论、总阅读笔记；逐本显示进度、划线、评论、书签、🐆星星评论数、🦦小火评论数。
+- 新增 API：
+  - `GET/POST /api/coread/notes`
+  - `GET /api/coread/stats`
+  - `POST /api/coread/progress`
+  - `POST /api/coread/meta`
+
+### 数据兼容
+- 老书籍 JSON 无 `cover/progress/totalChars` 时自动兜底，不需要迁移脚本。
+- 老批注无 `kind/author` 时按原 `annotator` 推断身份并按评论展示。
+- 所有新增文件仍位于 Zeabur 永久卷 `/persistent/coread/`。
+
+### Debug 笔记
+- 共读不能另造一套人格/工具：继续复用 `/api/chat`，只将真实原文与防剧透信息作为 `bookmark_injections`，这样 system prompt 与工具权限天然和 Chat 一致。
+- 模型选择不能只传 modelId：不同 API profile 可能有同名模型，前端使用 `profileId::modelId` 作为选择键，再构造完整 `api_profile`。
+- Chat 同步不能只在浏览器本地加消息：共读 API 直接写服务端 `chat-sync.json` 的固定 book session，普通 Chat 设备通过既有 pull 机制恢复。
+- `write_note_coread.progress` 是全书绝对百分比，而页面滚动是章内百分比：新增 `updateAbsoluteProgress()`，避免把绝对进度重复按章节折算。
+- 划线/书签允许空评论正文，annotate route 校验需按 kind 放行；普通 comment 仍要求正文。
+- 验证：`./node_modules/.bin/tsc --noEmit` EXIT=0；`git diff --check` 通过。遵守项目约定，未在本机运行 Next build，交 Zeabur 自动构建。

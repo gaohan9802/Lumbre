@@ -6,6 +6,7 @@ import {
 } from '@/server/coread-store'
 import { LLMProfile } from '@/server/coread-llm'
 import { ensureDigest } from '@/server/coread-digest'
+import { appendCoreadChatMessage } from '@/server/chat-sync'
 
 // GET /api/coread/chat?bookId=xxx[&cnum=n] — get chat history
 export async function GET(req: NextRequest) {
@@ -52,7 +53,7 @@ function resolveProfile(apiProfile: any): LLMProfile | null {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { bookId, chapterNum, message, selection, ann, api_profile } = body
+    const { bookId, chapterNum, message, selection, ann, api_profile, system, thinking_budget, temperature, prompt_caching } = body
 
     if (!bookId || !message?.trim()) {
       return NextResponse.json({ error: '缺少 bookId 或 message' }, { status: 400 })
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
 
     // Persist user message before generation so failures don't lose it.
     addChatMessage(bookId, cnum, 'user', message.slice(0, 4000))
+    appendCoreadChatMessage({ bookId, bookTitle: bookData.book.title, role: 'user', content: message.slice(0, 4000), chapterNum: cnum })
     updateProgress(bookId, cnum)
 
     // Backfill this chapter's digest (deduped, non-blocking).
@@ -109,6 +111,10 @@ export async function POST(req: NextRequest) {
         api_profile,
         stream: true,
         tools_enabled: true,
+        system,
+        thinking_budget,
+        temperature,
+        prompt_caching,
         bookmark_injections: readingContext,
       }),
     })
@@ -147,7 +153,10 @@ export async function POST(req: NextRequest) {
           }
           const ex = extractAnnotations(fullReply, bookId, cnum, chContent)
           fullReply = ex.text
-          if (fullReply) addChatMessage(bookId, cnum, 'ai', fullReply)
+          if (fullReply) {
+            addChatMessage(bookId, cnum, 'ai', fullReply)
+            appendCoreadChatMessage({ bookId, bookTitle: bookData.book.title, role: 'assistant', content: fullReply, chapterNum: cnum, modelId: api_profile?.modelId })
+          }
           controller.enqueue(encoder.encode(
             `data: ${JSON.stringify({ reply: fullReply || '（没接住，再说一遍？）', ann: ex.count })}\n\n`
           ))

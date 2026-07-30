@@ -9,13 +9,13 @@ import { importBook, importTextWithSplit } from '@/server/coread-store'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { type, title, author, content, chapters } = body
+    const { type, title, author, content, chapters, cover, description } = body
 
     if (!title) return NextResponse.json({ error: '缺少书名' }, { status: 400 })
 
     if (type === 'chapters' && Array.isArray(chapters) && chapters.length > 0) {
       // Pre-parsed chapters (from frontend epub parsing or manual split)
-      const book = importBook(title, author || '', chapters)
+      const book = importBook(title, author || '', chapters, cover || '', description || '')
       return NextResponse.json({ success: true, book, chapterCount: chapters.length })
     }
 

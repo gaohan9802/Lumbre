@@ -11,6 +11,7 @@ const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const COREAD_DIR = path.join(DATA_DIR, 'coread')
 const BOOKS_DIR = path.join(COREAD_DIR, 'books')
 const CHATS_DIR = path.join(COREAD_DIR, 'chats')
+const NOTES_FILE = path.join(COREAD_DIR, 'reading-notes.json')
 
 function ensureDirs() {
   for (const dir of [COREAD_DIR, BOOKS_DIR, CHATS_DIR]) {
@@ -25,9 +26,30 @@ export interface Book {
   id: string
   title: string
   author: string
+  cover?: string
+  description?: string
   lastChapter: number
   lastReadAt: string
+  progress: number
+  totalChars: number
   createdAt: string
+}
+
+export type CoreadAuthor = 'star' | 'fire'
+export type CoreadAnnotationKind = 'highlight' | 'comment' | 'bookmark'
+
+export interface CoreadReadingNote {
+  id: string
+  bookId: string
+  bookTitle: string
+  author: CoreadAuthor
+  date: string
+  chapterNum: number
+  progress: number
+  content: string
+  kind: 'note' | 'progress' | 'reflection'
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Chapter {
@@ -46,6 +68,9 @@ export interface Annotation {
   originalText: string
   annotation: string
   annotator: 'user' | 'ai'
+  author?: CoreadAuthor
+  kind?: CoreadAnnotationKind
+  color?: string
   createdAt: string
 }
 
@@ -134,7 +159,8 @@ export function listBooks(): Book[] {
   for (const f of files) {
     try {
       const data: BookData = JSON.parse(fs.readFileSync(path.join(BOOKS_DIR, f), 'utf-8'))
-      books.push(data.book)
+      const totalChars = data.book.totalChars || (data.chapters || []).reduce((n: number, c: Chapter) => n + (c.content || '').length, 0)
+      books.push({ ...data.book, totalChars, progress: data.book.progress || 0 })
     } catch { /* skip */ }
   }
   books.sort((a, b) => (b.lastReadAt || b.createdAt).localeCompare(a.lastReadAt || a.createdAt))
@@ -161,24 +187,42 @@ export function getChapterList(bookId: string): { chapterNum: number; title: str
   }))
 }
 
-export function updateProgress(bookId: string, chapterNum: number): void {
+export function updateProgress(bookId: string, chapterNum: number, progress?: number): void {
   const data = loadBookData(bookId)
   if (!data) return
   data.book.lastChapter = chapterNum
   data.book.lastReadAt = nowStr()
+  const chapterIndex = Math.max(0, data.chapters.findIndex(c => c.chapterNum === chapterNum))
+  const chapterProgress = typeof progress === 'number' ? Math.max(0, Math.min(100, progress)) : 0
+  data.book.progress = data.chapters.length
+    ? Math.max(0, Math.min(100, ((chapterIndex + chapterProgress / 100) / data.chapters.length) * 100))
+    : chapterProgress
+  saveBookData(data)
+}
+
+export function updateAbsoluteProgress(bookId: string, chapterNum: number, progress: number): void {
+  const data = loadBookData(bookId)
+  if (!data) return
+  data.book.lastChapter = Math.max(0, chapterNum || data.book.lastChapter || 0)
+  data.book.lastReadAt = nowStr()
+  data.book.progress = Math.max(0, Math.min(100, Number(progress) || 0))
   saveBookData(data)
 }
 
 // Import book from parsed chapters
-export function importBook(title: string, author: string, chapters: { title: string; content: string }[]): Book {
+export function importBook(title: string, author: string, chapters: { title: string; content: string }[], cover = '', description = ''): Book {
   const bookId = 'book_' + genId()
   const now = nowStr()
   const book: Book = {
     id: bookId,
     title,
     author,
+    cover,
+    description,
     lastChapter: 0,
     lastReadAt: '',
+    progress: 0,
+    totalChars: chapters.reduce((n, c) => n + (c.content || '').length, 0),
     createdAt: now,
   }
   const chapterObjs: Chapter[] = chapters.map((c, i) => ({
@@ -249,7 +293,7 @@ export function getAnnotations(bookId: string, chapterNum?: number): Annotation[
   return data.annotations
 }
 
-export function addAnnotation(bookId: string, chapterNum: number, originalText: string, annotation: string, annotator: 'user' | 'ai'): Annotation | null {
+export function addAnnotation(bookId: string, chapterNum: number, originalText: string, annotation: string, annotator: 'user' | 'ai', kind: CoreadAnnotationKind = 'comment', color = ''): Annotation | null {
   const data = loadBookData(bookId)
   if (!data) return null
   
@@ -268,6 +312,9 @@ export function addAnnotation(bookId: string, chapterNum: number, originalText: 
     originalText: originalText.slice(0, 500),
     annotation: annotation.slice(0, 2000),
     annotator,
+    author: annotator === 'ai' ? 'star' : 'fire',
+    kind,
+    color,
     createdAt: nowStr(),
   }
   data.annotations.push(ann)
@@ -283,6 +330,91 @@ export function deleteAnnotation(bookId: string, annId: string): boolean {
   data.annotations.splice(idx, 1)
   saveBookData(data)
   return true
+}
+
+// ── Reading notes / statistics ──
+
+function loadReadingNotes(): CoreadReadingNote[] {
+  try {
+    if (!fs.existsSync(NOTES_FILE)) return []
+    const raw = JSON.parse(fs.readFileSync(NOTES_FILE, 'utf-8'))
+    return Array.isArray(raw) ? raw : []
+  } catch { return [] }
+}
+
+function saveReadingNotes(notes: CoreadReadingNote[]): void {
+  ensureDirs()
+  const tmp = NOTES_FILE + '.tmp'
+  fs.writeFileSync(tmp, JSON.stringify(notes, null, 2), 'utf-8')
+  fs.renameSync(tmp, NOTES_FILE)
+}
+
+export function findBookByTitle(title: string): Book | null {
+  const q = (title || '').trim().toLowerCase()
+  if (!q) return null
+  return listBooks().find(b => b.title.toLowerCase() === q)
+    || listBooks().find(b => b.title.toLowerCase().includes(q) || q.includes(b.title.toLowerCase()))
+    || null
+}
+
+export function writeCoreadNote(input: {
+  bookId?: string; bookTitle?: string; author?: CoreadAuthor; date?: string
+  chapterNum?: number; progress?: number; content: string; kind?: CoreadReadingNote['kind']
+}): CoreadReadingNote {
+  const book = input.bookId ? getBook(input.bookId)?.book : findBookByTitle(input.bookTitle || '')
+  if (!book) throw new Error('找不到这本书，请提供准确书名或 bookId')
+  const now = nowStr()
+  const note: CoreadReadingNote = {
+    id: crypto.randomUUID(), bookId: book.id, bookTitle: book.title,
+    author: input.author === 'fire' ? 'fire' : 'star',
+    date: input.date || now.slice(0, 10), chapterNum: Math.max(0, Number(input.chapterNum) || book.lastChapter || 0),
+    progress: Math.max(0, Math.min(100, Number(input.progress ?? book.progress) || 0)),
+    content: String(input.content || '').slice(0, 6000), kind: input.kind || 'note',
+    createdAt: now, updatedAt: now,
+  }
+  const notes = loadReadingNotes(); notes.push(note); saveReadingNotes(notes)
+  if (note.progress > 0) updateAbsoluteProgress(book.id, note.chapterNum || book.lastChapter || 1, note.progress)
+  else if (note.chapterNum) updateProgress(book.id, note.chapterNum)
+  return note
+}
+
+export function readCoreadNotes(input: { bookId?: string; bookTitle?: string; date?: string; author?: CoreadAuthor; limit?: number } = {}): CoreadReadingNote[] {
+  let notes = loadReadingNotes()
+  let bookId = input.bookId
+  if (!bookId && input.bookTitle) bookId = findBookByTitle(input.bookTitle)?.id
+  if (bookId) notes = notes.filter(n => n.bookId === bookId)
+  if (input.date) notes = notes.filter(n => n.date === input.date)
+  if (input.author) notes = notes.filter(n => n.author === input.author)
+  notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return notes.slice(0, Math.max(1, Math.min(200, input.limit || 50)))
+}
+
+export function getCoreadStats(bookId?: string) {
+  const books = listBooks().filter(b => !bookId || b.id === bookId)
+  return books.map(book => {
+    const anns = getAnnotations(book.id)
+    const chats = getChatHistory(book.id, 100000)
+    const notes = readCoreadNotes({ bookId: book.id, limit: 200 })
+    return {
+      bookId: book.id, title: book.title, author: book.author, cover: book.cover || '',
+      progress: Math.round((book.progress || 0) * 10) / 10, lastChapter: book.lastChapter,
+      highlights: anns.filter(a => (a.kind || (a.annotation ? 'comment' : 'highlight')) === 'highlight').length,
+      comments: anns.filter(a => (a.kind || 'comment') === 'comment').length,
+      bookmarks: anns.filter(a => a.kind === 'bookmark').length,
+      starComments: anns.filter(a => (a.author || (a.annotator === 'ai' ? 'star' : 'fire')) === 'star').length,
+      fireComments: anns.filter(a => (a.author || (a.annotator === 'ai' ? 'star' : 'fire')) === 'fire').length,
+      discussions: chats.length, readingNotes: notes.length,
+    }
+  })
+}
+
+export function updateBookMeta(bookId: string, patch: { title?: string; author?: string; cover?: string; description?: string }): Book | null {
+  const data = loadBookData(bookId); if (!data) return null
+  if (typeof patch.title === 'string' && patch.title.trim()) data.book.title = patch.title.trim().slice(0, 200)
+  if (typeof patch.author === 'string') data.book.author = patch.author.trim().slice(0, 200)
+  if (typeof patch.cover === 'string') data.book.cover = patch.cover.slice(0, 1500000)
+  if (typeof patch.description === 'string') data.book.description = patch.description.slice(0, 3000)
+  saveBookData(data); return data.book
 }
 
 // ── Digests ──

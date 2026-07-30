@@ -1,12 +1,12 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { listBooks, getChapterList } from '@/server/coread-store'
+import { listBooks, getChapterList, getCoreadStats } from '@/server/coread-store'
 
 // GET /api/coread/books — list all books
 export async function GET() {
   try {
     const books = listBooks()
-    return NextResponse.json({ books })
+    return NextResponse.json({ books, stats: getCoreadStats() })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

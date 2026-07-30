@@ -2,14 +2,14 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
-import { BookOpen, ArrowLeft, ChevronLeft, ChevronRight, Send, Plus, Trash2, MessageSquare, BookMarked, Upload, FileText, Palette, Sun, Moon, ImagePlus, X } from 'lucide-react'
+import { BookOpen, ArrowLeft, ChevronLeft, ChevronRight, Send, Plus, Trash2, MessageSquare, BookMarked, Upload, FileText, Palette, Sun, Moon, ImagePlus, X, Search, Grid3X3, List, BarChart3, Headphones, Pause, Settings2, Highlighter, Bookmark, Library, SlidersHorizontal } from 'lucide-react'
 import { useChatStore, getActiveProfile } from '@/lib/chatStore'
 import { useCoreadAppearance, fileToDataUrl } from '@/lib/coreadAppearance'
 
 // ── Types ──
 interface Book {
-  id: string; title: string; author: string
-  lastChapter: number; lastReadAt: string; createdAt: string
+  id: string; title: string; author: string; cover?: string; description?: string
+  lastChapter: number; lastReadAt: string; progress: number; totalChars: number; createdAt: string
 }
 interface ChapterListItem { chapterNum: number; title: string; hasDigest: boolean }
 interface ChapterData {
@@ -18,9 +18,10 @@ interface ChapterData {
 interface Annotation {
   id: string; bookId: string; chapterNum: number
   originalText: string; annotation: string
-  annotator: 'user' | 'ai'; createdAt: string
+  annotator: 'user' | 'ai'; author?: 'star' | 'fire'; kind?: 'highlight' | 'comment' | 'bookmark'; color?: string; createdAt: string
 }
 interface ChatMsg { who: 'user' | 'ai'; text: string; cnum: number; createdAt: string }
+interface BookStat { bookId: string; title: string; progress: number; highlights: number; comments: number; bookmarks: number; starComments: number; fireComments: number; discussions: number; readingNotes: number }
 
 type View = 'shelf' | 'toc' | 'reading'
 
@@ -32,6 +33,11 @@ export function CoReadingView() {
 
   const [view, setView] = useState<View>('shelf')
   const [books, setBooks] = useState<Book[]>([])
+  const [stats, setStats] = useState<BookStat[]>([])
+  const [shelfQuery, setShelfQuery] = useState('')
+  const [shelfMode, setShelfMode] = useState<'grid' | 'list'>('grid')
+  const [sortBy, setSortBy] = useState<'recent' | 'title' | 'progress'>('recent')
+  const [showStats, setShowStats] = useState(false)
   const [currentBook, setCurrentBook] = useState<Book | null>(null)
   const [chapters, setChapters] = useState<ChapterListItem[]>([])
   const [chapter, setChapter] = useState<ChapterData | null>(null)
@@ -45,29 +51,37 @@ export function CoReadingView() {
   const [showImport, setShowImport] = useState(false)
   const [showAppearance, setShowAppearance] = useState(false)
   const [activeAnn, setActiveAnn] = useState<Annotation | null>(null)
+  const [showReaderSettings, setShowReaderSettings] = useState(false)
+  const [fontSize, setFontSize] = useState(18)
+  const [lineHeight, setLineHeight] = useState(1.9)
+  const [pageWidth, setPageWidth] = useState(680)
+  const [readingProgress, setReadingProgress] = useState(0)
+  const [ttsSpeaking, setTtsSpeaking] = useState(false)
+  const [selectedModelKey, setSelectedModelKey] = useState(`${settings.activeProfileId}::${settings.model}`)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
   // Active API profile, shared with the 星星 module.
   const apiProfilePayload = useCallback(() => {
-    const profile = getActiveProfile(settings)
+    const [profileId, modelId] = selectedModelKey.split('::')
+    const profile = settings.apiProfiles.find(p => p.id === profileId) || getActiveProfile(settings)
     if (!profile?.apiKey) return undefined
-    return {
-      provider: profile.provider,
-      baseUrl: profile.baseUrl,
-      apiKey: profile.apiKey,
-      modelId: settings.model,
-    }
-  }, [settings])
+    return { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: modelId || settings.model }
+  }, [settings, selectedModelKey])
 
   // ── Load books ──
   const loadBooks = useCallback(async () => {
     const res = await fetch('/api/coread/books')
     const data = await res.json()
     if (data.books) setBooks(data.books)
+    if (data.stats) setStats(data.stats)
   }, [])
 
   useEffect(() => { loadBooks() }, [loadBooks])
+  useEffect(() => {
+    const valid = settings.apiProfiles.some(p => p.models.some(m => `${p.id}::${m.id}` === selectedModelKey && m.enabled))
+    if (!valid) setSelectedModelKey(`${settings.activeProfileId}::${settings.model}`)
+  }, [settings.activeProfileId, settings.model, settings.apiProfiles, selectedModelKey])
 
   // ── Open book (TOC) ──
   const openBook = async (book: Book) => {
@@ -134,6 +148,10 @@ export function CoReadingView() {
           selection: selection || undefined,
           ann: annRef,
           api_profile: apiProfilePayload(),
+          system: settings.systemPrompt,
+          thinking_budget: settings.thinkingBudget,
+          temperature: settings.temperature,
+          prompt_caching: settings.promptCaching,
         })
       })
 
@@ -272,6 +290,18 @@ export function CoReadingView() {
       Array.from(itemMatches).forEach((m: any) => { manifest[m[1]] = m[2] })
       const itemMatches2 = opf.matchAll(new RegExp('<item\\s+[^>]*href="([^"]+)"[^>]*id="([^"]+)"[^>]*/>', 'g'))
       Array.from(itemMatches2).forEach((m: any) => { manifest[m[2]] = m[1] })
+      let cover = ''
+      const coverId = opf.match(/<meta[^>]+name=["']cover["'][^>]+content=["']([^"']+)/i)?.[1]
+      const coverHref = coverId ? manifest[coverId] : (opf.match(/<item[^>]+href=["']([^"']+)["'][^>]+properties=["'][^"']*cover-image/i)?.[1] || '')
+      if (coverHref) {
+        const coverFile = zip.file(rootDir + coverHref)
+        if (coverFile) {
+          const base64 = await coverFile.async('base64')
+          const ext = coverHref.split('.').pop()?.toLowerCase()
+          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+          cover = `data:${mime};base64,${base64}`
+        }
+      }
       const chapters: { title: string; content: string }[] = []
       for (const itemId of spineItems) {
         const href = manifest[itemId]
@@ -295,7 +325,7 @@ export function CoReadingView() {
       if (!chapters.length) throw new Error('未提取到章节')
       const res = await fetch('/api/coread/import', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'chapters', title, author, chapters })
+        body: JSON.stringify({ type: 'chapters', title, author, chapters, cover })
       })
       const data = await res.json()
       if (data.success) { setShowImport(false); loadBooks() }
@@ -304,6 +334,48 @@ export function CoReadingView() {
       alert('EPUB 解析失败: ' + e.message)
     }
   }
+
+  const currentStat = stats.find(s => s.bookId === currentBook?.id)
+  const availableModels = settings.apiProfiles.flatMap(p => p.models.filter(m => m.enabled).map(m => ({ key: `${p.id}::${m.id}`, id: m.id, label: `${p.name} · ${m.name || m.id}` })))
+
+  const toggleTTS = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !chapter) return
+    if (ttsSpeaking) {
+      window.speechSynthesis.cancel(); setTtsSpeaking(false); return
+    }
+    const utter = new SpeechSynthesisUtterance(selection || chapter.content)
+    utter.lang = /[\u4e00-\u9fff]/.test(chapter.content) ? 'zh-CN' : 'en-US'
+    utter.rate = 0.95
+    utter.onend = () => setTtsSpeaking(false)
+    utter.onerror = () => setTtsSpeaking(false)
+    window.speechSynthesis.cancel(); window.speechSynthesis.speak(utter); setTtsSpeaking(true)
+  }
+
+  useEffect(() => () => { if (typeof window !== 'undefined') window.speechSynthesis?.cancel() }, [])
+
+  const addQuickAnnotation = async (kind: 'highlight' | 'bookmark', color = '#f6d365') => {
+    if (!selection || !currentBook || !chapter) return
+    const res = await fetch('/api/coread/annotate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      bookId: currentBook.id, chapterNum: chapter.chapterNum, originalText: selection,
+      annotation: kind === 'bookmark' ? '书签' : '', kind, color,
+    }) })
+    const data = await res.json(); if (data.annotation) setAnnotations(prev => [...prev, data.annotation])
+    setSelection(''); loadBooks()
+  }
+
+  const handleReaderScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    const pct = el.scrollHeight <= el.clientHeight ? 100 : Math.round((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100)
+    setReadingProgress(pct)
+  }
+
+  useEffect(() => {
+    if (!currentBook || !chapter || view !== 'reading') return
+    const t = setTimeout(() => {
+      fetch('/api/coread/progress', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: currentBook.id, chapterNum: chapter.chapterNum, progress: readingProgress }) }).catch(() => {})
+    }, 800)
+    return () => clearTimeout(t)
+  }, [readingProgress, currentBook, chapter, view])
 
   // Auto-scroll chat
   useEffect(() => {
@@ -350,49 +422,38 @@ export function CoReadingView() {
   let content: React.ReactNode = null
 
   if (view === 'shelf') {
+    const filteredBooks = books
+      .filter(b => `${b.title} ${b.author}`.toLowerCase().includes(shelfQuery.toLowerCase()))
+      .sort((a, b) => sortBy === 'title' ? a.title.localeCompare(b.title) : sortBy === 'progress' ? (b.progress || 0) - (a.progress || 0) : (b.lastReadAt || b.createdAt).localeCompare(a.lastReadAt || a.createdAt))
     content = (
-      <div className={`h-full overflow-y-auto p-4 ${tx}`}>
-        <div className="max-w-xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-serif">📖 共读书架</h2>
-              <p className={`text-sm ${soft} italic`}>falling in love on the same page</p>
+      <div className={`h-full overflow-y-auto ${tx}`}>
+        <div className={`sticky top-0 z-20 px-4 pt-4 pb-3 backdrop-blur-xl border-b ${border} ${isNight ? 'bg-[#1e1e1d]/90' : 'bg-[#faf9f7]/90'}`}>
+          <div className="max-w-6xl mx-auto">
+            <div className="flex items-center justify-between gap-3">
+              <div><h2 className="text-2xl font-serif flex items-center gap-2"><Library size={22} /> 共读书架</h2><p className={`text-xs mt-1 ${soft}`}>和星星收藏、阅读、讨论每一本书</p></div>
+              <div className="flex items-center gap-1.5">{themeToggleBtn}{appearanceBtn}<button onClick={() => setShowStats(!showStats)} className={`p-2 rounded-lg ${showStats ? 'bg-[#b0543f]/15 text-[#b0543f]' : card}`} title="阅读统计"><BarChart3 size={16} /></button><button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-[#b0543f] text-white"><Plus size={14} /> 导入</button></div>
             </div>
-            <div className="flex items-center gap-2">
-              {themeToggleBtn}
-              {appearanceBtn}
-              <button onClick={() => setShowImport(true)} className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm ${card} border ${border} hover:opacity-80`}>
-                <Plus size={14} /> 导入
-              </button>
+            <div className="flex flex-wrap gap-2 mt-4">
+              <div className={`flex-1 min-w-[180px] flex items-center gap-2 px-3 py-2 rounded-xl border ${border} ${card}`}><Search size={15} className={soft}/><input value={shelfQuery} onChange={e => setShelfQuery(e.target.value)} placeholder="搜索书名或作者" className="bg-transparent outline-none text-sm flex-1" /></div>
+              <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} className={`px-3 py-2 rounded-xl border ${border} ${isNight ? 'bg-[#252524]' : 'bg-white'} text-sm`}><option value="recent">最近阅读</option><option value="progress">阅读进度</option><option value="title">书名排序</option></select>
+              <div className={`flex p-1 rounded-xl ${card}`}><button onClick={() => setShelfMode('grid')} className={`p-1.5 rounded-lg ${shelfMode === 'grid' ? 'bg-[#b0543f]/15 text-[#b0543f]' : soft}`}><Grid3X3 size={15}/></button><button onClick={() => setShelfMode('list')} className={`p-1.5 rounded-lg ${shelfMode === 'list' ? 'bg-[#b0543f]/15 text-[#b0543f]' : soft}`}><List size={15}/></button></div>
             </div>
           </div>
-
-          {books.length === 0 ? (
-            <div className={`text-center py-12 ${soft}`}>
-              <BookOpen size={40} className="mx-auto mb-3 opacity-40" />
-              <p>书架还是空的</p>
-              <p className="text-sm mt-1">导入一本 epub 或文本，开始共读</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {books.map(book => (
-                <div key={book.id} className={`p-3 rounded-lg ${card} border ${border} cursor-pointer hover:opacity-80 flex items-center justify-between`}
-                  onClick={() => openBook(book)}>
-                  <div>
-                    <div className="font-medium">{book.title}</div>
-                    <div className={`text-xs ${soft}`}>
-                      {book.author && `${book.author} · `}
-                      {book.lastChapter ? `读到第${book.lastChapter}章` : '未开始'}
-                    </div>
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); handleDeleteBook(book.id) }}
-                    className={`p-1 rounded hover:bg-red-500/20 ${soft}`}>
-                    <Trash2 size={14} />
-                  </button>
+        </div>
+        <div className="max-w-6xl mx-auto p-4 md:p-6">
+          {showStats && <StatsPanel stats={stats} isNight={isNight} onClose={() => setShowStats(false)} />}
+          {filteredBooks.length === 0 ? <div className={`text-center py-20 ${soft}`}><BookOpen size={48} className="mx-auto mb-4 opacity-30"/><p className="text-base">书架还是空的</p><p className="text-sm mt-1">导入 EPUB 或纯文本，封面会像真正的书一样摆上书架</p></div> : shelfMode === 'grid' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-8">
+              {filteredBooks.map((book, index) => { const st = stats.find(x => x.bookId === book.id); return <div key={book.id} className="group cursor-pointer" onClick={() => openBook(book)}>
+                <div className="relative aspect-[2/3] rounded-r-lg rounded-l-sm overflow-hidden shadow-[8px_10px_22px_rgba(0,0,0,.25)] transition-transform group-hover:-translate-y-1 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[5px] before:bg-black/15">
+                  {book.cover ? <img src={book.cover} alt={book.title} className="w-full h-full object-cover"/> : <div className="w-full h-full p-4 flex flex-col justify-between text-white" style={{background: `linear-gradient(145deg, ${['#765c48','#405d67','#735566','#496653','#75554b'][index%5]}, #262626)`}}><span className="text-[10px] opacity-60 tracking-[.2em]">LUMBRE LIBRARY</span><div><div className="font-serif text-lg leading-tight">{book.title}</div><div className="text-xs opacity-70 mt-2">{book.author || '佚名'}</div></div><BookOpen size={22} className="opacity-35"/></div>}
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20"><div className="h-full bg-[#e7b45c]" style={{width: `${book.progress || 0}%`}}/></div>
+                  <button onClick={e => { e.stopPropagation(); handleDeleteBook(book.id) }} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/45 text-white opacity-0 group-hover:opacity-100"><Trash2 size={13}/></button>
                 </div>
-              ))}
+                <div className="mt-3"><div className="font-medium text-sm line-clamp-1">{book.title}</div><div className={`text-xs ${soft} line-clamp-1`}>{book.author || '未知作者'}</div><div className={`flex items-center justify-between text-[10px] mt-1 ${soft}`}><span>{Math.round(book.progress || 0)}%</span><span>{st?.highlights || 0} 划线 · {st?.comments || 0} 评论</span></div></div>
+              </div> })}
             </div>
-          )}
+          ) : <div className="space-y-2">{filteredBooks.map(book => { const st=stats.find(x=>x.bookId===book.id); return <div key={book.id} onClick={() => openBook(book)} className={`flex items-center gap-4 p-3 rounded-xl border ${border} ${card} cursor-pointer hover:translate-x-1 transition-transform`}><div className="w-12 h-16 rounded-sm overflow-hidden bg-[#765c48] shadow">{book.cover ? <img src={book.cover} alt="" className="w-full h-full object-cover"/> : <div className="h-full p-1.5 text-white text-[9px] font-serif">{book.title}</div>}</div><div className="flex-1 min-w-0"><div className="font-medium">{book.title}</div><div className={`text-xs ${soft}`}>{book.author || '未知作者'} · 读到第 {book.lastChapter || 0} 章</div><div className="h-1.5 rounded-full bg-black/10 mt-2 overflow-hidden"><div className="h-full bg-[#b0543f]" style={{width:`${book.progress||0}%`}}/></div></div><div className={`text-xs text-right ${soft}`}><div>{Math.round(book.progress||0)}%</div><div className="mt-1">{st?.highlights||0} 划线 · {st?.comments||0} 评论</div></div><button onClick={e=>{e.stopPropagation();handleDeleteBook(book.id)}} className={`p-2 ${soft}`}><Trash2 size={14}/></button></div>})}</div>}
         </div>
       </div>
     )
@@ -401,14 +462,17 @@ export function CoReadingView() {
       <div className={`h-full overflow-y-auto p-4 ${tx}`}>
         <div className="max-w-xl mx-auto">
           <div className="flex items-center justify-between mb-4">
-            <button onClick={() => { setView('shelf'); setCurrentBook(null) }} className={`flex items-center gap-1 text-sm ${soft} hover:opacity-80`}>
+            <button onClick={() => { loadBooks(); setView('shelf'); setCurrentBook(null) }} className={`flex items-center gap-1 text-sm ${soft} hover:opacity-80`}>
               <ArrowLeft size={14} /> 书架
             </button>
             <div className="flex items-center gap-2">{themeToggleBtn}{appearanceBtn}</div>
           </div>
-          <h2 className="text-xl font-serif mb-1">{currentBook?.title}</h2>
-          {currentBook?.author && <p className={`text-sm ${soft} mb-4`}>{currentBook.author}</p>}
+          <div className={`flex gap-5 p-4 rounded-2xl border ${border} ${card} mb-5`}>
+            <div className="w-24 aspect-[2/3] shrink-0 rounded-r-lg overflow-hidden shadow-lg bg-[#765c48]">{currentBook?.cover ? <img src={currentBook.cover} alt="" className="w-full h-full object-cover"/> : <div className="h-full p-3 text-white font-serif flex items-end">{currentBook?.title}</div>}</div>
+            <div className="min-w-0 flex-1"><h2 className="text-xl font-serif mb-1">{currentBook?.title}</h2><p className={`text-sm ${soft}`}>{currentBook?.author || '未知作者'}</p>{currentBook?.description && <p className={`text-xs mt-3 line-clamp-3 ${soft}`}>{currentBook.description}</p>}<div className="mt-4"><div className={`flex justify-between text-[11px] ${soft}`}><span>阅读进度</span><span>{Math.round(currentBook?.progress || 0)}%</span></div><div className="h-1.5 mt-1 rounded-full bg-black/10 overflow-hidden"><div className="h-full bg-[#b0543f]" style={{width:`${currentBook?.progress || 0}%`}}/></div><div className={`flex gap-3 mt-3 text-[10px] ${soft}`}><span>{currentStat?.highlights || 0} 划线</span><span>{currentStat?.comments || 0} 评论</span><span>{currentStat?.bookmarks || 0} 书签</span></div></div></div>
+          </div>
 
+          <div className="flex items-center justify-between mb-2"><span className={`text-xs ${soft}`}>目录 · {chapters.length} 章</span>{currentBook?.lastChapter ? <button onClick={()=>openChapter(currentBook.lastChapter)} className="text-xs text-[#b0543f]">继续阅读 →</button> : null}</div>
           <div className="space-y-1">
             {chapters.map(ch => (
               <div key={ch.chapterNum}
@@ -433,7 +497,7 @@ export function CoReadingView() {
     // Reading
     content = (
       <div className={`h-full flex flex-col ${tx}`}>
-        <div className={`flex items-center justify-between px-4 py-2 border-b ${border} shrink-0`}>
+        <div className={`relative flex items-center justify-between px-3 py-2 border-b ${border} shrink-0`}>
           <button onClick={() => setView('toc')} className={`flex items-center gap-1 text-sm ${soft}`}>
             <ArrowLeft size={14} /> 目录
           </button>
@@ -442,31 +506,37 @@ export function CoReadingView() {
           </span>
           <div className="flex items-center gap-1.5">
             {themeToggleBtn}
+            <button onClick={toggleTTS} title={ttsSpeaking ? '停止朗读' : '语音朗读'} className={`p-1.5 rounded-lg ${ttsSpeaking ? 'text-[#b0543f] bg-[#b0543f]/15' : soft} ${card}`}>{ttsSpeaking ? <Pause size={16}/> : <Headphones size={16}/>}</button>
+            <button onClick={() => setShowReaderSettings(!showReaderSettings)} title="阅读设置" className={`p-1.5 rounded-lg ${showReaderSettings ? accent : soft} ${card}`}><Settings2 size={16}/></button>
             {appearanceBtn}
             <button onClick={() => setShowChat(!showChat)} className={`p-1.5 rounded-lg ${showChat ? accent : soft} ${card}`}>
               <MessageSquare size={16} />
             </button>
           </div>
+          <div className="absolute left-0 bottom-0 h-[2px] bg-[#b0543f] transition-all" style={{width: `${readingProgress}%`}} />
         </div>
+        {showReaderSettings && <div className={`absolute right-3 top-12 z-40 w-64 p-4 rounded-xl shadow-xl border ${border} ${isNight ? 'bg-[#292927]' : 'bg-white'}`}><div className="text-sm font-medium mb-3">阅读设置</div><label className="text-xs opacity-60">字号 {fontSize}px</label><input className="w-full accent-[#b0543f]" type="range" min="14" max="28" value={fontSize} onChange={e=>setFontSize(Number(e.target.value))}/><label className="text-xs opacity-60">行距 {lineHeight.toFixed(1)}</label><input className="w-full accent-[#b0543f]" type="range" min="1.4" max="2.6" step="0.1" value={lineHeight} onChange={e=>setLineHeight(Number(e.target.value))}/><label className="text-xs opacity-60">页面宽度 {pageWidth}px</label><input className="w-full accent-[#b0543f]" type="range" min="480" max="900" step="20" value={pageWidth} onChange={e=>setPageWidth(Number(e.target.value))}/><div className={`mt-3 pt-3 border-t ${border} text-[11px] ${soft}`}>TTS 使用系统语音，可朗读整章或当前选中文字。</div></div>}
 
         <div className="flex-1 flex overflow-hidden">
           <div className={`flex-1 overflow-y-auto p-4 ${showChat ? 'hidden md:block md:w-1/2' : ''}`}
-            ref={contentRef} onMouseUp={handleTextSelect} onTouchEnd={handleTextSelect}>
-            <div className="max-w-xl mx-auto">
-              <p className={`text-xs ${soft} mb-4`}>{currentBook?.title} · #{chapter?.chapterNum}</p>
+            ref={contentRef} onScroll={handleReaderScroll} onMouseUp={handleTextSelect} onTouchEnd={handleTextSelect}>
+            <div className="mx-auto" style={{maxWidth: pageWidth}}>
+              <p className={`text-xs ${soft} mb-5`}>{currentBook?.title} · #{chapter?.chapterNum}</p>
 
               <ChapterContent
                 content={chapter?.content || ''}
                 annotations={annotations}
                 isNight={isNight}
                 onAnnClick={(a) => setActiveAnn(a)}
+                fontSize={fontSize}
+                lineHeight={lineHeight}
               />
 
               {selection && (
                 <div className={`fixed bottom-20 left-1/2 -translate-x-1/2 flex gap-2 p-2 rounded-xl ${isNight ? 'bg-[#2a2a29]' : 'bg-white'} border ${border} backdrop-blur-sm shadow-lg z-50`}>
-                  <button onClick={addUserAnnotation} className="px-3 py-1 text-xs rounded-lg bg-purple-500/20 text-purple-400">
-                    ✏️ 批注
-                  </button>
+                  <button onClick={() => addQuickAnnotation('highlight')} className="px-3 py-1 text-xs rounded-lg bg-yellow-500/20 text-yellow-500 flex items-center gap-1"><Highlighter size={12}/> 划线</button>
+                  <button onClick={addUserAnnotation} className="px-3 py-1 text-xs rounded-lg bg-purple-500/20 text-purple-400">✏️ 评论</button>
+                  <button onClick={() => addQuickAnnotation('bookmark')} className="px-3 py-1 text-xs rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center gap-1"><Bookmark size={12}/> 书签</button>
                   <button onClick={() => { setShowChat(true) }} className="px-3 py-1 text-xs rounded-lg bg-blue-500/20 text-blue-400">
                     💬 聊这句
                   </button>
@@ -490,6 +560,7 @@ export function CoReadingView() {
 
           {showChat && (
             <div className={`w-full md:w-1/2 flex flex-col border-l ${border} ${hasBg ? '' : card}`}>
+              <div className={`px-3 py-2 border-b ${border} flex items-center justify-between gap-2`}><div><div className="text-sm font-medium">🐆 星星陪读</div><div className={`text-[10px] ${soft}`}>对话自动同步到 Chat 的「📖 共读 · {currentBook?.title}」</div></div><select value={selectedModelKey} onChange={e=>setSelectedModelKey(e.target.value)} className={`max-w-[48%] text-[11px] px-2 py-1.5 rounded-lg border ${border} ${isNight ? 'bg-[#292927]' : 'bg-white'}`}>{availableModels.length ? availableModels.map(m=><option key={m.key} value={m.key}>{m.label}</option>) : <option value={`${settings.activeProfileId}::${settings.model}`}>{settings.model}</option>}</select></div>
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
                 {chatMsgs.length === 0 && !streaming && (
                   <div className={`text-center py-8 ${soft} text-sm`}>
@@ -580,10 +651,22 @@ export function CoReadingView() {
   )
 }
 
+// ── Reading statistics ──
+function StatsPanel({ stats, isNight, onClose }: { stats: BookStat[]; isNight: boolean; onClose: () => void }) {
+  const totals = stats.reduce((a, s) => ({ highlights: a.highlights + s.highlights, comments: a.comments + s.comments, discussions: a.discussions + s.discussions, notes: a.notes + s.readingNotes }), { highlights: 0, comments: 0, discussions: 0, notes: 0 })
+  const border = isNight ? 'border-white/10' : 'border-black/10'
+  const surf = isNight ? 'bg-white/5' : 'bg-black/[.035]'
+  return <div className={`mb-7 rounded-2xl border ${border} ${surf} p-4 md:p-5`}>
+    <div className="flex items-center justify-between mb-4"><div><h3 className="font-medium flex items-center gap-2"><BarChart3 size={17}/> 共读数据</h3><p className="text-[11px] opacity-50 mt-0.5">星星与小火留在每本书里的阅读痕迹</p></div><button onClick={onClose} className="p-1.5 opacity-50"><X size={16}/></button></div>
+    <div className="grid grid-cols-4 gap-2 mb-4">{[['划线',totals.highlights,'〰'],['评论',totals.comments,'💬'],['讨论',totals.discussions,'✦'],['笔记',totals.notes,'✎']].map(([label,n,icon])=><div key={String(label)} className={`rounded-xl p-3 text-center ${isNight?'bg-black/15':'bg-white/70'}`}><div className="text-lg">{icon}</div><div className="font-semibold mt-1">{n}</div><div className="text-[10px] opacity-50">{label}</div></div>)}</div>
+    <div className="space-y-2 max-h-64 overflow-y-auto">{stats.map(s=><div key={s.bookId} className={`rounded-xl p-3 border ${border}`}><div className="flex items-center justify-between gap-3"><div className="font-medium text-sm truncate">{s.title}</div><div className="text-xs text-[#b0543f]">{Math.round(s.progress)}%</div></div><div className="h-1 rounded-full bg-black/10 overflow-hidden mt-2"><div className="h-full bg-[#b0543f]" style={{width:`${s.progress}%`}}/></div><div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] opacity-55 mt-2"><span>{s.highlights} 条划线</span><span>{s.comments} 条评论</span><span>🐆 {s.starComments}</span><span>🦦 {s.fireComments}</span><span>{s.bookmarks} 个书签</span></div></div>)}</div>
+  </div>
+}
+
 // ── Chapter Content: React-node segmentation (cross-line safe, clickable) ──
-function ChapterContent({ content, annotations, isNight, onAnnClick }: {
+function ChapterContent({ content, annotations, isNight, onAnnClick, fontSize, lineHeight }: {
   content: string; annotations: Annotation[]; isNight: boolean
-  onAnnClick: (a: Annotation) => void
+  onAnnClick: (a: Annotation) => void; fontSize: number; lineHeight: number
 }) {
   if (!content) return null
 
@@ -605,10 +688,11 @@ function ChapterContent({ content, annotations, isNight, onAnnClick }: {
   let k = 0
   for (const r of ranges) {
     if (r.start > cursor) nodes.push(<Fragment key={k++}>{content.slice(cursor, r.start)}</Fragment>)
-    const isUser = r.ann.annotator === 'user'
-    const cls = isUser
-      ? (isNight ? 'bg-purple-500/25 rounded px-0.5 cursor-pointer' : 'bg-purple-200/70 rounded px-0.5 cursor-pointer')
-      : 'border-b border-[#b0543f] cursor-pointer'
+    const isUser = (r.ann.author || (r.ann.annotator === 'ai' ? 'star' : 'fire')) === 'fire'
+    const kind = r.ann.kind || 'comment'
+    const cls = kind === 'bookmark' ? 'border-b-2 border-emerald-500 cursor-pointer' : kind === 'highlight'
+      ? (isNight ? 'bg-yellow-500/25 rounded px-0.5 cursor-pointer' : 'bg-yellow-200/80 rounded px-0.5 cursor-pointer')
+      : isUser ? (isNight ? 'bg-purple-500/25 rounded px-0.5 cursor-pointer' : 'bg-purple-200/70 rounded px-0.5 cursor-pointer') : 'border-b border-[#b0543f] cursor-pointer'
     nodes.push(
       <span key={k++} className={cls} title={r.ann.annotation.slice(0, 100)}
         onClick={(e) => { e.stopPropagation(); onAnnClick(r.ann) }}>
@@ -620,7 +704,7 @@ function ChapterContent({ content, annotations, isNight, onAnnClick }: {
   if (cursor < content.length) nodes.push(<Fragment key={k++}>{content.slice(cursor)}</Fragment>)
 
   return (
-    <div className="text-base leading-relaxed font-serif" style={{ whiteSpace: 'pre-wrap' }}>
+    <div className="font-serif" style={{ whiteSpace: 'pre-wrap', fontSize, lineHeight }}>
       {nodes}
     </div>
   )
@@ -639,7 +723,7 @@ function AnnotationPopover({ ann, isNight, onClose, onDelete, onChat }: {
         className={`w-full max-w-sm rounded-xl border ${border} ${bg} p-4 shadow-xl`} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-2">
           <span className={`text-xs px-2 py-0.5 rounded-full ${ann.annotator === 'user' ? 'bg-purple-500/20 text-purple-400' : 'bg-[#b0543f]/20 text-[#b0543f]'}`}>
-            {ann.annotator === 'user' ? '我的批注' : 'AI 批注'}
+            {ann.kind === 'highlight' ? '划线' : ann.kind === 'bookmark' ? '书签' : (ann.author || (ann.annotator === 'ai' ? 'star' : 'fire')) === 'star' ? '🐆 星星评论' : '🦦 小火评论'}
           </span>
           <button onClick={onClose} className="opacity-50 hover:opacity-100"><X size={16} /></button>
         </div>

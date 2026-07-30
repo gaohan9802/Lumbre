@@ -30,6 +30,7 @@ import { scheduleWake } from './autowake'
 import { executeGalatea } from './galatea'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { listIntimacyRecords, createIntimacyRecord, updateIntimacyRecord, deleteIntimacyRecord } from './intimacy-store'
+import { listBooks as listCoreadBooks, getBook as getCoreadBook, getAnnotations as getCoreadAnnotations, addAnnotation as addCoreadAnnotation, readCoreadNotes, writeCoreadNote, getCoreadStats, findBookByTitle } from './coread-store'
 
 // ── Claude tool schema type ─────────────────────────────
 
@@ -298,6 +299,50 @@ const NOTES_TOOLS: ToolDef[] = [
       },
       required: ['note_id', 'author'],
     },
+  },
+]
+
+// ── Co-reading tools ─────────────────────────────────────
+
+const COREAD_TOOLS: ToolDef[] = [
+  {
+    name: 'read_books_coread',
+    description: '查看共读书架、每本书当前章节和总进度。非读书窗口也可调用。',
+    input_schema: { type: 'object', properties: { book_name: { type: 'string', description: '可选，按书名筛选' } } },
+  },
+  {
+    name: 'write_note_coread',
+    description: '写一条独立的共读记录，可指定书名、日期、章节、总阅读进度、内容和类型。保存到 /persistent/coread/reading-notes.json，所有窗口共享。',
+    input_schema: { type: 'object', properties: {
+      book_name: { type: 'string' }, book_id: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' },
+      chapter: { type: 'integer' }, progress: { type: 'number', description: '0-100' }, content: { type: 'string' },
+      kind: { type: 'string', enum: ['note','progress','reflection'] }, author: { type: 'string', enum: ['star','fire'] },
+    }, required: ['content'] },
+  },
+  {
+    name: 'read_note_coread',
+    description: '读取共读记录，可按书名、日期和作者筛选。',
+    input_schema: { type: 'object', properties: {
+      book_name: { type: 'string' }, book_id: { type: 'string' }, date: { type: 'string' }, author: { type: 'string' }, limit: { type: 'integer' },
+    } },
+  },
+  {
+    name: 'comment_coread',
+    description: '给某本书的真实原文添加评论/划线/书签。评论会进入共读统计并在阅读页高亮。original_text 必须是该章真实原文。',
+    input_schema: { type: 'object', properties: {
+      book_name: { type: 'string' }, book_id: { type: 'string' }, chapter: { type: 'integer' }, original_text: { type: 'string' },
+      content: { type: 'string' }, kind: { type: 'string', enum: ['highlight','comment','bookmark'] }, color: { type: 'string' }, author: { type: 'string', enum: ['star','fire'] },
+    }, required: ['chapter','original_text'] },
+  },
+  {
+    name: 'read_comments_coread',
+    description: '读取一本书的划线、评论、书签以及星星/小火分别留下的数量。',
+    input_schema: { type: 'object', properties: { book_name: { type: 'string' }, book_id: { type: 'string' }, chapter: { type: 'integer' } } },
+  },
+  {
+    name: 'read_stats_coread',
+    description: '读取共读数据统计：每本书进度、划线、评论、书签、双方评论数和讨论数。',
+    input_schema: { type: 'object', properties: { book_name: { type: 'string' }, book_id: { type: 'string' } } },
   },
 ]
 
@@ -765,7 +810,7 @@ const GMAIL_TOOLS: ToolDef[] = [
     },
   },
 ]
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...INTIMACY_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...INTIMACY_TOOLS, ...COREAD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -898,6 +943,37 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
     if (name === "reply_email") {
       const r = await replyEmail(input.id, input.body)
       return JSON.stringify(r)
+    }
+
+    // Co-reading → shared /persistent/coread store
+    if (name === 'read_books_coread') {
+      const q = String(input.book_name || '').trim().toLowerCase()
+      const rows = listCoreadBooks().filter(b => !q || b.title.toLowerCase().includes(q))
+      return JSON.stringify(rows.map(b => ({ id: b.id, title: b.title, author: b.author, chapter: b.lastChapter, progress: Math.round((b.progress || 0) * 10) / 10, last_read_at: b.lastReadAt })))
+    }
+    if (name === 'write_note_coread') {
+      return JSON.stringify({ ok: true, note: writeCoreadNote({
+        bookId: input.book_id, bookTitle: input.book_name, author: input.author || 'star', date: input.date,
+        chapterNum: input.chapter, progress: input.progress, content: input.content, kind: input.kind,
+      }) })
+    }
+    if (name === 'read_note_coread') {
+      return JSON.stringify(readCoreadNotes({ bookId: input.book_id, bookTitle: input.book_name, date: input.date, author: input.author, limit: input.limit }))
+    }
+    if (name === 'comment_coread') {
+      const book = input.book_id ? getCoreadBook(input.book_id)?.book : findBookByTitle(input.book_name || '')
+      if (!book) return JSON.stringify({ error: 'book_not_found' })
+      const ann = addCoreadAnnotation(book.id, Number(input.chapter), String(input.original_text || ''), String(input.content || ''), input.author === 'fire' ? 'user' : 'ai', input.kind || 'comment', input.color || '')
+      return JSON.stringify(ann ? { ok: true, annotation: ann } : { error: '原文不匹配或添加失败' })
+    }
+    if (name === 'read_comments_coread') {
+      const book = input.book_id ? getCoreadBook(input.book_id)?.book : findBookByTitle(input.book_name || '')
+      if (!book) return JSON.stringify({ error: 'book_not_found' })
+      return JSON.stringify(getCoreadAnnotations(book.id, input.chapter == null ? undefined : Number(input.chapter)))
+    }
+    if (name === 'read_stats_coread') {
+      const book = input.book_id ? getCoreadBook(input.book_id)?.book : (input.book_name ? findBookByTitle(input.book_name) : null)
+      return JSON.stringify(getCoreadStats(book?.id))
     }
 
     // Diary → local store

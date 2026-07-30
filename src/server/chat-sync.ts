@@ -147,3 +147,34 @@ export function mergeSyncState(a: SyncState, b: SyncState): SyncState {
   const [config, configUpdatedAt] = bTs > aTs && b.config ? [b.config, bTs] : [a.config, aTs]
   return { sessions, tombstones, config, configUpdatedAt }
 }
+
+/** Mirror a co-reading turn into a dedicated Chat session so the normal 星星
+ * page can continue the same book conversation. This writes directly to the
+ * durable sync source; clients receive it on their next pull. */
+export function appendCoreadChatMessage(input: {
+  bookId: string; bookTitle: string; role: 'user' | 'assistant'; content: string; chapterNum: number; modelId?: string
+}) {
+  const state = loadSyncState()
+  const id = `coread-${input.bookId}`
+  const now = Date.now()
+  let session = state.sessions.find((s: any) => s.id === id)
+  if (!session) {
+    session = {
+      id, title: `📖 共读 · ${input.bookTitle}`, messages: [], pinned: false,
+      createdAt: now, updatedAt: now,
+    }
+    state.sessions.unshift(session)
+  }
+  const content = `[《${input.bookTitle}》· 第${input.chapterNum}章]\n${input.content}`
+  const duplicate = (session.messages || []).some((m: any) => m.role === input.role && m.content === content)
+  if (!duplicate) {
+    session.messages = [...(session.messages || []), {
+      id: `coread-msg-${now}-${Math.random().toString(36).slice(2, 8)}`,
+      role: input.role, content, timestamp: now,
+      ...(input.role === 'assistant' ? { modelId: input.modelId || '' } : {}),
+    }]
+    session.updatedAt = now
+    saveSyncState(state)
+  }
+  return id
+}
