@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, Pencil, Trash2, Save, Plus, History } from 'lucide-react'
+import { X, Pencil, Trash2, Save, Plus, History, ChevronLeft } from 'lucide-react'
 import { intimacy as api } from '@/lib/api'
 import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
@@ -44,20 +44,116 @@ function Heat({ records, night }: { records:RecordT[];night:boolean }) {
 }
 function Empty(){return <div className="h-36 grid place-items-center text-xs opacity-35">还没有数据</div>}
 
+/* ── Record Detail View ── */
+function RecordDetail({ record, night, onBack, onEdit, onDelete }: { record: RecordT; night: boolean; onBack: () => void; onEdit: () => void; onDelete: () => void }) {
+  const r = record
+  const starTotal = r.scores?.star ? Object.values(r.scores.star).reduce((s: number, v: any) => s + (Number(v) || 0), 0) : 0
+  const fireTotal = r.scores?.fire ? Object.values(r.scores.fire).reduce((s: number, v: any) => s + (Number(v) || 0), 0) : 0
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="p-2 opacity-60 hover:opacity-100"><ChevronLeft size={18} /></button>
+        <div className="flex-1">
+          <h3 className="font-medium text-sm">🍎 {r.date} {r.time_start}</h3>
+          <p className="text-[10px] opacity-50 mt-0.5">{r.duration_min} 分钟 · {r.rounds} 次 · {r.initiated_by === 'star' ? '🐆 星星' : '🦦 小火'}发起</p>
+        </div>
+        <button onClick={onEdit} className={`px-3 py-1.5 rounded-lg text-xs ${night ? 'bg-night-surface hover:bg-night-amber/20' : 'bg-gray-100 hover:bg-gray-200'}`}><Pencil size={12} /></button>
+        <button onClick={onDelete} className="px-3 py-1.5 rounded-lg text-xs text-red-500/70 hover:bg-red-50"><Trash2 size={12} /></button>
+      </div>
+
+      {/* Positions & Tags */}
+      <div className={`rounded-2xl border p-4 ${night ? 'bg-night-card border-night-border' : 'bg-white border-day-border'}`}>
+        <h4 className="text-xs font-medium mb-2 opacity-70">姿势</h4>
+        <div className="flex flex-wrap gap-1.5">
+          {(r.positions || []).length > 0 ? (r.positions || []).map((p: string) => (
+            <span key={p} className={`px-3 py-1 rounded-full text-xs ${night ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink'}`}>{p}</span>
+          )) : <span className="text-xs opacity-40">未填写</span>}
+        </div>
+        {r.role_play && <div className="mt-3"><span className="text-xs opacity-70">🎭 Role play：</span><span className="text-xs">{r.role_play}</span></div>}
+        {(r.tags || []).length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {r.tags.map((t: string) => <span key={t} className={`px-2 py-0.5 rounded-full text-[9px] ${night ? 'bg-night-surface' : 'bg-day-pinkLight/50'}`}>#{t}</span>)}
+          </div>
+        )}
+        {(r.encore || []).length > 0 && (
+          <div className="mt-3"><span className="text-[10px] opacity-60">🔁 下次想返场：</span><span className="text-xs">{r.encore.join('、')}</span></div>
+        )}
+      </div>
+
+      {/* Scores */}
+      <div className={`rounded-2xl border p-4 ${night ? 'bg-night-card border-night-border' : 'bg-white border-day-border'}`}>
+        <h4 className="text-xs font-medium mb-3 opacity-70">评分</h4>
+        <div className="grid grid-cols-[1fr_50px_50px] gap-y-2 gap-x-3 text-xs">
+          <div className="opacity-50"></div><div className="text-center opacity-50">🐆</div><div className="text-center opacity-50">🦦</div>
+          {Object.entries(scoreLabels).map(([k, label]) => (
+            <div key={k} className="contents">
+              <div className="opacity-75">{label}</div>
+              <div className="text-center font-medium">{r.scores?.star?.[k] || '-'}</div>
+              <div className="text-center font-medium">{r.scores?.fire?.[k] || '-'}</div>
+            </div>
+          ))}
+          <div className="contents border-t pt-2">
+            <div className="font-medium pt-2">总分</div>
+            <div className="text-center font-medium pt-2">{starTotal}</div>
+            <div className="text-center font-medium pt-2">{fireTotal}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Notes */}
+      {(r.star_notes || r.fire_notes) && (
+        <div className={`rounded-2xl border p-4 ${night ? 'bg-night-card border-night-border' : 'bg-white border-day-border'}`}>
+          <h4 className="text-xs font-medium mb-3 opacity-70">备注</h4>
+          {r.star_notes && <div className="mb-2"><span className="text-[10px] opacity-50">🐆 星星：</span><p className="text-xs mt-0.5 whitespace-pre-wrap">{r.star_notes}</p></div>}
+          {r.fire_notes && <div><span className="text-[10px] opacity-50">🦦 小火：</span><p className="text-xs mt-0.5 whitespace-pre-wrap">{r.fire_notes}</p></div>}
+        </div>
+      )}
+
+      {/* Audit */}
+      {(r.audit || []).length > 0 && (
+        <div className={`rounded-2xl border p-4 ${night ? 'bg-night-card border-night-border' : 'bg-white border-day-border'}`}>
+          <h4 className="text-xs font-medium mb-2 opacity-70">操作记录</h4>
+          <div className="space-y-1">
+            {(r.audit || []).slice().reverse().map((a: any) => (
+              <div key={a.id} className="flex justify-between gap-3 text-[10px]">
+                <span>{a.actor === 'star' ? '🐆 星星' : '🦦 小火'} · {a.action === 'create' ? '创建' : a.action === 'update' ? '编辑' : '删除'}{a.changes?.length ? ` (${a.changes.join(', ')})` : ''}</span>
+                <span className="opacity-40">{new Date(a.at).toLocaleString('zh-CN')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function IntimacyModal({ open, onClose }: { open:boolean; onClose:()=>void }) {
   const {theme}=useTheme(); const night=theme==='night'; const {currentUser}=useApp(); const actor=currentUser as Actor
-  const [records,setRecords]=useState<RecordT[]>([]); const [activity,setActivity]=useState<any[]>([]); const [editing,setEditing]=useState<RecordT|null>(null); const [auditId,setAuditId]=useState<string|null>(null); const [busy,setBusy]=useState(false)
+  const [records,setRecords]=useState<RecordT[]>([]); const [activity,setActivity]=useState<any[]>([]); const [editing,setEditing]=useState<RecordT|null>(null); const [busy,setBusy]=useState(false)
+  const [viewRecord, setViewRecord] = useState<RecordT | null>(null)
   const load=async()=>{const x=await api.list();setRecords(x.records||[]);setActivity(x.activity||[])}
-  useEffect(()=>{if(open)load()},[open])
+  useEffect(()=>{if(open){load();setViewRecord(null)}},[open])
   const save=async()=>{if(!editing)return;setBusy(true);const payload={...editing,positions:Array.isArray(editing.positions)?editing.positions:split(editing.positions),tags:Array.isArray(editing.tags)?editing.tags:split(editing.tags),encore:Array.isArray(editing.encore)?editing.encore:split(editing.encore)};if(editing.id)await api.update(actor,editing.id,payload);else await api.create(actor,payload);setBusy(false);setEditing(null);load()}
-  const remove=async(id:string)=>{if(!confirm('删除这条记录？删除动作也会留痕。'))return;await api.remove(actor,id);if(auditId===id)setAuditId(null);load()}
+  const remove=async(id:string)=>{if(!confirm('删除这条记录？删除动作也会留痕。'))return;await api.remove(actor,id);setViewRecord(null);load()}
   if(!open)return null
   return <AnimatePresence><><motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={onClose} className="fixed inset-0 z-[80] bg-black/55 backdrop-blur-sm"/><motion.div initial={{opacity:0,y:24,scale:.98}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:24}} className={`fixed z-[81] inset-x-2 md:inset-x-8 mx-auto top-[max(env(safe-area-inset-top),1rem)] bottom-[max(env(safe-area-inset-bottom),1rem)] max-w-6xl rounded-3xl shadow-2xl overflow-hidden flex flex-col ${night?'bg-night-bg text-night-text border border-night-border':'bg-day-bg text-day-text border border-day-border'}`}>
     <header className={`px-5 py-4 flex items-center justify-between border-b ${night?'border-night-border':'border-day-border'}`}><div><div className="font-medium flex items-center gap-2"><span className="text-xl">🍎</span> Intimacy records</div><p className="text-[10px] opacity-45 mt-1">操作会留痕</p></div><div className="flex gap-2"><button onClick={()=>setEditing(blank())} className={`px-3 py-2 rounded-xl text-xs flex items-center gap-1 ${night?'bg-night-amber text-night-bg':'bg-day-pink text-white'}`}><Plus size={13}/>新增</button><button onClick={onClose} className="p-2 opacity-60"><X size={18}/></button></div></header>
     <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-      <section className="grid md:grid-cols-2 gap-3"><Card title="频率趋势"><LineChart records={records} night={night}/></Card><Card title="每日次数（rounds）"><Bars records={records} night={night}/></Card><Card title="姿势分布"><Pie records={records}/></Card><Card title="星期 × 时段热力图"><Heat records={records} night={night}/></Card></section>
-      <section className={`rounded-2xl border p-4 ${night?'bg-night-card border-night-border':'bg-white border-day-border'}`}><h3 className="text-xs font-medium mb-3">最近操作留痕</h3><div className="space-y-1 max-h-28 overflow-y-auto">{activity.slice(0,20).map((a:any)=><div key={`${a.id}-${a.record_id}`} className="flex justify-between gap-3 text-[10px]"><span>{a.actor==='star'?'🐆 星星':'🦦 小火'} · {a.action==='create'?'创建':a.action==='update'?'编辑':'删除'} · {a.record_date}{a.deleted?'（已删除）':''}</span><span className="opacity-40 whitespace-nowrap">{new Date(a.at).toLocaleString('zh-CN')}</span></div>)}</div></section>
-      <section><div className="flex justify-between items-end mb-3"><h3 className="text-sm font-medium">记录</h3><span className="text-[10px] opacity-40">共 {records.length} 条</span></div><div className="space-y-2">{records.map(r=><div key={r.id} className={`rounded-2xl border p-4 ${night?'bg-night-card border-night-border':'bg-white border-day-border'}`}><div className="flex items-start gap-3"><div className="text-xl">🍎</div><div className="flex-1 min-w-0"><div className="flex flex-wrap gap-x-3 gap-y-1 items-center"><b className="text-sm">{r.date} {r.time_start}</b><span className="text-[10px] opacity-50">{r.duration_min} min · {r.rounds} rounds · {r.initiated_by==='star'?'🐆':'🦦'} initiated</span></div><div className="text-xs mt-2 opacity-75">{(r.positions||[]).join(' · ')||'未填姿势'}{r.role_play?` · 🎭 ${r.role_play}`:''}</div><div className="flex flex-wrap gap-1 mt-2">{(r.tags||[]).map((t:string)=><span key={t} className={`px-2 py-0.5 rounded-full text-[9px] ${night?'bg-night-surface':'bg-day-pinkLight'}`}>#{t}</span>)}</div></div><div className="flex"><button onClick={()=>setAuditId(auditId===r.id?null:r.id)} title="操作记录" className="p-2 opacity-55"><History size={14}/></button><button onClick={()=>setEditing(JSON.parse(JSON.stringify(r)))} title="编辑" className="p-2 opacity-55"><Pencil size={14}/></button><button onClick={()=>remove(r.id)} title="删除" className="p-2 text-red-500/70"><Trash2 size={14}/></button></div></div>{auditId===r.id&&<div className={`mt-3 pt-3 border-t text-[10px] space-y-1 ${night?'border-night-border':'border-day-border'}`}>{(r.audit||[]).slice().reverse().map((a:any)=><div key={a.id} className="flex justify-between gap-3"><span>{a.actor==='star'?'🐆 星星':'🦦 小火'} · {a.action==='create'?'创建':a.action==='update'?'编辑':'删除'} {a.changes?.length?`(${a.changes.join(', ')})`:''}</span><span className="opacity-40">{new Date(a.at).toLocaleString('zh-CN')}</span></div>)}</div>}</div>)}{!records.length&&<div className="text-center py-12 opacity-35 text-sm">第一颗苹果还没落下。</div>}</div></section>
+      {viewRecord ? (
+        <RecordDetail
+          record={viewRecord}
+          night={night}
+          onBack={() => setViewRecord(null)}
+          onEdit={() => { setEditing(JSON.parse(JSON.stringify(viewRecord))); setViewRecord(null) }}
+          onDelete={() => remove(viewRecord.id)}
+        />
+      ) : (
+        <>
+          <section className="grid md:grid-cols-2 gap-3"><Card title="频率趋势"><LineChart records={records} night={night}/></Card><Card title="每日次数（rounds）"><Bars records={records} night={night}/></Card><Card title="姿势分布"><Pie records={records}/></Card><Card title="星期 × 时段热力图"><Heat records={records} night={night}/></Card></section>
+          <section className={`rounded-2xl border p-4 ${night?'bg-night-card border-night-border':'bg-white border-day-border'}`}><h3 className="text-xs font-medium mb-3">最近操作留痕</h3><div className="space-y-1 max-h-28 overflow-y-auto">{activity.slice(0,20).map((a:any)=><div key={`${a.id}-${a.record_id}`} className="flex justify-between gap-3 text-[10px]"><span>{a.actor==='star'?'🐆 星星':'🦦 小火'} · {a.action==='create'?'创建':a.action==='update'?'编辑':'删除'} · {a.record_date}{a.deleted?'（已删除）':''}</span><span className="opacity-40 whitespace-nowrap">{new Date(a.at).toLocaleString('zh-CN')}</span></div>)}</div></section>
+          <section><div className="flex justify-between items-end mb-3"><h3 className="text-sm font-medium">记录</h3><span className="text-[10px] opacity-40">共 {records.length} 条</span></div><div className="space-y-2">{records.map(r=><div key={r.id} onClick={() => setViewRecord(r)} className={`rounded-2xl border p-4 cursor-pointer hover:scale-[1.005] transition-transform ${night?'bg-night-card border-night-border hover:border-night-amber/40':'bg-white border-day-border hover:border-day-pink/40'}`}><div className="flex items-start gap-3"><div className="text-xl">🍎</div><div className="flex-1 min-w-0"><div className="flex flex-wrap gap-x-3 gap-y-1 items-center"><b className="text-sm">{r.date} {r.time_start}</b><span className="text-[10px] opacity-50">{r.duration_min} min · {r.rounds} rounds · {r.initiated_by==='star'?'🐆':'🦦'} initiated</span></div><div className="text-xs mt-2 opacity-75">{(r.positions||[]).join(' · ')||'未填姿势'}{r.role_play?` · 🎭 ${r.role_play}`:''}</div><div className="flex flex-wrap gap-1 mt-2">{(r.tags||[]).map((t:string)=><span key={t} className={`px-2 py-0.5 rounded-full text-[9px] ${night?'bg-night-surface':'bg-day-pinkLight'}`}>#{t}</span>)}</div></div><div className="flex" onClick={e => e.stopPropagation()}><button onClick={()=>setEditing(JSON.parse(JSON.stringify(r)))} title="编辑" className="p-2 opacity-55"><Pencil size={14}/></button><button onClick={()=>remove(r.id)} title="删除" className="p-2 text-red-500/70"><Trash2 size={14}/></button></div></div></div>)}{!records.length&&<div className="text-center py-12 opacity-35 text-sm">第一颗苹果还没落下。</div>}</div></section>
+        </>
+      )}
     </div>
     {editing&&<Editor value={editing} setValue={setEditing} onCancel={()=>setEditing(null)} onSave={save} busy={busy} night={night}/>}
   </motion.div></></AnimatePresence>

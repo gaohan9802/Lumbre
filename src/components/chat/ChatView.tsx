@@ -260,11 +260,42 @@ export function ChatView() {
           if (raw === '[DONE]') continue
           try {
             const evt = JSON.parse(raw)
-            if (evt.type === 'text') { fullText += evt.content; if (live) setStreamText(fullText) }
-            else if (evt.type === 'thinking') { fullThinking += evt.content; if (live) setStreamThinking(fullThinking) }
-            else if (evt.type === 'tool_call') { toolCalls.push(evt) }
-            else if (evt.type === 'error') { fullText += (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了'); if (live) setStreamText(fullText) }
-            else if (evt.type === 'done') { usage = evt }
+            if (evt.type === 'text') {
+              fullText += evt.content
+              if (live) {
+                setStreamText(fullText)
+                setStreamBlocks(prev => {
+                  const last = prev[prev.length - 1]
+                  if (last && last.type === 'text') return [...prev.slice(0, -1), { ...last, content: (last.content || '') + evt.content }]
+                  return [...prev, { type: 'text', content: evt.content }]
+                })
+              }
+            } else if (evt.type === 'thinking') {
+              fullThinking += evt.content
+              if (live) {
+                setStreamThinking(fullThinking)
+                setStreamBlocks(prev => {
+                  const last = prev[prev.length - 1]
+                  if (last && last.type === 'thinking') return [...prev.slice(0, -1), { ...last, content: (last.content || '') + evt.content }]
+                  return [...prev, { type: 'thinking', content: evt.content }]
+                })
+              }
+            } else if (evt.type === 'tool_call') {
+              toolCalls.push(evt)
+              if (live) {
+                setStreamBlocks(prev => [...prev, { type: 'tool_call', name: evt.name, input: evt.input, result: evt.result }])
+              }
+            } else if (evt.type === 'error') {
+              fullText += (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
+              if (live) {
+                setStreamText(fullText)
+                setStreamBlocks(prev => {
+                  const last = prev[prev.length - 1]
+                  if (last && last.type === 'text') return [...prev.slice(0, -1), { ...last, content: (last.content || '') + '\n\n⚠️ ' + (evt.content || '出错了') }]
+                  return [...prev, { type: 'text', content: '⚠️ ' + (evt.content || '出错了') }]
+                })
+              }
+            } else if (evt.type === 'done') { usage = evt }
           } catch { /* ignore parse errors (incl. keepalive comments) */ }
         }
       }
@@ -580,7 +611,7 @@ export function ChatView() {
       </div>
       <div className={`p-3 border-t ${n ? 'border-night-border' : 'border-day-border'}`}>
         <button onClick={() => { setIntimacyOpen(true); if (mobile) setSessionDrawerOpen(false) }} className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs transition ${n ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-day-pinkLight hover:bg-day-lemon'}`}>
-          <span className="text-base">💕</span><span>亲密日记</span>
+          <span className="text-base">🍎</span>
         </button>
       </div>
     </div>
@@ -933,7 +964,7 @@ export function ChatView() {
             <div ref={messagesEndRef} />
           </div>
 
-          <button onClick={handleAppleQuestionnaire} disabled={isLoading} title="把最近30条上下文交给星星填写问卷" className={`absolute right-4 bottom-[176px] z-20 w-[52px] h-[52px] rounded-full text-xl opacity-40 hover:opacity-100 disabled:opacity-20 transition bg-transparent`}>💕</button>
+          <button onClick={handleAppleQuestionnaire} disabled={isLoading} title="把最近30条上下文交给星星填写问卷" className={`absolute right-4 bottom-[176px] z-20 w-[52px] h-[52px] rounded-full text-2xl opacity-30 hover:opacity-90 disabled:opacity-10 transition`}>🍎</button>
 
           {/* footer */}
           <div className={`p-4 border-t backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
