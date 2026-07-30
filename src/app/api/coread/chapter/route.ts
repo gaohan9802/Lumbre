@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { getBook, getChapter, getAnnotations, updateProgress } from '@/server/coread-store'
+import { getBook, getChapter, getAnnotations } from '@/server/coread-store'
 import { ensureDigest } from '@/server/coread-digest'
 import { LLMProfile } from '@/server/coread-llm'
 
@@ -35,7 +35,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '章节不存在' }, { status: 404 })
     }
 
-    updateProgress(bookId, chapterNum)
 
     // Sequential reading accumulates story arc: backfill the chapter we just
     // left (chapterNum - 1) so anti-spoiler digests exist even without chatting.

@@ -73,6 +73,8 @@ export interface Annotation {
   author?: CoreadAuthor
   kind?: CoreadAnnotationKind
   color?: string
+  startOffset?: number
+  endOffset?: number
   createdAt: string
   replies?: AnnotationReply[]
 }
@@ -187,13 +189,15 @@ export function getChapter(bookId: string, chapterNum: number): Chapter | null {
   return data.chapters.find(c => c.chapterNum === chapterNum) || null
 }
 
-export function getChapterList(bookId: string): { chapterNum: number; title: string; hasDigest: boolean }[] {
+export function getChapterList(bookId: string): { chapterNum: number; title: string; hasDigest: boolean; charCount: number; content: string }[] {
   const data = loadBookData(bookId)
   if (!data) return []
   return data.chapters.map(c => ({
     chapterNum: c.chapterNum,
     title: c.title,
-    hasDigest: !!c.digest
+    hasDigest: !!c.digest,
+    charCount: (c.content || '').length,
+    content: c.content || ''
   }))
 }
 
@@ -205,10 +209,12 @@ export function updateProgress(bookId: string, chapterNum: number, progress?: nu
   if (typeof offset === 'number') data.book.lastOffset = Math.max(0, Math.floor(offset))
   if (readingMode === 'scroll' || readingMode === 'page') data.book.readingMode = readingMode
   const chapterIndex = Math.max(0, data.chapters.findIndex(c => c.chapterNum === chapterNum))
-  const chapterProgress = typeof progress === 'number' ? Math.max(0, Math.min(100, progress)) : 0
-  data.book.progress = data.chapters.length
-    ? Math.max(0, Math.min(100, ((chapterIndex + chapterProgress / 100) / data.chapters.length) * 100))
-    : chapterProgress
+  const chapter = data.chapters[chapterIndex]
+  const totalChars = data.chapters.reduce((n, c) => n + (c.content || '').length, 0)
+  const charsBefore = data.chapters.slice(0, chapterIndex).reduce((n, c) => n + (c.content || '').length, 0)
+  const chapterOffset = typeof offset === 'number' ? Math.min(chapter?.content.length || 0, Math.max(0, offset)) : Math.round((chapter?.content.length || 0) * Math.max(0, Math.min(100, progress || 0)) / 100)
+  data.book.totalChars = totalChars
+  data.book.progress = totalChars ? Math.max(0, Math.min(100, (charsBefore + chapterOffset) / totalChars * 100)) : 0
   saveBookData(data)
 }
 
@@ -305,7 +311,7 @@ export function getAnnotations(bookId: string, chapterNum?: number): Annotation[
   return data.annotations
 }
 
-export function addAnnotation(bookId: string, chapterNum: number, originalText: string, annotation: string, annotator: 'user' | 'ai', kind: CoreadAnnotationKind = 'comment', color = ''): Annotation | null {
+export function addAnnotation(bookId: string, chapterNum: number, originalText: string, annotation: string, annotator: 'user' | 'ai', kind: CoreadAnnotationKind = 'comment', color = '', startOffset?: number, endOffset?: number): Annotation | null {
   const data = loadBookData(bookId)
   if (!data) return null
   
@@ -327,6 +333,7 @@ export function addAnnotation(bookId: string, chapterNum: number, originalText: 
     author: annotator === 'ai' ? 'star' : 'fire',
     kind,
     color,
+    ...(typeof startOffset === 'number' ? { startOffset: Math.max(0, Math.floor(startOffset)), endOffset: Math.max(Math.floor(startOffset), Math.floor(endOffset ?? startOffset + originalText.length)) } : {}),
     createdAt: nowStr(),
   }
   data.annotations.push(ann)

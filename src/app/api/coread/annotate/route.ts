@@ -6,7 +6,7 @@ import { addAnnotation, deleteAnnotation, getAnnotations, replyAnnotation } from
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { action, bookId, chapterNum, originalText, annotation, annId, kind, color, annotator, author, content } = body
+    const { action, bookId, chapterNum, originalText, annotation, annId, kind, color, annotator, author, content, startOffset, endOffset } = body
 
     if (action === 'reply') {
       if (!bookId || !annId || !content?.trim()) return NextResponse.json({ error: 'missing params' }, { status: 400 })
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     if (!bookId || chapterNum === undefined || (!annotation && kind !== 'highlight' && kind !== 'bookmark')) {
       return NextResponse.json({ error: 'missing params' }, { status: 400 })
     }
-    const ann = addAnnotation(bookId, chapterNum, originalText || '', annotation, annotator === 'ai' ? 'ai' : 'user', kind || 'comment', color || '')
+    const ann = addAnnotation(bookId, chapterNum, originalText || '', annotation, annotator === 'ai' ? 'ai' : 'user', kind || 'comment', color || '', Number.isFinite(Number(startOffset)) ? Number(startOffset) : undefined, Number.isFinite(Number(endOffset)) ? Number(endOffset) : undefined)
     if (!ann) return NextResponse.json({ error: '添加失败' }, { status: 400 })
     return NextResponse.json({ success: true, annotation: ann })
   } catch (err: any) {

@@ -11,3 +11,15 @@
 - **MOBI**：PalmDOC 反压缩只覆盖 compression=1/2；DRM/HUFF-CDIC 应明确报错，不能静默导入乱码。
 - **TTS**：当前 profile 只有 OpenAI-compatible 时才尝试云端 `/audio/speech`，错误自动 fallback 系统语音。
 - **验证**：TypeScript 与 whitespace check 通过；未本地执行 Next build。
+
+## 2026-08-02 — 共读 v6 分页修复
+
+- **文字断层根因**：旧实现让 CSS columns 自己分栏，却按 viewport.clientWidth 滚动；纸张内边距、columnWidth、80px columnGap 与滚动步长不相等，翻页会停在栏缝里。修复不是继续调 gap，而是让分页结果成为字符区间数组，每次只渲染一页。
+- **分页算法**：离屏固定尺寸 DOM 使用与正文一致的字体/字号/行距/white-space，二分查找最大可容纳 endOffset，再向前寻找自然断句点。分页区间严格满足 `page[n].end === page[n+1].start`，所以不会丢字。
+- **位置真源**：页码会随屏幕和字体变化，不能持久化为绝对页码；始终保存 charOffset，重排后查找包含该 offset 的新页面。
+- **全书进度**：原实现用 `(章节下标 + 章节百分比) / 章节数`，章节长度差异越大误差越大；现改为 `(前序章节字符数 + 当前 offset) / totalChars`。
+- **读取副作用**：`/api/coread/chapter` 原本 GET-like 读取时直接 `updateProgress`，只点开章节也会覆盖 lastChapter/lastOffset；已移除，进度只由阅读器保存路由写入。
+- **重复批注**：`content.indexOf(originalText)` 无法区分重复句。新批注保存 startOffset/endOffset；老数据仅以首次匹配兼容展示。
+- **目录页数**：粗略字数估算只用于后台实测尚未完成时的即时占位；每章随后使用同一 DOM 分页器计算真实页数组并缓存。页码明确属于当前设备/当前排版。
+- **选择文本 trim 坑**：直接对 selection.toString() 做 trim 后仍用原 Range 起点，会让 offset 包含前导空白、end 却按 trim 后长度算，范围错位；现在把 `raw.length - raw.trimStart().length` 加回起点。
+- **验证**：`./node_modules/.bin/tsc --noEmit` EXIT=0；`git diff --check` 通过；确认代码内已无 columnWidth/columnGap/横向 scrollBy 旧分页路径。按项目约定未在低内存环境执行 Next build。

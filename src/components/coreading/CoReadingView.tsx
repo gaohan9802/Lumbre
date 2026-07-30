@@ -11,8 +11,9 @@ import { useCoreadAppearance, fileToDataUrl } from '@/lib/coreadAppearance'
 interface Book {
   id: string; title: string; author: string; cover?: string; description?: string
   lastChapter: number; lastReadAt: string; progress: number; totalChars: number; createdAt: string
+  lastOffset?: number; readingMode?: 'scroll' | 'page'
 }
-interface ChapterListItem { chapterNum: number; title: string; hasDigest: boolean }
+interface ChapterListItem { chapterNum: number; title: string; hasDigest: boolean; charCount: number; content: string }
 interface ChapterData {
   chapterNum: number; title: string; content: string; digest: string
 }
@@ -20,6 +21,7 @@ interface Annotation {
   id: string; bookId: string; chapterNum: number
   originalText: string; annotation: string
   annotator: 'user' | 'ai'; author?: 'star' | 'fire'; kind?: 'highlight' | 'comment' | 'bookmark'; color?: string; createdAt: string
+  startOffset?: number; endOffset?: number
   replies?: { id: string; author: 'star' | 'fire'; content: string; createdAt: string }[]
 }
 interface BookStat { bookId: string; title: string; progress: number; highlights: number; comments: number; bookmarks: number; starComments: number; fireComments: number; discussions: number; readingNotes: number }
@@ -43,27 +45,36 @@ export function CoReadingView() {
   const [showStats, setShowStats] = useState(false)
   const [currentBook, setCurrentBook] = useState<Book | null>(null)
   const [chapters, setChapters] = useState<ChapterListItem[]>([])
+  const [tocPageRanges, setTocPageRanges] = useState<Record<number, PageRange[]>>({})
+  const [tocPaginating, setTocPaginating] = useState(false)
   const [chapter, setChapter] = useState<ChapterData | null>(null)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [selection, setSelection] = useState('')
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null)
   const [showChat, setShowChat] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showAppearance, setShowAppearance] = useState(false)
   const [activeAnn, setActiveAnn] = useState<Annotation | null>(null)
   const [showReaderSettings, setShowReaderSettings] = useState(false)
-  const [fontSize, setFontSize] = useState(18)
-  const [lineHeight, setLineHeight] = useState(1.9)
-  const [pageWidth, setPageWidth] = useState(680)
+  const [fontSize, setFontSize] = useState(() => readReaderSetting('fontSize', 18))
+  const [lineHeight, setLineHeight] = useState(() => readReaderSetting('lineHeight', 1.9))
+  const [pageWidth, setPageWidth] = useState(() => readReaderSetting('pageWidth', 680))
   const [readingProgress, setReadingProgress] = useState(0)
   const [ttsSpeaking, setTtsSpeaking] = useState(false)
   const [ttsMode, setTtsMode] = useState<'cloud' | 'system'>('cloud')
   const [ttsSpeed, setTtsSpeed] = useState(1)
   const [readingMode, setReadingMode] = useState<'scroll' | 'page'>('scroll')
+  const [pages, setPages] = useState<PageRange[]>([])
+  const [pageIndex, setPageIndex] = useState(0)
+  const [isPaginating, setIsPaginating] = useState(false)
+  const [readerSize, setReaderSize] = useState({ width: 640, height: 640 })
   const [restoreOffset, setRestoreOffset] = useState(0)
   const [chatSessionId, setChatSessionId] = useState('')
   const [replyText, setReplyText] = useState('')
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const positionAnchorRef = useRef(0)
 
   // Active API profile, exactly the same profile/model currently selected in Chat.
   const apiProfilePayload = useCallback(() => {
@@ -90,7 +101,7 @@ export function CoReadingView() {
       body: JSON.stringify({ bookId: book.id })
     })
     const data = await res.json()
-    if (data.chapters) setChapters(data.chapters)
+    if (data.chapters) { setChapters(data.chapters); setTocPageRanges({}) }
     setView('toc')
   }
 
@@ -105,17 +116,38 @@ export function CoReadingView() {
     const data = await res.json()
     if (data.chapter) {
       setChapter(data.chapter)
-      setAnnotations(data.annotations || [])
+      setAnnotations((data.annotations || []).map((ann: Annotation) => {
+        if (typeof ann.startOffset === 'number') return ann
+        const start = data.chapter.content.indexOf(ann.originalText)
+        return start >= 0 ? { ...ann, startOffset: start, endOffset: start + ann.originalText.length } : ann
+      }))
       setReadingMode(data.readingPosition?.mode === 'page' ? 'page' : 'scroll')
-      setRestoreOffset(Number(data.readingPosition?.offset) || 0)
+      const savedOffset = Number(data.readingPosition?.offset) || 0
+      setRestoreOffset(savedOffset)
+      positionAnchorRef.current = savedOffset
+      setPages([])
+      setPageIndex(0)
       setView('reading')
       setShowChat(false)
     }
   }
 
   const handleTextSelect = () => {
-    const selected = window.getSelection()?.toString().trim() || ''
-    if (selected) setSelection(selected.slice(0, 500))
+    const sel = window.getSelection()
+    const raw = sel?.toString() || ''
+    const selected = raw.trim()
+    const root = contentRef.current?.querySelector('[data-reader-body]')
+    if (!selected || !sel?.rangeCount || !root) return
+    const range = sel.getRangeAt(0)
+    if (!root.contains(range.commonAncestorContainer)) return
+    const prefix = document.createRange()
+    prefix.setStart(root, 0); prefix.setEnd(range.startContainer, range.startOffset)
+    const base = Number((root as HTMLElement).dataset.offsetStart || 0)
+    const leading = raw.length - raw.trimStart().length
+    const start = base + prefix.toString().length + leading
+    const clipped = selected.slice(0, 500)
+    setSelection(clipped)
+    setSelectionRange({ start, end: start + clipped.length })
   }
 
   const reloadAnnotations = async () => {
@@ -139,14 +171,14 @@ export function CoReadingView() {
         bookId: currentBook.id,
         chapterNum: chapter.chapterNum,
         originalText: selection,
-        annotation: note.trim(),
+        annotation: note.trim(), startOffset: selectionRange?.start, endOffset: selectionRange?.end,
       })
     })
     const data = await res.json()
     if (data.success && data.annotation) {
       setAnnotations(prev => [...prev, data.annotation])
     }
-    setSelection('')
+    setSelection(''); setSelectionRange(null)
   }
 
   // ── Delete annotation ──
@@ -303,68 +335,176 @@ export function CoReadingView() {
     if (!selection || !currentBook || !chapter) return
     const res = await fetch('/api/coread/annotate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       bookId: currentBook.id, chapterNum: chapter.chapterNum, originalText: selection,
-      annotation: kind === 'bookmark' ? '书签' : '', kind, color,
+      annotation: kind === 'bookmark' ? '书签' : '', kind, color, startOffset: selectionRange?.start, endOffset: selectionRange?.end,
     }) })
     const data = await res.json(); if (data.annotation) setAnnotations(prev => [...prev, data.annotation])
-    setSelection(''); loadBooks()
+    setSelection(''); setSelectionRange(null); loadBooks()
   }
 
-  const currentTextOffset = (viewport: HTMLDivElement) => {
-    const root = viewport.querySelector('[data-reader-body]')
-    if (!root) return 0
-    const x = Math.min(window.innerWidth - 24, Math.max(24, viewport.getBoundingClientRect().left + 32))
-    const y = Math.min(window.innerHeight - 24, viewport.getBoundingClientRect().top + 54)
+  const currentPage = pages[Math.min(pageIndex, Math.max(0, pages.length - 1))]
+  const currentOffset = useCallback(() => {
+    if (readingMode === 'page') return currentPage?.start ?? positionAnchorRef.current ?? 0
+    const viewport = contentRef.current
+    const root = viewport?.querySelector('[data-reader-body]')
+    if (!viewport || !root) return positionAnchorRef.current || 0
+    const x = Math.max(8, viewport.getBoundingClientRect().left + 32)
+    const y = Math.max(8, viewport.getBoundingClientRect().top + 42)
     const doc: any = document
     const pos = doc.caretPositionFromPoint?.(x, y) || doc.caretRangeFromPoint?.(x, y)
     const node = pos?.offsetNode || pos?.startContainer
     const offset = pos?.offset ?? pos?.startOffset ?? 0
-    if (!node || !root.contains(node)) { const at = readingMode === 'page' ? viewport.scrollLeft : viewport.scrollTop; const max = readingMode === 'page' ? viewport.scrollWidth - viewport.clientWidth : viewport.scrollHeight - viewport.clientHeight; return Math.round((at / Math.max(1, max)) * (chapter?.content.length || 0)) }
+    if (!node || !root.contains(node)) return Math.round((viewport.scrollTop / Math.max(1, viewport.scrollHeight - viewport.clientHeight)) * (chapter?.content.length || 0))
     const range = document.createRange(); range.setStart(root, 0); range.setEnd(node, offset)
     return range.toString().length
-  }
+  }, [readingMode, currentPage, chapter])
+
+  const savePosition = useCallback((keepalive = false) => {
+    if (!currentBook || !chapter || view !== 'reading') return
+    const offset = Math.max(0, Math.min(chapter.content.length, currentOffset()))
+    positionAnchorRef.current = offset
+    const progress = chapter.content.length ? offset / chapter.content.length * 100 : 100
+    const chapterIndex = Math.max(0, chapters.findIndex(c => c.chapterNum === chapter.chapterNum))
+    const charsBefore = chapters.slice(0, chapterIndex).reduce((n, c) => n + c.charCount, 0)
+    const totalChars = chapters.reduce((n, c) => n + c.charCount, 0)
+    setCurrentBook(prev => {
+      if (!prev) return prev
+      const bookProgress = totalChars ? (charsBefore + offset) / totalChars * 100 : progress
+      if (prev.lastChapter === chapter.chapterNum && prev.lastOffset === offset && prev.readingMode === readingMode && Math.abs((prev.progress || 0) - bookProgress) < .01) return prev
+      return { ...prev, lastChapter: chapter.chapterNum, lastOffset: offset, readingMode, progress: bookProgress }
+    })
+    fetch('/api/coread/progress', { method: 'POST', keepalive, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: currentBook.id, chapterNum: chapter.chapterNum, progress, offset, readingMode }) }).catch(() => {})
+  }, [currentBook, chapter, chapters, view, readingMode, currentOffset])
 
   const handleReaderScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (readingMode === 'page' || !chapter) return
     const el = e.currentTarget
-    const horizontal = readingMode === 'page'
-    const max = horizontal ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight
-    const at = horizontal ? el.scrollLeft : el.scrollTop
-    setReadingProgress(max <= 0 ? 100 : Math.round((at / max) * 100))
+    const offset = currentOffset()
+    positionAnchorRef.current = offset
+    setReadingProgress(chapter.content.length ? Math.round(offset / chapter.content.length * 100) : 100)
   }
+
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el || view !== 'reading') return
+    const update = () => setReaderSize({ width: el.clientWidth, height: el.clientHeight })
+    update()
+    const ro = new ResizeObserver(update); ro.observe(el)
+    return () => ro.disconnect()
+  }, [view, showChat, readingMode])
+
+  useEffect(() => {
+    try { localStorage.setItem('lumbre-coread-reader', JSON.stringify({ fontSize, lineHeight, pageWidth })) } catch {}
+  }, [fontSize, lineHeight, pageWidth])
+
+  useEffect(() => {
+    if (readingMode !== 'page' || !chapter || view !== 'reading') return
+    let cancelled = false
+    const anchor = positionAnchorRef.current || restoreOffset || currentPage?.start || 0
+    setIsPaginating(true)
+    const timer = setTimeout(() => {
+      const width = Math.max(260, Math.min(pageWidth, readerSize.width - 32) - 48)
+      const height = Math.max(260, readerSize.height - 112)
+      const next = paginateText(chapter.content, width, height, fontSize, lineHeight)
+      if (cancelled) return
+      setPages(next)
+      const idx = Math.max(0, next.findIndex((p, i) => anchor >= p.start && (anchor < p.end || i === next.length - 1)))
+      setPageIndex(idx)
+      const offset = next[idx]?.start || 0
+      positionAnchorRef.current = offset
+      setReadingProgress(chapter.content.length ? Math.round(offset / chapter.content.length * 100) : 100)
+      setIsPaginating(false)
+    }, 50)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [readingMode, chapter, view, pageWidth, fontSize, lineHeight, readerSize.width, readerSize.height])
+
+  useEffect(() => {
+    if (readingMode !== 'page' || !chapter || !currentPage) return
+    positionAnchorRef.current = currentPage.start
+    setReadingProgress(chapter.content.length ? Math.round(currentPage.start / chapter.content.length * 100) : 100)
+  }, [pageIndex, currentPage, readingMode, chapter])
 
   useEffect(() => {
     if (!currentBook || !chapter || view !== 'reading') return
-    const t = setTimeout(() => {
-      fetch('/api/coread/progress', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: currentBook.id, chapterNum: chapter.chapterNum, progress: readingProgress, offset: contentRef.current ? currentTextOffset(contentRef.current) : 0, readingMode }) }).catch(() => {})
-    }, 800)
+    const t = setTimeout(() => savePosition(), 800)
     return () => clearTimeout(t)
-  }, [readingProgress, currentBook, chapter, view, readingMode])
+  }, [readingProgress, currentBook, chapter, view, readingMode, savePosition])
 
   useEffect(() => {
-    if (view !== 'reading' || !chapter || !restoreOffset) return
+    const onHide = () => { if (document.visibilityState === 'hidden') savePosition(true) }
+    document.addEventListener('visibilitychange', onHide)
+    return () => document.removeEventListener('visibilitychange', onHide)
+  }, [savePosition])
+
+  useEffect(() => {
+    if (view !== 'reading' || !chapter || readingMode !== 'scroll') return
     const timer = setTimeout(() => {
       const viewport = contentRef.current
       const root = viewport?.querySelector('[data-reader-body]')
       if (!viewport || !root) return
+      const target = Math.max(0, positionAnchorRef.current || restoreOffset)
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-      let left = restoreOffset
-      let node: Node | null
+      let left = target, node: Node | null
       while ((node = walker.nextNode())) {
         const len = node.textContent?.length || 0
-        if (left > len) {
-          left -= len
-          continue
-        }
-        const range = document.createRange()
-        range.setStart(node, Math.max(0, left))
-        range.collapse(true)
-        const rect = range.getBoundingClientRect()
-        if (readingMode === 'page') viewport.scrollLeft = Math.max(0, rect.left - root.getBoundingClientRect().left)
-        else viewport.scrollTop += rect.top - viewport.getBoundingClientRect().top - 36
+        if (left > len) { left -= len; continue }
+        const range = document.createRange(); range.setStart(node, Math.max(0, left)); range.collapse(true)
+        viewport.scrollTop += range.getBoundingClientRect().top - viewport.getBoundingClientRect().top - 36
         break
       }
-    }, 120)
+    }, 100)
     return () => clearTimeout(timer)
   }, [view, chapter, restoreOffset, readingMode])
+
+  const turnPage = (delta: number) => {
+    if (isPaginating || !pages.length) return
+    const next = pageIndex + delta
+    if (next >= 0 && next < pages.length) setPageIndex(next)
+    else if (next < 0 && chapter && chapter.chapterNum > 1) { savePosition(); openChapter(chapter.chapterNum - 1) }
+    else if (next >= pages.length && chapter && chapters.some(c => c.chapterNum === chapter.chapterNum + 1)) { savePosition(); openChapter(chapter.chapterNum + 1) }
+  }
+
+  useEffect(() => {
+    if (view !== 'reading' || readingMode !== 'page') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); turnPage(-1) }
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); turnPage(1) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [view, readingMode, pageIndex, pages, isPaginating, chapter, chapters])
+
+  useEffect(() => {
+    if (view !== 'toc' || !chapters.length) return
+    let cancelled = false
+    const viewportWidth = typeof window === 'undefined' ? 640 : window.innerWidth
+    const viewportHeight = typeof window === 'undefined' ? 760 : window.innerHeight
+    const width = Math.max(260, Math.min(pageWidth, viewportWidth - 40) - 48)
+    const height = Math.max(260, viewportHeight - 152)
+    const cacheKey = `lumbre-coread-pages:${currentBook?.id}:${Math.round(width)}:${Math.round(height)}:${fontSize}:${lineHeight}:${chapters.map(c=>c.charCount).join(',')}`
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || '{}')
+      if (cached && Object.keys(cached).length === chapters.length) { setTocPageRanges(cached); setTocPaginating(false); return }
+    } catch {}
+    setTocPaginating(true); setTocPageRanges({})
+    let i = 0
+    const calculateNext = () => {
+      if (cancelled) return
+      const ch = chapters[i]
+      if (!ch) { setTocPaginating(false); return }
+      const ranges = paginateText(ch.content || '', width, height, fontSize, lineHeight)
+      setTocPageRanges(prev => {
+        const next = { ...prev, [ch.chapterNum]: ranges }
+        if (i === chapters.length - 1) { try { localStorage.setItem(cacheKey, JSON.stringify(next)) } catch {} }
+        return next
+      })
+      i++
+      if (i < chapters.length) setTimeout(calculateNext, 0)
+      else setTocPaginating(false)
+    }
+    const timer = setTimeout(calculateNext, 30)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [view, chapters, currentBook?.id, pageWidth, fontSize, lineHeight])
 
   // ── Appearance-derived styles ──
   const hasBg = !!ap.bgImage
@@ -442,6 +582,15 @@ export function CoReadingView() {
       </div>
     )
   } else if (view === 'toc') {
+    const fallbackCharsPerPage = estimateCharsPerPage(pageWidth, Math.max(420, readerSize.height || 640), fontSize, lineHeight)
+    let runningPage = 1
+    const chapterPages = chapters.map(ch => { const count = tocPageRanges[ch.chapterNum]?.length || Math.max(1, Math.ceil((ch.charCount || 1) / fallbackCharsPerPage)); const row = { ...ch, startPage: runningPage, endPage: runningPage + count - 1, pageCount: count }; runningPage += count; return row })
+    const currentToc = chapterPages.find(ch => ch.chapterNum === currentBook?.lastChapter)
+    const currentRanges = currentToc ? (tocPageRanges[currentToc.chapterNum] || []) : []
+    const savedTocOffset = positionAnchorRef.current || currentBook?.lastOffset || 0
+    const exactPageIndex = currentRanges.findIndex((p,i)=>savedTocOffset>=p.start&&(savedTocOffset<p.end||i===currentRanges.length-1))
+    const currentChapterPage = currentToc ? Math.max(1, exactPageIndex >= 0 ? exactPageIndex + 1 : Math.min(currentToc.pageCount, Math.floor(savedTocOffset / fallbackCharsPerPage) + 1)) : 1
+    const currentAbsolutePage = currentToc ? currentToc.startPage + currentChapterPage - 1 : 1
     content = (
       <div className={`h-full overflow-y-auto p-4 ${tx}`}>
         <div className="max-w-xl mx-auto">
@@ -456,17 +605,16 @@ export function CoReadingView() {
             <div className="min-w-0 flex-1"><h2 className="text-xl font-serif mb-1">{currentBook?.title}</h2><p className={`text-sm ${soft}`}>{currentBook?.author || '未知作者'}</p>{currentBook?.description && <p className={`text-xs mt-3 line-clamp-3 ${soft}`}>{currentBook.description}</p>}<div className="mt-4"><div className={`flex justify-between text-[11px] ${soft}`}><span>阅读进度</span><span>{Math.round(currentBook?.progress || 0)}%</span></div><div className="h-1.5 mt-1 rounded-full bg-black/10 overflow-hidden"><div className="h-full bg-[#b0543f]" style={{width:`${currentBook?.progress || 0}%`}}/></div><div className={`flex gap-3 mt-3 text-[10px] ${soft}`}><span>{currentStat?.highlights || 0} 划线</span><span>{currentStat?.comments || 0} 评论</span><span>{currentStat?.bookmarks || 0} 书签</span></div></div></div>
           </div>
 
-          <div className="flex items-center justify-between mb-2"><span className={`text-xs ${soft}`}>目录 · {chapters.length} 章</span>{currentBook?.lastChapter ? <button onClick={()=>openChapter(currentBook.lastChapter)} className="text-xs text-[#b0543f]">继续阅读 →</button> : null}</div>
+          <div className={`mb-4 p-3 rounded-xl border ${border} ${card}`}><div className="flex items-center justify-between"><div><div className="text-xs opacity-55">当前排版阅读位置</div><div className="font-medium mt-1">第 {currentAbsolutePage} / {Math.max(1, runningPage - 1)} 页</div><div className={`text-[10px] mt-1 ${soft}`}>{tocPaginating ? '正在按当前排版计算全部页数…' : '页数已按当前字号、行距与页面宽度计算'}</div></div>{currentBook?.lastChapter ? <button onClick={()=>openChapter(currentBook.lastChapter)} className="px-3 py-2 rounded-lg bg-[#b0543f] text-white text-xs">继续阅读<br/><span className="opacity-80">第 {currentBook.lastChapter} 章 · {currentChapterPage} 页</span></button> : null}</div></div>
+          <div className="flex items-center justify-between mb-2"><span className={`text-xs ${soft}`}>目录 · {chapters.length} 章 · {tocPaginating ? '计算页数中' : `共 ${Math.max(1, runningPage - 1)} 页`}</span></div>
           <div className="space-y-1">
-            {chapters.map(ch => (
+            {chapterPages.map(ch => (
               <div key={ch.chapterNum}
                 className={`p-2.5 rounded-lg cursor-pointer hover:opacity-80 flex items-center justify-between ${
                   ch.chapterNum === currentBook?.lastChapter ? `${card} border ${border}` : ''
                 }`}
                 onClick={() => openChapter(ch.chapterNum)}>
-                <span className="text-sm">
-                  <span className={soft}>#{ch.chapterNum}</span>{' '}{ch.title}
-                </span>
+                <span className="text-sm min-w-0"><span className={soft}>#{ch.chapterNum}</span>{' '}{ch.title}<span className={`block text-[10px] mt-0.5 ${soft}`}>第 {ch.startPage}–{ch.endPage} 页 · 共 {ch.pageCount} 页{ch.chapterNum === currentBook?.lastChapter ? ` · 当前第 ${currentChapterPage} 页` : ''}</span></span>
                 <span className="flex items-center gap-1">
                   {ch.hasDigest && <BookMarked size={12} className={soft} />}
                   {ch.chapterNum === currentBook?.lastChapter && <span className={`text-xs ${accent}`}>上次读到</span>}
@@ -482,14 +630,14 @@ export function CoReadingView() {
     content = (
       <div className={`h-full flex flex-col ${tx}`}>
         <div className={`relative flex items-center justify-between px-3 py-2 border-b ${border} shrink-0`}>
-          <button onClick={() => setView('toc')} className={`flex items-center gap-1 text-sm ${soft}`}>
+          <button onClick={() => { savePosition(); setView('toc') }} className={`flex items-center gap-1 text-sm ${soft}`}>
             <ArrowLeft size={14} /> 目录
           </button>
           <span className="text-sm font-medium truncate mx-2">
             {chapter?.title || `第${chapter?.chapterNum}章`}
           </span>
           <div className="flex items-center gap-1.5">
-            {readingMode === 'page' && <><button onClick={()=>contentRef.current?.scrollBy({left:-contentRef.current.clientWidth,behavior:'smooth'})} className={`p-1.5 rounded-lg ${soft} ${card}`} title="上一页"><ChevronLeft size={15}/></button><button onClick={()=>contentRef.current?.scrollBy({left:contentRef.current.clientWidth,behavior:'smooth'})} className={`p-1.5 rounded-lg ${soft} ${card}`} title="下一页"><ChevronRight size={15}/></button></>}
+            {readingMode === 'page' && <><button disabled={isPaginating} onClick={()=>turnPage(-1)} className={`p-1.5 rounded-lg ${soft} ${card}`} title="上一页"><ChevronLeft size={15}/></button><button disabled={isPaginating} onClick={()=>turnPage(1)} className={`p-1.5 rounded-lg ${soft} ${card}`} title="下一页"><ChevronRight size={15}/></button></>}
             {themeToggleBtn}
             <button onClick={toggleTTS} title={ttsSpeaking ? '停止朗读' : '语音朗读'} className={`p-1.5 rounded-lg ${ttsSpeaking ? 'text-[#b0543f] bg-[#b0543f]/15' : soft} ${card}`}>{ttsSpeaking ? <Pause size={16}/> : <Headphones size={16}/>}</button>
             <button onClick={() => setShowReaderSettings(!showReaderSettings)} title="阅读设置" className={`p-1.5 rounded-lg ${showReaderSettings ? accent : soft} ${card}`}><Settings2 size={16}/></button>
@@ -503,45 +651,39 @@ export function CoReadingView() {
         {showReaderSettings && <div className={`absolute right-3 top-12 z-40 w-64 p-4 rounded-xl shadow-xl border ${border} ${isNight ? 'bg-[#292927]' : 'bg-white'}`}><div className="text-sm font-medium mb-3">阅读设置</div><label className="text-xs opacity-60">字号 {fontSize}px</label><input className="w-full accent-[#b0543f]" type="range" min="14" max="28" value={fontSize} onChange={e=>setFontSize(Number(e.target.value))}/><label className="text-xs opacity-60">行距 {lineHeight.toFixed(1)}</label><input className="w-full accent-[#b0543f]" type="range" min="1.4" max="2.6" step="0.1" value={lineHeight} onChange={e=>setLineHeight(Number(e.target.value))}/><label className="text-xs opacity-60">页面宽度 {pageWidth}px</label><input className="w-full accent-[#b0543f]" type="range" min="480" max="900" step="20" value={pageWidth} onChange={e=>setPageWidth(Number(e.target.value))}/><div className={`mt-3 pt-3 border-t ${border} space-y-2 text-[11px] ${soft}`}><div className="flex gap-2"><button onClick={()=>setReadingMode('scroll')} className={`flex-1 py-1.5 rounded-lg ${readingMode==='scroll'?'bg-[#b0543f]/15 text-[#b0543f]':card}`}>卷轴</button><button onClick={()=>setReadingMode('page')} className={`flex-1 py-1.5 rounded-lg ${readingMode==='page'?'bg-[#b0543f]/15 text-[#b0543f]':card}`}>仿真翻页</button></div><div className="flex gap-2"><select value={ttsMode} onChange={e=>setTtsMode(e.target.value as any)} className={`flex-1 p-1.5 rounded-lg bg-transparent border ${border}`}><option value="cloud">云端 TTS</option><option value="system">系统语音</option></select><select value={ttsSpeed} onChange={e=>setTtsSpeed(Number(e.target.value))} className={`p-1.5 rounded-lg bg-transparent border ${border}`}><option value={.8}>0.8×</option><option value={1}>1.0×</option><option value={1.2}>1.2×</option><option value={1.5}>1.5×</option></select></div><div>云端语音使用当前 OpenAI-compatible API 的 /audio/speech，不支持时自动回退系统语音。</div></div></div>}
 
         <div className="flex-1 flex overflow-hidden">
-          <div className={`flex-1 p-4 ${readingMode === 'page' ? 'overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory' : 'overflow-y-auto'} ${showChat ? 'hidden md:block md:w-1/2' : ''}`}
-            ref={contentRef} onScroll={handleReaderScroll} onMouseUp={handleTextSelect} onTouchEnd={handleTextSelect}>
-            <div className={`mx-auto ${readingMode === 'page' ? `h-full rounded-[22px] px-6 py-5 ${isNight ? 'bg-[#252523] shadow-[0_18px_45px_rgba(0,0,0,.28)]' : 'bg-[#fffdf8] shadow-[0_18px_45px_rgba(94,67,46,.14)]'}` : ''}`} style={readingMode === 'page' ? { width: `min(${pageWidth}px, calc(100vw - 40px))`, minWidth: `min(${pageWidth}px, calc(100vw - 40px))`, height: '100%' } : {maxWidth: pageWidth}}>
-              <p className={`text-xs ${soft} mb-5`}>{currentBook?.title} · #{chapter?.chapterNum}</p>
+          <div className={`flex-1 p-4 ${readingMode === 'page' ? 'overflow-hidden' : 'overflow-y-auto'} ${showChat ? 'hidden md:block md:w-1/2' : ''}`}
+            ref={contentRef} onScroll={handleReaderScroll} onMouseUp={handleTextSelect}
+            onTouchStart={e => { const t=e.touches[0]; touchStartRef.current={x:t.clientX,y:t.clientY} }}
+            onTouchEnd={e => { handleTextSelect(); if(readingMode!=='page'||!touchStartRef.current)return; const t=e.changedTouches[0]; const dx=t.clientX-touchStartRef.current.x, dy=t.clientY-touchStartRef.current.y; touchStartRef.current=null; if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.25)turnPage(dx<0?1:-1) }}>
+            <div className={`mx-auto relative ${readingMode === 'page' ? `h-full rounded-[22px] px-6 py-5 flex flex-col overflow-hidden ${isNight ? 'bg-[#252523] shadow-[0_18px_45px_rgba(0,0,0,.28)]' : 'bg-[#fffdf8] shadow-[0_18px_45px_rgba(94,67,46,.14)]'}` : ''}`} style={readingMode === 'page' ? { width: '100%', maxWidth: pageWidth, height: '100%' } : {maxWidth: pageWidth}}>
+              <p className={`text-xs ${soft} mb-4 shrink-0`}>{currentBook?.title} · #{chapter?.chapterNum}</p>
 
-              <ChapterContent
-                content={chapter?.content || ''}
-                annotations={annotations}
-                isNight={isNight}
-                onAnnClick={(a) => setActiveAnn(a)}
-                fontSize={fontSize}
-                lineHeight={lineHeight}
-                readingMode={readingMode}
-                pageWidth={pageWidth}
-              />
+              {readingMode === 'page' ? (
+                <div className="flex-1 min-h-0 overflow-hidden relative" onClick={e => { if(window.getSelection()?.toString())return; const r=e.currentTarget.getBoundingClientRect(); const x=e.clientX-r.left; if(x<r.width*.22)turnPage(-1); else if(x>r.width*.78)turnPage(1) }}>
+                  {isPaginating || !currentPage ? <div className={`h-full flex items-center justify-center text-sm ${soft}`}>正在重新排版…</div> : <ChapterContent
+                    content={(chapter?.content || '').slice(currentPage.start, currentPage.end)} annotations={annotations} isNight={isNight}
+                    onAnnClick={(a) => setActiveAnn(a)} fontSize={fontSize} lineHeight={lineHeight} readingMode="page" pageWidth={pageWidth} baseOffset={currentPage.start}
+                  />}
+                </div>
+              ) : <ChapterContent content={chapter?.content || ''} annotations={annotations} isNight={isNight} onAnnClick={(a) => setActiveAnn(a)} fontSize={fontSize} lineHeight={lineHeight} readingMode="scroll" pageWidth={pageWidth} baseOffset={0} />}
 
               {selection && (
                 <div className={`fixed bottom-20 left-1/2 -translate-x-1/2 flex gap-2 p-2 rounded-xl ${isNight ? 'bg-[#2a2a29]' : 'bg-white'} border ${border} backdrop-blur-sm shadow-lg z-50`}>
                   <button onClick={() => addQuickAnnotation('highlight')} className="px-3 py-1 text-xs rounded-lg bg-yellow-500/20 text-yellow-500 flex items-center gap-1"><Highlighter size={12}/> 划线</button>
                   <button onClick={addUserAnnotation} className="px-3 py-1 text-xs rounded-lg bg-purple-500/20 text-purple-400">✏️ 评论</button>
                   <button onClick={() => addQuickAnnotation('bookmark')} className="px-3 py-1 text-xs rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center gap-1"><Bookmark size={12}/> 书签</button>
-                  <button onClick={() => { setShowChat(true) }} className="px-3 py-1 text-xs rounded-lg bg-blue-500/20 text-blue-400">
-                    💬 聊这句
-                  </button>
+                  <button onClick={() => setShowChat(true)} className="px-3 py-1 text-xs rounded-lg bg-blue-500/20 text-blue-400">💬 聊这句</button>
                 </div>
               )}
 
-              <div className={`flex justify-between mt-8 pt-4 border-t ${border} text-sm ${soft}`}>
-                {chapter && chapter.chapterNum > 1 ? (
-                  <button onClick={() => openChapter(chapter.chapterNum - 1)} className="flex items-center gap-1 hover:opacity-80">
-                    <ChevronLeft size={14} /> 上一章
-                  </button>
-                ) : <span />}
-                {chapter && chapters.find(c => c.chapterNum === chapter.chapterNum + 1) ? (
-                  <button onClick={() => openChapter(chapter.chapterNum + 1)} className="flex items-center gap-1 hover:opacity-80">
-                    下一章 <ChevronRight size={14} />
-                  </button>
-                ) : <span />}
-              </div>
+              {readingMode === 'page' ? <div className={`shrink-0 mt-3 pt-3 border-t ${border} flex items-center justify-between text-xs ${soft}`}>
+                <button onClick={()=>turnPage(-1)} disabled={isPaginating} className="p-1 disabled:opacity-30"><ChevronLeft size={16}/></button>
+                <button onClick={()=>{ const raw=prompt(`跳到页码（1-${pages.length}）`, String(pageIndex+1)); const n=Number(raw); if(Number.isFinite(n))setPageIndex(Math.max(0,Math.min(pages.length-1,Math.floor(n)-1))) }} className="tabular-nums">本章 {pageIndex + 1} / {Math.max(1,pages.length)} 页 · {Math.round(readingProgress)}%</button>
+                <button onClick={()=>turnPage(1)} disabled={isPaginating} className="p-1 disabled:opacity-30"><ChevronRight size={16}/></button>
+              </div> : <div className={`flex justify-between mt-8 pt-4 border-t ${border} text-sm ${soft}`}>
+                {chapter && chapter.chapterNum > 1 ? <button onClick={() => { savePosition(); openChapter(chapter.chapterNum - 1) }} className="flex items-center gap-1 hover:opacity-80"><ChevronLeft size={14}/> 上一章</button> : <span/>}
+                {chapter && chapters.some(c => c.chapterNum === chapter.chapterNum + 1) ? <button onClick={() => { savePosition(); openChapter(chapter.chapterNum + 1) }} className="flex items-center gap-1 hover:opacity-80">下一章 <ChevronRight size={14}/></button> : <span/>}
+              </div>}
             </div>
           </div>
 
@@ -648,10 +790,57 @@ function StatsPanel({ stats, isNight, onClose }: { stats: BookStat[]; isNight: b
   </div>
 }
 
+type PageRange = { start: number; end: number }
+
+function readReaderSetting(key: 'fontSize' | 'lineHeight' | 'pageWidth', fallback: number) {
+  if (typeof window === 'undefined') return fallback
+  try { const value = JSON.parse(localStorage.getItem('lumbre-coread-reader') || '{}')[key]; return Number.isFinite(value) ? value : fallback } catch { return fallback }
+}
+
+function estimateCharsPerPage(width: number, height: number, fontSize: number, lineHeight: number) {
+  const usableWidth = Math.max(240, width - 48), usableHeight = Math.max(260, height - 112)
+  return Math.max(120, Math.floor(usableWidth / (fontSize * .92)) * Math.floor(usableHeight / (fontSize * lineHeight)) * .86)
+}
+
+function preferredBreak(text: string, start: number, rawEnd: number) {
+  if (rawEnd >= text.length) return text.length
+  const min = start + Math.floor((rawEnd - start) * .72)
+  const slice = text.slice(min, rawEnd)
+  for (const re of [/\n\s*\n/g, /[。！？!?]\s*/g, /[；;，,]\s*/g, /\s+/g]) {
+    let match: RegExpExecArray | null, last = -1
+    while ((match = re.exec(slice))) last = match.index + match[0].length
+    if (last > 0) return min + last
+  }
+  return rawEnd
+}
+
+function paginateText(text: string, width: number, height: number, fontSize: number, lineHeight: number): PageRange[] {
+  if (!text) return [{ start: 0, end: 0 }]
+  const box = document.createElement('div')
+  Object.assign(box.style, { position: 'fixed', left: '-100000px', top: '0', visibility: 'hidden', pointerEvents: 'none', whiteSpace: 'pre-wrap', overflow: 'hidden', boxSizing: 'border-box', width: `${width}px`, height: `${height}px`, fontSize: `${fontSize}px`, lineHeight: String(lineHeight), fontFamily: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif' })
+  document.body.appendChild(box)
+  const out: PageRange[] = []
+  let start = 0
+  try {
+    while (start < text.length) {
+      let lo = start + 1, hi = text.length, best = lo
+      while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2)
+        box.textContent = text.slice(start, mid)
+        if (box.scrollHeight <= height + 1) { best = mid; lo = mid + 1 } else hi = mid - 1
+      }
+      let end = preferredBreak(text, start, best)
+      if (end <= start) end = Math.min(text.length, start + 1)
+      out.push({ start, end }); start = end
+    }
+  } finally { box.remove() }
+  return out
+}
+
 // ── Chapter Content: React-node segmentation (cross-line safe, clickable) ──
-function ChapterContent({ content, annotations, isNight, onAnnClick, fontSize, lineHeight, readingMode, pageWidth }: {
+function ChapterContent({ content, annotations, isNight, onAnnClick, fontSize, lineHeight, readingMode, pageWidth, baseOffset = 0 }: {
   content: string; annotations: Annotation[]; isNight: boolean
-  onAnnClick: (a: Annotation) => void; fontSize: number; lineHeight: number; readingMode: 'scroll' | 'page'; pageWidth: number
+  onAnnClick: (a: Annotation) => void; fontSize: number; lineHeight: number; readingMode: 'scroll' | 'page'; pageWidth: number; baseOffset?: number
 }) {
   if (!content) return null
 
@@ -660,10 +849,13 @@ function ChapterContent({ content, annotations, isNight, onAnnClick, fontSize, l
   type Range = { start: number; end: number; ann: Annotation }
   const ranges: Range[] = []
   for (const ann of sorted) {
-    const idx = content.indexOf(ann.originalText)
-    if (idx < 0) continue
-    const start = idx, end = idx + ann.originalText.length
-    if (ranges.some(r => start < r.end && end > r.start)) continue // overlap → skip
+    const localMatch = content.indexOf(ann.originalText)
+    if (typeof ann.startOffset !== 'number' && localMatch < 0) continue
+    const absoluteStart = typeof ann.startOffset === 'number' ? ann.startOffset : baseOffset + localMatch
+    const absoluteEnd = typeof ann.endOffset === 'number' ? ann.endOffset : absoluteStart + ann.originalText.length
+    const start = Math.max(0, absoluteStart - baseOffset), end = Math.min(content.length, absoluteEnd - baseOffset)
+    if (end <= 0 || start >= content.length || end <= start) continue
+    if (ranges.some(r => start < r.end && end > r.start)) continue
     ranges.push({ start, end, ann })
   }
   ranges.sort((a, b) => a.start - b.start)
@@ -689,7 +881,7 @@ function ChapterContent({ content, annotations, isNight, onAnnClick, fontSize, l
   if (cursor < content.length) nodes.push(<Fragment key={k++}>{content.slice(cursor)}</Fragment>)
 
   return (
-    <div data-reader-body className={`font-serif ${readingMode === 'page' ? 'h-[calc(100dvh-180px)]' : ''}`} style={{ whiteSpace: 'pre-wrap', fontSize, lineHeight, ...(readingMode === 'page' ? { columnWidth: Math.max(280, pageWidth - 48), columnGap: 80, columnFill: 'auto' as const } : {}) }}>
+    <div data-reader-body data-offset-start={baseOffset} className="font-serif" style={{ whiteSpace: 'pre-wrap', fontSize, lineHeight, height: readingMode === 'page' ? '100%' : undefined, overflow: readingMode === 'page' ? 'hidden' : undefined }}>
       {nodes}
     </div>
   )
