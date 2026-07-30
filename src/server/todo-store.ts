@@ -156,3 +156,12 @@ export function commentTodo(id: string, author: string, content: string, date?: 
 export function listReceiptDays(limit = 7): string[] {
   return listDayFiles().reverse().slice(0, limit)
 }
+
+export function editTodo(id: string, text: string, date?: string): string {
+  const day = getTodos(date)
+  const item = day.items.find((i) => i.id === id)
+  if (!item) return 'not_found'
+  item.text = text
+  saveDay(day)
+  return 'ok'
+}

@@ -64,11 +64,12 @@ async function get(path: string) {
 }
 
 export const photos = {
-  list:    () => get('/api/photos/list'),
-  write:   (author: string, url: string, caption?: string, source?: string) => post('/api/photos/write', { author, url, caption, source }),
-  edit:    (id: string, caption: string) => post('/api/photos/edit', { id, caption }),
+  list:    (opts?: { locked?: boolean }) => get('/api/photos/list' + (opts?.locked !== undefined ? `?locked=${opts.locked}` : '')),
+  write:   (author: string, url: string, caption?: string, source?: string, locked?: boolean) => post('/api/photos/write', { author, url, caption, source, locked }),
+  edit:    (id: string, caption?: string, locked?: boolean) => post('/api/photos/edit', { id, caption, locked }),
   delete:  (id: string) => post('/api/photos/delete', { id }),
   comment: (id: string, author: string, content: string) => post('/api/photos/comment', { id, author, content }),
+  password: (action: 'set' | 'verify' | 'check', password?: string) => post('/api/photos/password', { action, password }),
 }
 
 // ── Todo ────────────────────────────────────────────────
@@ -77,6 +78,7 @@ export const todo = {
   add:     (text: string, author: string, date?: string) => post('/api/todo/add', { text, author, date }),
   toggle:  (id: string, date?: string) => post('/api/todo/toggle', { id, date }),
   remove:  (id: string, date?: string) => post('/api/todo/remove', { id, date }),
+  edit:    (id: string, text: string, date?: string) => post('/api/todo/edit', { id, text, date }),
   comment: (id: string, author: string, content: string, date?: string) => post('/api/todo/comment', { id, author, content, date }),
 }
 

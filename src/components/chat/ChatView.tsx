@@ -160,6 +160,8 @@ export function ChatView() {
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }, [input])
 
+  const [photoPrompt, setPhotoPrompt] = useState<{ dataUrl: string } | null>(null)
+
   const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -168,25 +170,27 @@ export function ChatView() {
     const reader = new FileReader()
     reader.onload = async () => {
       const raw = reader.result as string
-      // Compress to a vision-safe JPEG (≤1568px, <5MB) so upstream doesn't
-      // reject it (which would silently truncate the reply). Stage it so it
-      // rides along with the next message as a real image block, and archive
-      // the compressed copy on the photo wall.
       const dataUrl = await compressImage(raw)
-      // Archive the compressed copy on the photo wall, then reference it by a
-      // small http URL (/api/photos/raw/<id>) instead of shipping the base64 in
-      // every request. Base64 data URLs bloat the payload and some relays choke
-      // on them (silent truncation). Fall back to the data URL if the write fails.
-      let ref = dataUrl
-      try {
-        const r = await photosApi.write('fire', dataUrl, '', 'chat')
-        if (r?.id) ref = `/api/photos/raw/${r.id}`
-      } catch {}
-      setPendingImages((prev) => [...prev, ref])
+      // Show prompt asking if user wants to save to photo wall
+      setPhotoPrompt({ dataUrl })
       setUploadingImg(false)
     }
     reader.onerror = () => setUploadingImg(false)
     reader.readAsDataURL(file)
+  }
+
+  const handlePhotoPromptChoice = async (choice: 'public' | 'locked' | 'no') => {
+    if (!photoPrompt) return
+    const { dataUrl } = photoPrompt
+    setPhotoPrompt(null)
+    let ref = dataUrl
+    if (choice !== 'no') {
+      try {
+        const r = await photosApi.write('fire', dataUrl, '', 'chat', choice === 'locked')
+        if (r?.id) ref = `/api/photos/raw/${r.id}`
+      } catch {}
+    }
+    setPendingImages((prev) => [...prev, ref])
   }
 
   /* ── send ────────────────────────────── */
@@ -981,6 +985,20 @@ export function ChatView() {
             </div>
 
             {/* pending image previews */}
+            {/* Photo wall prompt */}
+            {photoPrompt && (
+              <div className={`mx-1 mb-2 p-3 rounded-xl text-xs space-y-2 ${n ? "bg-night-surface" : "bg-gray-50 border"}`}>
+                <p className="font-medium">📷 要把这张照片贴到照片墙吗？</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => handlePhotoPromptChoice("public")}
+                    className={`px-3 py-1.5 rounded-lg ${n ? "bg-night-amber/20 text-night-amber" : "bg-day-pinkLight text-day-pink"}`}>公开贴</button>
+                  <button onClick={() => handlePhotoPromptChoice("locked")}
+                    className={`px-3 py-1.5 rounded-lg ${n ? "bg-night-surface border border-night-amber/30 text-night-amber" : "bg-white border text-day-pink"}`}>🔒 上锁贴</button>
+                  <button onClick={() => handlePhotoPromptChoice("no")}
+                    className="px-3 py-1.5 rounded-lg opacity-50 hover:opacity-80">不贴</button>
+                </div>
+              </div>
+            )}
             {pendingImages.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2 px-1">
                 {pendingImages.map((src, i) => (

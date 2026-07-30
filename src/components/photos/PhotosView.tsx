@@ -5,7 +5,7 @@ import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import { photos as photosApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, Plus, MessageCircle, X, Pencil, Trash2, Check, Send } from 'lucide-react'
+import { Camera, Plus, MessageCircle, X, Pencil, Trash2, Check, Send, Lock, Unlock, Eye, EyeOff } from 'lucide-react'
 
 interface PhotoComment { author: string; content: string; time: string }
 interface PhotoEntry {
@@ -13,6 +13,7 @@ interface PhotoEntry {
   author: string
   url: string
   caption: string
+  locked?: boolean
   comments: PhotoComment[]
   created_at: string
   updated_at: string | null
@@ -42,16 +43,33 @@ export function PhotosView() {
   const [commentDraft, setCommentDraft] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // Zone management
+  const [zone, setZone] = useState<'public' | 'locked'>('public')
+  const [unlocked, setUnlocked] = useState(false)
+  const [passwordInput, setPasswordInput] = useState('')
+  const [hasPassword, setHasPassword] = useState(false)
+  const [settingPassword, setSettingPassword] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+
+  // Delete confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const d = await photosApi.list()
+      const locked = zone === 'locked' ? true : false
+      const d = await photosApi.list({ locked })
       setPhotos(d.photos || [])
     } catch {}
     setLoading(false)
-  }, [])
+  }, [zone])
 
   useEffect(() => { load() }, [load])
+
+  // Check if password exists
+  useEffect(() => {
+    photosApi.password('check').then(r => setHasPassword(r.hasPassword)).catch(() => {})
+  }, [])
 
   // keep the open detail view in sync with fresh data
   useEffect(() => {
@@ -71,7 +89,7 @@ export function PhotosView() {
     const reader = new FileReader()
     reader.onload = async () => {
       const url = reader.result as string
-      await photosApi.write(currentUser, url, '', 'upload')
+      await photosApi.write(currentUser, url, '', 'upload', zone === 'locked')
       await load()
     }
     reader.readAsDataURL(file)
@@ -84,9 +102,15 @@ export function PhotosView() {
     await load()
   }
 
+  const toggleLock = async (id: string, currentLocked: boolean) => {
+    await photosApi.edit(id, undefined, !currentLocked)
+    await load()
+  }
+
   const remove = async (id: string) => {
     await photosApi.delete(id)
     setActive(null)
+    setDeleteConfirm(null)
     await load()
   }
 
@@ -96,6 +120,27 @@ export function PhotosView() {
     setCommentDraft('')
     await load()
   }
+
+  const verifyPassword = async () => {
+    const r = await photosApi.password('verify', passwordInput)
+    if (r.ok) {
+      setUnlocked(true)
+      setPasswordInput('')
+    } else {
+      alert('密码错误')
+    }
+  }
+
+  const savePassword = async () => {
+    if (!newPassword.trim()) return
+    await photosApi.password('set', newPassword.trim())
+    setHasPassword(true)
+    setSettingPassword(false)
+    setNewPassword('')
+  }
+
+  // Password gate for locked zone
+  const showPasswordGate = zone === 'locked' && !unlocked && hasPassword
 
   return (
     <div className="h-full overflow-y-auto">
@@ -112,39 +157,90 @@ export function PhotosView() {
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
         </div>
 
-        {photos.length === 0 && !loading && (
+        {/* Zone tabs */}
+        <div className="flex items-center gap-2">
+          <button onClick={() => setZone('public')}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition ${zone === 'public' ? (isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink') : 'opacity-50'}`}>
+            <Eye size={12} /> 公开区
+          </button>
+          <button onClick={() => setZone('locked')}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition ${zone === 'locked' ? (isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink') : 'opacity-50'}`}>
+            <Lock size={12} /> 上锁区
+          </button>
+          {zone === 'locked' && (
+            <button onClick={() => setSettingPassword(true)}
+              className="ml-auto text-[10px] opacity-40 hover:opacity-80">
+              {hasPassword ? '修改密码' : '设置密码'}
+            </button>
+          )}
+        </div>
+
+        {/* Password setting dialog */}
+        <AnimatePresence>
+          {settingPassword && (
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+              className={`p-3 rounded-xl ${isNight ? 'bg-night-surface' : 'bg-gray-50'}`}>
+              <p className="text-xs mb-2 opacity-60">设置上锁区密码</p>
+              <div className="flex items-center gap-2">
+                <input value={newPassword} onChange={e => setNewPassword(e.target.value)} type="password" placeholder="输入新密码"
+                  className={`flex-1 text-sm p-2 rounded-lg outline-none ${isNight ? 'bg-night-card' : 'bg-white border'}`} />
+                <button onClick={savePassword} className={`px-3 py-2 rounded-lg text-xs ${isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}>保存</button>
+                <button onClick={() => setSettingPassword(false)} className="text-xs opacity-50">取消</button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Password gate */}
+        {showPasswordGate ? (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             className={`p-6 rounded-2xl text-center ${isNight ? 'bg-night-surface' : 'bg-white shadow-sm'}`}>
-            <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${isNight ? 'bg-night-card' : 'bg-gray-50'}`}>
-              <Camera size={24} className="opacity-20" />
+            <Lock size={32} className="mx-auto mb-4 opacity-20" />
+            <p className="text-sm mb-4">上锁区需要密码查看</p>
+            <div className="flex items-center gap-2 max-w-xs mx-auto">
+              <input value={passwordInput} onChange={e => setPasswordInput(e.target.value)} type="password" placeholder="输入密码"
+                onKeyDown={e => { if (e.key === 'Enter') verifyPassword() }}
+                className={`flex-1 text-sm p-2 rounded-lg outline-none ${isNight ? 'bg-night-card' : 'bg-gray-50 border'}`} />
+              <button onClick={verifyPassword} className={`px-4 py-2 rounded-lg text-xs ${isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}>解锁</button>
             </div>
-            <p className={`text-sm mb-1 ${isNight ? 'text-night-text' : 'text-day-text'}`}>还没有照片</p>
-            <p className="text-[10px] opacity-30 mb-4">拍一张，或从相册选一张</p>
-            <button onClick={onPick} className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pinkLight text-day-pink'}`}>
-              <Plus size={14} /> 上传照片
-            </button>
           </motion.div>
-        )}
-
-        <div className="grid grid-cols-2 gap-3">
-          {photos.map((p) => (
-            <motion.button key={p.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              onClick={() => { setActive(p); setEditingCaption(false); setCaptionDraft(p.caption) }}
-              className={`text-left rounded-2xl overflow-hidden ${isNight ? 'bg-night-surface' : 'bg-white shadow-sm'}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.url} alt={p.caption} className="w-full aspect-square object-cover" />
-              <div className="p-2 space-y-1">
-                {p.caption && <p className="text-[11px] line-clamp-2">{p.caption}</p>}
-                <div className="flex items-center justify-between text-[10px] opacity-50">
-                  <span>{emojiFor(p.author)} {fmt(p.created_at)}</span>
-                  {p.comments?.length > 0 && (
-                    <span className="flex items-center gap-0.5"><MessageCircle size={10} />{p.comments.length}</span>
-                  )}
+        ) : (
+          <>
+            {photos.length === 0 && !loading && (
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                className={`p-6 rounded-2xl text-center ${isNight ? 'bg-night-surface' : 'bg-white shadow-sm'}`}>
+                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${isNight ? 'bg-night-card' : 'bg-gray-50'}`}>
+                  <Camera size={24} className="opacity-20" />
                 </div>
-              </div>
-            </motion.button>
-          ))}
-        </div>
+                <p className={`text-sm mb-1 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{zone === 'locked' ? '上锁区还没有照片' : '还没有照片'}</p>
+                <p className="text-[10px] opacity-30 mb-4">拍一张，或从相册选一张</p>
+              </motion.div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              {photos.map((p) => (
+                <motion.button key={p.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  onClick={() => { setActive(p); setEditingCaption(false); setCaptionDraft(p.caption) }}
+                  className={`text-left rounded-2xl overflow-hidden ${isNight ? 'bg-night-surface' : 'bg-white shadow-sm'}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt={p.caption} className="w-full aspect-square object-cover" loading="lazy" />
+                  <div className="p-2 space-y-1">
+                    {p.caption && <p className="text-[11px] line-clamp-2">{p.caption}</p>}
+                    <div className="flex items-center justify-between text-[10px] opacity-50">
+                      <span>{emojiFor(p.author)} {fmt(p.created_at)}</span>
+                      <span className="flex items-center gap-1">
+                        {p.locked && <Lock size={9} />}
+                        {p.comments?.length > 0 && (
+                          <span className="flex items-center gap-0.5"><MessageCircle size={10} />{p.comments.length}</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* detail modal */}
@@ -160,7 +256,11 @@ export function PhotosView() {
               <div className="flex items-center justify-between p-3 sticky top-0 backdrop-blur-md">
                 <span className="text-xs opacity-50">{emojiFor(active.author)} · {fmt(active.created_at)}</span>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => remove(active.id)} className="p-2 rounded-xl opacity-60 hover:opacity-100 text-red-500"><Trash2 size={16} /></button>
+                  <button onClick={() => toggleLock(active.id, !!active.locked)}
+                    className="p-2 rounded-xl opacity-60 hover:opacity-100" title={active.locked ? '解锁' : '上锁'}>
+                    {active.locked ? <Unlock size={16} /> : <Lock size={16} />}
+                  </button>
+                  <button onClick={() => setDeleteConfirm(active.id)} className="p-2 rounded-xl opacity-60 hover:opacity-100 text-red-500"><Trash2 size={16} /></button>
                   <button onClick={() => setActive(null)} className={`p-2 rounded-xl opacity-70 hover:opacity-100 ${isNight ? 'bg-night-surface' : 'bg-gray-100'}`}><X size={16} /></button>
                 </div>
               </div>
@@ -200,6 +300,28 @@ export function PhotosView() {
                     <button onClick={addComment} disabled={!commentDraft.trim()} className="opacity-60 hover:opacity-100 disabled:opacity-20"><Send size={15} /></button>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Delete confirmation dialog */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] bg-black/40" onClick={() => setDeleteConfirm(null)} />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-[280px] p-6 rounded-2xl text-center ${isNight ? 'bg-night-card' : 'bg-white shadow-xl'}`}>
+              <Trash2 size={24} className="mx-auto mb-3 text-red-400" />
+              <p className="text-sm font-medium mb-1">确定删除这张照片？</p>
+              <p className="text-[11px] opacity-50 mb-4">删除后不可恢复</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setDeleteConfirm(null)}
+                  className={`flex-1 py-2 rounded-xl text-xs ${isNight ? 'bg-night-surface' : 'bg-gray-100'}`}>取消</button>
+                <button onClick={() => remove(deleteConfirm)}
+                  className="flex-1 py-2 rounded-xl text-xs bg-red-500 text-white">删除</button>
               </div>
             </motion.div>
           </>

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/store'
 import { todo as todoApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Check, MessageCircle, Send, History, ChevronLeft } from 'lucide-react'
+import { X, Check, MessageCircle, Send, History, ChevronLeft, Pencil, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface TodoComment { author: string; content: string; time: string }
@@ -34,6 +34,9 @@ export function TodoView() {
   const [showHistory, setShowHistory] = useState(false)
   const [commentFor, setCommentFor] = useState<string | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   const isToday = viewDate === todayStr()
 
@@ -74,6 +77,14 @@ export function TodoView() {
   }
   const removeItem = async (id: string) => {
     await todoApi.remove(id, isToday ? undefined : viewDate)
+    setDeleteConfirm(null)
+    load(viewDate)
+  }
+  const editItem = async (id: string) => {
+    if (!editDraft.trim()) return
+    await todoApi.edit(id, editDraft.trim(), isToday ? undefined : viewDate)
+    setEditingId(null)
+    setEditDraft('')
     load(viewDate)
   }
   const addComment = async (id: string) => {
@@ -158,17 +169,31 @@ export function TodoView() {
                     className={`w-5 h-5 flex-shrink-0 flex items-center justify-center rounded border ${item.done ? 'border-receipt-stamp text-receipt-stamp' : 'border-receipt-ink/30'}`}>
                     {item.done && <Check size={12} />}
                   </button>
-                  <span className={`flex-1 ${item.done ? 'line-through text-receipt-ink/40' : 'text-receipt-ink'}`}>
-                    {item.carried && <span title="从前一天顺延" className="text-receipt-stamp mr-1">↻</span>}
-                    {item.text}
-                  </span>
-                  <span className="text-xs" title={item.author === 'fire' ? '獭獭写的' : '星星写的'}>{emojiFor(item.author)}</span>
+                  {editingId === item.id ? (
+                    <div className="flex-1 flex items-center gap-1">
+                      <input value={editDraft} onChange={e => setEditDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && !(e.nativeEvent as any).isComposing) editItem(item.id) }}
+                        autoFocus className="flex-1 bg-transparent outline-none font-receipt text-sm text-receipt-ink border-b border-dashed border-receipt-line" />
+                      <button onClick={() => editItem(item.id)} className="text-receipt-stamp"><Check size={12} /></button>
+                      <button onClick={() => setEditingId(null)} className="opacity-40"><X size={12} /></button>
+                    </div>
+                  ) : (
+                    <span className={`flex-1 ${item.done ? 'line-through text-receipt-ink/40' : 'text-receipt-ink'}`}>
+                      {item.carried && <span title="从前一天顺延" className="text-receipt-stamp mr-1">↻</span>}
+                      {item.text}
+                    </span>
+                  )}
+                  <span className="text-xs" title={item.author === 'fire' ? '猜猜写的' : '星星写的'}>{emojiFor(item.author)}</span>
+                  <button onClick={() => { setEditingId(item.id); setEditDraft(item.text) }}
+                    className="opacity-0 group-hover:opacity-40 hover:opacity-100 transition">
+                    <Pencil size={11} />
+                  </button>
                   <button onClick={() => setCommentFor(commentFor === item.id ? null : item.id)}
                     className={`transition ${item.comments?.length ? 'text-receipt-ink/50' : 'opacity-0 group-hover:opacity-40 hover:opacity-100'}`}>
                     <span className="flex items-center gap-0.5"><MessageCircle size={12} />{item.comments?.length ? item.comments.length : ''}</span>
                   </button>
-                  <button onClick={() => removeItem(item.id)} className="opacity-0 group-hover:opacity-40 hover:opacity-100 transition">
-                    <X size={12} />
+                  <button onClick={() => setDeleteConfirm(item.id)} className="opacity-0 group-hover:opacity-40 hover:opacity-100 transition">
+                    <Trash2 size={11} />
                   </button>
                 </div>
 
@@ -247,6 +272,24 @@ export function TodoView() {
           </p>
         </div>
       </motion.div>
+
+      {/* Delete confirmation */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] bg-black/30" onClick={() => setDeleteConfirm(null)} />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-[260px] p-5 rounded-2xl text-center bg-white shadow-xl">
+              <p className="text-sm font-medium mb-3">确定删除这项待办？</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2 rounded-xl text-xs bg-gray-100">取消</button>
+                <button onClick={() => removeItem(deleteConfirm)} className="flex-1 py-2 rounded-xl text-xs bg-red-500 text-white">删除</button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

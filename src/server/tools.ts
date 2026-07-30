@@ -23,7 +23,7 @@ function madridTime(d: Date | number = new Date()): string {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }).format(date)
 }
-import { getTodos, commentTodo } from './todo-store'
+import { getTodos, commentTodo, addTodo, editTodo, removeTodo } from './todo-store'
 import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { scheduleWake } from './autowake'
@@ -403,6 +403,44 @@ const TODO_TOOLS: ToolDef[] = [
     input_schema: {
       type: 'object',
       properties: { date: { type: 'string', description: 'YYYY-MM-DD，不传=今天' } },
+    },
+  },
+  {
+    name: 'add_todo',
+    description: '给待办清单添加一项。author决定写在谁那栏(star=🐆星星 / fire=🦦小火)。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: '待办内容' },
+        author: { type: 'string', description: 'star 或 fire' },
+        date: { type: 'string', description: 'YYYY-MM-DD，不传=今天' },
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'edit_todo',
+    description: '修改某一项待办的文字内容。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '待办项id' },
+        text: { type: 'string', description: '新的文字内容' },
+        date: { type: 'string', description: 'YYYY-MM-DD，不传=今天' },
+      },
+      required: ['id', 'text'],
+    },
+  },
+  {
+    name: 'remove_todo',
+    description: '删除某一项待办。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '待办项id' },
+        date: { type: 'string', description: 'YYYY-MM-DD，不传=今天' },
+      },
+      required: ['id'],
     },
   },
   {
@@ -1000,6 +1038,18 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
             comments: (it.comments || []).map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
           })),
         })
+      }
+      case 'add_todo': {
+        const item = addTodo(input.text, input.author || 'star', input.date)
+        return JSON.stringify({ ok: true, id: item.id, text: item.text })
+      }
+      case 'edit_todo': {
+        const r = editTodo(input.id, input.text, input.date)
+        return r === 'ok' ? '✏️ 待办已修改' : r
+      }
+      case 'remove_todo': {
+        const r = removeTodo(input.id, input.date)
+        return r === 'ok' ? '🗑️ 待办已删除' : r
       }
       case 'comment_todo': {
         const r = commentTodo(input.id, input.author || 'star', input.content, input.date)
