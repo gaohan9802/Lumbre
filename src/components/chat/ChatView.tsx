@@ -6,7 +6,7 @@ import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft,
-  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus,
+  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus, Clock3,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -16,6 +16,7 @@ import { photos as photosApi } from '@/lib/api'
 import { ChatSettings } from './ChatSettings'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
+import { TimelineTimerModal, TimelineCurrent } from '@/components/timeline/TimelineTimerModal'
 import { IntimacyModal } from '@/components/intimacy/IntimacyModal'
 
 /* ── helpers ────────────────────────────── */
@@ -118,6 +119,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
   const [intimacyOpen, setIntimacyOpen] = useState(false)
+  const [timelineOpen, setTimelineOpen] = useState(false)
+  const [timelineCurrent, setTimelineCurrent] = useState<TimelineCurrent | null>(null)
+  const [timelineNow, setTimelineNow] = useState(Date.now())
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [sessionSearch, setSessionSearch] = useState('')
@@ -141,6 +145,13 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const stickBottomRef = useRef(true)
 
   useEffect(() => { setMounted(true) }, [])
+  const refreshTimelineCurrent = useCallback(async () => {
+    try { const r = await fetch('/api/timeline', { cache: 'no-store' }); const d = await r.json(); setTimelineCurrent(d.current || null) } catch {}
+  }, [])
+  useEffect(() => { refreshTimelineCurrent(); const t = setInterval(refreshTimelineCurrent, 30000); return () => clearInterval(t) }, [refreshTimelineCurrent])
+  useEffect(() => { const t = setInterval(() => setTimelineNow(Date.now()), 1000); return () => clearInterval(t) }, [])
+  const timelineElapsed = timelineCurrent ? Math.max(0, Math.floor((timelineNow - new Date(timelineCurrent.start_at).getTime()) / 1000)) : 0
+  const timelineElapsedText = `${String(Math.floor(timelineElapsed / 3600)).padStart(2, '0')}:${String(Math.floor((timelineElapsed % 3600) / 60)).padStart(2, '0')}:${String(timelineElapsed % 60).padStart(2, '0')}`
 
   // Lazy-load: only render the most recent messages to keep the window snappy.
   const PAGE = 50
@@ -219,7 +230,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       systemPrompt = (systemPrompt || '') + prefix + suffix
     }
     const readingInjection = contextInjection.trim()
-    const bookmarkInjections = readingInjection
+    const statusInjection = timelineCurrent ? `[小火当前状态]\n正在做：${timelineCurrent.title}\n已持续：${Math.max(1, Math.floor((Date.now() - new Date(timelineCurrent.start_at).getTime()) / 60000))}分钟${timelineCurrent.tags?.length ? `\n标签：${timelineCurrent.tags.join('、')}` : ''}${timelineCurrent.note ? `\n开始备注：${timelineCurrent.note}` : ''}` : ''
+    const bookmarkInjections = [readingInjection, statusInjection].filter(Boolean).join('\n\n')
 
     // Always stream the transport. A non-streaming /api/chat returns zero bytes
     // until the whole tool loop finishes (30-90s), which iOS Safari / mobile
@@ -988,7 +1000,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             <div className={`text-[10px] mb-2 px-1 space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
               <div className="flex justify-between">
                 <span>共 {messages.length} 层</span>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                  {timelineCurrent && <button onClick={() => setTimelineOpen(true)} className={`max-w-[52vw] truncate flex items-center gap-1 ${n ? 'text-night-amber' : 'text-day-pink'}`} title={`正在做：${timelineCurrent.title}`}><Clock3 size={11}/>正在 {timelineCurrent.title} ({timelineElapsedText})</button>}
                   <button onClick={() => setBookmarkDialogOpen(true)} className="opacity-60 hover:opacity-100 flex items-center gap-1" title="书签">
                     <BookMarked size={11} /> 书签{settings.bookmarks.length > 0 ? ` (${settings.bookmarks.length})` : ''}
                   </button>
@@ -1032,6 +1045,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
                 className={`flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
               <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
+              <button onClick={() => setTimelineOpen(true)} title={timelineCurrent ? `结束：${timelineCurrent.title}` : '开始计时'} className={`p-2 rounded-xl flex-shrink-0 ${timelineCurrent ? (n ? 'text-night-amber bg-night-amber/10' : 'text-day-pink bg-day-pinkLight') : 'opacity-60 hover:opacity-100'}`}><Clock3 size={16}/></button>
               <button onClick={() => imgInputRef.current?.click()} disabled={uploadingImg} title="上传图片到照片墙"
                 className={`p-2 rounded-xl flex-shrink-0 opacity-60 hover:opacity-100 disabled:opacity-30 ${uploadingImg ? 'animate-pulse' : ''}`}>
                 <ImagePlus size={16} />
@@ -1148,6 +1162,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={async (msg, fn) => { const ok = await ask(msg); if (ok) fn() }} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
+          <TimelineTimerModal open={timelineOpen} current={timelineCurrent} onClose={() => setTimelineOpen(false)} onChanged={() => refreshTimelineCurrent()} />
           <IntimacyModal open={intimacyOpen} onClose={() => setIntimacyOpen(false)} />
         </>,
         document.body,

@@ -12,6 +12,7 @@ export function TopBar() {
 
   const titles: Record<string, string> = {
     chat: '🐆 星星',
+    timeline: '⏱️ Timeline',
     diary: '📔 日记',
     notes: '📌 小纸条',
     todo: '🧾 待办',

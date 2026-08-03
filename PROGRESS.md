@@ -2104,3 +2104,22 @@ author 默认 star（🐆），AI 就是星星。
 - 呼吸效果只动画 `transform/opacity`，避免持续触发布局与 repaint；装饰层全部 `pointer-events-none`，不会挡住点击。
 - 本次仅修改 Sidebar 与全局动效 CSS，未改 tab id / store / 页面映射，因此不会影响已有板块与持久化数据。
 - 验证：`tsc --noEmit` 通过；按项目约定不在低内存 shell 执行 `next build`。
+
+
+---
+## 2026-08-03 — 生活 Timeline + Chat 正向计时状态
+
+### 完成
+- 新增 `/persistent/timeline/timeline.json` 持久化生活事件：事情、标签、开始备注、结束备注、开始/结束时间。
+- Chat 输入框旁新增 ⏱️ 按钮：开始一件事、正向计时、结束确认、结束备注。
+- 当前状态与「共 N 层 / 书签」同层显示，并在每次聊天时作为实时状态注入星星上下文。
+- Sidebar 在「星星」下新增 `Timeline` 页面：0–24 点竖向日视图、本周事情时间占比饼图、记录列表。
+- 前端可编辑名称、标签、起止时间与备注，也可删除记录。
+- 星星新增只读工具 `read_life_timeline`，支持按日、按周、指定起止时间查询，返回持续分钟数与当前状态；没有编辑权限。
+- API：`GET/POST /api/timeline`，支持 list/current/start/stop/update/delete。
+
+### Debug 笔记
+- Timeline 采用“区间重叠”查询，不只按 start_at 归日，跨午夜活动在两天视图中都能正确出现。
+- 当前状态注入放在 `bookmark_injections` 的 volatile 阅读附录位置，不改历史消息内容，避免破坏 prompt cache 前缀。
+- 计时真源是服务端 start_at，前端每秒只计算显示值；刷新、换设备、重新部署后不会从零开始。
+- 数据永久目录遵循现有 `DATA_DIR || /persistent` 约定。

@@ -24,6 +24,7 @@ function madridTime(d: Date | number = new Date()): string {
   }).format(date)
 }
 import { getTodos, commentTodo, addTodo, editTodo, removeTodo } from './todo-store'
+import { getCurrentActivity, listActivities, timelineDurationSeconds } from './timeline-store'
 import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { scheduleWake } from './autowake'
@@ -439,6 +440,24 @@ const PHOTO_TOOLS: ToolDef[] = [
   },
 ]
 
+
+// ── Life timeline tools (read-only for 星星) ───────────
+const LIFE_TIMELINE_TOOLS: ToolDef[] = [
+  {
+    name: 'read_life_timeline',
+    description: '只读查看小火的生活时间线。可查某一天、某一周或任意起止时间；不提供编辑权限。date 查特定日；week_start 查从该日开始7天；不传参数查今天。也会返回当前正在做什么和已经持续多久。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'YYYY-MM-DD，查某一天' },
+        week_start: { type: 'string', description: 'YYYY-MM-DD，查从这一天起的一周' },
+        from: { type: 'string', description: 'ISO时间或YYYY-MM-DD，自定义开始' },
+        to: { type: 'string', description: 'ISO时间或YYYY-MM-DD，自定义结束' },
+      },
+    },
+  },
+]
+
 // ── Todo tools ──────────────────────────────────────────
 
 const TODO_TOOLS: ToolDef[] = [
@@ -810,7 +829,7 @@ const GMAIL_TOOLS: ToolDef[] = [
     },
   },
 ]
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...INTIMACY_TOOLS, ...COREAD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...LIFE_TIMELINE_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...INTIMACY_TOOLS, ...COREAD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -1101,6 +1120,50 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
       case 'comment_foto': {
         const r = commentPhoto(input.id, input.author || 'star', input.content)
         return r === 'ok' ? '💬 评论成功' : r
+      }
+
+
+      // Life timeline → read-only for 星星
+      case 'read_life_timeline': {
+        const madridDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+        const madridMidnight = (day: string) => {
+          const [y, m, d] = day.split('-').map(Number)
+          let guess = Date.UTC(y, m - 1, d, 0, 0, 0)
+          const parts = (ms: number) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+          }).formatToParts(new Date(ms)).filter(p => p.type !== 'literal').map(p => [p.type, Number(p.value)])) as Record<string, number>
+          // Two passes also handle the CET/CEST boundary without a hard-coded offset.
+          for (let i = 0; i < 2; i++) {
+            const p = parts(guess)
+            const represented = Date.UTC(p.year, p.month - 1, p.day, p.hour === 24 ? 0 : p.hour, p.minute, p.second)
+            guess += Date.UTC(y, m - 1, d, 0, 0, 0) - represented
+          }
+          return guess
+        }
+        const bounds = (day: string, days = 1) => {
+          const [y, m, d] = day.split('-').map(Number)
+          const start = madridMidnight(day)
+          const endDate = new Date(Date.UTC(y, m - 1, d + days))
+          const endDay = `${endDate.getUTCFullYear()}-${String(endDate.getUTCMonth() + 1).padStart(2, '0')}-${String(endDate.getUTCDate()).padStart(2, '0')}`
+          return [new Date(start).toISOString(), new Date(madridMidnight(endDay)).toISOString()]
+        }
+        let from = input.from, to = input.to
+        if (input.week_start) [from, to] = bounds(input.week_start, 7)
+        else if (input.date) [from, to] = bounds(input.date, 1)
+        else if (!from && !to) [from, to] = bounds(madridDay(new Date()), 1)
+        const records = listActivities(from, to)
+        const current = getCurrentActivity()
+        return JSON.stringify({
+          range: { from, to },
+          current: current ? { ...current, duration_seconds: timelineDurationSeconds(current) } : null,
+          records: records.map(r => ({
+            id: r.id, title: r.title, tags: r.tags, note: r.note, end_note: r.end_note,
+            start_at: r.start_at, end_at: r.end_at || null,
+            duration_seconds: timelineDurationSeconds(r),
+            duration_minutes: Math.round(timelineDurationSeconds(r) / 60),
+          })),
+        })
       }
 
       // Todo → local store

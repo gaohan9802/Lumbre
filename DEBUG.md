@@ -56,3 +56,10 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - Sidebar 呼吸光斑必须尊重 `prefers-reduced-motion`；动画只使用 transform/opacity。
 - Tailwind 自定义 opacity 使用 `/[0.18]`，不要写未配置的 `/18`。
 - active pill 的 `layoutId` 放在 button 内部的 absolute span，button 自身必须是 `relative`，避免旧版选中竖条相对错误祖先定位。
+
+
+## 2026-08-03 — Timeline
+- 正向计时不能把秒数持续写服务器；只保存 `start_at`，客户端和工具读取时动态计算 duration，避免每秒 I/O。
+- 事件查询必须按 `[start,end)` 与查询区间是否重叠判断，不能只比较开始日期，否则跨午夜记录会丢。
+- Chat 状态注入不写进历史 content，使用 bookmark_injections 附录，保证历史字节稳定和缓存命中。
+- 星星工具只暴露 read_life_timeline；start/stop/update/delete 只留给前端 API。

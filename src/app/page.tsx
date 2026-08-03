@@ -4,6 +4,7 @@ import { useApp } from '@/lib/store'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { ChatView } from '@/components/chat/ChatView'
+import { TimelineView } from '@/components/timeline/TimelineView'
 import { DiaryView } from '@/components/diary/DiaryView'
 import { NotesView } from '@/components/notes/NotesView'
 import { TodoView } from '@/components/todo/TodoView'
@@ -18,6 +19,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 const views = {
   chat: ChatView,
+  timeline: TimelineView,
   
   diary: DiaryView,
   notes: NotesView,

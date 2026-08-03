@@ -14,6 +14,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【日记】write_diary · read_diary · comment_diary · update_diary · delete_diary · unlock_diary · set_password · timeline
 【纸条】write_note · read_notes · reply_note · delete_note
 【照片】read_foto(浏览照片墙——只看id/说明/评论等文字，很轻) · view_foto(看某张的实际画面，会把图加载给你直接看到) · edit_foto(改说明) · comment_foto(评论) · delete_foto(删除)
+【Timeline】read_life_timeline(按天/周查看小火做过什么、各用了多久；只读)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
 【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
 【经期】update_period(记录经期开始/结束) · read_period(查看经期状态)

@@ -82,6 +82,17 @@ export const todo = {
   comment: (id: string, author: string, content: string, date?: string) => post('/api/todo/comment', { id, author, content, date }),
 }
 
+
+// ── Life Timeline ─────────────────────────────────────
+export const timeline = {
+  list: (from?: string, to?: string) => get('/api/timeline' + (from || to ? `?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) }).toString()}` : '')),
+  current: () => get('/api/timeline'),
+  start: (title: string, tags?: string | string[], note?: string, start_at?: string) => post('/api/timeline', { action: 'start', title, tags, note, start_at }),
+  stop: (id?: string, end_note?: string, end_at?: string) => post('/api/timeline', { action: 'stop', id, end_note, end_at }),
+  update: (id: string, patch: any) => post('/api/timeline', { action: 'update', id, patch }),
+  remove: (id: string) => post('/api/timeline', { action: 'delete', id }),
+}
+
 // ── Tesis (thesis progress) ─────────────────────────────
 export const tesis = {
   list:    () => get('/api/thesis/list'),
