@@ -3,7 +3,7 @@
  * Routes tool_use calls to local Brain engine or diary/notes handlers.
  */
 
-import { sendEmail, readEmails, searchEmails, readEmailDetail, replyEmail } from "./gmail"
+import { sendEmail, readEmails, searchEmails, readEmailDetail, replyEmail, checkGmailStatus } from "./gmail"
 import {
   pulse, searchBuckets, holdBucket, growBuckets, traceBucket, dream, buildIndex, breath
 } from './brain'
@@ -771,6 +771,11 @@ const GALATEA_TOOLS: ToolDef[] = [
 
 const GMAIL_TOOLS: ToolDef[] = [
   {
+    name: "gmail_status",
+    description: "检查Gmail工具是否配置正常、OAuth能否刷新、Gmail API是否可达。不返回任何密钥。遇到邮件工具报错时先调用这个诊断。",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "send_email",
     description: "用星的Gmail(gris.sidereal@gmail.com)发邮件。",
     input_schema: {
@@ -943,6 +948,9 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
     }
 
     // Gmail tools
+    if (name === "gmail_status") {
+      return JSON.stringify(await checkGmailStatus())
+    }
     if (name === "send_email") {
       const r = await sendEmail(input.to, input.subject, input.body)
       return JSON.stringify(r)

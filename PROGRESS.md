@@ -2105,7 +2105,6 @@ author 默认 star（🐆），AI 就是星星。
 - 本次仅修改 Sidebar 与全局动效 CSS，未改 tab id / store / 页面映射，因此不会影响已有板块与持久化数据。
 - 验证：`tsc --noEmit` 通过；按项目约定不在低内存 shell 执行 `next build`。
 
-
 ---
 ## 2026-08-03 — 生活 Timeline + Chat 正向计时状态
 
@@ -2123,3 +2122,33 @@ author 默认 star（🐆），AI 就是星星。
 - 当前状态注入放在 `bookmark_injections` 的 volatile 阅读附录位置，不改历史消息内容，避免破坏 prompt cache 前缀。
 - 计时真源是服务端 start_at，前端每秒只计算显示值；刷新、换设备、重新部署后不会从零开始。
 - 数据永久目录遵循现有 `DATA_DIR || /persistent` 约定。
+
+---
+
+## 2026-08-03 — Gmail 工具稳定性优化
+
+### 排查结论
+- Gmail 工具注册与 executor 接线正常，主要不稳定点集中在 `src/server/gmail.ts` 的网络/OAuth 层。
+- 原实现无请求超时：Google token 或 Gmail API 连接半开时会一直等待，表现为工具“抽风/卡住”。
+- access token 同时过期时没有并发刷新去重，多次邮件工具并发会一起刷新 token，容易放大 429、网络抖动和 `invalid_grant` 排查噪声。
+- Gmail API 返回 401 后不会主动清缓存并刷新重试；429/5xx 也没有退避。
+- `read_emails/search_emails` 逐封串行读取 metadata，10–15 封需要 11–16 次串行 HTTP 请求，延迟被线性放大。
+- 邮件正文只读取内嵌 `body.data`，没有处理 `attachmentId` 形式的正文；部分 multipart 邮件会被误判为空。
+- `.env.example` 未列 Gmail 环境变量，部署迁移时容易漏配。
+
+### 完成
+- OAuth token 与 Gmail API 请求增加 12s/15s 超时和清晰中文错误。
+- token 刷新加入 in-flight promise 去重，多个工具调用共享同一次刷新。
+- 401 自动清 access token 并刷新重试一次；GET 请求对 408/429/5xx 指数退避，尊重 `Retry-After`。
+- 写邮件不对网络异常自动重放，避免 socket 已提交但客户端未收到响应时重复发信。
+- 邮件列表 metadata 改为并发获取，并用 `Promise.allSettled` 容忍单封异常；保持 Gmail 原排序。
+- limit 统一 clamp 到 1–15，空搜索词/空 id/空收件人提前给明确错误。
+- 正文提取改为递归 multipart，并支持从 Gmail attachment endpoint 获取正文；HTML 转纯文本更完整。
+- 回复优先使用 `Reply-To`，保留已有 `References`，线程兼容性更好。
+- 新增 `gmail_status` 诊断工具：检查 OAuth 配置、token 刷新和 Gmail profile API，不泄露密钥。
+- `.env.example` 补齐 `GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET/GMAIL_REFRESH_TOKEN/GMAIL_ADDRESS`。
+
+### Debug 笔记
+- OAuth `invalid_grant` 通常不是网络问题：重点检查 refresh token 是否被撤销、OAuth consent 是否仍为 Testing（外部应用测试 token 可能 7 天过期）、client id/secret 是否与签发 refresh token 的项目一致。
+- 发送 POST 不应像 GET 一样盲目重试网络异常，否则可能重复发邮件；本次只允许 401 在真正发送前刷新 token 后重试。
+- Gmail 列表 API 只返回 message id，metadata 仍需逐封获取；并发可显著降低总时延，但上限保持 15，避免一次工具调用制造过多请求。

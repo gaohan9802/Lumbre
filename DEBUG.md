@@ -57,9 +57,16 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - Tailwind 自定义 opacity 使用 `/[0.18]`，不要写未配置的 `/18`。
 - active pill 的 `layoutId` 放在 button 内部的 absolute span，button 自身必须是 `relative`，避免旧版选中竖条相对错误祖先定位。
 
-
 ## 2026-08-03 — Timeline
 - 正向计时不能把秒数持续写服务器；只保存 `start_at`，客户端和工具读取时动态计算 duration，避免每秒 I/O。
 - 事件查询必须按 `[start,end)` 与查询区间是否重叠判断，不能只比较开始日期，否则跨午夜记录会丢。
 - Chat 状态注入不写进历史 content，使用 bookmark_injections 附录，保证历史字节稳定和缓存命中。
 - 星星工具只暴露 read_life_timeline；start/stop/update/delete 只留给前端 API。
+
+## 2026-08-03 — Gmail 工具偶发卡住/失败
+- 原 Gmail 封装没有 timeout、401 refresh retry、429/5xx backoff，Google 或 Zeabur 网络抖动时工具会长时间无返回。
+- 同时调用多个 Gmail 工具会同时刷新 access token；现用单个 in-flight Promise 合并刷新。
+- 读 10 封邮件原来是 1 次 list + 10 次串行 metadata；现并发并允许单封失败，不再整批报废。
+- POST 发信遇到 socket 异常不自动重试，防止“服务端已发出、客户端没收到响应”导致重复邮件。
+- 新增 `gmail_status`：先查配置/OAuth/API；不会输出 client secret、refresh token 或 access token。
+- 若返回 `invalid_grant`：检查 refresh token 撤销/过期、Google OAuth 同意屏幕 Testing 的 7 天限制、client id 是否匹配。
