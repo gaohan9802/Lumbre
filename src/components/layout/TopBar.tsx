@@ -4,6 +4,7 @@ import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 import { useWeather, weatherEmoji } from '@/lib/useWeather'
 import { Menu } from 'lucide-react'
+import { SyncBadge } from './SyncBadge'
 
 export function TopBar() {
   const { toggleSidebar, activeTab } = useApp()
@@ -40,11 +41,14 @@ export function TopBar() {
         <Menu size={22} />
       </button>
       <span className="text-sm font-medium truncate">{titles[activeTab] || 'Lumbre'}</span>
+      <div className="flex items-center gap-2 flex-shrink-0">
+      <SyncBadge compact />
       <span className={`text-[10px] flex-shrink-0 ${theme === 'night' ? 'text-night-muted' : 'text-day-muted'}`}>
         {weather
           ? `${weatherEmoji(weather.code)} ${weather.temp != null ? Math.round(weather.temp) + '°' : ''}${weather.city ? ' ' + weather.city : ''}`
           : '🦦'}
       </span>
+      </div>
     </header>
   )
 }

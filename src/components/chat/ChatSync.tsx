@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef } from 'react'
 import { useChatStore, extractConfig, isBlankSession } from '@/lib/chatStore'
+import { useSyncStatus } from '@/lib/syncStatus'
 
 let applyingRemote = false
 let bootstrapped = false
@@ -53,7 +54,7 @@ async function fetchSessionBatch(ids: string[]) {
   if (!ids.length) return
   const params = new URLSearchParams({ mode: 'sessions', ids: ids.join(',') })
   const res = await syncFetch(`/api/sync?${params.toString()}`)
-  if (!res.ok) return
+  if (!res.ok) throw new Error(`同步请求失败 (${res.status})`)
   applyRemote(await res.json())
 }
 
@@ -64,7 +65,7 @@ async function pullIncremental() {
     configUpdatedAt: String(before.configUpdatedAt || 0),
   })
   const res = await syncFetch(`/api/sync?${params.toString()}`)
-  if (!res.ok) return
+  if (!res.ok) throw new Error(`同步请求失败 (${res.status})`)
   const data = await res.json()
   const manifest: ManifestItem[] = Array.isArray(data.sessions) ? data.sessions : []
 
@@ -91,6 +92,8 @@ async function pullIncremental() {
 }
 
 async function syncCycle() {
+  useSyncStatus.getState().setSyncStatus({ phase: navigator.onLine ? 'syncing' : 'offline', error: '' })
+  if (!navigator.onLine) return
   if (!bootstrapped) await pullIncremental()
 
   const { settings } = useChatStore.getState()
@@ -118,7 +121,7 @@ async function syncCycle() {
       knownConfigUpdatedAt: configAt,
     }),
   }, 25000)
-  if (!res.ok) return
+  if (!res.ok) throw new Error(`同步请求失败 (${res.status})`)
   const data = await res.json()
   applyRemote(data)
   if (Array.isArray(data.manifest)) pushedSnapshot = snapshotFromManifest(data.manifest)
@@ -128,7 +131,15 @@ async function syncCycle() {
 function doSync() {
   if (inFlight) return inFlight
   inFlight = syncCycle()
-    .catch(() => { /* offline is fine — local-first */ })
+    .then(() => {
+      if (navigator.onLine) useSyncStatus.getState().setSyncStatus({ phase: 'idle', lastSyncedAt: Date.now(), error: '' })
+    })
+    .catch((err: any) => {
+      useSyncStatus.getState().setSyncStatus({
+        phase: navigator.onLine ? 'error' : 'offline',
+        error: navigator.onLine ? (err?.name === 'AbortError' ? '同步超时' : err?.message || '同步失败') : '当前离线',
+      })
+    })
     .finally(() => { inFlight = null })
   return inFlight
 }
@@ -150,7 +161,10 @@ export function ChatSync() {
     const resume = () => {
       if (document.visibilityState === 'visible') doSync()
     }
+    const offline = () => useSyncStatus.getState().setSyncStatus({ phase: 'offline', error: '当前离线' })
     window.addEventListener('online', doSync)
+    window.addEventListener('offline', offline)
+    window.addEventListener('lumbre:sync-retry', doSync)
     window.addEventListener('focus', doSync)
     document.addEventListener('visibilitychange', resume)
 
@@ -158,6 +172,8 @@ export function ChatSync() {
       clearInterval(iv)
       unsub()
       window.removeEventListener('online', doSync)
+      window.removeEventListener('offline', offline)
+      window.removeEventListener('lumbre:sync-retry', doSync)
       window.removeEventListener('focus', doSync)
       document.removeEventListener('visibilitychange', resume)
       if (timer.current) clearTimeout(timer.current)

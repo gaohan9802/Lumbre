@@ -1,56 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadSyncState, saveSyncState, mergeSyncState } from '@/server/chat-sync'
+import { loadSyncManifest, loadSyncSessions, loadSyncState, mergeSyncDelta } from '@/server/chat-sync'
 
 export const dynamic = 'force-dynamic'
 
-function manifestOf(sessions: any[]) {
-  return sessions.map((s: any) => ({
-    id: s.id,
-    updatedAt: Number(s.updatedAt) || 0,
-    messageCount: Array.isArray(s.messages) ? s.messages.length : 0,
-  }))
-}
-
 function json(data: any) {
-  return NextResponse.json(data, {
-    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
-  })
+  return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
 }
 
-// Incremental pull modes keep a long chat history from being downloaded and
-// parsed on every app resume. The legacy full GET remains for compatibility.
 export async function GET(req: NextRequest) {
   try {
-    const state = loadSyncState()
     const mode = req.nextUrl.searchParams.get('mode')
-
     if (mode === 'manifest') {
+      const state = loadSyncManifest()
       const clientConfigAt = Number(req.nextUrl.searchParams.get('configUpdatedAt') || 0)
-      const includeConfig = (state.configUpdatedAt || 0) > clientConfigAt
+      const includeConfig = state.configUpdatedAt > clientConfigAt
       return json({
-        sessions: manifestOf(state.sessions),
+        sessions: state.sessions,
         tombstones: state.tombstones,
-        configUpdatedAt: state.configUpdatedAt || 0,
+        configUpdatedAt: state.configUpdatedAt,
         ...(includeConfig ? { config: state.config } : {}),
       })
     }
-
     if (mode === 'sessions') {
-      const ids = new Set((req.nextUrl.searchParams.get('ids') || '').split(',').filter(Boolean))
-      return json({
-        sessions: state.sessions.filter((s: any) => ids.has(s.id)),
-        tombstones: state.tombstones,
-      })
+      const ids = (req.nextUrl.searchParams.get('ids') || '').split(',').filter(Boolean).slice(0, 50)
+      const state = loadSyncManifest()
+      return json({ sessions: loadSyncSessions(ids), tombstones: state.tombstones })
     }
-
-    return json(state)
+    // Full GET stays available to old clients, but current clients never use it.
+    return json(loadSyncState())
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ error: err.message || 'sync failed' }, { status: 500 })
   }
 }
 
-// Push+pull combined. responseMode=delta returns only sessions newer than the
-// client's compact manifest instead of echoing the complete archive.
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}))
@@ -60,28 +42,26 @@ export async function POST(req: NextRequest) {
       config: body.config,
       configUpdatedAt: typeof body.configUpdatedAt === 'number' ? body.configUpdatedAt : 0,
     }
-    const merged = mergeSyncState(loadSyncState(), client)
-    saveSyncState(merged)
+    const merged = mergeSyncDelta(client)
 
     if (body.responseMode === 'delta') {
       const known = new Map<string, number>()
       for (const item of Array.isArray(body.knownSessions) ? body.knownSessions : []) {
         if (item?.id) known.set(item.id, Number(item.updatedAt) || 0)
       }
-      const sessions = merged.sessions.filter((s: any) => (known.get(s.id) ?? -1) < (Number(s.updatedAt) || 0))
+      const needed = merged.sessions.filter(s => (known.get(s.id) ?? -1) < s.updatedAt).map(s => s.id)
       const clientConfigAt = Number(body.knownConfigUpdatedAt || 0)
-      const includeConfig = (merged.configUpdatedAt || 0) > clientConfigAt
+      const includeConfig = merged.configUpdatedAt > clientConfigAt
       return json({
-        sessions,
+        sessions: loadSyncSessions(needed),
         tombstones: merged.tombstones,
-        manifest: manifestOf(merged.sessions),
-        configUpdatedAt: merged.configUpdatedAt || 0,
+        manifest: merged.sessions,
+        configUpdatedAt: merged.configUpdatedAt,
         ...(includeConfig ? { config: merged.config } : {}),
       })
     }
-
-    return json(merged)
+    return json(loadSyncState())
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ error: err.message || 'sync failed' }, { status: 500 })
   }
 }

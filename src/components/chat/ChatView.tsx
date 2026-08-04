@@ -17,6 +17,7 @@ import { ChatSettings } from './ChatSettings'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { TimelineTimerModal, TimelineCurrent } from '@/components/timeline/TimelineTimerModal'
+import { SyncBadge } from '@/components/layout/SyncBadge'
 
 /* ── helpers ────────────────────────────── */
 
@@ -643,9 +644,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               </button>
               <h2 className="text-sm font-medium opacity-80 truncate">{title || activeSession?.title || '对话'}</h2>
             </div>
-            <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl transition ${n ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
+            <div className="flex items-center gap-3"><SyncBadge /><button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl transition ${n ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
               <Settings2 size={16} />
-            </button>
+            </button></div>
           </div>}
 
           {/* mobile header */}

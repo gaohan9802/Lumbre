@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, X, ChevronDown, ChevronRight, Pin, Check, Trash2, Edit3, Save, RefreshCw, Settings, Zap } from 'lucide-react'
+import { apiRequest } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────
 interface Bucket {
@@ -78,8 +79,14 @@ export function MemoryView() {
   const { theme } = useTheme()
   const isNight = theme === 'night'
   const [activeTab, setActiveTab] = useState<TabKey>('clusters')
-  const [buckets, setBuckets] = useState<Bucket[]>([])
-  const [loading, setLoading] = useState(true)
+  const [buckets, setBuckets] = useState<Bucket[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(sessionStorage.getItem('lumbre-memory-page') || '[]') } catch { return [] }
+  })
+  const [loading, setLoading] = useState(buckets.length === 0)
+  const [refreshing, setRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const [nextCursor, setNextCursor] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [selectedBucket, setSelectedBucket] = useState<Bucket | null>(null)
@@ -91,32 +98,39 @@ export function MemoryView() {
   const [batchMode, setBatchMode] = useState(false)
   const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set())
 
-  const fetchBuckets = useCallback(async () => {
-    setLoading(true)
+  const fetchBuckets = useCallback(async (append = false) => {
+    const cursor = append ? nextCursor : 0
+    if (append && cursor == null) return
+    if (append || buckets.length) setRefreshing(true); else setLoading(true)
+    setLoadError('')
     try {
-      const res = await fetch('/api/memory/buckets')
-      const data = await res.json()
-      if (Array.isArray(data)) {
-        setBuckets(data)
-        setStats({
-          total: data.length,
-          pinned: data.filter((b: Bucket) => b.pinned).length,
-          feel: data.filter((b: Bucket) => b.type === 'feel').length,
-          resolved: data.filter((b: Bucket) => b.resolved).length,
-        })
-      }
-    } catch (err) { console.error('Fetch failed:', err) }
-    finally { setLoading(false) }
-  }, [])
+      const params = new URLSearchParams({ limit: '100', cursor: String(cursor || 0), filter })
+      const data = await apiRequest(`/api/memory/buckets?${params.toString()}`)
+      const items: Bucket[] = Array.isArray(data?.items) ? data.items : []
+      setBuckets(prev => {
+        const next = append ? [...prev, ...items.filter(item => !prev.some(old => old.id === item.id))] : items
+        if (!append && filter === 'all') {
+          try { sessionStorage.setItem('lumbre-memory-page', JSON.stringify(next)) } catch {}
+        }
+        return next
+      })
+      setNextCursor(typeof data.nextCursor === 'number' ? data.nextCursor : null)
+      if (data.stats) setStats(data.stats)
+    } catch (err: any) {
+      setLoadError(err?.message || '记忆加载失败')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [buckets.length, filter, nextCursor])
 
-  useEffect(() => { fetchBuckets() }, [fetchBuckets])
+  useEffect(() => { fetchBuckets(false) }, [filter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const doSearch = useCallback(async (q: string) => {
-    if (!q.trim()) { fetchBuckets(); return }
+    if (!q.trim()) { fetchBuckets(false); return }
     setLoading(true)
     try {
-      const res = await fetch(`/api/memory/search?q=${encodeURIComponent(q)}`)
-      const data = await res.json()
+      const data = await apiRequest(`/api/memory/search?q=${encodeURIComponent(q)}`)
       const hits = [...(data.keyword_hits || []), ...(data.vector_hits || [])]
       const seen = new Set<string>()
       setBuckets(hits.filter((h: Bucket) => { if (seen.has(h.id)) return false; seen.add(h.id); return true }))
@@ -262,7 +276,7 @@ export function MemoryView() {
               <input value={query} onChange={e => setQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && doSearch(query)}
                 placeholder="搜索记忆..." className="flex-1 bg-transparent outline-none text-xs placeholder:opacity-30" />
-              {query && <button onClick={() => { setQuery(''); fetchBuckets() }}><X size={12} className="opacity-40" /></button>}
+              {query && <button onClick={() => { setQuery(''); fetchBuckets(false) }}><X size={12} className="opacity-40" /></button>}
             </div>
           </div>
         </>
@@ -270,7 +284,7 @@ export function MemoryView() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        {loading && !['breath','network','admin'].includes(activeTab) ? (
+        {loading && buckets.length === 0 && !['breath','network','admin'].includes(activeTab) ? (
           <div className={`text-center py-12 text-sm ${c.muted}`}>加载中...</div>
         ) : (
           <AnimatePresence mode="wait">
@@ -281,7 +295,18 @@ export function MemoryView() {
               {activeTab === 'evolution' && <EvolutionTab buckets={filtered} isNight={isNight} onSelect={openDetail} batchMode={batchMode} batchSelected={batchSelected} toggleBatch={toggleBatch} />}
               {activeTab === 'breath' && <BreathTab isNight={isNight} />}
               {activeTab === 'network' && <NetworkTab isNight={isNight} />}
-              {activeTab === 'admin' && <AdminTab isNight={isNight} onRefresh={fetchBuckets} />}
+              {activeTab === 'admin' && <AdminTab isNight={isNight} onRefresh={() => fetchBuckets(false)} />}
+              {['clusters','nodes','lines','evolution'].includes(activeTab) && (
+                <div className="py-4 flex flex-col items-center gap-2">
+                  {loadError && <div className="text-[11px] text-night-error">{loadError} · <button className="underline" onClick={() => fetchBuckets(false)}>重试</button></div>}
+                  {nextCursor != null && !query && (
+                    <button disabled={refreshing} onClick={() => fetchBuckets(true)} className={`text-[11px] px-4 py-2 rounded-full ${c.surface} ${c.muted} disabled:opacity-40`}>
+                      {refreshing ? '正在加载…' : `加载更多（已显示 ${buckets.length}/${stats.total}）`}
+                    </button>
+                  )}
+                  {refreshing && buckets.length > 0 && nextCursor == null && <span className={`text-[10px] ${c.muted}`}>正在刷新…</span>}
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
         )}

@@ -101,3 +101,24 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 若 chat-sync.json 已到数十 MB，下一步应迁移为 `/persistent/chat/sessions/<id>.json + manifest.json`；本轮增量 API 可以保持不变，只替换服务端存储实现。
 - Memory 仍是全量桶索引，桶数继续增长后需分页；Photos 元数据已轻量化为 raw URL，暂不是首屏主因。
 - Chat store 还有一处隐藏放大：顶层 `messages` 是 active session 的镜像，却与 `settings.sessions` 一起被 persist，当前长会话会重复存一遍。已用 `partialize` 只落 `settings`；rehydrate 继续从 active session 重建 runtime mirror。
+
+## 2026-08-04 — 深层性能优化 v2
+
+### Chat 分片存储
+- **为什么 manifest 不能调用 loadSyncState**：即使响应只返回元数据，只要先构造完整 state，服务端仍会读取/parse 每个大 session，优化等于只省网络、不省服务器。v2 manifest 必须成为独立真源。
+- **迁移安全**：先逐 session 原子写入，再最后写 manifest；若中途进程退出，下次因 manifest 尚不存在会重跑迁移并覆盖相同 session 文件，不会让半迁移 manifest 对外可见。
+- **文件名安全**：不能直接用 session id 拼路径。使用 `Buffer.from(id).toString('base64url')`，防 `/`、`..`、问号和 Unicode id。
+- **删除语义**：POST delta 可能没有 session body，只有 tombstone；merge 必须遍历 manifest 并删除 tombstone 时间更新的文件，否则删除只从客户端消失、服务端文件永远残留。
+- **备份策略**：单体文件时代每日快照会复制全部历史；分片后改为“变更会话每日首份快照 + 当前文件前一版 bak”，避免为一个小改动复制所有长会话。
+- **并发边界**：当前 merge/read/write 都是同步临界段，单 Node 进程内不会 await 交错。若未来 Zeabur 横向扩成多副本并共享同一卷，需要再加跨进程文件锁或 SQLite。
+
+### Memory 分页
+- **过滤必须先于 slice**：若先取前 100 再在客户端筛 pinned/feel，会让用户误以为后续页没有匹配项；分页 API 在全索引上先 filter 再 cursor slice。
+- **读取不应写盘**：原 `buildIndex()` 每次 GET 都写 `_index.json`。分页后请求次数增加，必须允许 `buildIndex(false)`，否则分页会放大磁盘 I/O。
+- **stale-while-revalidate**：缓存只用于立即展示，网络成功仍覆盖；失败保留旧页并给重试，不再用空白/永久 loading 表示所有状态。
+
+### 验证环境
+- `/tmp/Lumbre` clone 后没有 node_modules，系统有 node 但无 npm；临时链接 `/data/Lumbre/node_modules` 完成 tsc，验证后立即移除链接，未提交依赖目录。
+- 不能直接从另一项目路径运行 tsc 而不提供当前项目 node_modules：TypeScript 按当前文件目录解析包，会报大量虚假的 next/react/zustand 缺失。
+- Memory 索引另加进程内 cache；bucket 写入/删除时失效。否则即使 bucket 文件读取有 30s cache，每个分页请求仍会重新 map/sort 全索引。
+- Chat 首次批量迁移不为每个旧 session 生成“今天快照”，避免迁移瞬间把全历史再复制一遍；旧单体文件本身就是迁移前完整备份，日常增量写才生成分片快照。

@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path: string, init: RequestInit = {}, timeoutMs = 15000) {
+export async function apiRequest(path: string, init: RequestInit = {}, timeoutMs = 15000) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -31,7 +31,7 @@ async function request(path: string, init: RequestInit = {}, timeoutMs = 15000) 
 }
 
 async function post(path: string, body: any = {}) {
-  return request(path, {
+  return apiRequest(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -87,7 +87,7 @@ export const memory = {
 
 // ── Photos ──────────────────────────────────────────────
 async function get(path: string) {
-  return request(path, {}, 15000)
+  return apiRequest(path, {}, 15000)
 }
 
 export const photos = {

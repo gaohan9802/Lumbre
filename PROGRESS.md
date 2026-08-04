@@ -2218,3 +2218,38 @@ author 默认 star（🐆），AI 就是星星。
 - `git diff --check` 通过。
 - 遵守项目约定，未在低内存 shell 运行 `next build`；交 Zeabur 自动构建。
 - Chat localStorage 去重：persist 不再重复保存顶层 `messages` 镜像，长 active session 的本地序列化/解析体积显著下降；rehydrate 自动重建运行时镜像。
+
+---
+
+## 2026-08-04 — 深层性能优化 v2：分片 Chat、记忆分页、同步可见性
+
+### 完成
+1. **Chat 持久层由单体文件迁移为每会话一文件**
+   - 新结构：`/persistent/chat/manifest.json` + `/persistent/chat/sessions/<base64url-id>.json`。
+   - manifest 只保存会话 id、updatedAt、messageCount、tombstones 和同步 config；manifest 请求不再读取任何消息正文。
+   - 普通同步只读取/改写发生变化的会话文件，900+ 层会话未变化时不会被读写；修改短会话也不再重写整个聊天归档。
+   - 首次访问自动从 `/persistent/chat-sync.json`（失败时尝试 bak/日期快照）迁移；原文件不删除，并额外保留 `chat-sync.pre-v2.json`。
+   - 每个会话写入采用 tmp+rename 原子替换，覆盖前保留同会话 `.bak`；发生变化的会话每天首次写入 `/persistent/chat/snapshots/YYYY-MM-DD/`，保留 14 天。
+   - `/api/sync` 的 manifest/sessions/delta 协议保持不变，旧客户端 full GET 也继续兼容。
+2. **记忆索引分页与渐进显示**
+   - `/api/memory/buckets?limit=100&cursor=...&filter=...` 新增分页响应：items/total/nextCursor/stats。
+   - Memory 首次只取 100 条，按需“加载更多”；过滤在服务端分页前执行，避免只过滤当前页产生误导。
+   - 首屏 100 条放入 sessionStorage；再次进入先显示旧页、后台刷新，网络失败不清空已有内容。
+   - 记忆分页读取不再为了每次 GET 重写 `_index.json`，避免无意义磁盘写放大；无分页参数的旧调用保持数组响应。
+3. **全局 Chat 同步状态**
+   - 新增 idle/syncing/offline/error 状态及最后成功同步时间。
+   - 手机 TopBar 显示紧凑状态点，桌面 Chat 头部显示文案；离线或失败可点击重试。
+   - 非 2xx 同步响应不再静默吞掉，超时/错误会进入明确状态；本地数据继续可用。
+4. **API 基础层开放复用**
+   - 通用超时与状态检查函数导出为 `apiRequest`，Memory 分页/搜索开始复用，不再直接裸 fetch。
+
+### 数据与部署安全
+- 所有新 Chat 数据仍永久落在 Zeabur `/persistent`；没有改成容器临时目录。
+- 迁移是 copy/read 模式，旧 `chat-sync.json` 不删除；出现问题仍可人工回退。
+- session 文件名使用 base64url 编码，避免会话 id 中 `/`、中文或特殊字符造成路径穿越/非法文件名。
+
+### 验证
+- 使用项目完整依赖执行 `tsc --noEmit`：EXIT=0。
+- `git diff --check`：通过。
+- 独立临时目录实测旧单体文件迁移、增量改写、tombstone 删除：通过。
+- 遵守低内存环境约定，未执行 Next production build；交由 Zeabur 自动构建。

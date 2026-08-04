@@ -156,10 +156,12 @@ function computeScore(meta: BucketMeta): number {
 // ── In-memory cache ──
 
 let bucketCache: Map<string, Bucket> | null = null
+let indexCache: IndexEntry[] | null = null
 let cacheLoadedAt = 0
 
 function invalidateCache() {
   bucketCache = null
+  indexCache = null
 }
 
 // ── Core CRUD ──
@@ -249,6 +251,7 @@ export function getBucket(id: string): Bucket | null {
 
 export function saveBucket(bucket: Bucket): void {
   ensureDir()
+  indexCache = null
   bucket.score = computeScore(bucket.metadata)
   fs.writeFileSync(bucketPath(bucket.id), JSON.stringify(bucket, null, 2))
   if (bucketCache) {
@@ -257,6 +260,7 @@ export function saveBucket(bucket: Bucket): void {
 }
 
 export function deleteBucket(id: string): boolean {
+  indexCache = null
   const fp = bucketPath(id)
   if (!fs.existsSync(fp)) return false
   fs.unlinkSync(fp)
@@ -275,7 +279,8 @@ export function archiveBucket(id: string): boolean {
 
 // ── Index ──
 
-export function buildIndex(): IndexEntry[] {
+export function buildIndex(writeFile = true): IndexEntry[] {
+  if (indexCache) return indexCache
   const all = loadAllBuckets()
   const entries: IndexEntry[] = all.map(b => ({
     id: b.id,
@@ -297,8 +302,33 @@ export function buildIndex(): IndexEntry[] {
     content_preview: preview(b.content),
   }))
   entries.sort((a, b) => b.score - a.score)
-  try { fs.writeFileSync(INDEX_FILE, JSON.stringify(entries, null, 2)) } catch {}
+  indexCache = entries
+  if (writeFile) { try { fs.writeFileSync(INDEX_FILE, JSON.stringify(entries, null, 2)) } catch {} }
   return entries
+}
+
+export function getIndexPage(opts: { cursor?: number; limit?: number; filter?: string }) {
+  const all = buildIndex(false)
+  const filter = opts.filter || 'all'
+  const filtered = filter === 'pinned' ? all.filter(b => b.pinned)
+    : filter === 'feel' ? all.filter(b => b.type === 'feel')
+    : filter === 'unresolved' ? all.filter(b => !b.resolved && b.type !== 'permanent' && !b.pinned)
+    : filter === 'digested' ? all.filter(b => b.digested)
+    : all
+  const cursor = Math.max(0, Number(opts.cursor) || 0)
+  const limit = Math.max(20, Math.min(200, Number(opts.limit) || 100))
+  const items = filtered.slice(cursor, cursor + limit)
+  return {
+    items,
+    total: filtered.length,
+    nextCursor: cursor + items.length < filtered.length ? cursor + items.length : null,
+    stats: {
+      total: all.length,
+      pinned: all.filter(b => b.pinned).length,
+      feel: all.filter(b => b.type === 'feel').length,
+      resolved: all.filter(b => b.resolved).length,
+    },
+  }
 }
 
 // ── Search ──
