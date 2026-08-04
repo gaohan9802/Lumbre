@@ -150,7 +150,7 @@ async function gmailFetch(path: string, options: RequestInit = {}): Promise<any>
       forceRefresh = true
       continue
     }
-    if (isRetryableStatus(res.status) && attempt < maxAttempts - 1) {
+    if (method === 'GET' && isRetryableStatus(res.status) && attempt < maxAttempts - 1) {
       const retryAfter = Number(res.headers.get('retry-after'))
       await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 600 * Math.pow(2, attempt))
       continue
