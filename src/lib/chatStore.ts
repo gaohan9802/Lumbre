@@ -736,6 +736,10 @@ export const useChatStore = create<ChatStore>()(
     {
       name: 'starfire-chat',
       storage: createJSONStorage(() => quotaSafeStorage),
+      // `messages` mirrors the active session and used to be persisted a second
+      // time at the top level. Long active chats were therefore serialized and
+      // parsed twice on every write/startup. Rehydrate rebuilds this mirror.
+      partialize: (state) => ({ settings: state.settings }) as any,
       version: 7,
       migrate: (persisted: any) => {
         if (!persisted?.state) return persisted

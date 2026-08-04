@@ -78,3 +78,26 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 共读曾向 chat-sync.ts 注入固定会话，删除 API 后仍需移除 appendCoreadChatMessage，避免遗留死代码和类型引用。
 - jszip 仅由共读 EPUB 导入使用，模块删除后同步移除 package.json/yarn.lock 依赖。
 - 持久卷数据未自动删除；代码删除与用户数据擦除应分开处理，防止误删后无法恢复。
+
+---
+
+## 2026-08-04 — 启动慢、刷新卡住、必须杀后台重开
+
+### 关键根因
+1. `page.tsx` 静态 import 全部模块，首屏 JS 包含 Chat/Memory/Diary/Photos 等所有大组件；不是“当前页面慢”，而是每次启动先加载整套应用。
+2. ChatSync 的上传已增量，但下行仍全量：mount、45s tick、focus 后都会 GET 完整 chat-sync.json。会话越长，网络、服务端 JSON.parse、浏览器 JSON.parse、Zustand merge/localStorage persist 都线性变重。
+3. 多个 focus/visibility/timer 事件可同时发起同步，没有 single-flight；后台恢复时容易叠请求。
+4. 通用 API fetch 无 timeout/status check；半开连接让 loading 永远不结束。Diary load 无 finally，会把一次异常永久显示成加载状态。
+
+### 修复策略
+- 页面模块 `next/dynamic` 拆 chunk，首屏只加载当前模块。
+- 同步协议分 manifest / selected sessions / POST delta 三层；默认不再返回全量归档。
+- 客户端同步 single-flight + 分批拉取 + timeout；后台回前台仍立即同步，但不会并发轰炸。
+- 服务端按 chat-sync.json mtime 缓存解析结果，未变更时直接复用。
+- API client 统一 AbortController 超时、非 2xx 抛错；Diary loading 用 finally 收口。
+
+### 后续观察点
+- Zeabur 部署后重点看：冷启动到 Chat 可操作时间、900+ 层窗口恢复时间、focus 后是否还出现长时间白屏。
+- 若 chat-sync.json 已到数十 MB，下一步应迁移为 `/persistent/chat/sessions/<id>.json + manifest.json`；本轮增量 API 可以保持不变，只替换服务端存储实现。
+- Memory 仍是全量桶索引，桶数继续增长后需分页；Photos 元数据已轻量化为 raw URL，暂不是首屏主因。
+- Chat store 还有一处隐藏放大：顶层 `messages` 是 active session 的镜像，却与 `settings.sessions` 一起被 persist，当前长会话会重复存一遍。已用 `partialize` 只落 `settings`；rehydrate 继续从 active session 重建 runtime mirror。

@@ -129,12 +129,17 @@ export function DiaryView() {
 
   const loadEntries = useCallback(async () => {
     setLoading(true)
-    const params: any = {}
-    if (authorFilter !== 'all') params.author_filter = authorFilter
-    const data = await diary.read(currentUser, params)
-    const list = Array.isArray(data) ? data : data.entries || []
-    setEntries(list)
-    setLoading(false)
+    try {
+      const params: any = {}
+      if (authorFilter !== 'all') params.author_filter = authorFilter
+      const data = await diary.read(currentUser, params)
+      const list = Array.isArray(data) ? data : data.entries || []
+      setEntries(list)
+    } catch (err) {
+      console.error('Failed to load diary', err)
+    } finally {
+      setLoading(false)
+    }
   }, [currentUser, authorFilter])
 
   useEffect(() => { loadEntries() }, [loadEntries])

@@ -1,13 +1,41 @@
 // API client. All requests go through Next route handlers in /api/*,
 // which proxy to the Ombre Brain / starfire-diary backend. Tokens stay server-side.
 
+export class ApiError extends Error {
+  status?: number
+  constructor(message: string, status?: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+async function request(path: string, init: RequestInit = {}, timeoutMs = 15000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(path, { ...init, signal: controller.signal, cache: 'no-store' })
+    const text = await res.text()
+    let data: any = {}
+    try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
+    if (!res.ok) {
+      throw new ApiError(data?.error || data?.message || `请求失败 (${res.status})`, res.status)
+    }
+    return data
+  } catch (err: any) {
+    if (err?.name === 'AbortError') throw new ApiError('请求超时，请检查网络后重试')
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function post(path: string, body: any = {}) {
-  const res = await fetch(path, {
+  return request(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  })
-  return res.json()
+  }, 25000)
 }
 
 // ── Chat ────────────────────────────────────────────────
@@ -59,8 +87,7 @@ export const memory = {
 
 // ── Photos ──────────────────────────────────────────────
 async function get(path: string) {
-  const res = await fetch(path)
-  return res.json()
+  return request(path, {}, 15000)
 }
 
 export const photos = {

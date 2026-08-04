@@ -2175,3 +2175,46 @@ author 默认 star（🐆），AI 就是星星。
 
 ### 数据说明
 - 本次删除应用代码与功能入口，不主动擦除 Zeabur /persistent/coread 和 /persistent/intimacy 中可能存在的历史数据，避免不可逆误删；这些目录已不再被应用读取或写入。
+
+---
+
+## 2026-08-04 — 全局启动速度与“卡死后需重开”优化
+
+### 排查结论
+- 首页此前静态 import 全部大型客户端模块：ChatView 约 66KB、MemoryView 约 43KB，另有 Diary/Photos/Dreams 等。即使只打开 Chat，浏览器也要先下载、解析和执行整套应用；iOS PWA 冷启动和后台恢复尤其明显。
+- ChatSync 虽已做“增量上传”，但挂载/45 秒轮询仍用完整 `GET /api/sync` 拉回所有会话和 config。长会话（数百/上千层）会反复下载、JSON.parse、合并和写 Zustand/localStorage；服务端也每次同步读取并解析整个 `chat-sync.json`。这会占住主线程和 Node event loop，表现为所有模块一起长时间刷新，后台划掉后偶尔恢复。
+- 通用 `src/lib/api.ts` 没有超时、HTTP 状态检查或统一错误。半开连接可永久等待；Diary 的 load 也没有 try/finally，单次异常会永远停在 loading。
+
+### 完成
+1. **按模块代码分包**
+   - `src/app/page.tsx` 改用 `next/dynamic`；Chat、Timeline、Diary、Notes、Todo、Photos、Memory、Dreams、Tesis、Wishlist 各自独立 chunk。
+   - 当前模块才加载，首屏不再解析全部页面；切页 loading 使用轻量三点状态。
+   - ChatSync 也动态加载，减少同步逻辑进入首屏 bundle 的耦合。
+2. **Chat 增量下行同步**
+   - `/api/sync?mode=manifest` 只返回 session id/updatedAt/messageCount、tombstones 和需要更新的 config。
+   - `/api/sync?mode=sessions&ids=...` 只拉缺失或更新过的会话，按 40 个一批。
+   - POST 新增 `responseMode=delta`：客户端只上传改过的 session，服务器也只回传客户端缺失/较新的 session，不再 echo 全量历史。
+   - 增加单飞锁，focus/visibility/online/45s 并发触发时只运行一轮同步；同步 fetch 加 15–25 秒超时。
+3. **服务端同步缓存**
+   - `chat-sync.ts` 按文件 mtime 缓存最近一次 parse 的 SyncState；文件未变化时 manifest/同步请求不再重复读取、解析整个归档。
+   - 原子写、bak、每日快照逻辑保留；成功写入后同步刷新缓存。
+4. **API 可靠性基础层**
+   - `src/lib/api.ts` 新增统一 request：GET 15s、POST 25s 超时，检查非 2xx，解析错误消息，抛出明确 `ApiError`。
+   - 防止普通模块请求无限挂起，调用方原有 catch/finally 能正常退出 loading。
+   - Diary load 补 try/catch/finally，网络失败不再永久显示加载中。
+5. **响应缓存策略**
+   - sync manifest/delta 明确 `no-store/no-cache`，避免 PWA/Safari 拿到旧同步响应。
+
+### 使用舒适度架构建议（后续优先级）
+- P0：给所有模块统一 `AsyncState`（骨架屏 / 错误文案 / 重试按钮 / 保留旧数据），目前不少模块 catch 后静默，用户只能猜是否坏了。
+- P0：把照片上传、记忆全量索引等重 IO 改为分页/游标；Memory 当前仍一次返回全部桶，规模继续增长会再次变慢。
+- P1：Chat 会话服务端改为“每会话一个文件 + manifest”，从根上避免任何操作重写一个持续增大的 chat-sync.json；本轮增量协议已为该迁移留好边界。
+- P1：加入轻量网络状态条和“最后同步时间”，离线可继续用，但用户能知道当前是本地数据还是已同步。
+- P1：模块数据采用 stale-while-revalidate：进入先展示上次缓存，再后台刷新；不要每次切页先清空再转圈。
+- P2：逐步拆分 ChatView/MemoryView 巨型组件，减少任一小状态变化造成的大组件重渲染，并提升后续 debug 可维护性。
+
+### 验证
+- `./node_modules/.bin/tsc --noEmit` 通过。
+- `git diff --check` 通过。
+- 遵守项目约定，未在低内存 shell 运行 `next build`；交 Zeabur 自动构建。
+- Chat localStorage 去重：persist 不再重复保存顶层 `messages` 镜像，长 active session 的本地序列化/解析体积显著下降；rehydrate 自动重建运行时镜像。

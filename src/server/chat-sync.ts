@@ -16,6 +16,12 @@ const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const SYNC_FILE = path.join(DATA_DIR, 'chat-sync.json')
 const BAK_FILE = path.join(DATA_DIR, 'chat-sync.bak')
 
+
+// A manifest pull happens on every client resume/45s tick. Re-reading and
+// JSON.parse-ing a multi-megabyte archive for each request blocks the Node
+// event loop, so keep the last good state in memory and invalidate by mtime.
+let stateCache: { mtimeMs: number; state: SyncState } | null = null
+
 export interface SyncState {
   sessions: any[]
   tombstones: Record<string, number>
@@ -57,11 +63,19 @@ function newestSnapshot(): SyncState | null {
 }
 
 export function loadSyncState(): SyncState {
-  return (
-    tryRead(SYNC_FILE) ||
-    tryRead(BAK_FILE) ||
-    newestSnapshot() || { sessions: [], tombstones: {}, configUpdatedAt: 0 }
-  )
+  try {
+    const mtimeMs = fs.statSync(SYNC_FILE).mtimeMs
+    if (stateCache && stateCache.mtimeMs === mtimeMs) return stateCache.state
+    const state = tryRead(SYNC_FILE)
+    if (state) {
+      stateCache = { mtimeMs, state }
+      return state
+    }
+  } catch {
+    // fall through to backups
+  }
+  const fallback = tryRead(BAK_FILE) || newestSnapshot() || { sessions: [], tombstones: {}, configUpdatedAt: 0 }
+  return fallback
 }
 
 export function saveSyncState(state: SyncState) {
@@ -79,6 +93,11 @@ export function saveSyncState(state: SyncState) {
   const tmp = path.join(DATA_DIR, `.chat-sync.${process.pid}.${Date.now()}.tmp`)
   fs.writeFileSync(tmp, json, 'utf-8')
   fs.renameSync(tmp, SYNC_FILE)
+  try {
+    stateCache = { mtimeMs: fs.statSync(SYNC_FILE).mtimeMs, state }
+  } catch {
+    stateCache = null
+  }
 
   // daily snapshot (one per day, first write of the day wins the filename)
   try {

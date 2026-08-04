@@ -1,109 +1,165 @@
 'use client'
 
 /**
- * ChatSync — multi-device sync for sessions AND model/prompt/appearance config.
- * Push+pull to /api/sync on mount, every 45s, and 2.5s after local changes.
+ * ChatSync — incremental multi-device sync.
+ *
+ * Startup/resume first downloads a tiny manifest, then only fetches sessions
+ * that are missing or newer. Local edits are pushed as deltas and the server
+ * returns only remote deltas. This avoids repeatedly parsing the full archive
+ * when a conversation has hundreds or thousands of messages.
  */
 import { useEffect, useRef } from 'react'
 import { useChatStore, extractConfig, isBlankSession } from '@/lib/chatStore'
 
 let applyingRemote = false
-
-// Incremental push: remember each session's last-pushed updatedAt so a boot
-// with hundreds of unchanged sessions only uploads the ones that actually
-// changed. The server merge (mergeSyncState) keeps sessions it didn't receive
-// untouched and deletions still propagate via tombstones (always sent), so
-// sending a subset is safe and makes sync cost independent of history length.
+let bootstrapped = false
+let inFlight: Promise<void> | null = null
 let pushedSnapshot: Record<string, number> = {}
 let pushedConfigAt = -1
 
-async function doSync() {
+type ManifestItem = { id: string; updatedAt: number; messageCount?: number }
+
+async function syncFetch(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 15000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const { settings } = useChatStore.getState()
-    // don't push blank scratch sessions — they'd accumulate across boots/devices
-    const syncSessions = settings.sessions.filter((s) => !isBlankSession(s))
-    // only push sessions whose updatedAt changed since the last successful push
-    const changed = syncSessions.filter((s) => pushedSnapshot[s.id] !== s.updatedAt)
-    const configAt = settings.configUpdatedAt || 0
-    const configChanged = configAt !== pushedConfigAt
-    // nothing local changed — skip the heavy upload, but still pull so changes
-    // from other devices arrive; then re-baseline the snapshot to any sessions
-    // the pull merged in, so we don't echo server-origin edits back on next push
-    if (changed.length === 0 && !configChanged) {
-      await pullOnce()
-      const merged = useChatStore.getState().settings
-      const snap: Record<string, number> = {}
-      for (const s of merged.sessions) if (!isBlankSession(s)) snap[s.id] = s.updatedAt
-      pushedSnapshot = snap
-      pushedConfigAt = merged.configUpdatedAt || 0
-      return
-    }
-    const res = await fetch('/api/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessions: changed,
-        tombstones: settings.tombstones,
-        config: extractConfig(settings),
-        configUpdatedAt: configAt,
-      }),
-    })
-    if (!res.ok) return
-    const data = await res.json()
-    applyingRemote = true
-    if (Array.isArray(data.sessions)) {
-      useChatStore.getState().mergeRemote(data.sessions, data.tombstones || {})
-    }
-    if (data.config && typeof data.configUpdatedAt === 'number') {
-      useChatStore.getState().mergeRemoteConfig(data.config, data.configUpdatedAt)
-    }
-    applyingRemote = false
-    // record what's now synced so the next push only carries fresh changes
-    const after = useChatStore.getState().settings
-    const snap: Record<string, number> = {}
-    for (const s of after.sessions) if (!isBlankSession(s)) snap[s.id] = s.updatedAt
-    pushedSnapshot = snap
-    pushedConfigAt = after.configUpdatedAt || 0
-  } catch {
-    // offline is fine — local-first
+    return await fetch(input, { ...init, signal: controller.signal, cache: 'no-store' })
+  } finally {
+    clearTimeout(timer)
   }
 }
 
-async function pullOnce() {
+function snapshotFromManifest(items: ManifestItem[] = []) {
+  const next: Record<string, number> = {}
+  for (const item of items) if (item?.id) next[item.id] = Number(item.updatedAt) || 0
+  return next
+}
+
+function applyRemote(data: any) {
+  applyingRemote = true
   try {
-    const res = await fetch('/api/sync', { method: 'GET' })
-    if (!res.ok) return
-    const data = await res.json()
-    applyingRemote = true
-    if (Array.isArray(data.sessions)) {
-      useChatStore.getState().mergeRemote(data.sessions, data.tombstones || {})
+    if (Array.isArray(data?.sessions) || data?.tombstones) {
+      useChatStore.getState().mergeRemote(Array.isArray(data.sessions) ? data.sessions : [], data.tombstones || {})
     }
-    if (data.config && typeof data.configUpdatedAt === 'number') {
+    if (data?.config && typeof data.configUpdatedAt === 'number') {
       useChatStore.getState().mergeRemoteConfig(data.config, data.configUpdatedAt)
     }
+  } finally {
     applyingRemote = false
-  } catch {
-    // offline is fine — local-first
   }
+}
+
+async function fetchSessionBatch(ids: string[]) {
+  if (!ids.length) return
+  const params = new URLSearchParams({ mode: 'sessions', ids: ids.join(',') })
+  const res = await syncFetch(`/api/sync?${params.toString()}`)
+  if (!res.ok) return
+  applyRemote(await res.json())
+}
+
+async function pullIncremental() {
+  const before = useChatStore.getState().settings
+  const params = new URLSearchParams({
+    mode: 'manifest',
+    configUpdatedAt: String(before.configUpdatedAt || 0),
+  })
+  const res = await syncFetch(`/api/sync?${params.toString()}`)
+  if (!res.ok) return
+  const data = await res.json()
+  const manifest: ManifestItem[] = Array.isArray(data.sessions) ? data.sessions : []
+
+  // Tombstones/config are tiny and can be applied before fetching message data.
+  applyRemote({ sessions: [], tombstones: data.tombstones || {}, config: data.config, configUpdatedAt: data.configUpdatedAt })
+
+  const local = useChatStore.getState().settings.sessions
+  const localMap = new Map(local.map(s => [s.id, s]))
+  const needed = manifest
+    .filter(remote => {
+      const cur = localMap.get(remote.id)
+      return !cur || (Number(remote.updatedAt) || 0) > (Number(cur.updatedAt) || 0)
+    })
+    .map(s => s.id)
+
+  // Keep URLs modest and let the UI breathe between bounded responses.
+  for (let i = 0; i < needed.length; i += 40) {
+    await fetchSessionBatch(needed.slice(i, i + 40))
+  }
+
+  pushedSnapshot = snapshotFromManifest(manifest)
+  pushedConfigAt = Number(data.configUpdatedAt) || 0
+  bootstrapped = true
+}
+
+async function syncCycle() {
+  if (!bootstrapped) await pullIncremental()
+
+  const { settings } = useChatStore.getState()
+  const syncSessions = settings.sessions.filter(s => !isBlankSession(s))
+  const changed = syncSessions.filter(s => pushedSnapshot[s.id] !== s.updatedAt)
+  const configAt = settings.configUpdatedAt || 0
+  const configChanged = configAt !== pushedConfigAt
+
+  if (changed.length === 0 && !configChanged) {
+    await pullIncremental()
+    return
+  }
+
+  const knownSessions = syncSessions.map(s => ({ id: s.id, updatedAt: s.updatedAt }))
+  const res = await syncFetch('/api/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessions: changed,
+      tombstones: settings.tombstones,
+      config: configChanged ? extractConfig(settings) : undefined,
+      configUpdatedAt: configAt,
+      responseMode: 'delta',
+      knownSessions,
+      knownConfigUpdatedAt: configAt,
+    }),
+  }, 25000)
+  if (!res.ok) return
+  const data = await res.json()
+  applyRemote(data)
+  if (Array.isArray(data.manifest)) pushedSnapshot = snapshotFromManifest(data.manifest)
+  pushedConfigAt = Number(data.configUpdatedAt) || pushedConfigAt
+}
+
+function doSync() {
+  if (inFlight) return inFlight
+  inFlight = syncCycle()
+    .catch(() => { /* offline is fine — local-first */ })
+    .finally(() => { inFlight = null })
+  return inFlight
 }
 
 export function ChatSync() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    // recover server copy first (covers localStorage eviction), then reconcile
-    pullOnce().then(doSync)
+    doSync()
     const iv = setInterval(doSync, 45000)
     const unsub = useChatStore.subscribe((state, prev) => {
       if (applyingRemote) return
       if (state.settings.sessions !== prev.settings.sessions || state.settings.configUpdatedAt !== prev.settings.configUpdatedAt) {
         if (timer.current) clearTimeout(timer.current)
-        timer.current = setTimeout(doSync, 2500)
+        timer.current = setTimeout(doSync, 1800)
       }
     })
+
+    const resume = () => {
+      if (document.visibilityState === 'visible') doSync()
+    }
+    window.addEventListener('online', doSync)
+    window.addEventListener('focus', doSync)
+    document.addEventListener('visibilitychange', resume)
+
     return () => {
       clearInterval(iv)
       unsub()
+      window.removeEventListener('online', doSync)
+      window.removeEventListener('focus', doSync)
+      document.removeEventListener('visibilitychange', resume)
       if (timer.current) clearTimeout(timer.current)
     }
   }, [])
