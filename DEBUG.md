@@ -70,3 +70,5 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - POST 发信遇到 socket 异常不自动重试，防止“服务端已发出、客户端没收到响应”导致重复邮件。
 - 新增 `gmail_status`：先查配置/OAuth/API；不会输出 client secret、refresh token 或 access token。
 - 若返回 `invalid_grant`：检查 refresh token 撤销/过期、Google OAuth 同意屏幕 Testing 的 7 天限制、client id 是否匹配。
+
+- Chat 工具回灌层原先把所有普通工具结果统一截到 300 字；`read_emails/search_emails` 会得到半截 JSON，`read_email_detail` 只剩正文开头。现为 Gmail 读类工具设置 8k/14k 专用上限，当前轮可完整理解邮件，历史留痕仍保持 4k 上限防上下文膨胀。

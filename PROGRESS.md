@@ -2152,3 +2152,5 @@ author 默认 star（🐆），AI 就是星星。
 - OAuth `invalid_grant` 通常不是网络问题：重点检查 refresh token 是否被撤销、OAuth consent 是否仍为 Testing（外部应用测试 token 可能 7 天过期）、client id/secret 是否与签发 refresh token 的项目一致。
 - 发送 POST 不应像 GET 一样盲目重试网络异常，否则可能重复发邮件；本次只允许 401 在真正发送前刷新 token 后重试。
 - Gmail 列表 API 只返回 message id，metadata 仍需逐封获取；并发可显著降低总时延，但上限保持 15，避免一次工具调用制造过多请求。
+
+- Chat 工具回灌层原先把所有普通工具结果统一截到 300 字；`read_emails/search_emails` 会得到半截 JSON，`read_email_detail` 只剩正文开头。现为 Gmail 读类工具设置 8k/14k 专用上限，当前轮可完整理解邮件，历史留痕仍保持 4k 上限防上下文膨胀。

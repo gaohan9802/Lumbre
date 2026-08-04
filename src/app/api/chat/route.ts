@@ -171,6 +171,12 @@ function anthropicToolResultContent(name: string, result: string, origin?: strin
 /** Text form of a tool result (url-stripped, sensibly capped). */
 function toolResultText(name: string, result: string): string {
   if (FETCH_TOOL_NAMES.has(name)) return result.slice(0, 6000)
+  // Email reads are structured JSON / full message text. The generic 300-char
+  // summarizer used to cut JSON mid-object and made successful Gmail calls look
+  // flaky to the model. Keep bounded but useful results for the current turn.
+  if (name === 'read_emails' || name === 'search_emails') return result.slice(0, 8000)
+  if (name === 'read_email_detail') return result.slice(0, 14000)
+  if (name === 'gmail_status') return result.slice(0, 2000)
   if (name === 'read_foto' || name === 'view_foto') return toolResultForHistory(name, result)
   return summarizeToolResult(result)
 }
