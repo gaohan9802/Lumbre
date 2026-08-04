@@ -30,8 +30,6 @@ import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from 
 import { scheduleWake } from './autowake'
 import { executeGalatea } from './galatea'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
-import { listIntimacyRecords, createIntimacyRecord, updateIntimacyRecord, deleteIntimacyRecord } from './intimacy-store'
-import { listBooks as listCoreadBooks, getBook as getCoreadBook, getAnnotations as getCoreadAnnotations, addAnnotation as addCoreadAnnotation, replyAnnotation as replyCoreadAnnotation, readCoreadNotes, writeCoreadNote, getCoreadStats, findBookByTitle } from './coread-store'
 
 // ── Claude tool schema type ─────────────────────────────
 
@@ -303,49 +301,6 @@ const NOTES_TOOLS: ToolDef[] = [
   },
 ]
 
-// ── Co-reading tools ─────────────────────────────────────
-
-const COREAD_TOOLS: ToolDef[] = [
-  {
-    name: 'read_books_coread',
-    description: '查看共读书架、每本书当前章节和总进度。非读书窗口也可调用。',
-    input_schema: { type: 'object', properties: { book_name: { type: 'string', description: '可选，按书名筛选' } } },
-  },
-  {
-    name: 'write_note_coread',
-    description: '写一条独立的共读记录，可指定书名、日期、章节、总阅读进度、内容和类型。保存到 /persistent/coread/reading-notes.json，所有窗口共享。',
-    input_schema: { type: 'object', properties: {
-      book_name: { type: 'string' }, book_id: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' },
-      chapter: { type: 'integer' }, progress: { type: 'number', description: '0-100' }, content: { type: 'string' },
-      kind: { type: 'string', enum: ['note','progress','reflection'] }, author: { type: 'string', enum: ['star','fire'] },
-    }, required: ['content'] },
-  },
-  {
-    name: 'read_note_coread',
-    description: '读取共读记录，可按书名、日期和作者筛选。',
-    input_schema: { type: 'object', properties: {
-      book_name: { type: 'string' }, book_id: { type: 'string' }, date: { type: 'string' }, author: { type: 'string' }, limit: { type: 'integer' },
-    } },
-  },
-  {
-    name: 'comment_coread',
-    description: '给某本书的真实原文添加评论/划线/书签，或用 reply_to 回复已有批注。新批注的 original_text 必须是该章真实原文。',
-    input_schema: { type: 'object', properties: {
-      book_name: { type: 'string' }, book_id: { type: 'string' }, chapter: { type: 'integer' }, original_text: { type: 'string' },
-      content: { type: 'string' }, kind: { type: 'string', enum: ['highlight','comment','bookmark'] }, color: { type: 'string' }, author: { type: 'string', enum: ['star','fire'] }, reply_to: { type: 'string', description: '要回复的批注ID；填写后content作为回复内容' },
-    }, required: ['chapter'] },
-  },
-  {
-    name: 'read_comments_coread',
-    description: '读取一本书的划线、评论、书签以及星星/小火分别留下的数量。',
-    input_schema: { type: 'object', properties: { book_name: { type: 'string' }, book_id: { type: 'string' }, chapter: { type: 'integer' } } },
-  },
-  {
-    name: 'read_stats_coread',
-    description: '读取共读数据统计：每本书进度、划线、评论、书签、双方评论数和讨论数。',
-    input_schema: { type: 'object', properties: { book_name: { type: 'string' }, book_id: { type: 'string' } } },
-  },
-]
 
 // ── Shell tool ──────────────────────────────────────────
 
@@ -699,35 +654,6 @@ const PERIOD_TOOLS: ToolDef[] = [
   },
 ]
 
-// ── Private intimacy record tools ─────────────────────
-const INTIMACY_TOOLS: ToolDef[] = [
-  {
-    name: 'read_intimacy_records',
-    description: '查看私密亲密记录。返回完整问卷、双方评分和操作留痕。',
-    input_schema: { type: 'object', properties: { limit: { type: 'integer', description: '最多返回多少条，默认20' } } },
-  },
-  {
-    name: 'create_intimacy_record',
-    description: '填写并保存一条私密亲密记录。评分0-10，包含foreplay/penetration/orgasm/aftercare/atmosphere/talk。',
-    input_schema: { type: 'object', properties: {
-      date: { type: 'string' }, time_start: { type: 'string' }, duration_min: { type: 'integer' }, rounds: { type: 'integer' },
-      positions: { type: 'array', items: { type: 'string' } }, initiated_by: { type: 'string', enum: ['star','fire'] },
-      star_notes: { type: 'string' }, fire_notes: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } },
-      scores: { type: 'object', description: '{star:{foreplay,penetration,orgasm,aftercare,atmosphere,talk},fire:{...}}，每项0-10' },
-      encore: { type: 'array', items: { type: 'string' } }, role_play: { type: 'string', description: '可选，自由填写' },
-    }, required: ['date','time_start','duration_min','rounds','positions','initiated_by','scores'] },
-  },
-  {
-    name: 'edit_intimacy_record',
-    description: '编辑一条私密亲密记录。操作人固定记为星星并写入审计留痕。',
-    input_schema: { type: 'object', properties: { id: { type: 'string' }, patch: { type: 'object' } }, required: ['id','patch'] },
-  },
-  {
-    name: 'delete_intimacy_record',
-    description: '删除一条私密亲密记录。删除内容进入服务端归档，并记录是谁删除的。',
-    input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-  },
-]
 
 // ── Galatea Garden 论坛 + 桌游 tools ─────────────────
 const GALATEA_TOOLS: ToolDef[] = [
@@ -834,7 +760,7 @@ const GMAIL_TOOLS: ToolDef[] = [
     },
   },
 ]
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...LIFE_TIMELINE_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...INTIMACY_TOOLS, ...COREAD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...LIFE_TIMELINE_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -927,21 +853,6 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
       return JSON.stringify(result)
     }
 
-    if (name === 'read_intimacy_records') {
-      const limit = Math.max(1, Math.min(100, Number(input.limit) || 20))
-      return JSON.stringify(listIntimacyRecords().slice(0, limit))
-    }
-    if (name === 'create_intimacy_record') {
-      const record = createIntimacyRecord(input, 'star')
-      return JSON.stringify({ ok: true, id: record.id, record })
-    }
-    if (name === 'edit_intimacy_record') {
-      const record = updateIntimacyRecord(input.id, input.patch || {}, 'star')
-      return JSON.stringify(record ? { ok: true, record } : { error: 'not_found' })
-    }
-    if (name === 'delete_intimacy_record') {
-      return JSON.stringify({ ok: deleteIntimacyRecord(input.id, 'star') })
-    }
 
     if (name === 'galatea') {
       return await executeGalatea(input)
@@ -972,38 +883,6 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
       return JSON.stringify(r)
     }
 
-    // Co-reading → shared /persistent/coread store
-    if (name === 'read_books_coread') {
-      const q = String(input.book_name || '').trim().toLowerCase()
-      const rows = listCoreadBooks().filter(b => !q || b.title.toLowerCase().includes(q))
-      return JSON.stringify(rows.map(b => ({ id: b.id, title: b.title, author: b.author, chapter: b.lastChapter, progress: Math.round((b.progress || 0) * 10) / 10, last_read_at: b.lastReadAt })))
-    }
-    if (name === 'write_note_coread') {
-      return JSON.stringify({ ok: true, note: writeCoreadNote({
-        bookId: input.book_id, bookTitle: input.book_name, author: input.author || 'star', date: input.date,
-        chapterNum: input.chapter, progress: input.progress, content: input.content, kind: input.kind,
-      }) })
-    }
-    if (name === 'read_note_coread') {
-      return JSON.stringify(readCoreadNotes({ bookId: input.book_id, bookTitle: input.book_name, date: input.date, author: input.author, limit: input.limit }))
-    }
-    if (name === 'comment_coread') {
-      const book = input.book_id ? getCoreadBook(input.book_id)?.book : findBookByTitle(input.book_name || '')
-      if (!book) return JSON.stringify({ error: 'book_not_found' })
-      const ann = input.reply_to
-        ? replyCoreadAnnotation(book.id, String(input.reply_to), String(input.content || ''), input.author === 'fire' ? 'fire' : 'star')
-        : addCoreadAnnotation(book.id, Number(input.chapter), String(input.original_text || ''), String(input.content || ''), input.author === 'fire' ? 'user' : 'ai', input.kind || 'comment', input.color || '')
-      return JSON.stringify(ann ? { ok: true, annotation: ann } : { error: '原文不匹配或添加失败' })
-    }
-    if (name === 'read_comments_coread') {
-      const book = input.book_id ? getCoreadBook(input.book_id)?.book : findBookByTitle(input.book_name || '')
-      if (!book) return JSON.stringify({ error: 'book_not_found' })
-      return JSON.stringify(getCoreadAnnotations(book.id, input.chapter == null ? undefined : Number(input.chapter)))
-    }
-    if (name === 'read_stats_coread') {
-      const book = input.book_id ? getCoreadBook(input.book_id)?.book : (input.book_name ? findBookByTitle(input.book_name) : null)
-      return JSON.stringify(getCoreadStats(book?.id))
-    }
 
     // Diary → local store
     switch (name) {

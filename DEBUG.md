@@ -72,3 +72,9 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 若返回 `invalid_grant`：检查 refresh token 撤销/过期、Google OAuth 同意屏幕 Testing 的 7 天限制、client id 是否匹配。
 
 - Chat 工具回灌层原先把所有普通工具结果统一截到 300 字；`read_emails/search_emails` 会得到半截 JSON，`read_email_detail` 只剩正文开头。现为 Gmail 读类工具设置 8k/14k 专用上限，当前轮可完整理解邮件，历史留痕仍保持 4k 上限防上下文膨胀。
+
+## 2026-08-04 — 共读 / Intimacy 删除笔记
+- 删除模块不能只删页面：需同步清理 Tab union/VALID_TABS、Sidebar、TopBar、page views、lib/api、server/tools 的 schema/import/executor，以及跨模块 helper。
+- 共读曾向 chat-sync.ts 注入固定会话，删除 API 后仍需移除 appendCoreadChatMessage，避免遗留死代码和类型引用。
+- jszip 仅由共读 EPUB 导入使用，模块删除后同步移除 package.json/yarn.lock 依赖。
+- 持久卷数据未自动删除；代码删除与用户数据擦除应分开处理，防止误删后无法恢复。

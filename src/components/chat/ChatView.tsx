@@ -17,7 +17,6 @@ import { ChatSettings } from './ChatSettings'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { TimelineTimerModal, TimelineCurrent } from '@/components/timeline/TimelineTimerModal'
-import { IntimacyModal } from '@/components/intimacy/IntimacyModal'
 
 /* ── helpers ────────────────────────────── */
 
@@ -118,7 +117,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
-  const [intimacyOpen, setIntimacyOpen] = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [timelineCurrent, setTimelineCurrent] = useState<TimelineCurrent | null>(null)
   const [timelineNow, setTimelineNow] = useState(Date.now())
@@ -398,22 +396,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     })
   }
 
-  const handleAppleQuestionnaire = async () => {
-    if (isLoading) return
-    const ok = await ask('把最近 30 条上下文交给星星，并请他填写一份 💕 亲密问卷？')
-    if (!ok) return
-    const profile = getActiveProfile(settings)
-    const model = settings.model
-    const prompt = `💕 亲密日记问卷。请根据最近30条上下文填写；不确定的字段先用最合理的值，并在 notes 里标注不确定。完成后必须调用 create_intimacy_record 保存，不要只把 JSON 发在聊天里。\n\n字段：date, time_start, duration_min, rounds, positions[], initiated_by(star/fire), star_notes, fire_notes, tags[], scores.star/fire（foreplay/penetration/orgasm/aftercare/atmosphere/talk，0-10）, encore[], role_play（可选，自由填写）。`
-    const now = Date.now()
-    const userMsg: ChatMessage = { id: `${now}-apple`, role: 'user', content: prompt, timestamp: now, providerId: profile?.id, modelId: model }
-    addMessage(userMsg); setIsLoading(true); stickBottomRef.current = true
-    const slice = [...messages.slice(-30), userMsg].map(m => ({ role: m.role, content: m.content, images: m.images }))
-    await doSend(slice, (data) => {
-      addMessage({ id: `${Date.now()}-apple-reply`, role: 'assistant', content: data.content || data.error || '...', timestamp: Date.now(), thinking: data.thinking, input_tokens: data.input_tokens, output_tokens: data.output_tokens, cache_read_tokens: data.cache_read_tokens, cache_creation_tokens: data.cache_creation_tokens, tool_calls: data.tool_calls, content_blocks: data.content_blocks, providerId: profile?.id, modelId: model })
-      setIsLoading(false); setStreamText(''); setStreamThinking(''); setStreamBlocks([])
-    })
-  }
 
   /* ── retry ────────────────────────────── */
 
@@ -636,11 +618,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             </div>
           )
         })}
-      </div>
-      <div className={`p-3 border-t ${n ? 'border-night-border' : 'border-day-border'}`}>
-        <button onClick={() => { setIntimacyOpen(true); if (mobile) setSessionDrawerOpen(false) }} className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs transition ${n ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-day-pinkLight hover:bg-day-lemon'}`}>
-          <span className="text-base">🍎</span>
-        </button>
       </div>
     </div>
   )
@@ -992,7 +969,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             <div ref={messagesEndRef} />
           </div>
 
-          {!embedded && <button onClick={handleAppleQuestionnaire} disabled={isLoading} title="把最近30条上下文交给星星填写问卷" className={`absolute right-4 bottom-[176px] z-20 w-[52px] h-[52px] rounded-full text-2xl opacity-30 hover:opacity-90 disabled:opacity-10 transition`}>🍎</button>}
 
           {/* footer */}
           <div className={`p-4 border-t backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
@@ -1163,7 +1139,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
           <TimelineTimerModal open={timelineOpen} current={timelineCurrent} onClose={() => setTimelineOpen(false)} onChanged={() => refreshTimelineCurrent()} />
-          <IntimacyModal open={intimacyOpen} onClose={() => setIntimacyOpen(false)} />
         </>,
         document.body,
       )}

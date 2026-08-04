@@ -2154,3 +2154,24 @@ author 默认 star（🐆），AI 就是星星。
 - Gmail 列表 API 只返回 message id，metadata 仍需逐封获取；并发可显著降低总时延，但上限保持 15，避免一次工具调用制造过多请求。
 
 - Chat 工具回灌层原先把所有普通工具结果统一截到 300 字；`read_emails/search_emails` 会得到半截 JSON，`read_email_detail` 只剩正文开头。现为 Gmail 读类工具设置 8k/14k 专用上限，当前轮可完整理解邮件，历史留痕仍保持 4k 上限防上下文膨胀。
+
+---
+
+## 2026-08-04 — 删除「共读」与 Intimacy 模块
+
+### 完成
+- 完整删除共读前端：侧栏入口、页面映射、TopBar 标题、CoReadingView、外观 store 与客户端 API。
+- 完整删除共读后端：全部 /api/coread 路由、存储层、EPUB/LLM/digest 辅助模块、Chat 同步镜像 helper。
+- 从星星 ALL_TOOLS 删除 6 个共读工具及全部 executor 实现。
+- 移除仅供共读 EPUB 使用的 jszip 依赖。
+- 完整删除 Intimacy 前端：Chat 苹果入口、亲密问卷发送逻辑、IntimacyModal 与客户端 API。
+- 完整删除 Intimacy 后端：/api/intimacy、intimacy-store，以及 4 个星星工具和 executor 实现。
+- App persist version 6→7；旧设备若 activeTab=coreading，迁移后自动回落 chat，避免白屏。
+
+### 验证
+- 全仓 src（排除历史 seed 数据）无 coread/intimacy 运行时代码引用。
+- 复用现有项目依赖执行 tsc --noEmit，类型检查通过。
+- git diff --check 通过。
+
+### 数据说明
+- 本次删除应用代码与功能入口，不主动擦除 Zeabur /persistent/coread 和 /persistent/intimacy 中可能存在的历史数据，避免不可逆误删；这些目录已不再被应用读取或写入。

@@ -18,7 +18,6 @@ export function TopBar() {
     todo: '🧾 待办',
     photos: '📷 照片',
     memory: '✨ 记忆',
-    coreading: '📖 阅读',
     tesis: '📄 Tesis',
     dreams: '🌙 现实与梦境',
   }

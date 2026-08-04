@@ -124,28 +124,3 @@ export const period = {
   config: (cycle_days?: number, period_length?: number) =>
     post('/api/period', { action: 'config', cycle_days, period_length }),
 }
-
-// ── CoReading (共读) ──────────────────────────────────
-export const coread = {
-  books: () => get('/api/coread/books'),
-  chapters: (bookId: string) => post('/api/coread/books', { bookId }),
-  chapter: (bookId: string, chapterNum: number) => post('/api/coread/chapter', { bookId, chapterNum }),
-  import: (data: { type: string; title: string; author?: string; content?: string; chapters?: { title: string; content: string }[] }) =>
-    post('/api/coread/import', data),
-  chatHistory: (bookId: string) => get(`/api/coread/chat?bookId=${bookId}`),
-  annotate: (data: { bookId: string; chapterNum: number; originalText?: string; annotation: string }) =>
-    post('/api/coread/annotate', data),
-  deleteAnnotation: (bookId: string, annId: string) =>
-    post('/api/coread/annotate', { action: 'delete', bookId, annId }),
-  deleteBook: (bookId: string) => post('/api/coread/delete', { bookId }),
-  digest: (bookId: string, chapterNum: number) => post('/api/coread/digest', { bookId, chapterNum }),
-  storyArc: (bookId: string, chapterNum: number) => post('/api/coread/digest', { action: 'arc', bookId, chapterNum }),
-}
-
-// ── Private intimacy records ──────────────────────────
-export const intimacy = {
-  list: () => get('/api/intimacy'),
-  create: (actor: 'star' | 'fire', record: any) => post('/api/intimacy', { action: 'create', actor, record }),
-  update: (actor: 'star' | 'fire', id: string, patch: any) => post('/api/intimacy', { action: 'update', actor, id, patch }),
-  remove: (actor: 'star' | 'fire', id: string) => post('/api/intimacy', { action: 'delete', actor, id }),
-}

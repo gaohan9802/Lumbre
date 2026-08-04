@@ -13,7 +13,6 @@ const tabs = [
   { id: 'todo' as const, label: '待办', emoji: '🧾', hint: '慢慢完成' },
   { id: 'photos' as const, label: '照片', emoji: '📷', hint: '留住瞬间' },
   { id: 'memory' as const, label: '记忆', emoji: '✨', hint: '闪光碎片' },
-  { id: 'coreading' as const, label: '阅读', emoji: '📖', hint: '一起翻页' },
   { id: 'tesis' as const, label: 'Tesis', emoji: '📄', hint: '认真生长' },
   { id: 'dreams' as const, label: '现实与梦境', emoji: '🌙', hint: '两边漫游' },
   { id: 'wishlist' as const, label: '愿望清单', emoji: '🌠', hint: '等愿望发芽' },

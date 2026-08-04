@@ -10,7 +10,6 @@ import { NotesView } from '@/components/notes/NotesView'
 import { TodoView } from '@/components/todo/TodoView'
 import { PhotosView } from '@/components/photos/PhotosView'
 import { MemoryView } from '@/components/memory/MemoryView'
-import { CoReadingView } from '@/components/coreading/CoReadingView'
 import { DreamsView } from '@/components/dreams/DreamsView'
 import { TesisView } from '@/components/tesis/TesisView'
 import { WishlistView } from '@/components/wishlist/WishlistView'
@@ -26,7 +25,6 @@ const views = {
   todo: TodoView,
   photos: PhotosView,
   memory: MemoryView,
-  coreading: CoReadingView,
   dreams: DreamsView,
   tesis: TesisView,
   wishlist: WishlistView,
