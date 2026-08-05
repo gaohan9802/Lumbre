@@ -122,3 +122,10 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 不能直接从另一项目路径运行 tsc 而不提供当前项目 node_modules：TypeScript 按当前文件目录解析包，会报大量虚假的 next/react/zustand 缺失。
 - Memory 索引另加进程内 cache；bucket 写入/删除时失效。否则即使 bucket 文件读取有 30s cache，每个分页请求仍会重新 map/sort 全索引。
 - Chat 首次批量迁移不为每个旧 session 生成“今天快照”，避免迁移瞬间把全历史再复制一遍；旧单体文件本身就是迁移前完整备份，日常增量写才生成分片快照。
+
+## 2026-08-05 — 全屏目录 / PWA 图标
+- 全屏导航不能只把旧 aside 宽度改成 `100vw`：桌面端原布局仍会给 Sidebar 分配 flex 宽度。正确做法是导航始终 `position: fixed`，页面根节点不再是左右 flex 布局，TopBar 成为所有尺寸的统一入口。
+- 菜单打开时锁 `document.body.style.overflow`，关闭/卸载必须恢复；同时监听 Escape，避免桌面端只能点关闭按钮。
+- 页面点击动画与关闭动画不要同一帧触发，否则按压反馈看不见；先切 tab，约 75ms 后关闭目录。
+- iOS 主屏图标优先使用独立 180x180 `apple-touch-icon`；PWA manifest 同时保留 192/512，512 使用 `purpose: any maskable` 兼容 Android 自适应裁切。
+- 当前 shell 无 Pillow/ImageMagick/sharp，图标用零依赖 Node PNG encoder 生成；后续若拿到用户原始上传文件，可直接替换同名 PNG，不需要改 manifest/layout。

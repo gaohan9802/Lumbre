@@ -52,10 +52,10 @@ export default function Home() {
   const View = views[activeTab] || ChatView
 
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div className="h-dvh overflow-hidden">
       <ChatSync />
       <Sidebar />
-      <main className="flex-1 flex flex-col overflow-hidden relative">
+      <main className="flex h-full flex-col overflow-hidden relative">
         <TopBar />
         <AnimatePresence mode="wait">
           <motion.div

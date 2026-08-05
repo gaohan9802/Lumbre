@@ -4,6 +4,7 @@ import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 import { useWeather, weatherEmoji } from '@/lib/useWeather'
 import { Menu } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { SyncBadge } from './SyncBadge'
 
 export function TopBar() {
@@ -21,6 +22,7 @@ export function TopBar() {
     memory: '✨ 记忆',
     tesis: '📄 Tesis',
     dreams: '🌙 现实与梦境',
+    wishlist: '🌠 愿望清单',
   }
 
   return (
@@ -33,13 +35,12 @@ export function TopBar() {
           : 'bg-white border-day-border'
         }
         border-b backdrop-blur-md
-        md:hidden
       `}
       style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
     >
-      <button onClick={toggleSidebar} className="p-2 -m-1 flex-shrink-0">
+      <motion.button whileTap={{ scale: 0.86, rotate: -5 }} onClick={toggleSidebar} aria-label="打开目录" className="p-2 -m-1 flex-shrink-0">
         <Menu size={22} />
-      </button>
+      </motion.button>
       <span className="text-sm font-medium truncate">{titles[activeTab] || 'Lumbre'}</span>
       <div className="flex items-center gap-2 flex-shrink-0">
       <SyncBadge compact />

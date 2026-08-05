@@ -1,12 +1,13 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, Variants, useReducedMotion } from 'framer-motion'
 import { X } from 'lucide-react'
 
 const tabs = [
-  { id: 'chat' as const, label: '星星', emoji: '🐆', hint: '说说话' },
+  { id: 'chat' as const, label: '星星', emoji: '🐆', hint: '去找星星说说话' },
   { id: 'timeline' as const, label: 'Timeline', emoji: '⏱️', hint: '今天如何流过' },
   { id: 'diary' as const, label: '日记', emoji: '📔', hint: '收藏今天' },
   { id: 'notes' as const, label: '小纸条', emoji: '📌', hint: '留一句话' },
@@ -18,169 +19,199 @@ const tabs = [
   { id: 'wishlist' as const, label: '愿望清单', emoji: '🌠', hint: '等愿望发芽' },
 ]
 
+const listVariants: Variants = {
+  hidden: {},
+  visible: { transition: { delayChildren: 0.08, staggerChildren: 0.045 } },
+}
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 13, scale: 0.97 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { type: 'spring', stiffness: 330, damping: 27 },
+  },
+}
+
 export function Sidebar() {
   const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen } = useApp()
   const { theme, toggle } = useTheme()
   const isNight = theme === 'night'
+  const reduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false)
+    }
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [sidebarOpen, setSidebarOpen])
 
   return (
-    <>
-      <AnimatePresence>
-        {sidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="fixed inset-0 z-40 bg-[#241a20]/35 backdrop-blur-[3px] md:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      <aside
-        className={`
-          sidebar-shell fixed inset-y-0 left-0 z-50 flex w-[17.5rem] flex-col overflow-hidden
-          border-r transition-[transform,width] duration-300 ease-out md:static md:w-[5.5rem] lg:w-[17rem]
-          ${isNight
-            ? 'border-night-border/80 bg-night-card text-night-text shadow-[12px_0_40px_rgba(0,0,0,0.18)]'
-            : 'border-day-border/80 bg-day-tint text-day-text shadow-[12px_0_40px_rgba(111,73,65,0.08)]'
-          }
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        `}
-        style={{ paddingTop: 'env(safe-area-inset-top)' }}
-      >
-        {/* Quiet ambient shapes make the sidebar feel alive without stealing focus. */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-          <span className={`sidebar-breathe absolute -right-16 -top-16 h-44 w-44 rounded-full blur-2xl ${isNight ? 'bg-night-amber/10' : 'bg-day-honey/25'}`} />
-          <span className={`sidebar-breathe-delayed absolute -bottom-20 -left-20 h-48 w-48 rounded-full blur-3xl ${isNight ? 'bg-night-info/10' : 'bg-day-sky/15'}`} />
-          <span className={`absolute left-7 top-28 text-[8px] opacity-50 md:left-4 lg:left-7 ${isNight ? 'text-night-amberGlow' : 'text-day-honey'}`}>✦</span>
-          <span className={`absolute right-6 top-[38%] text-[7px] opacity-40 md:hidden lg:block ${isNight ? 'text-night-amber' : 'text-day-sky'}`}>✧</span>
-        </div>
-
-        <header className="relative px-3 pb-3 pt-4 lg:px-4">
-          <div className={`flex min-h-[4.25rem] items-center rounded-[1.4rem] border px-3 md:justify-center md:px-2 lg:justify-start lg:px-3 ${isNight ? 'border-night-border/80 bg-night-bg/40' : 'border-white/80 bg-white/60 shadow-[0_8px_24px_rgba(111,73,65,0.06)]'}`}>
-            <motion.div
-              animate={{ y: [0, -2, 0], rotate: [0, -2, 0] }}
-              transition={{ duration: 4.8, repeat: Infinity, ease: 'easeInOut' }}
-              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-xl ${isNight ? 'bg-night-amber/15 shadow-[0_0_20px_rgba(226,168,75,0.08)]' : 'bg-day-pinkLight shadow-[0_6px_16px_rgba(239,64,103,0.10)]'}`}
-            >
-              🔥
-            </motion.div>
-            <div className="ml-3 min-w-0 md:hidden lg:block">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-semibold tracking-[0.08em]">Lumbre</span>
-                <span className={`text-[8px] ${isNight ? 'text-night-amberGlow' : 'text-day-pink'}`}>●</span>
-              </div>
-              <p className={`mt-0.5 whitespace-nowrap text-[10px] tracking-wide ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>星星和小火的家</p>
-            </div>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              aria-label="关闭菜单"
-              className={`ml-auto rounded-full p-2 transition-colors md:hidden ${isNight ? 'text-night-muted hover:bg-night-surface hover:text-night-text' : 'text-day-muted hover:bg-day-pinkLight hover:text-day-text'}`}
-            >
-              <X size={17} />
-            </button>
+    <AnimatePresence>
+      {sidebarOpen && (
+        <motion.aside
+          key="lumbre-directory"
+          initial={{ opacity: 0, scale: 1.015 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 1.01 }}
+          transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}
+          aria-label="Lumbre 目录"
+          className={`fixed inset-0 z-[100] overflow-y-auto overscroll-contain ${
+            isNight ? 'bg-night-bg text-night-text' : 'bg-day-bg text-day-text'
+          }`}
+        >
+          <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
+            <motion.span
+              animate={reduceMotion ? undefined : { x: [0, 14, 0], y: [0, -10, 0], scale: [1, 1.08, 1] }}
+              transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+              className={`absolute -right-20 -top-20 h-72 w-72 rounded-full blur-3xl ${isNight ? 'bg-night-amber/10' : 'bg-day-honey/30'}`}
+            />
+            <motion.span
+              animate={reduceMotion ? undefined : { x: [0, -12, 0], y: [0, 12, 0], scale: [1, 1.1, 1] }}
+              transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+              className={`absolute -bottom-28 -left-24 h-80 w-80 rounded-full blur-3xl ${isNight ? 'bg-night-info/10' : 'bg-day-sky/20'}`}
+            />
+            <span className="absolute left-[8%] top-[18%] text-xs opacity-30">✦</span>
+            <span className="absolute right-[12%] top-[42%] text-[9px] opacity-25">✧</span>
+            <span className="absolute bottom-[16%] right-[22%] text-xs opacity-20">✦</span>
           </div>
-        </header>
 
-        <div className="relative flex items-center gap-2 px-6 pb-2 pt-1 md:justify-center md:px-2 lg:justify-start lg:px-6">
-          <span className={`text-[9px] font-medium uppercase tracking-[0.22em] md:hidden lg:inline ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>小宇宙漫游</span>
-          <span className={`h-px flex-1 md:hidden lg:block ${isNight ? 'bg-night-border/70' : 'bg-day-border'}`} />
-          <span className={`hidden text-[9px] md:inline lg:hidden ${isNight ? 'text-night-amber/70' : 'text-day-pink/60'}`}>✦</span>
-        </div>
-
-        <nav className="relative flex-1 space-y-1 overflow-y-auto px-3 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:px-4">
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.id
-            return (
-              <motion.button
-                key={tab.id}
-                whileHover={{ x: 2 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => {
-                  setActiveTab(tab.id)
-                  setSidebarOpen(false)
-                }}
-                aria-current={isActive ? 'page' : undefined}
-                title={`${tab.label} · ${tab.hint}`}
-                className={`
-                  group relative flex w-full items-center gap-3 overflow-hidden rounded-[1.15rem]
-                  px-2.5 py-2 text-left transition-colors duration-200 md:justify-center lg:justify-start
-                  ${isActive
-                    ? isNight ? 'text-night-amberGlow' : 'text-day-pinkDeep'
-                    : isNight
-                      ? 'text-night-muted hover:bg-night-surface/60 hover:text-night-text'
-                      : 'text-day-muted hover:bg-white/65 hover:text-day-text'
-                  }
-                `}
-              >
-                {isActive && (
-                  <motion.span
-                    layoutId="sidebar-active-pill"
-                    transition={{ type: 'spring', stiffness: 360, damping: 32 }}
-                    className={`absolute inset-0 rounded-[1.15rem] border ${isNight ? 'border-night-amber/20 bg-night-amber/10 shadow-[inset_0_0_20px_rgba(226,168,75,0.035)]' : 'border-day-pink/10 bg-white/85 shadow-[0_6px_18px_rgba(239,64,103,0.08)]'}`}
-                  />
-                )}
-
-                <span
-                  className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-[0.9rem] text-[17px] transition-all duration-200 group-hover:-rotate-3 group-hover:scale-105 ${
-                    isActive
-                      ? isNight
-                        ? 'bg-night-amber/[0.18] shadow-[0_0_18px_rgba(226,168,75,0.10)]'
-                        : 'bg-day-pinkLight shadow-[0_5px_12px_rgba(239,64,103,0.12)]'
-                      : isNight ? 'bg-night-bg/35' : 'bg-white/45'
-                  }`}
-                >
-                  {tab.emoji}
-                </span>
-
-                <span className="relative z-10 min-w-0 flex-1 md:hidden lg:block">
-                  <span className={`block truncate text-[13px] ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
-                  <span className={`block truncate text-[9px] leading-3.5 ${isNight ? 'text-night-muted' : 'text-day-muted'} ${isActive ? 'opacity-90' : 'opacity-65'}`}>{tab.hint}</span>
-                </span>
-
-                {isActive && (
-                  <motion.span
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className={`relative z-10 mr-1 h-1.5 w-1.5 shrink-0 rounded-full md:absolute md:right-1 lg:static ${isNight ? 'bg-night-amberGlow shadow-[0_0_8px_rgba(245,201,107,0.7)]' : 'bg-day-pink shadow-[0_0_8px_rgba(239,64,103,0.35)]'}`}
-                  />
-                )}
-              </motion.button>
-            )
-          })}
-        </nav>
-
-        <footer className="relative p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:p-4 lg:pb-[max(1rem,env(safe-area-inset-bottom))]">
-          <button
-            onClick={toggle}
-            aria-label={isNight ? '切换到日间模式' : '切换到夜间模式'}
-            title={isNight ? '切换到日间模式' : '切换到夜间模式'}
-            className={`group flex w-full items-center rounded-[1.2rem] border p-2 transition-all duration-200 md:justify-center lg:justify-start ${isNight ? 'border-night-border bg-night-bg/45 text-night-amber hover:border-night-amber/30' : 'border-white/80 bg-white/60 text-day-pink shadow-[0_6px_20px_rgba(111,73,65,0.05)] hover:border-day-pink/15'}`}
+          <div
+            className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col px-5 sm:px-8"
+            style={{
+              paddingTop: 'max(1rem, env(safe-area-inset-top))',
+              paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+            }}
           >
-            <span className={`relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl ${isNight ? 'bg-night-surface' : 'bg-day-pinkLight'}`}>
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.span
-                  key={theme}
-                  initial={{ y: 12, opacity: 0, rotate: -20 }}
-                  animate={{ y: 0, opacity: 1, rotate: 0 }}
-                  exit={{ y: -12, opacity: 0, rotate: 20 }}
-                  transition={{ duration: 0.2 }}
-                  className="absolute text-base"
-                >
-                  {isNight ? '🌙' : '🌸'}
-                </motion.span>
-              </AnimatePresence>
-            </span>
-            <span className="ml-3 min-w-0 md:hidden lg:block">
-              <span className="block text-xs font-medium">{isNight ? '雪豹夜行' : '白日做梦'}</span>
-              <span className={`block text-[9px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>轻轻点一下换天空</span>
-            </span>
-            <span className="ml-auto mr-1 hidden text-[10px] opacity-50 lg:block">↗</span>
-          </button>
-        </footer>
-      </aside>
-    </>
+            <header className="flex items-center justify-between py-2 sm:py-4">
+              <div className="flex items-center gap-3">
+                <motion.img
+                  src="/icon-192.png"
+                  alt=""
+                  initial={{ rotate: -5, scale: 0.9 }}
+                  animate={{ rotate: 0, scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.04 }}
+                  className={`h-12 w-12 rounded-[1.05rem] shadow-lg sm:h-14 sm:w-14 ${isNight ? 'shadow-black/25' : 'shadow-day-honey/30'}`}
+                />
+                <div>
+                  <h1 className="text-base font-semibold tracking-[0.12em] sm:text-lg">LUMBRE</h1>
+                  <p className={`mt-0.5 text-[10px] tracking-[0.16em] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>星星和小火的家</p>
+                </div>
+              </div>
+              <motion.button
+                whileHover={{ rotate: 5, scale: 1.05 }}
+                whileTap={{ scale: 0.88, rotate: -6 }}
+                onClick={() => setSidebarOpen(false)}
+                aria-label="关闭目录"
+                className={`grid h-11 w-11 place-items-center rounded-full border transition-colors ${
+                  isNight
+                    ? 'border-night-border bg-night-card text-night-muted hover:text-night-text'
+                    : 'border-day-border bg-white text-day-muted shadow-sm hover:text-day-text'
+                }`}
+              >
+                <X size={19} />
+              </motion.button>
+            </header>
+
+            <div className="mb-4 mt-4 flex items-end justify-between sm:mb-6 sm:mt-7">
+              <div>
+                <p className={`text-[10px] uppercase tracking-[0.34em] ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>Directory</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-wide sm:text-3xl">今天想去哪里？</h2>
+              </div>
+              <span className={`hidden text-xs sm:block ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>轻轻点一下就到啦</span>
+            </div>
+
+            <motion.nav
+              variants={listVariants}
+              initial={reduceMotion ? false : "hidden"}
+              animate="visible"
+              className="grid flex-1 auto-rows-fr grid-cols-2 gap-3 pb-5 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5"
+            >
+              {tabs.map((tab, index) => {
+                const isActive = activeTab === tab.id
+                return (
+                  <motion.button
+                    variants={itemVariants}
+                    key={tab.id}
+                    whileHover={{ y: -3, rotate: index % 2 === 0 ? -0.5 : 0.5 }}
+                    whileTap={{ scale: 0.94, y: 1 }}
+                    onClick={() => {
+                      setActiveTab(tab.id)
+                      window.setTimeout(() => setSidebarOpen(false), 75)
+                    }}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`group relative flex min-h-[112px] flex-col items-start justify-between overflow-hidden rounded-[1.55rem] border p-4 text-left transition-colors sm:min-h-[138px] sm:p-5 ${
+                      isActive
+                        ? isNight
+                          ? 'border-night-amber/45 bg-night-amber/10 text-night-amberGlow shadow-[0_12px_30px_rgba(0,0,0,0.18)]'
+                          : 'border-day-pink/25 bg-white text-day-pinkDeep shadow-[0_12px_30px_rgba(239,64,103,0.10)]'
+                        : isNight
+                          ? 'border-night-border bg-night-card/80 hover:border-night-amber/25 hover:bg-night-card'
+                          : 'border-day-border bg-white hover:border-day-honey hover:bg-white'
+                    }`}
+                  >
+                    <span className={`absolute right-3 top-2 text-[9px] transition-opacity ${isActive ? 'opacity-70' : 'opacity-0 group-hover:opacity-40'}`}>✦</span>
+                    <motion.span
+                      whileHover={{ rotate: [-3, 4, 0], scale: 1.08 }}
+                      className={`grid h-10 w-10 place-items-center rounded-2xl text-xl sm:h-12 sm:w-12 sm:text-2xl ${
+                        isNight ? 'bg-night-surface' : isActive ? 'bg-day-pinkLight' : 'bg-day-tint'
+                      }`}
+                    >
+                      {tab.emoji}
+                    </motion.span>
+                    <span className="mt-3 min-w-0">
+                      <span className="block truncate text-sm font-semibold sm:text-base">{tab.label}</span>
+                      <span className={`mt-0.5 block truncate text-[9px] sm:text-[10px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{tab.hint}</span>
+                    </span>
+                    {isActive && <span className={`absolute bottom-3 right-3 h-1.5 w-1.5 rounded-full ${isNight ? 'bg-night-amberGlow shadow-[0_0_8px_#f5c96b]' : 'bg-day-pink shadow-[0_0_8px_#ef4067]'}`} />}
+                  </motion.button>
+                )
+              })}
+            </motion.nav>
+
+            <motion.footer
+              variants={itemVariants}
+              initial={reduceMotion ? false : "hidden"}
+              animate="visible"
+              transition={{ delay: 0.52 }}
+              className="flex items-center justify-center border-t py-3 sm:py-4"
+              style={{ borderColor: isNight ? '#2e3d4d' : '#F0E4DD' }}
+            >
+              <motion.button
+                whileHover={{ rotate: 8, scale: 1.06 }}
+                whileTap={{ scale: 0.87, rotate: -8 }}
+                onClick={toggle}
+                aria-label={isNight ? '切换到日间模式' : '切换到夜间模式'}
+                title={isNight ? '切换到日间模式' : '切换到夜间模式'}
+                className={`grid h-11 w-11 place-items-center rounded-full border text-lg shadow-sm transition-colors ${
+                  isNight
+                    ? 'border-night-border bg-night-card hover:border-night-amber/40'
+                    : 'border-day-border bg-white hover:border-day-pink/25'
+                }`}
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.span
+                    key={theme}
+                    initial={{ opacity: 0, y: 7, rotate: -20 }}
+                    animate={{ opacity: 1, y: 0, rotate: 0 }}
+                    exit={{ opacity: 0, y: -7, rotate: 20 }}
+                    transition={{ duration: 0.16 }}
+                  >
+                    {isNight ? '☀️' : '🌙'}
+                  </motion.span>
+                </AnimatePresence>
+              </motion.button>
+            </motion.footer>
+          </div>
+        </motion.aside>
+      )}
+    </AnimatePresence>
   )
 }

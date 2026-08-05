@@ -2253,3 +2253,18 @@ author 默认 star（🐆），AI 就是星星。
 - `git diff --check`：通过。
 - 独立临时目录实测旧单体文件迁移、增量改写、tombstone 删除：通过。
 - 遵守低内存环境约定，未执行 Next production build；交由 Zeabur 自动构建。
+
+## 2026-08-05 — 全屏目录 + PWA 豹子水獭图标
+
+### 完成
+- 旧常驻 Sidebar 替换为全屏目录：所有尺寸统一由顶部菜单按钮打开，覆盖整个屏幕，不再占用桌面内容宽度。
+- 目录接入现有 10 个页面入口；当前页面有高亮，点击后有轻微缩放/下沉反馈并自动关目录。
+- 目录打开时项目按 45ms 间隔依次浮现，使用短 spring 动画；背景增加低强度漂浮光斑和星点，并保留 `prefers-reduced-motion` 的 Framer Motion 降级行为。
+- 日夜切换删掉原“雪豹夜行/白日做梦/轻轻点一下换天空”等文字，只保留底部单个圆形太阳/月亮按钮。
+- 新增棕色豹子抱水獭 PWA 图标：192、512、1024、180 apple-touch-icon、32 favicon；manifest 的 512 图标标记为 `any maskable`。
+- 顶栏在桌面端也显示，作为统一的目录入口；页面主区域恢复完整宽度。
+
+### 验证
+- TypeScript `tsc --noEmit` 通过。
+- `git diff --check` 通过。
+- 按低内存项目约定未运行 Next production build。
