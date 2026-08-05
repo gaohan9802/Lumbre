@@ -129,3 +129,10 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 页面点击动画与关闭动画不要同一帧触发，否则按压反馈看不见；先切 tab，约 75ms 后关闭目录。
 - iOS 主屏图标优先使用独立 180x180 `apple-touch-icon`；PWA manifest 同时保留 192/512，512 使用 `purpose: any maskable` 兼容 Android 自适应裁切。
 - 当前 shell 无 Pillow/ImageMagick/sharp，图标用零依赖 Node PNG encoder 生成；后续若拿到用户原始上传文件，可直接替换同名 PNG，不需要改 manifest/layout。
+
+## 2026-08-05 — 指定图片目录 / 子页面迁移
+- 用户图片位于独立 `images` 分支，不能 merge 该分支（它包含一份完整且可能落后的项目）；只用 `git show origin/images:<file>` 精确取出 8 张目录图与 `logo-pwa.jpg`。
+- 目录图原始尺寸均为 1036×275，保持原始 `aspect-ratio` 和 `object-cover`，不在代码中重绘、加字或改变图片内容。
+- Tesis/Wishlist 不能只从 Sidebar 隐藏：还需从全局 Tab union、VALID_TABS、page views、TopBar 标题移除，并提高 persist version 做旧 activeTab 定向迁移。
+- 子页面保留原设计最稳的方式是直接挂载原 `TesisView` / `WishlistView`，不复制组件、不改 API 和 store，避免数据或功能漂移。
+- iOS 主屏图标直接引用用户提供的 `/logo-pwa.jpg`；manifest 同步声明 JPEG 的真实 1872×1872 尺寸。

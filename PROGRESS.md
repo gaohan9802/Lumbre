@@ -2268,3 +2268,21 @@ author 默认 star（🐆），AI 就是星星。
 - TypeScript `tsc --noEmit` 通过。
 - `git diff --check` 通过。
 - 按低内存项目约定未运行 Next production build。
+
+## 2026-08-05 — 指定图片目录 + 子页面归位 + PWA Logo
+
+### 完成
+- 全屏目录改为严格使用 `images` 分支提供的 8 张横幅图片，不再使用 emoji 卡片、说明文案、Directory 标题或其他装饰文字。
+- 目录顺序固定为：星星、Timeline、日记、小纸条、代办、照片、记忆、现实与梦境；对应 `Chat.jpg / Timeline.jpg / Diary.jpg / Notes.jpg / Todo.jpg / Foto.jpg / Memory.jpg / Dream.jpg`。
+- 目录背景固定为 `#E8E5DD`，日间/夜间打开目录时均保持同一颜色。
+- 目录打开后各项按 55ms 间隔自然浮现；点击横幅有轻微缩放和下沉反馈，随后进入页面并关闭目录。
+- 底部模式切换仅保留一个圆形太阳/月亮按钮，无说明文字。
+- `Tesis` 从一级目录移入 Timeline，Timeline 顶部增加 `Timeline / Tesis` 两个轻量子页入口；Tesis 原组件、设计、API 和已有数据均未修改。
+- `Wishlist` 从一级目录移入「现实与梦境」的「梦境」tab；Wishlist 原组件、设计、API 和已有数据均未修改。
+- App persist version 7→8：老设备停在 `tesis` 时迁移到 `timeline`，停在 `wishlist` 时迁移到 `dreams`，避免白屏。
+- `logo-pwa.jpg` 复制到 public，并作为 manifest 图标与 iOS `apple-touch-icon` 使用；目录左上也使用同一张 Logo。
+
+### 验证
+- `tsc --noEmit` 通过。
+- `git diff --check` 通过。
+- 遵守项目约定，未在低内存 shell 运行 Next production build；推送后交 Zeabur 自动构建。

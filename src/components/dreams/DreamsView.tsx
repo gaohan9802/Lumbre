@@ -8,6 +8,7 @@ import { useTheme } from '@/lib/theme'
 import { useChatStore, getSortedSessions } from '@/lib/chatStore'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw } from 'lucide-react'
+import { WishlistView } from '@/components/wishlist/WishlistView'
 
 interface WakeLog {
   id: string
@@ -355,15 +356,7 @@ export function DreamsView() {
             </div>
           </div>
         ) : (
-          /* Dreams tab - placeholder */
-          <div className="flex flex-col items-center justify-center h-full text-center px-8 pb-[env(safe-area-inset-bottom)]">
-            <span className="text-5xl mb-4">🌙</span>
-            <h3 className={`text-lg font-medium mb-2 ${n ? 'text-night-amber' : 'text-day-pink'}`}>梦境</h3>
-            <p className={`text-sm max-w-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-              这里是星星做梦的地方。<br />
-              梦境的内容，以后会慢慢长出来。
-            </p>
-          </div>
+          <WishlistView />
         )}
       </div>
     </div>

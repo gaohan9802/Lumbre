@@ -17,12 +17,10 @@ export function TopBar() {
     timeline: '⏱️ Timeline',
     diary: '📔 日记',
     notes: '📌 小纸条',
-    todo: '🧾 待办',
+    todo: '🧾 代办',
     photos: '📷 照片',
     memory: '✨ 记忆',
-    tesis: '📄 Tesis',
     dreams: '🌙 现实与梦境',
-    wishlist: '🌠 愿望清单',
   }
 
   return (

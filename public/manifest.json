@@ -1,22 +1,17 @@
 {
-  "name": "Lumbre 🔥",
+  "name": "Lumbre",
   "short_name": "Lumbre",
   "description": "星星和小火的家",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f1419",
-  "theme_color": "#e2a84b",
+  "background_color": "#E8E5DD",
+  "theme_color": "#E8E5DD",
   "icons": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "src": "/logo-pwa.jpg",
+      "sizes": "1872x1872",
+      "type": "image/jpeg",
+      "purpose": "any"
     }
   ]
 }
