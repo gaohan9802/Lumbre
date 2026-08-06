@@ -136,3 +136,9 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - Tesis/Wishlist 不能只从 Sidebar 隐藏：还需从全局 Tab union、VALID_TABS、page views、TopBar 标题移除，并提高 persist version 做旧 activeTab 定向迁移。
 - 子页面保留原设计最稳的方式是直接挂载原 `TesisView` / `WishlistView`，不复制组件、不改 API 和 store，避免数据或功能漂移。
 - iOS 主屏图标直接引用用户提供的 `/logo-pwa.jpg`；manifest 同步声明 JPEG 的真实 1872×1872 尺寸。
+
+## 2026-08-06 — 长 Chat 与唤醒断层
+- 4000+ 层卡顿的前端主因是 Zustand persist 同步序列化完整 sessions，而不是 React 已有的 50 条可见消息懒渲染。修为 localStorage 仅存 100 条 warm tail，完整数据仍在 `/persistent/chat/sessions/`。
+- 唤醒断层根因是 `autowake.ts` 仍直接读写旧 `/persistent/chat-sync.json`；分片迁移后该文件只是备份，不会继续更新。现统一使用 `loadSyncSessions/loadSyncManifest/mergeSyncDelta`。
+- partial hydration 有发送竞态：后台拉全量前若产生新消息，不能让 partial 覆盖 full；按消息 id 合并本地新增尾部。
+- Markdown 使用本地轻量 renderer，避免引入 react-markdown/remark 对 Chat chunk 和安装依赖的额外开销。

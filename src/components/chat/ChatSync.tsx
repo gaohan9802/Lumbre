@@ -77,7 +77,7 @@ async function pullIncremental() {
   const needed = manifest
     .filter(remote => {
       const cur = localMap.get(remote.id)
-      return !cur || (Number(remote.updatedAt) || 0) > (Number(cur.updatedAt) || 0)
+      return !cur || cur.partial || (Number(remote.updatedAt) || 0) > (Number(cur.updatedAt) || 0)
     })
     .map(s => s.id)
 

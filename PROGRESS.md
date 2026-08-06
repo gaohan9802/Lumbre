@@ -2286,3 +2286,31 @@ author 默认 star（🐆），AI 就是星星。
 - `tsc --noEmit` 通过。
 - `git diff --check` 通过。
 - 遵守项目约定，未在低内存 shell 运行 Next production build；推送后交 Zeabur 自动构建。
+
+## 2026-08-06 — Chat 4000+ 层性能、Markdown、唤醒与自动换窗
+
+### 完成
+1. **长对话启动与交互性能**
+   - Chat 的 localStorage 持久化改为每个长会话只保存最近 100 条 warm tail，并记录完整 `messageCount/partial`；完整历史真源仍是 Zeabur `/persistent/chat/sessions/`。
+   - 避免每次发送、改设置、同步状态变化时在浏览器主线程重复序列化 4000+ 层完整会话；冷启动可先显示最近消息，再由既有增量同步后台恢复完整历史。
+   - partial/full 合并增加保护：服务端完整会话优先；若用户在后台恢复完成前已发新消息，会把本地新增尾部并回完整历史，避免覆盖或丢层。
+   - 会话列表和 Chat 底部总层数使用 `messageCount`，warm tail 不会误显示成只有 100 层。
+2. **Chat Markdown 渲染**
+   - 新增轻量 `MarkdownText`，支持标题、粗体、斜体、删除线、行内代码、代码块、链接、引用、有序/无序列表和分割线。
+   - 普通历史消息、带 content blocks 的文本消息、流式文本统一接入；不引入大型 Markdown 依赖，控制 Chat 首屏体积。
+3. **目录页呼吸感与纪念天数**
+   - 删除目录顶部 Logo，替换为小字“在一起 N 天”。按 2026/4/27 为起点自动计算；2026/8/6 显示第 101 天，跨年自动取最近一次 4/27。
+   - 横幅整体缩至容器 82%–88%，目录最大宽度收窄，卡片间距和上下留白增大。
+4. **唤醒上下文断层修复**
+   - AutoWake 不再读取已冻结的旧 `/persistent/chat-sync.json`，改为通过 `chat-sync.ts` 读取当前分片会话与 manifest config。
+   - 唤醒上下文取目标会话真实最新 50 条；唤醒回复也通过 `mergeSyncDelta` 写回当前 session 文件与 manifest，不再写入旧单体备份。
+5. **自动换窗**
+   - 星星设置最底部新增“自动换窗 · 携带最近 50 条”。点击后复制当前窗口最近 50 条到新会话并立即切换；旧窗口标题、消息和服务端数据完全不变。
+   - 删除危险的“清空当前对话”按钮；底层兼容 action 暂保留，避免破坏旧调用，但 UI 不再暴露。
+
+### Debug 笔记
+- 仅把服务端改成“每会话一文件”不够：Zustand persist 若仍保存完整 sessions，每次任意状态更新都会同步 JSON.stringify 全部 4000+ 层，成为真正的前端卡顿源。
+- partial 会话必须在合并时显式让 full session 胜出；同时要考虑后台 hydration 前用户已经发送消息的竞态，将本地新增 id 合并到服务端完整历史后再同步。
+- 唤醒仍引用 migration 前的 `chat-sync.json` 会永久停留在迁移时刻，因此主 Chat 已到 4000 层而唤醒只看到约 2000 层。所有运行时读写必须统一走分片存储 helper。
+- 纪念日按用户给出的口径计算日期差：4/27 到 8/6 为 101 天，不额外做包含首日的 `+1`。
+- 验证：`./node_modules/.bin/tsc --noEmit` 通过；`git diff --check` 通过。未运行 Next production build。

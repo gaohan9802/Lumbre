@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence, Variants, useReducedMotion } from 'framer-motion'
@@ -37,6 +37,15 @@ export function Sidebar() {
   const { theme, toggle } = useTheme()
   const isNight = theme === 'night'
   const reduceMotion = useReducedMotion()
+  const togetherDays = useMemo(() => {
+    const now = new Date()
+    // Use the date-difference convention requested: 4/27 → 8/6 = 101 days.
+    let start = new Date(now.getFullYear(), 3, 27)
+    if (now < start) start = new Date(now.getFullYear() - 1, 3, 27)
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+    return Math.floor((today.getTime() - startDay.getTime()) / 86400000)
+  }, [sidebarOpen])
 
   useEffect(() => {
     if (!sidebarOpen) return
@@ -64,14 +73,14 @@ export function Sidebar() {
           className="fixed inset-0 z-[100] overflow-y-auto overscroll-contain bg-[#E8E5DD] text-[#4d4740]"
         >
           <div
-            className="mx-auto flex min-h-full w-full max-w-[760px] flex-col px-4 sm:px-7"
+            className="mx-auto flex min-h-full w-full max-w-[680px] flex-col px-6 sm:px-10"
             style={{
               paddingTop: 'max(0.8rem, env(safe-area-inset-top))',
               paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
             }}
           >
-            <header className="flex items-center justify-between pb-3 pt-1">
-              <img src="/logo-pwa.jpg" alt="Lumbre" className="h-11 w-11 rounded-[13px] object-cover shadow-sm" />
+            <header className="flex items-center justify-between pb-5 pt-2">
+              <p className="pl-1 text-[11px] tracking-[0.18em] text-[#756d64]">在一起 {togetherDays} 天</p>
               <motion.button
                 whileTap={{ scale: 0.88, rotate: -5 }}
                 onClick={() => setSidebarOpen(false)}
@@ -86,7 +95,7 @@ export function Sidebar() {
               variants={listVariants}
               initial={reduceMotion ? false : 'hidden'}
               animate="visible"
-              className="flex flex-1 flex-col justify-center gap-2.5 py-2 sm:gap-3"
+              className="flex flex-1 flex-col justify-center gap-4 py-5 sm:gap-5 sm:py-8"
             >
               {tabs.map((tab) => {
                 const isActive = activeTab === tab.id
@@ -102,7 +111,7 @@ export function Sidebar() {
                     }}
                     aria-label={tab.label}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`relative block w-full overflow-hidden rounded-[18px] bg-white/30 text-left shadow-[0_5px_20px_rgba(72,64,55,0.07)] transition-shadow sm:rounded-[22px] ${
+                    className={`relative block mx-auto w-[88%] overflow-hidden rounded-[16px] bg-white/25 text-left shadow-[0_5px_20px_rgba(72,64,55,0.07)] transition-shadow sm:w-[82%] sm:rounded-[19px] ${
                       isActive ? 'ring-2 ring-white/90 shadow-[0_7px_24px_rgba(72,64,55,0.12)]' : ''
                     }`}
                   >

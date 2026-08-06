@@ -18,6 +18,7 @@ import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { TimelineTimerModal, TimelineCurrent } from '@/components/timeline/TimelineTimerModal'
 import { SyncBadge } from '@/components/layout/SyncBadge'
+import { MarkdownText } from './MarkdownText'
 
 /* ── helpers ────────────────────────────── */
 
@@ -101,7 +102,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion,
+    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
@@ -606,7 +607,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     </div>
                   )}
                   <div className="text-[10px] opacity-40 mt-1 flex justify-between">
-                    <span>{s.messages.length} messages</span>
+                    <span>{s.messageCount || s.messages.length} messages</span>
                     <span>{fmtShortDate(s.updatedAt)}</span>
                   </div>
                 </div>
@@ -768,7 +769,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                                       ))}
                                     </div>
                                   )}
-                                  <p className="whitespace-pre-wrap">{block.content}</p>
+                                  <MarkdownText content={block.content} />
                                 </div>
                               )
                             }
@@ -856,7 +857,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                               ))}
                             </div>
                           )}
-                          {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
+                          {msg.content && <MarkdownText content={msg.content} />}
                         </div>
                       ) : null}
 
@@ -948,7 +949,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     if (block.type === 'text' && block.content) {
                       return (
                         <div key={bi} className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl rounded-bl-md mr-auto text-[13px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
-                          <p className="whitespace-pre-wrap">{block.content}{isLast ? <span className="stream-cursor">…</span> : ''}</p>
+                          <MarkdownText content={block.content} cursor={isLast} />
                         </div>
                       )
                     }
@@ -976,7 +977,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             {/* total layers */}
             <div className={`text-[10px] mb-2 px-1 space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
               <div className="flex justify-between">
-                <span>共 {messages.length} 层</span>
+                <span>共 {activeSession?.messageCount || messages.length} 层</span>
                 <div className="flex items-center gap-2">
                   {timelineCurrent && <button onClick={() => setTimelineOpen(true)} className={`max-w-[52vw] truncate flex items-center gap-1 ${n ? 'text-night-amber' : 'text-day-pink'}`} title={`正在做：${timelineCurrent.title}`}><Clock3 size={11}/>正在 {timelineCurrent.title} ({timelineElapsedText})</button>}
                   <button onClick={() => setBookmarkDialogOpen(true)} className="opacity-60 hover:opacity-100 flex items-center gap-1" title="书签">

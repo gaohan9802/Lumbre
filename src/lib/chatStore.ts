@@ -68,6 +68,9 @@ export interface ChatSession {
   pinned: boolean
   createdAt: number
   updatedAt: number
+  /** Local persisted tail; full history is restored lazily from /api/sync. */
+  partial?: boolean
+  messageCount?: number
 }
 
 export interface ChatAppearance {
@@ -212,6 +215,8 @@ interface ChatStore {
   setAllModelsEnabled: (profileId: string, enabled: boolean) => void
   updateModelMeta: (profileId: string, modelId: string, patch: Partial<ProviderModel>) => void
 
+  continueSession: (tailCount?: number) => string
+
   addBookmark: (b: Omit<Bookmark, 'id'>) => void
   updateBookmark: (id: string, patch: Partial<Bookmark>) => void
   deleteBookmark: (id: string) => void
@@ -230,6 +235,21 @@ export function isBlankSession(s: any) {
 // "more messages wins" would resurrect it). The only guard is that a blank
 // scratch session (0 msgs, default title) must never clobber a real one.
 function pickSession(a: any, b: any) {
+  // A server session always beats a locally persisted tail, even when their
+  // timestamps are equal. This is what lets startup paint the latest 100
+  // messages immediately and hydrate the other 3900+ in the background.
+  if (a?.partial && !b?.partial) {
+    if ((a.updatedAt || 0) <= (b.updatedAt || 0)) return b
+    const ids = new Set((b.messages || []).map((m: any) => m.id))
+    const extras = (a.messages || []).filter((m: any) => !ids.has(m.id))
+    return { ...b, ...a, partial: false, messages: [...(b.messages || []), ...extras], messageCount: (b.messages || []).length + extras.length }
+  }
+  if (b?.partial && !a?.partial) {
+    if ((b.updatedAt || 0) <= (a.updatedAt || 0)) return a
+    const ids = new Set((a.messages || []).map((m: any) => m.id))
+    const extras = (b.messages || []).filter((m: any) => !ids.has(m.id))
+    return { ...a, ...b, partial: false, messages: [...(a.messages || []), ...extras], messageCount: (a.messages || []).length + extras.length }
+  }
   const aBlank = isBlankSession(a)
   const bBlank = isBlankSession(b)
   if (aBlank && !bBlank) return b
@@ -309,6 +329,8 @@ function normalizeSettings(settings: any): ChatSettings {
         pinned: !!s.pinned,
         createdAt: s.createdAt || Date.now(),
         updatedAt: s.updatedAt || s.createdAt || Date.now(),
+        partial: !!s.partial,
+        messageCount: Math.max(Number(s.messageCount) || 0, Array.isArray(s.messages) ? s.messages.length : 0),
       }))
     : [{ ...DEFAULT_SETTINGS.sessions[0], messages: oldMessages }]
 
@@ -397,7 +419,7 @@ export const useChatStore = create<ChatStore>()(
           if (s.id !== settings.activeSessionId) return s
           const nextMessages = [...s.messages, m]
           const shouldAutoTitle = s.title === '新的对话' && m.role === 'user' && s.messages.length === 0
-          return { ...s, title: shouldAutoTitle ? sessionTitleFromMessage(m.content) : s.title, messages: nextMessages, updatedAt: Date.now() }
+          return { ...s, title: shouldAutoTitle ? sessionTitleFromMessage(m.content) : s.title, messages: nextMessages, messageCount: Math.max(s.messageCount || 0, nextMessages.length), updatedAt: Date.now() }
         })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -712,6 +734,34 @@ export const useChatStore = create<ChatStore>()(
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
+      continueSession: (tailCount = 50) => {
+        const id = makeId('session')
+        const now = Date.now()
+        set((state) => {
+          const settings = normalizeSettings(state.settings)
+          const active = getActiveSession(settings)
+          const tail = active.messages.slice(-Math.max(1, tailCount)).map((m) => ({
+            ...m,
+            images: m.images ? [...m.images] : undefined,
+            versions: m.versions ? m.versions.map((v) => ({ ...v })) : undefined,
+            tool_calls: m.tool_calls ? m.tool_calls.map((tc) => ({ ...tc, input: { ...tc.input } })) : undefined,
+            content_blocks: m.content_blocks ? m.content_blocks.map((block) => ({ ...block, input: block.input ? { ...block.input } : undefined })) : undefined,
+          }))
+          const nextSession: ChatSession = {
+            id,
+            title: `${active.title || '对话'} · 续窗`,
+            messages: tail,
+            pinned: false,
+            createdAt: now,
+            updatedAt: now,
+            messageCount: tail.length,
+          }
+          const nextSettings = { ...settings, sessions: [nextSession, ...settings.sessions], activeSessionId: id }
+          return { settings: nextSettings, messages: tail }
+        })
+        return id
+      },
+
       addBookmark: (b) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const bookmark: Bookmark = { ...b, id: makeId('bm') }
@@ -739,8 +789,24 @@ export const useChatStore = create<ChatStore>()(
       // `messages` mirrors the active session and used to be persisted a second
       // time at the top level. Long active chats were therefore serialized and
       // parsed twice on every write/startup. Rehydrate rebuilds this mirror.
-      partialize: (state) => ({ settings: state.settings }) as any,
-      version: 7,
+      partialize: (state) => {
+        // Keep only a small warm tail in synchronous localStorage. Serializing
+        // 4000+ messages on every send/settings change was the main-thread
+        // freeze. The complete session remains durable in /persistent and is
+        // hydrated lazily by ChatSync when that conversation is opened.
+        const settings = normalizeSettings(state.settings)
+        return {
+          settings: {
+            ...settings,
+            sessions: settings.sessions.map((session) => {
+              const fullCount = session.partial ? (session.messageCount || session.messages.length) : session.messages.length
+              if (fullCount <= 100) return { ...session, messageCount: fullCount, partial: false }
+              return { ...session, messages: session.messages.slice(-100), messageCount: fullCount, partial: true }
+            }),
+          },
+        } as any
+      },
+      version: 8,
       migrate: (persisted: any) => {
         if (!persisted?.state) return persisted
         const raw = persisted.state.settings || {}

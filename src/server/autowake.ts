@@ -15,11 +15,11 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
+import { loadSyncManifest, loadSyncSessions, mergeSyncDelta } from './chat-sync'
 
 const PERSISTENT = '/persistent'
 const WAKE_LOG_PATH = path.join(PERSISTENT, 'wake-logs.json')
 const WAKE_CONFIG_PATH = path.join(PERSISTENT, 'wake-config.json')
-const CHAT_SYNC_PATH = path.join(PERSISTENT, 'chat-sync.json')
 
 const MAX_WAKE_TOOL_CALLS = 3
 
@@ -219,14 +219,14 @@ async function executeWake(config: WakeConfig, reason: string, alarm?: WakeAlarm
     .replace(/\{reason\}/g, reason)
     .replace(/\{quiet_note\}/g, quietNote)
 
-  // Load chat-sync to get session context
+  // Read the selected session from the current sharded store. The old
+  // chat-sync.json is only a migration backup and can stop at ~2000 messages.
+  let wakeSession: any = null
   let contextMessages: any[] = []
   try {
-    const syncData = JSON.parse(fs.readFileSync(CHAT_SYNC_PATH, 'utf-8'))
-    const sessions = syncData?.sessions || []
-    const session = sessions.find((s: any) => s.id === config.sessionId)
-    if (session?.messages) {
-      contextMessages = session.messages.slice(-20).map((m: any) => ({
+    wakeSession = config.sessionId ? loadSyncSessions([config.sessionId])[0] : null
+    if (wakeSession?.messages) {
+      contextMessages = wakeSession.messages.slice(-50).map((m: any) => ({
         role: m.role,
         content: m.content,
       }))
@@ -243,8 +243,7 @@ async function executeWake(config: WakeConfig, reason: string, alarm?: WakeAlarm
   let systemPrompt: string | undefined = undefined
   let modelOverride: string | undefined = undefined
   try {
-    const syncData = JSON.parse(fs.readFileSync(CHAT_SYNC_PATH, 'utf-8'))
-    const cfg = syncData?.config
+    const cfg = loadSyncManifest().config
     if (cfg) {
       systemPrompt = cfg.systemPrompt || undefined
       modelOverride = cfg.model || undefined
@@ -311,27 +310,29 @@ async function executeWake(config: WakeConfig, reason: string, alarm?: WakeAlarm
       : ''
     if ((!silent || hasActions) && config.sessionId) {
       try {
-        const syncData = JSON.parse(fs.readFileSync(CHAT_SYNC_PATH, 'utf-8'))
-        const sessions = syncData?.sessions || []
-        const sessionIdx = sessions.findIndex((s: any) => s.id === config.sessionId)
-        if (sessionIdx >= 0) {
+        const session = wakeSession || loadSyncSessions([config.sessionId])[0]
+        if (session) {
           const nowTs = Date.now()
           const storedContent = silent
             ? traceSummary
             : (traceSummary ? `${responseText}\n${traceSummary}` : responseText)
-          sessions[sessionIdx].messages.push({
-            id: `wake-${nowTs}`,
-            role: 'assistant',
-            content: storedContent,
-            timestamp: nowTs,
-            thinking: data.thinking,
-            tool_calls: toolCalls,
-            _wake: true,
-            _wakeSilent: silent,
-          })
-          sessions[sessionIdx].updatedAt = nowTs
-          syncData.sessions = sessions
-          fs.writeFileSync(CHAT_SYNC_PATH, JSON.stringify(syncData, null, 2))
+          const updated = {
+            ...session,
+            messages: [...(session.messages || []), {
+              id: `wake-${nowTs}`,
+              role: 'assistant',
+              content: storedContent,
+              timestamp: nowTs,
+              thinking: data.thinking,
+              tool_calls: toolCalls,
+              _wake: true,
+              _wakeSilent: silent,
+            }],
+            updatedAt: nowTs,
+          }
+          const manifest = loadSyncManifest()
+          mergeSyncDelta({ sessions: [updated], tombstones: manifest.tombstones })
+          wakeSession = updated
         }
       } catch {}
     }

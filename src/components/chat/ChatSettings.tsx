@@ -6,7 +6,7 @@
  */
 import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, RotateCcw, Trash2, ImagePlus } from 'lucide-react'
+import { X, RotateCcw, ImagePlus, PanelsTopLeft } from 'lucide-react'
 import { useTheme } from '@/lib/theme'
 import { useChatStore, estimateTokens, DEFAULT_APPEARANCE } from '@/lib/chatStore'
 
@@ -37,7 +37,7 @@ async function fileToDataUrl(file: File): Promise<string> {
 export function ChatSettings({ open, onClose, onConfirm = (msg, fn) => { if (window.confirm(msg)) fn() } }: Props) {
   const { theme } = useTheme()
   const isNight = theme === 'night'
-  const { messages, settings, setSettings, resetSettings, clearMessages } = useChatStore()
+  const { messages, settings, setSettings, resetSettings, continueSession } = useChatStore()
   const bgInputRef = useRef<HTMLInputElement>(null)
   const [bgUploading, setBgUploading] = useState(false)
 
@@ -194,7 +194,16 @@ export function ChatSettings({ open, onClose, onConfirm = (msg, fn) => { if (win
 
               <section className="pt-4 border-t border-current/10 space-y-2">
                 <button onClick={() => onConfirm('恢复默认设置？API、供应商和会话都会重置。', resetSettings)} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs opacity-60 hover:opacity-100 hover:bg-day-tint dark:hover:bg-white/5"><RotateCcw size={12} /> 恢复默认</button>
-                <button onClick={() => onConfirm(`清空当前会话 ${messages.length} 条聊天？这不能撤销。`, clearMessages)} className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-day-error dark:text-night-error/80 hover:bg-day-errorLight/30"><Trash2 size={12} /> 清空当前对话（{messages.length} 条）</button>
+                <button
+                  onClick={() => {
+                    continueSession(50)
+                    onClose()
+                  }}
+                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-medium ${isNight ? 'bg-night-amber/15 text-night-amber hover:bg-night-amber/25' : 'bg-day-lemon text-day-text hover:bg-day-honey'}`}
+                >
+                  <PanelsTopLeft size={13} /> 自动换窗 · 携带最近 50 条
+                </button>
+                <p className="text-center text-[10px] opacity-40">新窗口会立即打开，旧窗口与全部历史保持不变。</p>
               </section>
             </div>
           </motion.div>
