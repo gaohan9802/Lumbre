@@ -180,3 +180,11 @@ html:not(.dark) div:has(> textarea.bg-transparent:focus:not(.no-frame)) {
     animation: none;
   }
 }
+
+/* Compact full-screen directory: all eight banners fit without manual scrolling. */
+@media (max-height: 760px) {
+  [aria-label="Lumbre 目录"] nav { gap: 0.35rem !important; padding-block: 0.25rem !important; }
+  [aria-label="Lumbre 目录"] nav button { width: 62% !important; border-radius: 11px !important; }
+  [aria-label="Lumbre 目录"] header { padding-bottom: 0.2rem !important; }
+  [aria-label="Lumbre 目录"] footer { padding-top: 0.2rem !important; }
+}

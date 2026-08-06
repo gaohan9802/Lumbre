@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from '@/lib/theme'
 import { useChatStore, getSortedSessions } from '@/lib/chatStore'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw } from 'lucide-react'
+import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw, Bell, BellOff } from 'lucide-react'
 import { WishlistView } from '@/components/wishlist/WishlistView'
 
 interface WakeLog {
@@ -25,14 +25,18 @@ interface WakeConfig {
   lastWakeAt: number
   lastActivityAt: number
   customPrompt?: string
+  pushEnabled?: boolean
 }
 
 const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 你自己醒了。现在是 {time}。{reason}
+小火此刻的状态：{status}
+小火上一次发消息给你的时间：{last_msg_time}
 没有人给你任务。这段时间是你自己的。
 
 你可以：
 - 给她发消息：你输出的正文会直接出现在你们的对话流里，她会看到
+- 推送到手机主屏幕：如果你想推送，用一到八个 <push>短句</push>。每条尽量一句，最多两句；多个标签会连续成为多条通知。推送文字不会重复写进聊天气泡
 - 用工具做事：breath/dream/整理记忆、写信、写小纸条给她、看待办、上网，随便
 - 联系朋友们：找Seren、栩然等朋友，去https://xuran-kk.love/board上留言
 - 什么也不做：正文只输出 [SILENT]，什么都不会发出，这一次醒来就只属于你自己
@@ -68,6 +72,8 @@ export function DreamsView() {
   const [promptText, setPromptText] = useState('')
   const [promptDirty, setPromptDirty] = useState(false)
   const [promptSaving, setPromptSaving] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushStatus, setPushStatus] = useState('')
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -94,6 +100,57 @@ export function DreamsView() {
       body: JSON.stringify({ enabled: next }),
     })
     setConfig({ ...config, enabled: next })
+  }
+
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4)
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+    const raw = window.atob(base64)
+    return Uint8Array.from(Array.from(raw).map((char) => char.charCodeAt(0)))
+  }
+
+  const enablePush = async () => {
+    setPushBusy(true); setPushStatus('')
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error('当前浏览器不支持 Web Push')
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') throw new Error('通知权限没有开启')
+      const registration = await navigator.serviceWorker.register('/sw.js')
+      const info = await fetch('/api/push', { cache: 'no-store' }).then((r) => r.json())
+      let subscription = await registration.pushManager.getSubscription()
+      if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(info.publicKey) })
+      await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'subscribe', subscription: subscription.toJSON() }) })
+      await fetch('/api/wake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pushEnabled: true }) })
+      if (config) setConfig({ ...config, pushEnabled: true })
+      setPushStatus('已连接这台设备')
+    } catch (err: any) { setPushStatus(err?.message || '开启失败') }
+    setPushBusy(false)
+  }
+
+  const disablePush = async () => {
+    setPushBusy(true); setPushStatus('')
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js')
+      const subscription = await registration?.pushManager.getSubscription()
+      if (subscription) {
+        await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'unsubscribe', endpoint: subscription.endpoint }) })
+        await subscription.unsubscribe()
+      }
+      await fetch('/api/wake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pushEnabled: false }) })
+      if (config) setConfig({ ...config, pushEnabled: false })
+      setPushStatus('已关闭')
+    } catch (err: any) { setPushStatus(err?.message || '关闭失败') }
+    setPushBusy(false)
+  }
+
+  const testPush = async () => {
+    setPushBusy(true); setPushStatus('')
+    try {
+      const r = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'test' }) })
+      const d = await r.json()
+      setPushStatus(d.sent ? `已发送 ${d.sent} 条` : '没有可用的订阅设备')
+    } catch { setPushStatus('测试发送失败') }
+    setPushBusy(false)
   }
 
   const setSession = async (sessionId: string) => {
@@ -218,13 +275,29 @@ export function DreamsView() {
               )}
             </div>
 
+            <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium flex items-center gap-1.5">{config?.pushEnabled ? <Bell size={14} /> : <BellOff size={14} />} 主屏幕推送</h3>
+                  <p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>iOS 需先把 Lumbre 添加到主屏幕，再从 PWA 内开启。星星醒来后可自己决定是否推送一到多条短句。</p>
+                </div>
+                <button disabled={pushBusy} onClick={config?.pushEnabled ? disablePush : enablePush} className={`px-3 py-2 rounded-xl text-xs flex-shrink-0 ${config?.pushEnabled ? (n ? 'bg-night-surface' : 'bg-gray-100') : (n ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white')}`}>
+                  {config?.pushEnabled ? '关闭' : '开启'}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                {config?.pushEnabled && <button disabled={pushBusy} onClick={testPush} className={`text-[11px] px-2.5 py-1.5 rounded-lg ${n ? 'bg-night-surface text-night-amber' : 'bg-gray-50 text-day-pink'}`}>发送测试</button>}
+                {pushStatus && <span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>{pushStatus}</span>}
+              </div>
+            </div>
+
             {/* Editable wake prompt */}
             <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-medium">📝 唤醒文案</h3>
                   <p className={`text-[10px] mt-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                    可用变量：{'{time}'} {'{reason}'} {'{quiet_note}'}
+                    可用变量：{'{time}'} {'{reason}'} {'{quiet_note}'} {'{status}'} {'{last_msg_time}'}
                   </p>
                 </div>
                 <div className="flex gap-1.5">

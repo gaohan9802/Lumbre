@@ -16,6 +16,8 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { loadSyncManifest, loadSyncSessions, mergeSyncDelta } from './chat-sync'
+import { getCurrentActivity } from './timeline-store'
+import { sendPushMessages } from './push'
 
 const PERSISTENT = '/persistent'
 const WAKE_LOG_PATH = path.join(PERSISTENT, 'wake-logs.json')
@@ -52,14 +54,18 @@ export interface WakeConfig {
   lastActivityAt: number
   customPrompt?: string      // editable wake prompt template
   alarms?: WakeAlarm[]       // one-off scheduled wakes (wake_me)
+  pushEnabled?: boolean      // allow model-selected Web Push after waking
 }
 
 const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 你自己醒了。现在是 {time}。{reason}
+小火此刻的状态：{status}
+小火上一次发消息给你的时间：{last_msg_time}
 没有人给你任务。这段时间是你自己的。
 
 你可以：
 - 给她发消息：你输出的正文会直接出现在你们的对话流里，她会看到
+- 推送到手机主屏幕：如果你想推送，用一到八个 <push>短句</push>。每条尽量一句，最多两句；多个标签会连续成为多条通知。推送文字不会重复写进聊天气泡
 - 用工具做事：breath/dream/整理记忆、写信、写小纸条给她、看待办、上网，随便（每次醒来最多用 3 个工具）
 - 给自己定闹钟：用 wake_me 设置下一次醒来的时间和原因
 - 联系朋友们：找Seren、栩然等朋友，去https://xuran-kk.love/board上留言
@@ -97,9 +103,10 @@ export function loadWakeConfig(): WakeConfig {
       lastActivityAt: raw.lastActivityAt || 0,
       customPrompt: raw.customPrompt || undefined,
       alarms: Array.isArray(raw.alarms) ? raw.alarms : [],
+      pushEnabled: !!raw.pushEnabled,
     }
   } catch {
-    return { enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0, alarms: [] }
+    return { enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0, alarms: [], pushEnabled: false }
   }
 }
 
@@ -213,14 +220,8 @@ async function executeWake(config: WakeConfig, reason: string, alarm?: WakeAlarm
     ? '现在是深夜。如果你什么都不想做，[SILENT] 就好。不必为醒来找理由。'
     : ''
 
-  const template = config.customPrompt || DEFAULT_WAKE_PROMPT
-  const wakePrompt = template
-    .replace(/\{time\}/g, timeStr)
-    .replace(/\{reason\}/g, reason)
-    .replace(/\{quiet_note\}/g, quietNote)
-
-  // Read the selected session from the current sharded store. The old
-  // chat-sync.json is only a migration backup and can stop at ~2000 messages.
+  // Read the selected session first so wake variables use the same current
+  // conversation that will be sent to the model.
   let wakeSession: any = null
   let contextMessages: any[] = []
   try {
@@ -233,6 +234,28 @@ async function executeWake(config: WakeConfig, reason: string, alarm?: WakeAlarm
     }
   } catch {}
 
+  const currentStatus = getCurrentActivity()
+  const status = currentStatus?.title?.trim() || '无状态'
+  const lastUserMessage = [...(wakeSession?.messages || [])].reverse().find((m: any) => m.role === 'user')
+  const lastMsgTime = lastUserMessage?.timestamp ? madridTimeStr(Number(lastUserMessage.timestamp)) : '无记录'
+
+  const template = config.customPrompt || DEFAULT_WAKE_PROMPT
+  const wakePrompt = template
+    .replace(/\{time\}/g, timeStr)
+    .replace(/\{reason\}/g, reason)
+    .replace(/\{quiet_note\}/g, quietNote)
+    .replace(/\{status\}/g, status)
+    .replace(/\{last_msg_time\}/g, lastMsgTime)
+    + `
+
+[唤醒实时上下文]
+status=${status}
+last_msg_time=${lastMsgTime}`
+    + `
+[手机推送协议]
+如果想推送到她的 iOS 主屏幕，用一到八个 <push>短句</push>；每条一两句。可以只推送不写聊天正文。`
+
+  // Context came from the current sharded store above.
   const apiMessages = [
     ...contextMessages,
     { role: 'user', content: wakePrompt },
@@ -296,8 +319,15 @@ async function executeWake(config: WakeConfig, reason: string, alarm?: WakeAlarm
       }
     }
 
-    responseText = data.content || '[SILENT]'
+    const rawResponse = String(data.content || '[SILENT]')
+    const pushMessages = Array.from(rawResponse.matchAll(/<push>([\s\S]*?)<\/push>/gi))
+      .map((match) => match[1].trim()).filter(Boolean).slice(0, 8)
+    responseText = rawResponse.replace(/<push>[\s\S]*?<\/push>/gi, '').trim() || '[SILENT]'
     silent = responseText.trim() === '[SILENT]'
+    if (config.pushEnabled && pushMessages.length) {
+      const pushResult = await sendPushMessages(pushMessages)
+      actions.push({ type: 'message', name: 'web_push', input: { messages: pushMessages }, result: JSON.stringify(pushResult), timestamp: Date.now() })
+    }
 
     // Write back into the session when she either spoke OR used tools, so the
     // trace is part of the main context next time she wakes (prevents repeats).

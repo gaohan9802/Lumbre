@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
   if (body.enabled !== undefined) config.enabled = !!body.enabled
   if (body.sessionId !== undefined) config.sessionId = body.sessionId
   if (body.customPrompt !== undefined) config.customPrompt = body.customPrompt
+  if (body.pushEnabled !== undefined) config.pushEnabled = !!body.pushEnabled
 
   saveWakeConfig(config)
 

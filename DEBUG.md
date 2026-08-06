@@ -142,3 +142,10 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 唤醒断层根因是 `autowake.ts` 仍直接读写旧 `/persistent/chat-sync.json`；分片迁移后该文件只是备份，不会继续更新。现统一使用 `loadSyncSessions/loadSyncManifest/mergeSyncDelta`。
 - partial hydration 有发送竞态：后台拉全量前若产生新消息，不能让 partial 覆盖 full；按消息 id 合并本地新增尾部。
 - Markdown 使用本地轻量 renderer，避免引入 react-markdown/remark 对 Chat chunk 和安装依赖的额外开销。
+
+## 2026-08-06 — Web Push / Bookmark / Bubble debug
+- iOS Push 的前提是 iOS 16.4+、HTTPS、已添加到主屏幕，并由用户手势触发 Notification permission；普通 Safari tab 不等价于 PWA。
+- VAPID key 落 `/persistent/push/vapid.json`，避免 redeploy 后旧 subscription 因密钥变化失效。
+- 星星新增/编辑 bookmark 走服务端 sync config + `configUpdatedAt`；不暴露 delete tool，删除只留前端。
+- 自定义气泡不能对整个元素设 opacity，否则字也变淡；背景改 rgba，文字按背景亮度自动黑/白高对比。
+- tsc --noEmit 与 git diff --check 通过；未跑 next build。

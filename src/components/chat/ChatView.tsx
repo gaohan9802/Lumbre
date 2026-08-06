@@ -85,6 +85,22 @@ function useConfirm() {
   return { confirmState: state, ask, answer }
 }
 
+function hexToRgba(hex: string, alpha: number) {
+  const raw = hex.replace('#', '').trim()
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return hex
+  const value = parseInt(raw, 16)
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${Math.max(0, Math.min(1, alpha))})`
+}
+
+function contrastText(hex: string) {
+  const raw = hex.replace('#', '').trim()
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return '#ffffff'
+  const rgb = [0, 2, 4].map((i) => parseInt(raw.slice(i, i + 2), 16) / 255)
+  const linear = rgb.map((c) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4))
+  const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+  return luminance > 0.42 ? '#241f1b' : '#ffffff'
+}
+
 /* ── main component ─────────────────────── */
 
 export interface ChatViewProps {
@@ -548,8 +564,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     opacity: uOpacity,
   }
   const aiBubbleStyle: React.CSSProperties = {
-    backgroundColor: aColor || (n ? 'rgba(36,48,64,1)' : 'rgba(255,255,255,1)'),
-    opacity: aOpacity,
+    backgroundColor: aColor ? hexToRgba(aColor, aOpacity) : (n ? 'rgba(36,48,64,1)' : 'rgba(255,255,255,1)'),
+    color: aColor ? contrastText(aColor) : undefined,
   }
 
   /* ── model picker ─────────────────────── */
@@ -712,7 +728,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                                 <div key={blockKey}>
                                   <button onClick={() => toggleThinking(blockKey)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                     <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
-                                    <span className="truncate">💭 {isExp ? '深度思考' : (block.content.slice(0, 50).replace(/\n/g, ' ') + (block.content.length > 50 ? '…' : ''))}</span>
+                                    <span className="truncate">💭 {isExp ? '星星的小算盘' : (block.content.slice(0, 50).replace(/\n/g, ' ') + (block.content.length > 50 ? '…' : ''))}</span>
                                   </button>
                                   <AnimatePresence>
                                     {isExp && (
@@ -760,7 +776,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             }
                             if (block.type === 'text' && block.content) {
                               return (
-                                <div key={blockKey} className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl rounded-bl-md mr-auto text-[13px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
+                                <div key={blockKey} className={`block w-full break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
                                   style={aColor ? aiBubbleStyle : {}}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -783,7 +799,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             <>
                               <button onClick={() => toggleThinking(msg.id)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                 <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${expandedThinking.has(msg.id) ? '' : '-rotate-90'}`} />
-                                <span className="truncate">💭 {expandedThinking.has(msg.id) ? 'Thinking' : (msg.thinking!.slice(0, 50).replace(/\n/g, ' ') + (msg.thinking!.length > 50 ? '…' : ''))}</span>
+                                <span className="truncate">💭 {expandedThinking.has(msg.id) ? '星星的小算盘' : (msg.thinking!.slice(0, 50).replace(/\n/g, ' ') + (msg.thinking!.length > 50 ? '…' : ''))}</span>
                               </button>
                               <AnimatePresence>
                                 {expandedThinking.has(msg.id) && (
@@ -847,7 +863,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                           </div>
                         </div>
                       ) : (isUser || !msg.content_blocks || msg.content_blocks.length === 0) ? (
-                        <div className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isUser ? 'rounded-br-md ml-auto' : 'rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
+                        <div className={`block break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-full'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : {}) : (aColor ? aiBubbleStyle : {})}>
                           {msg.images && msg.images.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -925,7 +941,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                         <div key={bi}>
                           <button onClick={() => toggleThinking(bk)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                             <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
-                            <span className="truncate">💭 {isExp ? '深度思考' : (block.content.slice(0, 50).replace(/\n/g, ' ') + '…')}{isLast ? <span className="stream-cursor">…</span> : ''}</span>
+                            <span className="truncate">💭 {isExp ? '星星的小算盘' : (block.content.slice(0, 50).replace(/\n/g, ' ') + '…')}{isLast ? <span className="stream-cursor">…</span> : ''}</span>
                           </button>
                           {isExp && (
                             <div className={`text-xs p-2 rounded-lg whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
@@ -948,7 +964,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     }
                     if (block.type === 'text' && block.content) {
                       return (
-                        <div key={bi} className={`block w-fit max-w-[80%] break-words px-4 py-3 rounded-2xl rounded-bl-md mr-auto text-[13px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                        <div key={bi} className={`block w-full break-words px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                           <MarkdownText content={block.content} cursor={isLast} />
                         </div>
                       )
@@ -956,7 +972,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     return null
                   }) : (
                     /* No blocks yet — show loading dots */
-                    <div className={`w-fit mr-auto px-4 py-3 rounded-2xl rounded-bl-md ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                    <div className={`w-full px-4 py-3 rounded-2xl ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                       <div className="flex gap-1">
                         {[0, 1, 2].map(i => (
                           <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}

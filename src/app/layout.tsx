@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import '@/styles/globals.css'
 import { ThemeProvider } from '@/components/layout/ThemeProvider'
+import { ServiceWorkerRegistration } from '@/components/layout/ServiceWorkerRegistration'
 
 export const metadata: Metadata = {
   title: 'Lumbre 🔥',
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="overflow-hidden overscroll-none">
         <ThemeProvider>
+          <ServiceWorkerRegistration />
           {children}
         </ThemeProvider>
       </body>

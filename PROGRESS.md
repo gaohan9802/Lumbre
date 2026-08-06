@@ -2314,3 +2314,38 @@ author 默认 star（🐆），AI 就是星星。
 - 唤醒仍引用 migration 前的 `chat-sync.json` 会永久停留在迁移时刻，因此主 Chat 已到 4000 层而唤醒只看到约 2000 层。所有运行时读写必须统一走分片存储 helper。
 - 纪念日按用户给出的口径计算日期差：4/27 到 8/6 为 101 天，不额外做包含首日的 `+1`。
 - 验证：`./node_modules/.bin/tsc --noEmit` 通过；`git diff --check` 通过。未运行 Next production build。
+
+---
+
+## 2026-08-06 — 唤醒变量 / iOS 推送 / 世界书权限 / Chat 与目录优化
+
+### 完成
+1. **自动唤醒新增实时变量**
+   - 新增 `{status}`：直接读取 `/persistent/timeline/timeline.json` 当前未结束活动，与 Chat 端 Timeline 状态使用同一真源；没有活动时固定为“无状态”。
+   - 新增 `{last_msg_time}`：读取唤醒目标会话最后一条 user 消息时间，按 Europe/Madrid 格式化；没有记录时返回“无记录”。
+   - 为兼容用户以前保存的 customPrompt，即使旧模板没有写变量，也会在唤醒请求末尾追加实时 status / last_msg_time，不会出现旧模板收不到状态的断层。
+2. **iOS PWA Web Push**
+   - 新增 Service Worker `/public/sw.js`、浏览器注册组件、`/api/push` 订阅/取消/测试端点和 `src/server/push.ts`。
+   - Push subscription、自动生成的 VAPID key 持久化到 `/persistent/push/`；也支持通过 `VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY/VAPID_SUBJECT` 环境变量固定配置。
+   - 「现实与梦境 → 现实」新增主屏幕推送开关和测试按钮；提示 iOS 必须先“添加到主屏幕”，再从 PWA 内授权。
+   - 自动唤醒沿用原 `/api/chat` 完整上下文、记忆与工具管道。星星可输出 1–8 个 `<push>短句</push>`，服务器按顺序发送多条短通知；push 标签从聊天正文剥离，避免重复。
+3. **世界书 / Bookmark 权限**
+   - 新增 `read_bookmarks`、`add_bookmark`、`edit_bookmark` 三个星星工具，覆盖名称、关键词、内容、注入位置、扫描深度、优先级、常驻、启用状态全部因素。
+   - 工具直接更新 Chat sync manifest 的 config/bookmarks，沿既有 configUpdatedAt 同步到前端，用户可以继续在 BookmarkDialog 编辑星星新增的项目。
+   - 故意不提供 delete 工具：删除权限仍只在小火前端。
+4. **目录进一步压缩**
+   - 目录最大宽度、横幅宽度、横幅间距、圆角、顶部/底部留白和模式按钮全部缩小。
+   - 对高度 ≤760px 的屏幕增加紧凑规则，8 个横幅无需手动滑目录页。
+5. **Chat 气泡可读性与对齐**
+   - user 气泡逻辑保持不变。
+   - 星星自定义气泡颜色自动计算黑/白高对比字体；透明度改为写入 background rgba，不再让整个气泡文字一起变透明。
+   - 星星气泡改为消息区全宽，两侧边距由统一的消息容器 padding 控制，左右一致，不再靠右或左侧留出大空白。
+6. **Thinking 文案**
+   - 历史消息、content_blocks、流式 thinking 的展开标题统一改为“星星的小算盘”；点击后仍可查看完整 thinking process。
+
+### Debug 笔记
+- iOS Web Push 仅 iOS/iPadOS 16.4+ 的主屏幕 Web App 支持；Safari 普通标签页不能作为 iOS PWA push 的可靠入口。
+- VAPID key 不能每次部署重新生成，否则旧订阅会全部失效；因此无环境变量时把 key 存在 `/persistent/push/vapid.json`。
+- 书签工具不能只改浏览器 Zustand：星星工具运行在服务端，必须改服务端 sync config 并提升 `configUpdatedAt`，前端下次 manifest sync 才能看见。
+- 气泡透明度不能用元素 `opacity`，否则文字也会一起变淡；应把 alpha 合并进背景 rgba，再单独计算前景色对比度。
+- 验证：`node node_modules/typescript/bin/tsc --noEmit` 通过；`git diff --check` 通过。按项目约定未运行 Next production build。

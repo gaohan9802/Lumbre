@@ -30,6 +30,7 @@ import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from 
 import { scheduleWake } from './autowake'
 import { executeGalatea } from './galatea'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
+import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
 
 // ── Claude tool schema type ─────────────────────────────
 
@@ -760,7 +761,47 @@ const GMAIL_TOOLS: ToolDef[] = [
     },
   },
 ]
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...LIFE_TIMELINE_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS]
+
+const BOOKMARK_TOOLS: ToolDef[] = [
+  {
+    name: 'read_bookmarks',
+    description: '查看世界书/书签的全部字段。名称只用于管理；内容会按关键词、扫描深度、优先级、常驻、启用状态和注入位置触发。',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'add_bookmark',
+    description: '新增世界书/书签。你有新增和编辑权限，但没有删除权限；删除只保留给小火前端。所有触发因素都可设置。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '管理名称' },
+        keywords: { type: 'string', description: '关键词，逗号分隔；常驻时可空' },
+        content: { type: 'string', description: '触发后注入的完整内容' },
+        position: { type: 'string', description: 'start 或 end' },
+        scanDepth: { type: 'integer', description: '向前扫描消息条数 1-100' },
+        priority: { type: 'integer', description: '优先级 0-999' },
+        alwaysOn: { type: 'boolean', description: '是否常驻' },
+        enabled: { type: 'boolean', description: '是否启用' },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'edit_bookmark',
+    description: '编辑已有世界书/书签，支持名称、关键词、内容、注入位置、扫描深度、优先级、常驻和启用状态。没有删除权限。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' }, name: { type: 'string' }, keywords: { type: 'string' }, content: { type: 'string' },
+        position: { type: 'string' }, scanDepth: { type: 'integer' }, priority: { type: 'integer' },
+        alwaysOn: { type: 'boolean' }, enabled: { type: 'boolean' },
+      },
+      required: ['id'],
+    },
+  },
+]
+
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...LIFE_TIMELINE_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS, ...BOOKMARK_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -856,6 +897,14 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
 
     if (name === 'galatea') {
       return await executeGalatea(input)
+    }
+
+    // World-book bookmarks. Deletion is deliberately not exposed.
+    if (name === 'read_bookmarks') return JSON.stringify(listSharedBookmarks())
+    if (name === 'add_bookmark') return JSON.stringify({ ok: true, bookmark: addSharedBookmark(input) })
+    if (name === 'edit_bookmark') {
+      const { id, ...patch } = input
+      return JSON.stringify({ ok: true, bookmark: editSharedBookmark(String(id || ''), patch) })
     }
 
     // Gmail tools

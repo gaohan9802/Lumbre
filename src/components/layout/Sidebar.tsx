@@ -73,19 +73,19 @@ export function Sidebar() {
           className="fixed inset-0 z-[100] overflow-y-auto overscroll-contain bg-[#E8E5DD] text-[#4d4740]"
         >
           <div
-            className="mx-auto flex min-h-full w-full max-w-[680px] flex-col px-6 sm:px-10"
+            className="mx-auto flex min-h-full w-full max-w-[560px] flex-col px-6 sm:px-10"
             style={{
               paddingTop: 'max(0.8rem, env(safe-area-inset-top))',
               paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
             }}
           >
-            <header className="flex items-center justify-between pb-5 pt-2">
+            <header className="flex items-center justify-between pb-2 pt-1">
               <p className="pl-1 text-[11px] tracking-[0.18em] text-[#756d64]">在一起 {togetherDays} 天</p>
               <motion.button
                 whileTap={{ scale: 0.88, rotate: -5 }}
                 onClick={() => setSidebarOpen(false)}
                 aria-label="关闭目录"
-                className="grid h-10 w-10 place-items-center rounded-full bg-white/55 text-[#615a52] shadow-[0_4px_18px_rgba(73,66,58,0.08)] backdrop-blur-sm"
+                className="grid h-9 w-9 place-items-center rounded-full bg-white/55 text-[#615a52] shadow-[0_4px_18px_rgba(73,66,58,0.08)] backdrop-blur-sm"
               >
                 <X size={18} strokeWidth={1.7} />
               </motion.button>
@@ -95,7 +95,7 @@ export function Sidebar() {
               variants={listVariants}
               initial={reduceMotion ? false : 'hidden'}
               animate="visible"
-              className="flex flex-1 flex-col justify-center gap-4 py-5 sm:gap-5 sm:py-8"
+              className="flex flex-1 flex-col justify-center gap-2 py-2 sm:gap-2.5 sm:py-3"
             >
               {tabs.map((tab) => {
                 const isActive = activeTab === tab.id
@@ -111,7 +111,7 @@ export function Sidebar() {
                     }}
                     aria-label={tab.label}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`relative block mx-auto w-[88%] overflow-hidden rounded-[16px] bg-white/25 text-left shadow-[0_5px_20px_rgba(72,64,55,0.07)] transition-shadow sm:w-[82%] sm:rounded-[19px] ${
+                    className={`relative block mx-auto w-[78%] overflow-hidden rounded-[13px] bg-white/25 text-left shadow-[0_5px_20px_rgba(72,64,55,0.07)] transition-shadow sm:w-[72%] sm:rounded-[15px] ${
                       isActive ? 'ring-2 ring-white/90 shadow-[0_7px_24px_rgba(72,64,55,0.12)]' : ''
                     }`}
                   >
@@ -127,12 +127,12 @@ export function Sidebar() {
               })}
             </motion.nav>
 
-            <footer className="flex justify-center pb-1 pt-4">
+            <footer className="flex justify-center pb-0 pt-2">
               <motion.button
                 whileTap={{ scale: 0.88, rotate: -8 }}
                 onClick={toggle}
                 aria-label={isNight ? '切换到日间模式' : '切换到夜间模式'}
-                className="grid h-11 w-11 place-items-center rounded-full bg-white/55 text-lg shadow-[0_5px_20px_rgba(72,64,55,0.09)] backdrop-blur-sm"
+                className="grid h-10 w-10 place-items-center rounded-full bg-white/55 text-lg shadow-[0_5px_20px_rgba(72,64,55,0.09)] backdrop-blur-sm"
               >
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.span
