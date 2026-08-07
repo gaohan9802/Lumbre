@@ -172,3 +172,8 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 ## 2026-08-07 — 星星气泡对齐
 - 星星气泡存在历史消息、content block、流式 block 和等待加载四条渲染路径；调整对齐时必须同步修改，否则开始生成、生成中与生成完成后会发生宽度或位置跳动。
 - 本次统一使用 `w-fit max-w-[80%] ml-auto rounded-br-md`，只改变星星正文气泡，不触碰外围消息容器和附属卡片。
+
+## 2026-08-07 — Chat 左右对齐修正
+- 工具调用与星星正文一样有 content block、legacy、streaming 三条路径；只改其中一条会导致历史消息和生成中界面不一致。本次三条路径统一为 `w-fit max-w-[80%] mr-auto`。
+- 思考链与工具调用虽处于相邻分支，但需求只调整工具调用，不能给整个 assistant block 外层统一限宽，否则会连带改变思考链。
+- user 操作按钮应按角色切换 `justify-end/justify-start`；其绝对定位的删除版本菜单也要同步切换 `right-0/left-0`，避免按钮靠右后菜单仍从消息区左侧弹出。

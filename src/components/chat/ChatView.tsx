@@ -749,7 +749,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             if (block.type === 'tool_call' && block.name) {
                               const isExp = expandedTools.has(blockKey)
                               return (
-                                <div key={blockKey} className={`rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
+                                <div key={blockKey} className={`w-fit max-w-[80%] mr-auto rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
                                   <button onClick={() => toggleTools(blockKey)} className={`w-full flex items-center gap-2 px-3 py-2 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                     <span className={`${n ? 'text-night-amber' : 'text-day-pink'}`}>🔧</span>
                                     <span>调用工具: <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{block.name}</span></span>
@@ -781,7 +781,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`block w-fit max-w-[80%] ml-auto break-words px-4 py-3 rounded-2xl rounded-br-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
+                                <div key={blockKey} className={`block w-fit max-w-[80%] mr-auto break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
                                   style={aColor ? aiBubbleStyle : {}}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -819,7 +819,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
                           {/* Legacy: tool calls above bubble */}
                           {msg.tool_calls && msg.tool_calls.length > 0 && (
-                            <>
+                            <div className="w-fit max-w-[80%] mr-auto">
                               <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
                                 <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? '' : '-rotate-90'}`} />
                                 🔧 {msg.tool_calls.map((tc: any) => tc.name).join(', ')}
@@ -852,7 +852,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                                   </motion.div>
                                 )}
                               </AnimatePresence>
-                            </>
+                            </div>
                           )}
                         </>
                       )}
@@ -868,7 +868,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                           </div>
                         </div>
                       ) : ((isUser || !msg.content_blocks || msg.content_blocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0)) ? (
-                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[80%] rounded-br-md ml-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
+                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[80%] rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : {}) : (aColor ? aiBubbleStyle : {})}>
                           {msg.images && msg.images.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -902,7 +902,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                       )}
 
                       {/* action buttons */}
-                      <div className={`flex items-center gap-1 justify-start opacity-40 hover:opacity-100 transition-opacity relative`}>
+                      <div className={`flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start'} opacity-40 hover:opacity-100 transition-opacity relative`}>
                         <button onClick={() => handleRetry(msg)} title="重试" className="p-1"><RotateCcw size={12} /></button>
                         <button onClick={() => handleDeleteMsg(msg.id)} title="删除" className="p-1"><Trash2 size={12} /></button>
                         <button onClick={() => handleCopy(msg.id, msg.content)} title="复制" className="p-1">
@@ -910,7 +910,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                         </button>
                         {isUser && <button onClick={() => startEditMsg(msg)} title="修改" className="p-1"><Pencil size={12} /></button>}
                         {deleteMenuId === msg.id && (
-                          <div className={`absolute left-0 top-full mt-1 z-20 rounded-xl shadow-lg border py-1 min-w-[160px] ${n ? 'bg-night-card border-night-border' : 'bg-white border-gray-200'}`}>
+                          <div className={`absolute ${isUser ? 'right-0' : 'left-0'} top-full mt-1 z-20 rounded-xl shadow-lg border py-1 min-w-[160px] ${n ? 'bg-night-card border-night-border' : 'bg-white border-gray-200'}`}>
                             <button onClick={() => doDeleteVersion(msg)} className={`w-full text-left px-3 py-2 text-xs ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除此版本{(msg.versions?.length || 0) > 1 ? ` (${(msg.versionIndex ?? 0) + 1}/${msg.versions!.length})` : ''}</button>
                             <button onClick={() => doDeleteAllVersions(msg.id)} className={`w-full text-left px-3 py-2 text-xs text-red-500 ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除全部版本</button>
                           </div>
@@ -958,7 +958,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     }
                     if (block.type === 'tool_call' && block.name) {
                       return (
-                        <div key={bi} className={`rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
+                        <div key={bi} className={`w-fit max-w-[80%] mr-auto rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
                           <div className={`flex items-center gap-2 px-3 py-2 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                             <span className={`${n ? 'text-night-amber' : 'text-day-pink'}`}>🔧</span>
                             <span>调用工具: <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{block.name}</span></span>
@@ -969,7 +969,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     }
                     if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                       return (
-                        <div key={bi} className={`block w-fit max-w-[80%] ml-auto break-words px-4 py-3 rounded-2xl rounded-br-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                        <div key={bi} className={`block w-fit max-w-[80%] mr-auto break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                           <MarkdownText content={block.content} cursor={isLast} />
                         </div>
                       )
@@ -977,7 +977,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     return null
                   }) : (
                     /* No blocks yet — show loading dots */
-                    <div className={`w-fit max-w-[80%] ml-auto px-4 py-3 rounded-2xl rounded-br-md backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                    <div className={`w-fit max-w-[80%] mr-auto px-4 py-3 rounded-2xl rounded-bl-md backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                       <div className="flex gap-1">
                         {[0, 1, 2].map(i => (
                           <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
