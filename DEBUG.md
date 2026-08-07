@@ -177,3 +177,8 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 工具调用与星星正文一样有 content block、legacy、streaming 三条路径；只改其中一条会导致历史消息和生成中界面不一致。本次三条路径统一为 `w-fit max-w-[80%] mr-auto`。
 - 思考链与工具调用虽处于相邻分支，但需求只调整工具调用，不能给整个 assistant block 外层统一限宽，否则会连带改变思考链。
 - user 操作按钮应按角色切换 `justify-end/justify-start`；其绝对定位的删除版本菜单也要同步切换 `right-0/left-0`，避免按钮靠右后菜单仍从消息区左侧弹出。
+
+## 2026-08-07 — Chat 气泡宽度与 Markdown 间距
+- “靠左占 87%”只适用于星星正文和同宽工具调用；不能全局替换所有 `max-w-[80%]`，否则会误把靠右的 user 气泡一起加宽。
+- 段内行距由 Markdown 普通段落的 `leading-[1.8]` 控制，按 10% 缩减为 1.62；引用块有独立行高，需要同步按比例调整。
+- 段间节奏同时由容器 `space-y` 和空行 spacer 控制；两者都按 20% 从 0.375rem 调到 0.3rem，避免只改一处导致空行段落仍显得过宽。
