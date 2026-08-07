@@ -2349,3 +2349,26 @@ author 默认 star（🐆），AI 就是星星。
 - 书签工具不能只改浏览器 Zustand：星星工具运行在服务端，必须改服务端 sync config 并提升 `configUpdatedAt`，前端下次 manifest sync 才能看见。
 - 气泡透明度不能用元素 `opacity`，否则文字也会一起变淡；应把 alpha 合并进背景 rgba，再单独计算前景色对比度。
 - 验证：`node node_modules/typescript/bin/tsc --noEmit` 通过；`git diff --check` 通过。按项目约定未运行 Next production build。
+
+## 2026-08-07 — Chat 思考链、气泡文字与空白气泡优化
+
+### 完成
+1. **思考链折叠文案统一**
+   - 历史 content blocks、旧消息 thinking、流式 thinking 的折叠标题统一为 `💭星星的小算盘`。
+   - 展开后标题仍保持固定，完整思考内容只显示在展开区域，不再在折叠态预览前 50 字，也不再出现“点开后才显示小算盘”的反向状态。
+2. **气泡字体颜色柔化并随背景调整**
+   - user 与星星的自定义气泡共用同一套文字颜色计算逻辑。
+   - 计算时同时考虑气泡颜色、气泡透明度以及日/夜页面底色；浅色气泡使用深棕 `#4a3428`，不再使用生硬纯黑；深色气泡使用柔和暖白 `#f3e7dc`。
+   - user 气泡透明度从元素级 `opacity` 改为背景 `rgba` alpha，保持“背景透明、文字不透明”。星星气泡原有行为保留。
+3. **Chat 字号轻微增大**
+   - 双方消息正文与流式正文由 13px 调到 14px；思考链展开正文调到 13px。
+   - 时间戳、token、操作按钮等辅助信息不放大，避免界面整体变肿。
+4. **空白空气泡修复**
+   - whitespace-only 的 content block 不再渲染气泡。
+   - legacy assistant 消息只有 thinking/tool、正文为空时不再额外渲染空气泡。
+   - 图片消息仍允许正文为空并正常显示图片气泡。
+
+### 验证
+- `node node_modules/typescript/bin/tsc --noEmit` 通过。
+- `git diff --check` 通过。
+- 按项目约定未在低内存 shell 运行 Next production build；推送后交 Zeabur 自动构建。

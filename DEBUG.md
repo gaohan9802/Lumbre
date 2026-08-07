@@ -149,3 +149,10 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 星星新增/编辑 bookmark 走服务端 sync config + `configUpdatedAt`；不暴露 delete tool，删除只留前端。
 - 自定义气泡不能对整个元素设 opacity，否则字也变淡；背景改 rgba，文字按背景亮度自动黑/白高对比。
 - tsc --noEmit 与 git diff --check 通过；未跑 next build。
+
+## 2026-08-07 — Chat 空气泡与自定义气泡文字颜色
+- 空气泡有两条路径：content block 的 text 可能只有空白；legacy assistant 可能只有 thinking/tool_calls 而 `content` 为空。渲染条件必须使用 `trim()`，同时为纯图片消息保留例外。
+- user 气泡此前用元素级 `opacity`，会连文字一起变透明；与星星气泡不一致。现统一把 alpha 写入 `backgroundColor: rgba(...)`，文字自身保持完全不透明。
+- 文字对比不能只读取 color picker 的原始 hex：气泡半透明时，实际可见背景是“气泡色与页面底色混合”的结果。亮度判断现先按 alpha 混色，再选深棕或暖白。
+- 浅色背景不再返回接近纯黑的颜色，统一使用 `#4a3428`；深色背景使用 `#f3e7dc`，兼顾对比度和柔和感。
+- `ContentBlock.content` 是可选字段；在 TypeScript 中需先用 `typeof block.content === 'string'` 缩窄，再调用 `trim()`，否则 TS18048/TS2322。
