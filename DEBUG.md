@@ -156,3 +156,8 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 文字对比不能只读取 color picker 的原始 hex：气泡半透明时，实际可见背景是“气泡色与页面底色混合”的结果。亮度判断现先按 alpha 混色，再选深棕或暖白。
 - 浅色背景不再返回接近纯黑的颜色，统一使用 `#4a3428`；深色背景使用 `#f3e7dc`，兼顾对比度和柔和感。
 - `ContentBlock.content` 是可选字段；在 TypeScript 中需先用 `typeof block.content === 'string'` 缩窄，再调用 `trim()`，否则 TS18048/TS2322。
+
+## 2026-08-07 — Chat 美化细节
+- 消息区柔雾应放在滚动容器外层、内容内层：外层 `relative` 承载绝对定位 blur overlay，内层 `h-full overflow-y-auto` 保持原滚动行为。若直接给滚动容器加 `backdrop-filter`，会让整块内容和滚动合成层更重。
+- 全局 `:has(> textarea.bg-transparent:focus)` 会给输入框父容器再加一层 inset focus ring。自定义悬浮输入托盘时给 textarea 加 `no-frame`，避免全局规则与托盘自身 focus-within 边框叠加。
+- 轻量 Markdown renderer 不应简单给每一行都制造独立大间距；连续普通行归成一个 prose block、保留 `<br>`，空行才承担段落分隔，能兼容模型常见的单换行输出。

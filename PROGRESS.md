@@ -2372,3 +2372,10 @@ author 默认 star（🐆），AI 就是星星。
 - `node node_modules/typescript/bin/tsc --noEmit` 通过。
 - `git diff --check` 通过。
 - 按项目约定未在低内存 shell 运行 Next production build；推送后交 Zeabur 自动构建。
+
+## 2026-08-07 — Chat 阅读层级、背景柔雾与输入框
+- 长回复 Markdown 排版细化：标题上下留白、列表项距、引用缩进、分隔线与代码块层次统一；普通连续文本按段落块组织并保留原换行，正文行高提高到 1.8。
+- 自定义背景图开启时，只在消息滚动区域叠加 2px 轻柔雾与中央渐变遮罩；头部、侧栏和输入区不受影响，背景图仍可辨认。
+- 输入框改为轻悬浮托盘：增加细边框、柔和阴影与聚焦微光；保留原布局和安全区高度。
+- 空对话占位由“🏠 / 说点什么吧”改为单独的“🐆”。
+- 验证：`tsc --noEmit`、`git diff --check` 均通过；未运行 Next production build。

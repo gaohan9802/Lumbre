@@ -683,11 +683,23 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           </div>}
 
           {/* messages */}
-          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-4" onClick={() => deleteMenuId && setDeleteMenuId(null)}>
+          <div className="flex-1 min-h-0 relative">
+            {ap.bgImage && (
+              <div
+                className="absolute inset-0 pointer-events-none z-0"
+                style={{
+                  background: n
+                    ? 'linear-gradient(90deg, rgba(15,20,25,0.06), rgba(15,20,25,0.22) 18%, rgba(15,20,25,0.24) 82%, rgba(15,20,25,0.06))'
+                    : 'linear-gradient(90deg, rgba(255,249,245,0.04), rgba(255,249,245,0.22) 18%, rgba(255,249,245,0.25) 82%, rgba(255,249,245,0.04))',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)',
+                }}
+              />
+            )}
+            <div ref={scrollRef} onScroll={handleScroll} className="h-full relative z-10 overflow-y-auto px-4 md:px-6 py-6 space-y-4" onClick={() => deleteMenuId && setDeleteMenuId(null)}>
             {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-40">
-                <span className="text-4xl">🏠</span>
-                <p className="text-sm">说点什么吧</p>
+              <div className="flex items-center justify-center h-full text-center opacity-40">
+                <span className="text-4xl" aria-label="等待对话">🐆</span>
               </div>
             )}
 
@@ -991,6 +1003,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               </motion.div>
             )}
             <div ref={messagesEndRef} />
+            </div>
           </div>
 
 
@@ -1040,10 +1053,10 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             )}
 
             {/* input area */}
-            <div className={`flex items-end gap-2 px-3 py-2 rounded-2xl ${n ? 'bg-night-surface' : 'bg-gray-50'}`}>
+            <div className={`chat-input-tray flex items-end gap-2 px-3 py-2 rounded-2xl border transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50 focus-within:shadow-[0_10px_30px_rgba(226,168,75,0.10)]' : 'bg-[#fffaf7]/95 border-day-muted/10 shadow-[0_8px_24px_rgba(93,64,55,0.10)] focus-within:border-day-pink/35 focus-within:shadow-[0_10px_30px_rgba(239,64,103,0.10)]'}`}>
               <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
                 placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
-                className={`flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
+                className={`no-frame flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
               <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
               <button onClick={() => setTimelineOpen(true)} title={timelineCurrent ? `结束：${timelineCurrent.title}` : '开始计时'} className={`p-2 rounded-xl flex-shrink-0 ${timelineCurrent ? (n ? 'text-night-amber bg-night-amber/10' : 'text-day-pink bg-day-pinkLight') : 'opacity-60 hover:opacity-100'}`}><Clock3 size={16}/></button>
               <button onClick={() => imgInputRef.current?.click()} disabled={uploadingImg} title="上传图片到照片墙"

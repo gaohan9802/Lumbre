@@ -33,41 +33,58 @@ function MarkdownTextView({ content, cursor = false }: { content: string; cursor
       i++
       while (i < lines.length && !lines[i].startsWith('```')) body.push(lines[i++])
       if (i < lines.length) i++
-      nodes.push(<pre key={`code-${i}`} className="my-2 max-w-full overflow-x-auto rounded-xl bg-black/10 p-3 text-[0.88em] leading-relaxed dark:bg-black/25"><code data-language={language || undefined}>{body.join('\n')}</code></pre>)
+      nodes.push(<pre key={`code-${i}`} className="my-3 max-w-full overflow-x-auto rounded-xl border border-current/10 bg-black/[0.07] p-3.5 text-[0.88em] leading-relaxed dark:bg-black/25"><code data-language={language || undefined}>{body.join('\n')}</code></pre>)
       continue
     }
     const heading = line.match(/^(#{1,4})\s+(.+)$/)
     if (heading) {
       const level = heading[1].length
-      nodes.push(<div key={i} className={`${level === 1 ? 'text-lg' : level === 2 ? 'text-base' : 'text-sm'} mb-1 mt-2 font-semibold`}>{inline(heading[2])}</div>)
+      nodes.push(<div key={i} className={`${level === 1 ? 'text-lg' : level === 2 ? 'text-base' : 'text-sm'} mb-2 mt-5 font-semibold leading-snug first:mt-0`}>{inline(heading[2])}</div>)
       i++; continue
     }
     if (/^\s*[-*+]\s+/.test(line)) {
       const items: string[] = []
       while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*+]\s+/, ''))
-      nodes.push(<ul key={`ul-${i}`} className="my-1 list-disc space-y-0.5 pl-5">{items.map((item, n) => <li key={n}>{inline(item)}</li>)}</ul>)
+      nodes.push(<ul key={`ul-${i}`} className="my-2.5 list-disc space-y-1 pl-5">{items.map((item, n) => <li key={n}>{inline(item)}</li>)}</ul>)
       continue
     }
     if (/^\s*\d+[.)]\s+/.test(line)) {
       const items: string[] = []
       while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+[.)]\s+/, ''))
-      nodes.push(<ol key={`ol-${i}`} className="my-1 list-decimal space-y-0.5 pl-5">{items.map((item, n) => <li key={n}>{inline(item)}</li>)}</ol>)
+      nodes.push(<ol key={`ol-${i}`} className="my-2.5 list-decimal space-y-1 pl-5">{items.map((item, n) => <li key={n}>{inline(item)}</li>)}</ol>)
       continue
     }
     if (/^>\s?/.test(line)) {
       const quote: string[] = []
       while (i < lines.length && /^>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^>\s?/, ''))
-      nodes.push(<blockquote key={`q-${i}`} className="my-1 border-l-2 border-current/25 pl-3 opacity-80">{quote.map((q, n) => <React.Fragment key={n}>{inline(q)}{n < quote.length - 1 && <br />}</React.Fragment>)}</blockquote>)
+      nodes.push(<blockquote key={`q-${i}`} className="my-3 border-l-2 border-current/25 py-0.5 pl-3.5 leading-[1.75] opacity-80">{quote.map((q, n) => <React.Fragment key={n}>{inline(q)}{n < quote.length - 1 && <br />}</React.Fragment>)}</blockquote>)
       continue
     }
     if (/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)) {
-      nodes.push(<hr key={i} className="my-3 border-current/15" />); i++; continue
+      nodes.push(<hr key={i} className="my-4 border-current/15" />); i++; continue
     }
-    if (!line.trim()) { nodes.push(<div key={i} className="h-2" />); i++; continue }
-    nodes.push(<p key={i} className="whitespace-pre-wrap break-words">{inline(line)}</p>)
+    if (!line.trim()) { nodes.push(<div key={i} className="h-1.5" />); i++; continue }
+
+    // Group adjacent plain lines into one prose block while preserving their
+    // line breaks, so long replies get paragraph rhythm without extra gaps.
+    const paragraph: string[] = [line]
     i++
+    while (i < lines.length) {
+      const next = lines[i]
+      const startsBlock = !next.trim() || next.startsWith('```') || /^(#{1,4})\s+/.test(next) ||
+        /^\s*[-*+]\s+/.test(next) || /^\s*\d+[.)]\s+/.test(next) || /^>\s?/.test(next) ||
+        /^\s*([-*_])(?:\s*\1){2,}\s*$/.test(next)
+      if (startsBlock) break
+      paragraph.push(next)
+      i++
+    }
+    nodes.push(
+      <p key={`p-${i}`} className="whitespace-pre-wrap break-words leading-[1.8]">
+        {paragraph.map((part, n) => <React.Fragment key={n}>{inline(part)}{n < paragraph.length - 1 && <br />}</React.Fragment>)}
+      </p>,
+    )
   }
-  return <div className="markdown-text space-y-0.5">{nodes}{cursor && <span className="stream-cursor">…</span>}</div>
+  return <div className="markdown-text space-y-1.5">{nodes}{cursor && <span className="stream-cursor">…</span>}</div>
 }
 
 export const MarkdownText = memo(MarkdownTextView)
