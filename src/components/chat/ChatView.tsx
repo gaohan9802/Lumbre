@@ -683,20 +683,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           </div>}
 
           {/* messages */}
-          <div className="flex-1 min-h-0 relative">
-            {ap.bgImage && (
-              <div
-                className="absolute inset-0 pointer-events-none z-0"
-                style={{
-                  background: n
-                    ? 'linear-gradient(90deg, rgba(15,20,25,0.06), rgba(15,20,25,0.22) 18%, rgba(15,20,25,0.24) 82%, rgba(15,20,25,0.06))'
-                    : 'linear-gradient(90deg, rgba(255,249,245,0.04), rgba(255,249,245,0.22) 18%, rgba(255,249,245,0.25) 82%, rgba(255,249,245,0.04))',
-                  backdropFilter: 'blur(2px)',
-                  WebkitBackdropFilter: 'blur(2px)',
-                }}
-              />
-            )}
-            <div ref={scrollRef} onScroll={handleScroll} className="h-full relative z-10 overflow-y-auto px-4 md:px-6 py-6 space-y-4" onClick={() => deleteMenuId && setDeleteMenuId(null)}>
+          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-6 space-y-4" onClick={() => deleteMenuId && setDeleteMenuId(null)}>
             {messages.length === 0 && (
               <div className="flex items-center justify-center h-full text-center opacity-40">
                 <span className="text-4xl" aria-label="等待对话">🐆</span>
@@ -794,7 +781,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`block w-full break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
+                                <div key={blockKey} className={`block w-full break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
                                   style={aColor ? aiBubbleStyle : {}}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -881,7 +868,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                           </div>
                         </div>
                       ) : ((isUser || !msg.content_blocks || msg.content_blocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0)) ? (
-                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-full'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
+                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-full'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : {}) : (aColor ? aiBubbleStyle : {})}>
                           {msg.images && msg.images.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -982,7 +969,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     }
                     if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                       return (
-                        <div key={bi} className={`block w-full break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                        <div key={bi} className={`block w-full break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                           <MarkdownText content={block.content} cursor={isLast} />
                         </div>
                       )
@@ -990,7 +977,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     return null
                   }) : (
                     /* No blocks yet — show loading dots */
-                    <div className={`w-full px-4 py-3 rounded-2xl ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                    <div className={`w-full px-4 py-3 rounded-2xl backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                       <div className="flex gap-1">
                         {[0, 1, 2].map(i => (
                           <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
@@ -1003,7 +990,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               </motion.div>
             )}
             <div ref={messagesEndRef} />
-            </div>
           </div>
 
 

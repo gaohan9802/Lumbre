@@ -161,3 +161,10 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 消息区柔雾应放在滚动容器外层、内容内层：外层 `relative` 承载绝对定位 blur overlay，内层 `h-full overflow-y-auto` 保持原滚动行为。若直接给滚动容器加 `backdrop-filter`，会让整块内容和滚动合成层更重。
 - 全局 `:has(> textarea.bg-transparent:focus)` 会给输入框父容器再加一层 inset focus ring。自定义悬浮输入托盘时给 textarea 加 `no-frame`，避免全局规则与托盘自身 focus-within 边框叠加。
 - 轻量 Markdown renderer 不应简单给每一行都制造独立大间距；连续普通行归成一个 prose block、保留 `<br>`，空行才承担段落分隔，能兼容模型常见的单换行输出。
+
+## 2026-08-07 — 唤醒竞态与重复行为诊断（未修）
+- 最危险的问题不是 prompt，而是 session 的“读旧整份 → 长请求 → 写回整份”竞态。唤醒写回必须在结束时重新加载最新版，并按 message id 追加；不能让旧 session 快照凭较新的 `updatedAt` 覆盖用户刚产生的消息。
+- 2 分钟 tick + 结束时才写 `lastWakeAt` 会允许长唤醒重入；需要进程内 in-flight guard，并建议再加 `/persistent` 原子锁/lease 处理多 worker、多实例。
+- 冷却应同时参考 `lastActivityAt` 与目标 session 最后一条 user 消息 timestamp，后者是会话数据真源，可兜底 activity 上报遗漏；是否让 `wake_me` 绕过冷却应做成明确策略，而不是隐藏例外。
+- 防重复不能只记工具名。应持久化结构化 wake digest（工具名+关键 input+对象 id/URL+最终正文摘要+push），并把最近若干次 wake digest 注入下一次唤醒；必要时对相同动作指纹做服务器级去重。
+- 唤醒 API 请求需检查 `res.ok`、错误字段和超时；日志应增加 startedAt/finishedAt、trigger kind、cooldown basis、session revision、write outcome，才能区分模型沉默、请求失败、写回冲突和客户端覆盖。
