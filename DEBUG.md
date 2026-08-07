@@ -168,3 +168,7 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 冷却应同时参考 `lastActivityAt` 与目标 session 最后一条 user 消息 timestamp，后者是会话数据真源，可兜底 activity 上报遗漏；是否让 `wake_me` 绕过冷却应做成明确策略，而不是隐藏例外。
 - 防重复不能只记工具名。应持久化结构化 wake digest（工具名+关键 input+对象 id/URL+最终正文摘要+push），并把最近若干次 wake digest 注入下一次唤醒；必要时对相同动作指纹做服务器级去重。
 - 唤醒 API 请求需检查 `res.ok`、错误字段和超时；日志应增加 startedAt/finishedAt、trigger kind、cooldown basis、session revision、write outcome，才能区分模型沉默、请求失败、写回冲突和客户端覆盖。
+
+## 2026-08-07 — 星星气泡对齐
+- 星星气泡存在历史消息、content block、流式 block 和等待加载四条渲染路径；调整对齐时必须同步修改，否则开始生成、生成中与生成完成后会发生宽度或位置跳动。
+- 本次统一使用 `w-fit max-w-[80%] ml-auto rounded-br-md`，只改变星星正文气泡，不触碰外围消息容器和附属卡片。

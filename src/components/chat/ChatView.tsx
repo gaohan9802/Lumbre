@@ -781,7 +781,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`block w-full break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
+                                <div key={blockKey} className={`block w-fit max-w-[80%] ml-auto break-words px-4 py-3 rounded-2xl rounded-br-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
                                   style={aColor ? aiBubbleStyle : {}}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -868,7 +868,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                           </div>
                         </div>
                       ) : ((isUser || !msg.content_blocks || msg.content_blocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0)) ? (
-                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-full'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
+                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[80%] rounded-br-md ml-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : {}) : (aColor ? aiBubbleStyle : {})}>
                           {msg.images && msg.images.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -969,7 +969,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     }
                     if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                       return (
-                        <div key={bi} className={`block w-full break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                        <div key={bi} className={`block w-fit max-w-[80%] ml-auto break-words px-4 py-3 rounded-2xl rounded-br-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                           <MarkdownText content={block.content} cursor={isLast} />
                         </div>
                       )
@@ -977,7 +977,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     return null
                   }) : (
                     /* No blocks yet — show loading dots */
-                    <div className={`w-full px-4 py-3 rounded-2xl backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                    <div className={`w-fit max-w-[80%] ml-auto px-4 py-3 rounded-2xl rounded-br-md backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
                       <div className="flex gap-1">
                         {[0, 1, 2].map(i => (
                           <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}

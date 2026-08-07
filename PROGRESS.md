@@ -2396,3 +2396,8 @@ author 默认 star（🐆），AI 就是星星。
 
 ### 验证
 - `tsc --noEmit` 与 `git diff --check` 通过；未运行 Next production build。
+
+## 2026-08-07 — 星星气泡恢复右对齐
+- 星星历史正文、content blocks、流式正文与加载气泡由全宽恢复为最大 80% 的内容宽度，并统一靠右显示。
+- 仅修改星星正文气泡的宽度、对齐和右下角气泡尖角；思考链、Markdown 排版、气泡柔雾、颜色/透明度、字号及输入框样式均保持不变。
+- 验证：`tsc --noEmit`、`git diff --check` 均通过；未运行 Next production build。
