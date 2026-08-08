@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
-  getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary,
+  getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary, SummaryStructure, StageSummary,
 } from '@/lib/chatStore'
 import { photos as photosApi } from '@/lib/api'
 import { ChatSettings } from './ChatSettings'
@@ -108,6 +108,11 @@ function bubbleTextColor(hex: string, alpha: number, night: boolean) {
 
 /* ── main component ─────────────────────── */
 
+function normalizeSummaryStructure(value: any): SummaryStructure {
+  const list = (key: string) => Array.isArray(value?.[key]) ? value[key].map((item: any) => String(item).trim()).filter(Boolean) : []
+  return { facts: list('facts'), agreements: list('agreements'), preferences: list('preferences'), unfinished: list('unfinished'), cautions: list('cautions'), relationshipChanges: list('relationshipChanges'), followUps: list('followUps') }
+}
+
 export interface ChatViewProps {
   embedded?: boolean
   contextInjection?: string
@@ -123,7 +128,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary,
+    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
@@ -142,6 +147,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
   const [summaryGenerating, setSummaryGenerating] = useState(false)
+  const [stageSummaryGenerating, setStageSummaryGenerating] = useState(false)
+  const stageAttemptRef = useRef('')
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [timelineCurrent, setTimelineCurrent] = useState<TimelineCurrent | null>(null)
   const [timelineNow, setTimelineNow] = useState(Date.now())
@@ -256,12 +263,25 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     const statusInjection = timelineCurrent ? `[小火当前状态]\n正在做：${timelineCurrent.title}\n已持续：${Math.max(1, Math.floor((Date.now() - new Date(timelineCurrent.start_at).getTime()) / 60000))}分钟${timelineCurrent.tags?.length ? `\n标签：${timelineCurrent.tags.join('、')}` : ''}${timelineCurrent.note ? `\n开始备注：${timelineCurrent.note}` : ''}` : ''
     const summaryConfig = activeSession?.summaryConfig || { injectCount: settings.summaryInjectCount }
     const recentSummaries = [...(activeSession?.summaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, summaryConfig.injectCount).reverse()
-    const summaryInjection = recentSummaries.length ? `[长期对话摘要｜以下均为马德里时间]
-${recentSummaries.map((item, i) => `记忆卡${i + 1}
+    const recentStages = [...(activeSession?.stageSummaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, 2).reverse()
+    const structureText = (structure?: SummaryStructure) => structure ? [
+      structure.facts?.length ? `确认事实：${structure.facts.join('；')}` : '',
+      structure.agreements?.length ? `约定承诺：${structure.agreements.join('；')}` : '',
+      structure.preferences?.length ? `偏好变化：${structure.preferences.join('；')}` : '',
+      structure.unfinished?.length ? `未完成事项：${structure.unfinished.join('；')}` : '',
+      structure.cautions?.length ? `避免事项：${structure.cautions.join('；')}` : '',
+      structure.relationshipChanges?.length ? `关系变化：${structure.relationshipChanges.join('；')}` : '',
+      structure.followUps?.length ? `后续追踪：${structure.followUps.join('；')}` : '',
+    ].filter(Boolean).join('\n') : ''
+    const summaryInjection = recentSummaries.length || recentStages.length ? `[长期对话摘要｜以下均为马德里时间]
+${recentStages.map((item, i) => `阶段摘要${i + 1}（${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}）
+${item.title}：${item.overview}
+${structureText(item.structure)}`).join('\n---\n')}${recentStages.length && recentSummaries.length ? '\n=== 最近细节 ===\n' : ''}${recentSummaries.map((item, i) => `记忆卡${i + 1}
 时间段：${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}
 事件摘要：${item.eventSummary}
 小火的情绪：${item.fireEmotion}
-星星的情绪：${item.starEmotion}`).join('\n---\n')}` : ''
+星星的情绪：${item.starEmotion}
+${structureText(item.structure)}`).join('\n---\n')}` : ''
     const bookmarkInjections = [summaryInjection, readingInjection, statusInjection].filter(Boolean).join('\n\n')
 
     // Always stream the transport. A non-streaming /api/chat returns zero bytes
@@ -386,8 +406,8 @@ ${recentSummaries.map((item, i) => `记忆卡${i + 1}
         || state.settings.model
       const transcript = segment.map(m => `${m.role === 'user' ? '小火' : '星星'} [${fmtFullTs(m.timestamp)} 马德里时间]: ${m.content}`).join('\n')
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        messages: [{ role: 'user', content: `请把下面对话整理成一张长期记忆摘要卡。只输出严格 JSON，不要 markdown：{"eventSummary":"简短但具体的事件摘要","fireEmotion":"小火的情绪","starEmotion":"星星的情绪"}。不要编造，没有明显情绪就写“未明显表达”。\n\n${transcript}` }],
-        system: '你是对话记忆整理器。保留具体人物、事件、约定、偏好和情绪，简洁准确。', model,
+        messages: [{ role: 'user', content: `请把下面对话整理成一张长期记忆摘要卡。只输出严格 JSON，不要 markdown。格式：{"eventSummary":"简短但具体的事件摘要","fireEmotion":"小火的情绪","starEmotion":"星星的情绪","structure":{"facts":[],"agreements":[],"preferences":[],"unfinished":[],"cautions":[],"relationshipChanges":[],"followUps":[]}}。各数组只放对话明确支持的简短条目；不要编造，没有内容就用空数组，没有明显情绪写“未明显表达”。\n\n${transcript}` }],
+        system: '你是谨慎的对话记忆整理器。保留具体人物、事件、事实、约定、承诺、偏好、未完成事项、应避免的错误、关系变化和后续问题，简洁准确。', model,
         thinking_budget: 1024, temperature: 0.2, prompt_caching: false, tools_enabled: false,
         api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: model } : undefined,
       }) })
@@ -400,7 +420,8 @@ ${recentSummaries.map((item, i) => `记忆卡${i + 1}
         startAt: segment[0].timestamp, endAt: segment[segment.length - 1].timestamp, createdAt: Date.now(), turnCount: userTurns,
         messageCount: segment.length, sourceMessageIds: segment.map(message => message.id),
         coveredUntilMessageId: segment[segment.length - 1].id, eventSummary: String(parsed.eventSummary || '').trim(),
-        fireEmotion: String(parsed.fireEmotion || '未明显表达').trim(), starEmotion: String(parsed.starEmotion || '未明显表达').trim() }
+        fireEmotion: String(parsed.fireEmotion || '未明显表达').trim(), starEmotion: String(parsed.starEmotion || '未明显表达').trim(),
+        structure: normalizeSummaryStructure(parsed.structure) }
       if (!item.eventSummary) throw new Error('摘要内容为空')
       addSummary(session.id, item)
       return true
@@ -409,6 +430,69 @@ ${recentSummaries.map((item, i) => `记忆卡${i + 1}
       return false
     } finally { setSummaryGenerating(false) }
   }, [summaryGenerating, addSummary])
+
+  const regenerateSummary = useCallback(async (summary: ChatSummary) => {
+    const state = useChatStore.getState()
+    const session = state.settings.sessions.find(item => item.id === summary.sessionId)
+    if (!session || summary.locked || summaryGenerating) return false
+    const ids = new Set(summary.sourceMessageIds || [])
+    const segment = ids.size ? session.messages.filter(message => ids.has(message.id)) : session.messages.filter(message => message.timestamp >= summary.startAt && message.timestamp <= summary.endAt)
+    if (!segment.length) return false
+    setSummaryGenerating(true)
+    try {
+      const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount }
+      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
+      const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
+      const transcript = segment.map(m => `${m.role === 'user' ? '小火' : '星星'} [${fmtFullTs(m.timestamp)} 马德里时间]: ${m.content}`).join('\n')
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        messages: [{ role: 'user', content: `重新整理这张长期记忆卡。只输出严格 JSON：{"eventSummary":"","fireEmotion":"","starEmotion":"","structure":{"facts":[],"agreements":[],"preferences":[],"unfinished":[],"cautions":[],"relationshipChanges":[],"followUps":[]}}。只写对话明确支持的内容，不要编造。\n\n${transcript}` }],
+        system: '你是谨慎的对话记忆整理器。', model, thinking_budget: 1024, temperature: 0.2, prompt_caching: false, tools_enabled: false,
+        api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: model } : undefined,
+      }) })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      const raw = String(data.content || '').replace(/^```json\s*|\s*```$/g, '').trim()
+      const parsed = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || raw)
+      updateSummary(session.id, summary.id, { eventSummary: String(parsed.eventSummary || '').trim(), fireEmotion: String(parsed.fireEmotion || '未明显表达').trim(), starEmotion: String(parsed.starEmotion || '未明显表达').trim(), structure: normalizeSummaryStructure(parsed.structure), needsCorrection: false, editedAt: Date.now() })
+      return true
+    } catch (err) { console.error('summary regeneration failed', err); return false } finally { setSummaryGenerating(false) }
+  }, [summaryGenerating, updateSummary])
+
+  const generateStageSummary = useCallback(async () => {
+    const state = useChatStore.getState()
+    const session = state.settings.sessions.find(item => item.id === state.settings.activeSessionId)
+    if (!session || session.partial || stageSummaryGenerating || session.summaryConfig?.autoEnabled === false) return false
+    const covered = new Set((session.stageSummaries || []).flatMap(item => item.sourceSummaryIds))
+    const available = [...(session.summaries || [])].sort((a, b) => a.startAt - b.startAt).filter(item => !covered.has(item.id))
+    if (available.length < 10) return false
+    const batch = available.slice(0, 10)
+    const attemptKey = `${batch.map(item => item.id).join(',')}:${available.length}`
+    if (stageAttemptRef.current === attemptKey) return false
+    stageAttemptRef.current = attemptKey
+    setStageSummaryGenerating(true)
+    try {
+      const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount }
+      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
+      const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
+      const source = batch.map((item, i) => `记忆卡${i + 1}：${item.eventSummary}\n小火：${item.fireEmotion}；星星：${item.starEmotion}\n${JSON.stringify(item.structure || {})}`).join('\n---\n')
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        messages: [{ role: 'user', content: `把以下10张记忆卡合并成阶段摘要。原卡永久保留，不要丢掉关键事实。只输出严格 JSON：{"title":"阶段标题","overview":"阶段总览","structure":{"facts":[],"agreements":[],"preferences":[],"unfinished":[],"cautions":[],"relationshipChanges":[],"followUps":[]}}。\n\n${source}` }],
+        system: '你是长期关系记忆的阶段整理器。去重、保留变化脉络，不编造。', model, thinking_budget: 1024, temperature: 0.2, prompt_caching: false, tools_enabled: false,
+        api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: model } : undefined,
+      }) })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json(); const raw = String(data.content || '').replace(/^```json\s*|\s*```$/g, '').trim(); const parsed = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || raw)
+      const stage: StageSummary = { id: `stage-${Date.now()}`, sessionId: session.id, createdAt: Date.now(), startAt: batch[0].startAt, endAt: batch[batch.length - 1].endAt, sourceSummaryIds: batch.map(item => item.id), title: String(parsed.title || '一段共同经历').trim(), overview: String(parsed.overview || '').trim(), structure: normalizeSummaryStructure(parsed.structure) }
+      if (!stage.overview) throw new Error('阶段摘要为空')
+      addStageSummary(session.id, stage); stageAttemptRef.current = ''; return true
+    } catch (err) { console.error('stage summary generation failed', err); return false } finally { setStageSummaryGenerating(false) }
+  }, [stageSummaryGenerating, addStageSummary])
+
+  useEffect(() => {
+    if (!activeSession || activeSession.partial || stageSummaryGenerating) return
+    const timer = setTimeout(() => { void generateStageSummary() }, 1200)
+    return () => clearTimeout(timer)
+  }, [activeSession?.id, activeSession?.summaries?.length, activeSession?.stageSummaries?.length, activeSession?.partial, stageSummaryGenerating, generateStageSummary])
 
   useEffect(() => {
     const config = activeSession?.summaryConfig
@@ -1220,7 +1304,7 @@ ${recentSummaries.map((item, i) => `记忆卡${i + 1}
           {/* settings / model / bookmark dialogs */}
           <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={async (msg, fn) => { const ok = await ask(msg); if (ok) fn() }} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
-          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} onGenerate={() => { void generateNextSummary(false) }} />
+          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} onGenerate={() => { void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
           <TimelineTimerModal open={timelineOpen} current={timelineCurrent} onClose={() => setTimelineOpen(false)} onChanged={() => refreshTimelineCurrent()} />
         </>,
