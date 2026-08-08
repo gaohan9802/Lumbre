@@ -21,6 +21,7 @@ import { TimelineTimerModal, TimelineCurrent } from '@/components/timeline/Timel
 import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
+import { selectReverseSummarySegment } from '@/lib/chat-summary'
 
 /* ── helpers ────────────────────────────── */
 
@@ -253,7 +254,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
     const readingInjection = contextInjection.trim()
     const statusInjection = timelineCurrent ? `[小火当前状态]\n正在做：${timelineCurrent.title}\n已持续：${Math.max(1, Math.floor((Date.now() - new Date(timelineCurrent.start_at).getTime()) / 60000))}分钟${timelineCurrent.tags?.length ? `\n标签：${timelineCurrent.tags.join('、')}` : ''}${timelineCurrent.note ? `\n开始备注：${timelineCurrent.note}` : ''}` : ''
-    const recentSummaries = [...(activeSession?.summaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, settings.summaryInjectCount).reverse()
+    const summaryConfig = activeSession?.summaryConfig || { injectCount: settings.summaryInjectCount }
+    const recentSummaries = [...(activeSession?.summaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, summaryConfig.injectCount).reverse()
     const summaryInjection = recentSummaries.length ? `[长期对话摘要｜以下均为马德里时间]
 ${recentSummaries.map((item, i) => `记忆卡${i + 1}
 时间段：${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}
@@ -366,32 +368,37 @@ ${recentSummaries.map((item, i) => `记忆卡${i + 1}
     }
   }
 
-  const generateNextSummary = useCallback(async (silent = false) => {
-    const session = useChatStore.getState().settings.sessions.find(s => s.id === settings.activeSessionId)
+  const generateNextSummary = useCallback(async (silent = false, autoOnly = false) => {
+    const state = useChatStore.getState()
+    const session = state.settings.sessions.find(item => item.id === state.settings.activeSessionId)
     if (!session || session.partial || summaryGenerating) return false
-    const summaries = [...(session.summaries || [])].sort((a, b) => a.endAt - b.endAt)
-    const lastCovered = summaries.length ? summaries[summaries.length - 1].coveredUntilMessageId : ''
-    const startIndex = lastCovered ? session.messages.findIndex(m => m.id === lastCovered) + 1 : 0
-    const pending = session.messages.slice(Math.max(0, startIndex))
-    const targetMessages = settings.summaryTurnSize * 2
-    if (pending.length < targetMessages) return false
-    const segment = pending.slice(0, targetMessages)
+    const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount }
+    if (autoOnly && !config.autoEnabled) return false
+    const segment = selectReverseSummarySegment(session.messages, session.summaries || [], config.turnSize, autoOnly)
+    if (!segment.length) return false
     setSummaryGenerating(true)
     try {
-      const profile = getActiveProfile(settings)
+      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId)
+        || getActiveProfile(state.settings)
+      const model = config.modelId
+        || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel)
+        || profile?.models[0]?.id
+        || state.settings.model
       const transcript = segment.map(m => `${m.role === 'user' ? '小火' : '星星'} [${fmtFullTs(m.timestamp)} 马德里时间]: ${m.content}`).join('\n')
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         messages: [{ role: 'user', content: `请把下面对话整理成一张长期记忆摘要卡。只输出严格 JSON，不要 markdown：{"eventSummary":"简短但具体的事件摘要","fireEmotion":"小火的情绪","starEmotion":"星星的情绪"}。不要编造，没有明显情绪就写“未明显表达”。\n\n${transcript}` }],
-        system: '你是对话记忆整理器。保留具体人物、事件、约定、偏好和情绪，简洁准确。', model: settings.model,
+        system: '你是对话记忆整理器。保留具体人物、事件、约定、偏好和情绪，简洁准确。', model,
         thinking_budget: 1024, temperature: 0.2, prompt_caching: false, tools_enabled: false,
-        api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: settings.model } : undefined,
+        api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: model } : undefined,
       }) })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
       const raw = String(data.content || '').replace(/^```json\s*|\s*```$/g, '').trim()
       const parsed = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || raw)
+      const userTurns = segment.filter(message => message.role === 'user').length
       const item: ChatSummary = { id: `sum-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`, sessionId: session.id,
-        startAt: segment[0].timestamp, endAt: segment[segment.length - 1].timestamp, createdAt: Date.now(), turnCount: settings.summaryTurnSize,
+        startAt: segment[0].timestamp, endAt: segment[segment.length - 1].timestamp, createdAt: Date.now(), turnCount: userTurns,
+        messageCount: segment.length, sourceMessageIds: segment.map(message => message.id),
         coveredUntilMessageId: segment[segment.length - 1].id, eventSummary: String(parsed.eventSummary || '').trim(),
         fireEmotion: String(parsed.fireEmotion || '未明显表达').trim(), starEmotion: String(parsed.starEmotion || '未明显表达').trim() }
       if (!item.eventSummary) throw new Error('摘要内容为空')
@@ -401,7 +408,15 @@ ${recentSummaries.map((item, i) => `记忆卡${i + 1}
       if (!silent) console.error('summary generation failed', err)
       return false
     } finally { setSummaryGenerating(false) }
-  }, [settings, summaryGenerating, addSummary])
+  }, [summaryGenerating, addSummary])
+
+  useEffect(() => {
+    const config = activeSession?.summaryConfig
+    if (!activeSession || activeSession.partial || !config?.autoEnabled || summaryGenerating) return
+    const timer = setTimeout(() => { void generateNextSummary(true, true) }, 650)
+    return () => clearTimeout(timer)
+  }, [activeSession?.id, activeSession?.updatedAt, activeSession?.partial, activeSession?.summaryConfig?.autoEnabled,
+    activeSession?.summaryConfig?.turnSize, summaryGenerating, generateNextSummary])
 
   const handleSend = async () => {
     if ((!input.trim() && pendingImages.length === 0) || isLoading) return
@@ -457,7 +472,6 @@ ${recentSummaries.map((item, i) => `记忆卡${i + 1}
         modelId: model,
       })
       onTurn?.('assistant', assistantContent)
-      setTimeout(() => { generateNextSummary(true) }, 300)
       setIsLoading(false)
       setStreamText('')
       setStreamThinking('')

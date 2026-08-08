@@ -192,3 +192,11 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - Timeline 可视化不能用固定 86400000ms 当作 Madrid 的一天；DST 开始日是 23 小时，结束日是 25 小时。
 - 摘要依赖源消息；删除/截断消息时若不失效相关摘要，会把用户已经删除的内容继续注入模型。
 - `datetime-local` 落在春季 DST 不存在时段时必须报无效，不能自动挪到相邻小时。
+
+## 2026-07-16 — 摘要倒序分段 debug
+- 不能再用 `pending.slice(0, N*2)`：它天然从最早未覆盖处正序整理，也错误假设一轮永远只有 user+assistant 两条；工具过程、异常回复都会破坏这个假设。
+- 新算法先按 user 消息构造完整轮次，再用摘要覆盖区间切成未覆盖组；每次选择最靠近当前的、长度足够的组末尾 N 轮。
+- 自动补历史不能在摘要请求成功回调里依赖旧闭包继续递归，否则 `summaryGenerating=true` 的闭包会让下一次立即退出。改为由 session `updatedAt` 变化触发 effect，等 store 写入新摘要后再检查下一段。
+- 摘要配置属于会话数据而不是全局 config；否则切换对话会共享开关、阈值和模型，违反“每个对话框彼此独立”。放进 session 后会自然随分片会话文件同步到 `/persistent/chat/sessions/`。
+- 旧摘要只有 `coveredUntilMessageId`，倒序区间可能不连续，单端点不足以判断覆盖。新摘要记录完整 `sourceMessageIds`；旧数据以 `startAt/endAt` 兼容判断。
+- “前端只留 5 张”不能真的从 session 数组删除旧摘要，否则永久记忆也丢失。正确做法只是 UI `slice(0, 5)`，服务端仍保存全量。
