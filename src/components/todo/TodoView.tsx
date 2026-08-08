@@ -6,6 +6,7 @@ import { todo as todoApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check, MessageCircle, Send, History, ChevronLeft, Pencil, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
+import { madridDateKey } from '@/lib/madrid-time'
 
 interface TodoComment { author: string; content: string; time: string }
 interface TodoItem {
@@ -21,7 +22,7 @@ interface TodoDay { date: string; items: TodoItem[] }
 
 const emojiFor = (a: string) => (a === 'fire' ? '🦦' : '🐆')
 
-function todayStr() { return format(new Date(), 'yyyy-MM-dd') }
+function todayStr() { return madridDateKey() }
 
 export function TodoView() {
   const { currentUser } = useApp()

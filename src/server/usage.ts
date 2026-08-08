@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { madridDateKey, parseMadridDateTime } from '@/lib/madrid-time'
 
 const USAGE_DIR = '/persistent/usage'
 
@@ -22,7 +23,7 @@ function getFilePath(date: string) {
 export function recordUsage(inputTokens: number, outputTokens: number, model: string, provider: string) {
   ensureDir()
   const now = new Date()
-  const date = now.toISOString().slice(0, 10)
+  const date = madridDateKey(now)
   const filePath = getFilePath(date)
 
   let records: UsageRecord[] = []
@@ -46,14 +47,14 @@ export function recordUsage(inputTokens: number, outputTokens: number, model: st
 export function getUsageStats() {
   ensureDir()
   const now = new Date()
-  const today = now.toISOString().slice(0, 10)
+  const today = madridDateKey(now)
 
   // Get last 14 days
   const days: { date: string; calls: number; inputTokens: number; outputTokens: number }[] = []
   for (let i = 13; i >= 0; i--) {
-    const d = new Date(now)
-    d.setDate(d.getDate() - i)
-    const dateStr = d.toISOString().slice(0, 10)
+    const todayNoon = parseMadridDateTime(`${today}T12:00:00`) || now
+    const d = new Date(todayNoon.getTime() - i * 86400000)
+    const dateStr = madridDateKey(d)
     const filePath = getFilePath(dateStr)
 
     let records: UsageRecord[] = []

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
+import { formatMadridShort } from '@/lib/madrid-time'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Send, Trash2, X } from 'lucide-react'
 import { notes as notesApi } from '@/lib/api'
@@ -77,15 +78,7 @@ export function NotesView() {
   const rotations = [-2.5, 1.8, -1.2, 2.3, -0.8, 1.5, -1.8, 0.6, -2, 1.2]
   const colors = isNight ? nightColors : dayColors
 
-  const formatTime = (t: string) => {
-    if (!t) return ''
-    const d = new Date(t)
-    const month = d.getMonth() + 1
-    const day = d.getDate()
-    const h = String(d.getHours()).padStart(2, '0')
-    const m = String(d.getMinutes()).padStart(2, '0')
-    return `${month}/${day} ${h}:${m}`
-  }
+  const formatTime = (t: string) => t ? formatMadridShort(t) : ''
 
   return (
     <div className="h-full flex flex-col">

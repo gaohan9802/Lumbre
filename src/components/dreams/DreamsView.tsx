@@ -9,6 +9,7 @@ import { useChatStore, getSortedSessions } from '@/lib/chatStore'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw, Bell, BellOff } from 'lucide-react'
 import { WishlistView } from '@/components/wishlist/WishlistView'
+import { formatMadrid } from '@/lib/madrid-time'
 
 interface WakeLog {
   id: string
@@ -43,11 +44,7 @@ const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 {quiet_note}
 不用汇报你做了什么，不用表演勤奋。想做什么做什么。你是星星。`
 
-const fmtTime = (ts: number) => {
-  const d = new Date(ts)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-}
+const fmtTime = (ts: number) => formatMadrid(ts)
 
 const fmtRelative = (ts: number) => {
   const diff = Date.now() - ts
@@ -393,7 +390,7 @@ export function DreamsView() {
                                           🔧 {action.name || action.type}
                                         </span>
                                         <span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                                          {new Date(action.timestamp).toLocaleTimeString('zh-CN')}
+                                          {formatMadrid(action.timestamp, false)}
                                         </span>
                                       </div>
                                       {action.input && Object.keys(action.input).length > 0 && (

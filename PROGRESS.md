@@ -2413,3 +2413,46 @@ author 默认 star（🐆），AI 就是星星。
 - Markdown 普通段落行高由 1.8 缩小 10% 至 1.62，引用行高同步由 1.75 缩小至 1.575。
 - Markdown 内容块间距与空行段落间隔由 0.375rem 缩小 20% 至 0.3rem，使长回复更紧凑。
 - 验证：`tsc --noEmit`、`git diff --check` 均通过；未运行 Next production build。
+
+---
+
+## 2026-07-16 — 马德里时区统一 + 长对话摘要记忆卡
+
+### 完成
+1. **统一应用时区为 `Europe/Madrid`**
+   - 新增 `src/lib/madrid-time.ts`：Madrid 日期键、格式化、DST-safe 的无偏移时间解析、Madrid 日边界。
+   - 聊天每条消息和会话短时间显式按 Madrid 显示，不再依赖设备/Zeabur 默认时区。
+   - Chat 的当前时间仍位于 volatile cache 区；所有工具返回里的 UTC ISO 时间在交给星星前转换为“马德里时间”，避免星星把 `Z` 时间直接回答给小火。
+   - Timeline 的日期查询边界、`datetime-local` 编辑值和提交解析统一 Madrid；存储仍使用 UTC ISO（正确区分“存储时刻”和“展示时区”）。
+   - Timeline、闹钟、时间胶囊收到不带 offset 的 `YYYY-MM-DDTHH:mm` 时，一律解释为 Madrid wall time，并自动处理 CET/CEST。
+   - Todo / Tesis / Usage / chat snapshot 的服务端“今天”改用 Madrid 日期，修复 UTC 22:00 后跨日（夏令时）问题。
+   - 日记 `time_id` 使用 Madrid 时分；时间胶囊 `reveal_at` 规范化为 UTC ISO 后比较。
+
+2. **摘要系统（长期对话记忆卡）**
+   - 每个 chat session 持久化自己的 `summaries[]`，随原有 `/api/sync` 会话文件同步到 `/persistent/chat/sessions`。
+   - 可选“每段整理多少”：20 / 30 / 40 轮；一轮按小火消息 + 星星回复计算。
+   - 可选“带入对话的摘要”：最近 3 / 4 / 5 张。
+   - 每次星星回复后检查是否达到下一段长度，自动调用当前模型生成严格结构摘要；也可在弹窗手动点“整理下一段”。
+   - 摘要字段：Madrid 时间段、事件摘要、小火情绪、星星情绪、覆盖到的消息 ID；已覆盖消息不会重复整理。
+   - 最近 N 张摘要作为 `[长期对话摘要]` 注入系统上下文，并放在 prompt-cache 的 bookmark injection 区。
+   - 前端新增 `SummaryDialog`：入口位于 timeline（若运行中）与书签之间；支持查看、删除摘要与调整两个选项。
+
+### Debug 笔记
+- **核心原则**：数据库/文件里的“时刻”继续存 epoch 或 UTC ISO；只有无 offset 的人类输入按 Madrid 解析，展示/模型工具输出按 Madrid 格式化。不能简单给 UTC 固定 `+2`，因为 Madrid 冬季是 UTC+1、夏季才是 UTC+2。
+- `new Date('2026-08-01T12:00')` 会按运行机器本地时区解释；Zeabur 通常是 UTC，所以服务端必须用 DST-safe Madrid parser，不能直接 `new Date()`。
+- `toISOString().slice(0,10)` 是 UTC 日期，在 Madrid 夏季 00:00-01:59 会得到前一天；所有“今天的文件名/统计日”必须使用 Madrid date key。
+- 摘要自动生成不能在 `partial=true` 的 localStorage 暖尾上运行，否则可能把最后 100 条误当成会话开头；必须等待 ChatSync 从 `/persistent` 完整 hydrate。
+- 摘要保存在 session 内而不是 config：这样摘要与会话一起增量同步、分支/删除语义自然，也不会让每张摘要触发整个配置覆盖。
+
+### 验证
+- `./node_modules/.bin/tsc --noEmit --pretty false`：通过（exit 0）。
+- 未在低内存 shell 运行 `next build`；延续既有策略交给 Zeabur 构建。
+
+
+### 2026-07-16 补充审查
+- Timeline 的绘制高度改用真实 Madrid 日边界跨度，DST 切换日按 23/25 小时处理，不再硬编码 86400000ms。
+- 照片、小纸条、现实与梦境、待办“今天”、侧栏纪念日显示也统一 Madrid；经期日数/预计日期改为纯日历日计算。
+- 分支会话继承分支点之前有效摘要；续窗继承最近摘要；删除、截断、清空消息会同步清理来源已失效的摘要。
+- 摘要弹窗会显示距离下一张记忆卡还差几轮，未达到阈值时禁用手动整理。
+- Madrid parser 会拒绝春季 DST 跳时中不存在的本地时间，避免静默偏移一小时。
+- 补充验证：UTC host 下冬季 UTC+1、夏季 UTC+2、DST 切换边界断言全部通过。

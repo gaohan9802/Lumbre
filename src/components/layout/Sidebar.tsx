@@ -5,6 +5,7 @@ import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence, Variants, useReducedMotion } from 'framer-motion'
 import { X } from 'lucide-react'
+import { madridCalendarDayDiff, madridDateKey } from '@/lib/madrid-time'
 
 const tabs = [
   { id: 'chat' as const, label: '星星', image: '/directory/chat.jpg' },
@@ -38,13 +39,12 @@ export function Sidebar() {
   const isNight = theme === 'night'
   const reduceMotion = useReducedMotion()
   const togetherDays = useMemo(() => {
-    const now = new Date()
-    // Use the date-difference convention requested: 4/27 → 8/6 = 101 days.
-    let start = new Date(now.getFullYear(), 3, 27)
-    if (now < start) start = new Date(now.getFullYear() - 1, 3, 27)
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
-    return Math.floor((today.getTime() - startDay.getTime()) / 86400000)
+    const today = madridDateKey()
+    const year = Number(today.slice(0, 4))
+    // Use Madrid calendar days: 4/27 → 8/6 = 101 days, independent of device timezone/DST.
+    let start = `${year}-04-27`
+    if (today < start) start = `${year - 1}-04-27`
+    return madridCalendarDayDiff(today, start)
   }, [sidebarOpen])
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 /** Life timeline — persistent activity tracking in /persistent/timeline/timeline.json */
 import fs from 'fs'
 import path from 'path'
+import { parseMadridDateTime } from '@/lib/madrid-time'
 
 const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const DIR = path.join(DATA_DIR, 'timeline')
@@ -40,8 +41,8 @@ function cleanTags(tags: unknown): string[] {
 }
 function validDate(value: unknown): string | undefined {
   if (!value) return undefined
-  const d = new Date(String(value))
-  return isNaN(d.getTime()) ? undefined : d.toISOString()
+  const d = parseMadridDateTime(value)
+  return d ? d.toISOString() : undefined
 }
 
 export function getCurrentActivity(): TimelineRecord | null {

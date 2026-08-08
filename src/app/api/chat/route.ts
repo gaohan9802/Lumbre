@@ -5,6 +5,7 @@ import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
 import fs from 'fs'
 import path from 'path'
+import { formatMadrid } from '@/lib/madrid-time'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -170,6 +171,15 @@ function anthropicToolResultContent(name: string, result: string, origin?: strin
 }
 
 /** Text form of a tool result (url-stripped, sensibly capped). */
+
+/** Tools store canonical UTC ISO values, but the companion reasons in Madrid wall time. */
+function localizeToolTimes(result: string): string {
+  return result.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})/g, (iso) => {
+    const d = new Date(iso)
+    return isNaN(d.getTime()) ? iso : `${formatMadrid(d)}（马德里时间）`
+  })
+}
+
 function toolResultText(name: string, result: string): string {
   if (FETCH_TOOL_NAMES.has(name)) return result.slice(0, 6000)
   // Email reads are structured JSON / full message text. The generic 300-char
@@ -612,7 +622,7 @@ async function proxyAnthropic(params: {
 
     const toolResults = await Promise.all(
       toolUses.map(async (tu) => {
-        const result = await executeTool(tu.name, tu.input)
+        const result = localizeToolTimes(await executeTool(tu.name, tu.input))
         allToolCalls.push({ name: tu.name, input: tu.input, result: toolResultForHistory(tu.name, result) })
         return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result, origin) }
       }),
@@ -770,7 +780,7 @@ async function streamAnthropic(params: {
 
     const toolResults = await Promise.all(
       toolUses.map(async (tu) => {
-        const result = await executeTool(tu.name, tu.input)
+        const result = localizeToolTimes(await executeTool(tu.name, tu.input))
         const histResult = toolResultForHistory(tu.name, result)
         allToolCalls.push({ name: tu.name, input: tu.input, result: histResult })
         send('tool_call', { name: tu.name, input: tu.input, result: histResult })
@@ -892,7 +902,7 @@ async function proxyOpenAI(params: {
         const fnName = tc.function?.name || ''
         let fnArgs: Record<string, any> = {}
         try { fnArgs = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
-        const result = await executeTool(fnName, fnArgs)
+        const result = localizeToolTimes(await executeTool(fnName, fnArgs))
         allToolCalls.push({ name: fnName, input: fnArgs, result: toolResultForHistory(fnName, result) })
         photoPartsP.push(...openaiPhotoFollowup(fnName, result, origin))
         return { role: 'tool' as const, tool_call_id: tc.id, content: toolResultText(fnName, result) }
@@ -1064,7 +1074,7 @@ async function streamOpenAI(params: {
       toolCalls.map(async (tc) => {
         let fnArgs: Record<string, any> = {}
         try { fnArgs = JSON.parse(tc.args || '{}') } catch { /* empty */ }
-        const result = await executeTool(tc.name, fnArgs)
+        const result = localizeToolTimes(await executeTool(tc.name, fnArgs))
         toolCallCount++
         send('tool_call', { name: tc.name, input: fnArgs, result: toolResultForHistory(tc.name, result) })
         photoPartsSO.push(...openaiPhotoFollowup(tc.name, result, origin))

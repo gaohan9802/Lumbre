@@ -6,6 +6,7 @@ import { useApp } from '@/lib/store'
 import { photos as photosApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, Plus, MessageCircle, X, Pencil, Trash2, Check, Send, Lock, Unlock, Eye, EyeOff } from 'lucide-react'
+import { formatMadridShort } from '@/lib/madrid-time'
 
 interface PhotoComment { author: string; content: string; time: string }
 interface PhotoEntry {
@@ -23,11 +24,7 @@ interface PhotoEntry {
 const emojiFor = (author: string) => (author === 'fire' ? '🦦' : '🐆')
 
 function fmt(ts: string) {
-  try {
-    const d = new Date(ts)
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`
-  } catch { return '' }
+  try { return formatMadridShort(ts) } catch { return '' }
 }
 
 export function PhotosView() {

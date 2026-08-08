@@ -10,6 +10,7 @@
  */
 import fs from 'fs'
 import path from 'path'
+import { madridDateKey } from '@/lib/madrid-time'
 
 const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const TODO_DIR = path.join(DATA_DIR, 'todos')
@@ -44,11 +45,7 @@ function fileFor(date: string) {
   return path.join(TODO_DIR, `${date}.json`)
 }
 
-function todayStr(): string {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
+function todayStr(): string { return madridDateKey() }
 
 function readDay(date: string): TodoDay {
   ensureDir()

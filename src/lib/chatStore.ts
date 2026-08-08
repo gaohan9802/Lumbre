@@ -61,6 +61,19 @@ export interface ApiProfile {
   lastFetchedAt?: number
 }
 
+export interface ChatSummary {
+  id: string
+  sessionId: string
+  startAt: number
+  endAt: number
+  createdAt: number
+  turnCount: number
+  coveredUntilMessageId: string
+  eventSummary: string
+  fireEmotion: string
+  starEmotion: string
+}
+
 export interface ChatSession {
   id: string
   title: string
@@ -71,6 +84,7 @@ export interface ChatSession {
   /** Local persisted tail; full history is restored lazily from /api/sync. */
   partial?: boolean
   messageCount?: number
+  summaries?: ChatSummary[]
 }
 
 export interface ChatAppearance {
@@ -129,6 +143,8 @@ export interface ChatSettings {
   tombstones: Record<string, number>
   starStatus?: { text: string; timestamp: number; msgCount?: number }
   bookmarks: Bookmark[]
+  summaryTurnSize: 20 | 30 | 40
+  summaryInjectCount: 3 | 4 | 5
   configUpdatedAt: number
 }
 
@@ -176,6 +192,8 @@ const DEFAULT_SETTINGS: ChatSettings = {
   ],
   tombstones: {},
   bookmarks: [],
+  summaryTurnSize: 20,
+  summaryInjectCount: 3,
   configUpdatedAt: 0,
 }
 
@@ -220,6 +238,8 @@ interface ChatStore {
   addBookmark: (b: Omit<Bookmark, 'id'>) => void
   updateBookmark: (id: string, patch: Partial<Bookmark>) => void
   deleteBookmark: (id: string) => void
+  addSummary: (sessionId: string, summary: ChatSummary) => void
+  deleteSummary: (sessionId: string, id: string) => void
 }
 
 const makeId = genId
@@ -331,6 +351,7 @@ function normalizeSettings(settings: any): ChatSettings {
         updatedAt: s.updatedAt || s.createdAt || Date.now(),
         partial: !!s.partial,
         messageCount: Math.max(Number(s.messageCount) || 0, Array.isArray(s.messages) ? s.messages.length : 0),
+        summaries: Array.isArray(s.summaries) ? s.summaries : [],
       }))
     : [{ ...DEFAULT_SETTINGS.sessions[0], messages: oldMessages }]
 
@@ -351,6 +372,8 @@ function normalizeSettings(settings: any): ChatSettings {
     activeSessionId,
     tombstones: settings?.tombstones && typeof settings.tombstones === 'object' ? settings.tombstones : {},
     bookmarks: Array.isArray(settings?.bookmarks) ? settings.bookmarks : [],
+    summaryTurnSize: [20, 30, 40].includes(settings?.summaryTurnSize) ? settings.summaryTurnSize : 20,
+    summaryInjectCount: [3, 4, 5].includes(settings?.summaryInjectCount) ? settings.summaryInjectCount : 3,
     configUpdatedAt: typeof settings?.configUpdatedAt === 'number' ? settings.configUpdatedAt : 0,
   }
 }
@@ -436,7 +459,7 @@ export const useChatStore = create<ChatStore>()(
 
       clearMessages: () => set((state) => {
         const settings = normalizeSettings(state.settings)
-        const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId ? { ...s, messages: [], updatedAt: Date.now() } : s)
+        const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId ? { ...s, messages: [], summaries: [], messageCount: 0, updatedAt: Date.now() } : s)
         return { settings: { ...settings, sessions }, messages: [] }
       }),
 
@@ -496,9 +519,16 @@ export const useChatStore = create<ChatStore>()(
 
       deleteMessage: (id) => set((state) => {
         const settings = normalizeSettings(state.settings)
-        const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId
-          ? { ...s, messages: s.messages.filter((m) => m.id !== id), updatedAt: Date.now() }
-          : s)
+        const sessions = settings.sessions.map((s) => {
+          if (s.id !== settings.activeSessionId) return s
+          const deletedIndex = s.messages.findIndex((m) => m.id === id)
+          const messages = s.messages.filter((m) => m.id !== id)
+          const summaries = deletedIndex < 0 ? (s.summaries || []) : (s.summaries || []).filter((summary) => {
+            const endIndex = s.messages.findIndex((m) => m.id === summary.coveredUntilMessageId)
+            return endIndex >= 0 && endIndex < deletedIndex
+          })
+          return { ...s, messages, summaries, messageCount: messages.length, updatedAt: Date.now() }
+        })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
@@ -509,7 +539,9 @@ export const useChatStore = create<ChatStore>()(
           if (s.id !== settings.activeSessionId) return s
           const idx = s.messages.findIndex((m) => m.id === id)
           if (idx < 0) return s
-          return { ...s, messages: s.messages.slice(0, idx), updatedAt: Date.now() }
+          const messages = s.messages.slice(0, idx)
+          const keptIds = new Set(messages.map((m) => m.id))
+          return { ...s, messages, summaries: (s.summaries || []).filter((summary) => keptIds.has(summary.coveredUntilMessageId)), messageCount: messages.length, updatedAt: Date.now() }
         })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -523,10 +555,12 @@ export const useChatStore = create<ChatStore>()(
           const idx = active.messages.findIndex((m) => m.id === id)
           if (idx < 0) return state
           const now = Date.now()
+          const branchMessageIds = new Set(active.messages.slice(0, idx + 1).map((m) => m.id))
           const branch: ChatSession = {
             id: newId,
             title: `${active.title} · 分支`,
             messages: active.messages.slice(0, idx + 1).map((m) => ({ ...m })),
+            summaries: (active.summaries || []).filter((summary) => branchMessageIds.has(summary.coveredUntilMessageId)).map((summary) => ({ ...summary, sessionId: newId })),
             pinned: false,
             createdAt: now,
             updatedAt: now,
@@ -751,6 +785,7 @@ export const useChatStore = create<ChatStore>()(
             id,
             title: `${active.title || '对话'} · 续窗`,
             messages: tail,
+            summaries: (active.summaries || []).slice(-settings.summaryInjectCount).map((summary, index, copied) => ({ ...summary, id: makeId('sum'), sessionId: id, coveredUntilMessageId: index === copied.length - 1 ? (tail[tail.length - 1]?.id || summary.coveredUntilMessageId) : summary.coveredUntilMessageId })),
             pinned: false,
             createdAt: now,
             updatedAt: now,
@@ -774,6 +809,22 @@ export const useChatStore = create<ChatStore>()(
         const bookmarks = settings.bookmarks.map((b) => b.id === id ? { ...b, ...patch } : b)
         const nextSettings = bumpConfig({ ...settings, bookmarks })
         return { settings: nextSettings }
+      }),
+
+      addSummary: (sessionId, summary) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const sessions = settings.sessions.map((session) => session.id === sessionId
+          ? { ...session, summaries: [...(session.summaries || []), summary], updatedAt: Date.now() } : session)
+        const nextSettings = { ...settings, sessions }
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
+      deleteSummary: (sessionId, id) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const sessions = settings.sessions.map((session) => session.id === sessionId
+          ? { ...session, summaries: (session.summaries || []).filter((item) => item.id !== id), updatedAt: Date.now() } : session)
+        const nextSettings = { ...settings, sessions }
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
       deleteBookmark: (id) => set((state) => {
@@ -806,7 +857,7 @@ export const useChatStore = create<ChatStore>()(
           },
         } as any
       },
-      version: 8,
+      version: 9,
       migrate: (persisted: any) => {
         if (!persisted?.state) return persisted
         const raw = persisted.state.settings || {}
@@ -858,6 +909,8 @@ export function extractConfig(s: ChatSettings) {
     apiProfiles: s.apiProfiles,
     starStatus: s.starStatus,
     bookmarks: s.bookmarks,
+    summaryTurnSize: s.summaryTurnSize,
+    summaryInjectCount: s.summaryInjectCount,
   }
 }
 

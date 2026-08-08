@@ -3,6 +3,7 @@
  * Routes tool_use calls to local Brain engine or diary/notes handlers.
  */
 
+import { addMadridDays, madridCalendarDayDiff, madridDateKey, parseMadridDateTime } from '@/lib/madrid-time'
 import { sendEmail, readEmails, searchEmails, readEmailDetail, replyEmail, checkGmailStatus } from "./gmail"
 import {
   pulse, searchBuckets, holdBucket, growBuckets, traceBucket, dream, buildIndex, breath
@@ -877,18 +878,17 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
     }
     if (name === 'read_period') {
       const state = getPeriodState()
-      const now = new Date()
+      const today = madridDateKey()
       const result: any = { ...state }
       if (state.last_period_start) {
-        const start = new Date(state.last_period_start)
-        const daysSince = Math.round((now.getTime() - start.getTime()) / 86400000) + 1
+        const daysSince = madridCalendarDayDiff(today, state.last_period_start) + 1
         const active = daysSince >= 1 && daysSince <= state.period_length + 2 && !state.last_period_end
         result.current_day = daysSince
         result.is_active = active
         if (!active) {
-          const expected = new Date(start.getTime() + state.cycle_days * 86400000)
-          result.next_expected = expected.toISOString().slice(0, 10)
-          result.days_until_next = Math.round((expected.getTime() - now.getTime()) / 86400000)
+          const expected = addMadridDays(state.last_period_start, state.cycle_days)
+          result.next_expected = expected
+          result.days_until_next = madridCalendarDayDiff(expected, today)
         }
       }
       return JSON.stringify(result)
@@ -1202,7 +1202,7 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
         if (typeof input.time === 'number') at = input.time
         else if (typeof input.time === 'string') {
           const n = Number(input.time)
-          at = isFinite(n) && n > 1e12 ? n : new Date(input.time).getTime()
+          at = isFinite(n) && n > 1e12 ? n : (parseMadridDateTime(input.time)?.getTime() || NaN)
         }
         if (!at || isNaN(at)) return '时间格式无法识别，请用 ISO 格式，如 2026-07-16T09:00'
         if (at <= Date.now()) return '闹钟时间必须在未来'

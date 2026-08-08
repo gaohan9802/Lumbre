@@ -182,3 +182,13 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - “靠左占 87%”只适用于星星正文和同宽工具调用；不能全局替换所有 `max-w-[80%]`，否则会误把靠右的 user 气泡一起加宽。
 - 段内行距由 Markdown 普通段落的 `leading-[1.8]` 控制，按 10% 缩减为 1.62；引用块有独立行高，需要同步按比例调整。
 - 段间节奏同时由容器 `space-y` 和空行 spacer 控制；两者都按 20% 从 0.375rem 调到 0.3rem，避免只改一处导致空行段落仍显得过宽。
+
+## 2026-07-16 — Timezone / summary
+- UTC ISO is the storage format, not the user-facing timezone. Model-visible tool timestamps now pass through Madrid localization.
+- Never parse offset-less datetime-local values with bare `new Date(value)` on Zeabur; use `parseMadridDateTime`.
+- Never use `toISOString().slice(0,10)` for a Madrid calendar day.
+- Auto-summary must skip partial sessions until full server hydration.
+
+- Timeline 可视化不能用固定 86400000ms 当作 Madrid 的一天；DST 开始日是 23 小时，结束日是 25 小时。
+- 摘要依赖源消息；删除/截断消息时若不失效相关摘要，会把用户已经删除的内容继续注入模型。
+- `datetime-local` 落在春季 DST 不存在时段时必须报无效，不能自动挪到相邻小时。

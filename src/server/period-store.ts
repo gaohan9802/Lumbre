@@ -7,6 +7,7 @@
  */
 import fs from 'fs'
 import path from 'path'
+import { addMadridDays, madridCalendarDayDiff } from '@/lib/madrid-time'
 
 const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const PERIOD_DIR = path.join(DATA_DIR, 'period')
@@ -91,15 +92,11 @@ export function recordPeriodStart(date: string): PeriodState {
     if (state.history.length >= 2) {
       const diffs: number[] = []
       for (let i = 1; i < state.history.length; i++) {
-        const prev = new Date(state.history[i - 1].start)
-        const curr = new Date(state.history[i].start)
-        const d = Math.round((curr.getTime() - prev.getTime()) / 86400000)
+        const d = madridCalendarDayDiff(state.history[i].start, state.history[i - 1].start)
         if (d >= 15 && d <= 60) diffs.push(d)
       }
       // Also include current cycle
-      const lastStart = new Date(state.last_period_start)
-      const currStart = new Date(date)
-      const d = Math.round((currStart.getTime() - lastStart.getTime()) / 86400000)
+      const d = madridCalendarDayDiff(date, state.last_period_start)
       if (d >= 15 && d <= 60) diffs.push(d)
       if (diffs.length > 0) {
         state.cycle_days = Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length)
@@ -121,9 +118,7 @@ export function recordPeriodEnd(date: string): PeriodState {
   state.last_period_end = date
   // Calculate period_length
   if (state.last_period_start) {
-    const start = new Date(state.last_period_start)
-    const end = new Date(date)
-    const len = Math.round((end.getTime() - start.getTime()) / 86400000) + 1
+    const len = madridCalendarDayDiff(date, state.last_period_start) + 1
     if (len >= 2 && len <= 12) {
       state.period_length = len
     }
@@ -156,16 +151,14 @@ export function getPeriodContext(userMessage: string, todayStr: string): string 
   let changed = false
   let note = ''
 
-  const today = new Date(todayStr)
-  const start = new Date(state.last_period_start)
-  const ended = state.last_period_end ? new Date(state.last_period_end) : null
+  const ended = state.last_period_end
   const cycle = state.cycle_days
   const plen = state.period_length
-  const day = Math.round((today.getTime() - start.getTime()) / 86400000) + 1
+  const day = madridCalendarDayDiff(todayStr, state.last_period_start) + 1
   const compact = userMessage.replace(/\s/g, '')
 
   // Is period currently active?
-  const active = day >= 1 && day <= plen + 2 && !(ended && ended >= start)
+  const active = day >= 1 && day <= plen + 2 && !(ended && ended >= state.last_period_start)
 
   // Scenario 1: User mentions period → show full info
   const periodKeywords = ['月经', '姨妈', '经期', '痛经', '生理期', '例假', '大姨妈', '来了没']
@@ -173,8 +166,7 @@ export function getPeriodContext(userMessage: string, todayStr: string): string 
     if (active) {
       note = `经期记录：这次从${state.last_period_start}开始，今天是第${day}天（她主动提了才给我看的，回应她就好，不用播报数字）`
     } else {
-      const expected = new Date(start.getTime() + cycle * 86400000)
-      const expStr = expected.toISOString().slice(0, 10)
+      const expStr = addMadridDays(state.last_period_start, cycle)
       note = `经期记录：上次${state.last_period_start}开始，平均周期${cycle}天，下次预计${expStr}（她主动提了，回应她就好）`
     }
   }
@@ -186,9 +178,8 @@ export function getPeriodContext(userMessage: string, todayStr: string): string 
   }
   // Scenario 3: Near end → ask every 2 days
   else if (active && day >= plen - 1) {
-    let lastCheck: Date | null = null
-    try { lastCheck = notes.end_check_date ? new Date(notes.end_check_date) : null } catch { /* */ }
-    if (!lastCheck || (today.getTime() - lastCheck.getTime()) / 86400000 >= 2) {
+    const daysSinceCheck = notes.end_check_date ? madridCalendarDayDiff(todayStr, notes.end_check_date) : Infinity
+    if (daysSinceCheck >= 2) {
       notes.end_check_date = todayStr
       changed = true
       note = `大约经期第${day}天，差不多快结束了。可以轻轻问一次结束了没；她答了记得用 update_period 更新`
@@ -196,9 +187,8 @@ export function getPeriodContext(userMessage: string, todayStr: string): string 
   }
   // Scenario 4: Not in period, next one approaching → ask once per cycle
   else if (!active) {
-    const expected = new Date(start.getTime() + cycle * 86400000)
-    const expStr = expected.toISOString().slice(0, 10)
-    const distance = Math.round((expected.getTime() - today.getTime()) / 86400000)
+    const expStr = addMadridDays(state.last_period_start, cycle)
+    const distance = madridCalendarDayDiff(expStr, todayStr)
     if (distance >= -2 && distance <= 3 && notes.arrival_asked_for !== expStr) {
       notes.arrival_asked_for = expStr
       changed = true
@@ -209,7 +199,7 @@ export function getPeriodContext(userMessage: string, todayStr: string): string 
   // Also check ovulation period (排卵期) — typically cycle_days - 14, ±2 days
   if (!note && !active && state.last_period_start) {
     const ovulationDay = cycle - 14
-    const daysSinceStart = Math.round((today.getTime() - start.getTime()) / 86400000)
+    const daysSinceStart = madridCalendarDayDiff(todayStr, state.last_period_start)
     if (daysSinceStart >= ovulationDay - 2 && daysSinceStart <= ovulationDay + 2) {
       // Only mention once — use care_date check (different from period care)
       const ovKey = `ovulation_${todayStr}`

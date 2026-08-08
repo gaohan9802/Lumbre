@@ -12,6 +12,7 @@
  */
 import fs from 'fs'
 import path from 'path'
+import { madridDateKey } from '@/lib/madrid-time'
 
 const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const LEGACY_FILE = path.join(DATA_DIR, 'chat-sync.json')
@@ -109,7 +110,7 @@ function writeSession(session: any, snapshot = true) {
   // Snapshot only sessions that actually changed, once per day. This keeps the
   // old durability guarantee without copying the entire chat archive daily.
   if (snapshot) try {
-    const day = new Date().toISOString().slice(0, 10)
+    const day = madridDateKey()
     const dayDir = path.join(SNAPSHOTS_DIR, day)
     const snap = path.join(dayDir, `${safeId(session.id)}.json`)
     if (!fs.existsSync(snap)) atomicWrite(snap, json)
@@ -136,7 +137,7 @@ function saveManifest(manifest: SyncManifest) {
   // A compact daily manifest snapshot is enough to reconstruct which session
   // backups belong to the store without copying every long conversation daily.
   try {
-    const day = new Date().toISOString().slice(0, 10)
+    const day = madridDateKey()
     const snap = path.join(CHAT_DIR, `manifest.${day}.json`)
     if (!fs.existsSync(snap)) atomicWrite(snap, JSON.stringify(manifest))
     const snaps = fs.readdirSync(CHAT_DIR).filter(f => /^manifest\.\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort()

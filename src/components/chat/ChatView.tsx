@@ -6,34 +6,32 @@ import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft,
-  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus, Clock3,
+  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus, Clock3, FileText,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
-  getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks,
+  getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary,
 } from '@/lib/chatStore'
 import { photos as photosApi } from '@/lib/api'
 import { ChatSettings } from './ChatSettings'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
+import { SummaryDialog } from './SummaryDialog'
 import { TimelineTimerModal, TimelineCurrent } from '@/components/timeline/TimelineTimerModal'
 import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
+import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
 
 /* ── helpers ────────────────────────────── */
 
-const fmtFullTs = (ts: number) => {
-  const d = new Date(ts)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-}
+const fmtFullTs = (ts: number) => formatMadrid(ts)
 
 const fmtShortDate = (ts: number) => {
   const d = new Date(ts)
-  const today = new Date()
-  if (d.toDateString() === today.toDateString())
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+  const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIME_ZONE }).format(new Date())
+  const key = new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIME_ZONE }).format(d)
+  if (key === todayKey) return d.toLocaleTimeString('en-GB', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })
+  return d.toLocaleDateString('zh-CN', { timeZone: APP_TIME_ZONE, month: 'short', day: 'numeric' })
 }
 
 /* ── stable context window (cache-friendly) ──
@@ -124,7 +122,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession,
+    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
@@ -141,6 +139,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
+  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
+  const [summaryGenerating, setSummaryGenerating] = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [timelineCurrent, setTimelineCurrent] = useState<TimelineCurrent | null>(null)
   const [timelineNow, setTimelineNow] = useState(Date.now())
@@ -253,7 +253,14 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
     const readingInjection = contextInjection.trim()
     const statusInjection = timelineCurrent ? `[小火当前状态]\n正在做：${timelineCurrent.title}\n已持续：${Math.max(1, Math.floor((Date.now() - new Date(timelineCurrent.start_at).getTime()) / 60000))}分钟${timelineCurrent.tags?.length ? `\n标签：${timelineCurrent.tags.join('、')}` : ''}${timelineCurrent.note ? `\n开始备注：${timelineCurrent.note}` : ''}` : ''
-    const bookmarkInjections = [readingInjection, statusInjection].filter(Boolean).join('\n\n')
+    const recentSummaries = [...(activeSession?.summaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, settings.summaryInjectCount).reverse()
+    const summaryInjection = recentSummaries.length ? `[长期对话摘要｜以下均为马德里时间]
+${recentSummaries.map((item, i) => `记忆卡${i + 1}
+时间段：${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}
+事件摘要：${item.eventSummary}
+小火的情绪：${item.fireEmotion}
+星星的情绪：${item.starEmotion}`).join('\n---\n')}` : ''
+    const bookmarkInjections = [summaryInjection, readingInjection, statusInjection].filter(Boolean).join('\n\n')
 
     // Always stream the transport. A non-streaming /api/chat returns zero bytes
     // until the whole tool loop finishes (30-90s), which iOS Safari / mobile
@@ -359,6 +366,43 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
   }
 
+  const generateNextSummary = useCallback(async (silent = false) => {
+    const session = useChatStore.getState().settings.sessions.find(s => s.id === settings.activeSessionId)
+    if (!session || session.partial || summaryGenerating) return false
+    const summaries = [...(session.summaries || [])].sort((a, b) => a.endAt - b.endAt)
+    const lastCovered = summaries.length ? summaries[summaries.length - 1].coveredUntilMessageId : ''
+    const startIndex = lastCovered ? session.messages.findIndex(m => m.id === lastCovered) + 1 : 0
+    const pending = session.messages.slice(Math.max(0, startIndex))
+    const targetMessages = settings.summaryTurnSize * 2
+    if (pending.length < targetMessages) return false
+    const segment = pending.slice(0, targetMessages)
+    setSummaryGenerating(true)
+    try {
+      const profile = getActiveProfile(settings)
+      const transcript = segment.map(m => `${m.role === 'user' ? '小火' : '星星'} [${fmtFullTs(m.timestamp)} 马德里时间]: ${m.content}`).join('\n')
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        messages: [{ role: 'user', content: `请把下面对话整理成一张长期记忆摘要卡。只输出严格 JSON，不要 markdown：{"eventSummary":"简短但具体的事件摘要","fireEmotion":"小火的情绪","starEmotion":"星星的情绪"}。不要编造，没有明显情绪就写“未明显表达”。\n\n${transcript}` }],
+        system: '你是对话记忆整理器。保留具体人物、事件、约定、偏好和情绪，简洁准确。', model: settings.model,
+        thinking_budget: 1024, temperature: 0.2, prompt_caching: false, tools_enabled: false,
+        api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: settings.model } : undefined,
+      }) })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      const raw = String(data.content || '').replace(/^```json\s*|\s*```$/g, '').trim()
+      const parsed = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || raw)
+      const item: ChatSummary = { id: `sum-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`, sessionId: session.id,
+        startAt: segment[0].timestamp, endAt: segment[segment.length - 1].timestamp, createdAt: Date.now(), turnCount: settings.summaryTurnSize,
+        coveredUntilMessageId: segment[segment.length - 1].id, eventSummary: String(parsed.eventSummary || '').trim(),
+        fireEmotion: String(parsed.fireEmotion || '未明显表达').trim(), starEmotion: String(parsed.starEmotion || '未明显表达').trim() }
+      if (!item.eventSummary) throw new Error('摘要内容为空')
+      addSummary(session.id, item)
+      return true
+    } catch (err) {
+      if (!silent) console.error('summary generation failed', err)
+      return false
+    } finally { setSummaryGenerating(false) }
+  }, [settings, summaryGenerating, addSummary])
+
   const handleSend = async () => {
     if ((!input.trim() && pendingImages.length === 0) || isLoading) return
     const profile = getActiveProfile(settings)
@@ -413,6 +457,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         modelId: model,
       })
       onTurn?.('assistant', assistantContent)
+      setTimeout(() => { generateNextSummary(true) }, 300)
       setIsLoading(false)
       setStreamText('')
       setStreamThinking('')
@@ -1000,7 +1045,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               <div className="flex justify-between">
                 <span>共 {activeSession?.messageCount || messages.length} 层</span>
                 <div className="flex items-center gap-2">
-                  {timelineCurrent && <button onClick={() => setTimelineOpen(true)} className={`max-w-[52vw] truncate flex items-center gap-1 ${n ? 'text-night-amber' : 'text-day-pink'}`} title={`正在做：${timelineCurrent.title}`}><Clock3 size={11}/>正在 {timelineCurrent.title} ({timelineElapsedText})</button>}
+                  {timelineCurrent && <button onClick={() => setTimelineOpen(true)} className={`max-w-[42vw] truncate flex items-center gap-1 ${n ? 'text-night-amber' : 'text-day-pink'}`} title={`正在做：${timelineCurrent.title}`}><Clock3 size={11}/>正在 {timelineCurrent.title} ({timelineElapsedText})</button>}
+                  <button onClick={() => setSummaryDialogOpen(true)} className="opacity-60 hover:opacity-100 flex items-center gap-1" title="摘要"><FileText size={11}/> 摘要{activeSession?.summaries?.length ? ` (${activeSession.summaries.length})` : ''}</button>
                   <button onClick={() => setBookmarkDialogOpen(true)} className="opacity-60 hover:opacity-100 flex items-center gap-1" title="书签">
                     <BookMarked size={11} /> 书签{settings.bookmarks.length > 0 ? ` (${settings.bookmarks.length})` : ''}
                   </button>
@@ -1160,6 +1206,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           {/* settings / model / bookmark dialogs */}
           <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={async (msg, fn) => { const ok = await ask(msg); if (ok) fn() }} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
+          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} onGenerate={() => { void generateNextSummary(false) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
           <TimelineTimerModal open={timelineOpen} current={timelineCurrent} onClose={() => setTimelineOpen(false)} onChanged={() => refreshTimelineCurrent()} />
         </>,

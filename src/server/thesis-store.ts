@@ -11,6 +11,7 @@
  */
 import fs from 'fs'
 import path from 'path'
+import { madridDateKey } from '@/lib/madrid-time'
 
 const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const THESIS_DIR = path.join(DATA_DIR, 'thesis')
@@ -53,11 +54,7 @@ function genId(): string {
   return Date.now().toString(36) + Math.random().toString(16).slice(2, 6)
 }
 
-function todayStr(): string {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
+function todayStr(): string { return madridDateKey() }
 
 function readState(): ThesisState {
   ensureDir()
