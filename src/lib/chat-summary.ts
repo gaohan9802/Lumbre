@@ -6,6 +6,14 @@ export interface SummaryRound {
   endIndex: number
 }
 
+export function messagesAfterSummaryAnchor(messages: ChatMessage[], anchorMessageId?: string, anchorTimestamp?: number): ChatMessage[] {
+  if (anchorMessageId) {
+    const index = messages.findIndex(message => message.id === anchorMessageId)
+    if (index >= 0) return messages.slice(index + 1)
+  }
+  return anchorTimestamp ? messages.filter(message => message.timestamp > anchorTimestamp) : messages
+}
+
 export function buildSummaryRounds(messages: ChatMessage[]): SummaryRound[] {
   const rounds: SummaryRound[] = []
   let start = -1

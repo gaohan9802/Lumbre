@@ -61,16 +61,6 @@ export interface ApiProfile {
   lastFetchedAt?: number
 }
 
-export interface SummaryStructure {
-  facts: string[]
-  agreements: string[]
-  preferences: string[]
-  unfinished: string[]
-  cautions: string[]
-  relationshipChanges: string[]
-  followUps: string[]
-}
-
 export interface ChatSummary {
   id: string
   sessionId: string
@@ -81,25 +71,9 @@ export interface ChatSummary {
   messageCount?: number
   sourceMessageIds?: string[]
   coveredUntilMessageId: string
+  /** The only user-facing summary field. */
   eventSummary: string
-  fireEmotion: string
-  starEmotion: string
-  structure?: SummaryStructure
-  locked?: boolean
-  needsCorrection?: boolean
   editedAt?: number
-}
-
-export interface StageSummary {
-  id: string
-  sessionId: string
-  createdAt: number
-  startAt: number
-  endAt: number
-  sourceSummaryIds: string[]
-  title: string
-  overview: string
-  structure?: SummaryStructure
 }
 
 export interface SessionSummaryConfig {
@@ -108,6 +82,10 @@ export interface SessionSummaryConfig {
   injectCount: 3 | 4 | 5
   profileId?: string
   modelId?: string
+  /** v2 seals all pre-upgrade history and only summarizes newer messages. */
+  modeVersion?: 2
+  anchorMessageId?: string
+  anchorTimestamp?: number
 }
 
 export interface ChatSession {
@@ -121,7 +99,6 @@ export interface ChatSession {
   partial?: boolean
   messageCount?: number
   summaries?: ChatSummary[]
-  stageSummaries?: StageSummary[]
   summaryConfig?: SessionSummaryConfig
 }
 
@@ -278,7 +255,6 @@ interface ChatStore {
   deleteBookmark: (id: string) => void
   addSummary: (sessionId: string, summary: ChatSummary) => void
   updateSummary: (sessionId: string, id: string, patch: Partial<ChatSummary>) => void
-  addStageSummary: (sessionId: string, summary: StageSummary) => void
   deleteSummary: (sessionId: string, id: string) => void
   updateSessionSummaryConfig: (sessionId: string, patch: Partial<SessionSummaryConfig>) => void
 }
@@ -392,14 +368,21 @@ function normalizeSettings(settings: any): ChatSettings {
         updatedAt: s.updatedAt || s.createdAt || Date.now(),
         partial: !!s.partial,
         messageCount: Math.max(Number(s.messageCount) || 0, Array.isArray(s.messages) ? s.messages.length : 0),
-        summaries: Array.isArray(s.summaries) ? s.summaries : [],
-        stageSummaries: Array.isArray(s.stageSummaries) ? s.stageSummaries : [],
+        summaries: Array.isArray(s.summaries) ? s.summaries.map((item: any) => ({
+          id: item.id || makeId('sum'), sessionId: s.id, startAt: item.startAt || item.createdAt || Date.now(),
+          endAt: item.endAt || item.createdAt || Date.now(), createdAt: item.createdAt || Date.now(),
+          turnCount: item.turnCount || 0, messageCount: item.messageCount,
+          sourceMessageIds: item.sourceMessageIds, coveredUntilMessageId: item.coveredUntilMessageId || '',
+          eventSummary: String(item.eventSummary || item.overview || item.content || '').trim(), editedAt: item.editedAt,
+        })).filter((item: ChatSummary) => item.eventSummary) : [],
         summaryConfig: {
           autoEnabled: s.summaryConfig?.autoEnabled !== false,
           turnSize: [20, 30, 40].includes(s.summaryConfig?.turnSize) ? s.summaryConfig.turnSize : ([20, 30, 40].includes(settings?.summaryTurnSize) ? settings.summaryTurnSize : 20),
           injectCount: [3, 4, 5].includes(s.summaryConfig?.injectCount) ? s.summaryConfig.injectCount : ([3, 4, 5].includes(settings?.summaryInjectCount) ? settings.summaryInjectCount : 3),
-          profileId: s.summaryConfig?.profileId,
-          modelId: s.summaryConfig?.modelId,
+          profileId: s.summaryConfig?.profileId, modelId: s.summaryConfig?.modelId, modeVersion: 2,
+          // One-time v2 migration: everything already present is sealed history.
+          anchorMessageId: s.summaryConfig?.modeVersion === 2 ? s.summaryConfig?.anchorMessageId : (Array.isArray(s.messages) ? s.messages[s.messages.length - 1]?.id : undefined),
+          anchorTimestamp: s.summaryConfig?.modeVersion === 2 ? s.summaryConfig?.anchorTimestamp : (Array.isArray(s.messages) ? s.messages[s.messages.length - 1]?.timestamp : undefined),
         },
       }))
     : [{ ...DEFAULT_SETTINGS.sessions[0], messages: oldMessages }]
@@ -508,7 +491,7 @@ export const useChatStore = create<ChatStore>()(
 
       clearMessages: () => set((state) => {
         const settings = normalizeSettings(state.settings)
-        const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId ? { ...s, messages: [], summaries: [], stageSummaries: [], messageCount: 0, updatedAt: Date.now() } : s)
+        const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId ? { ...s, messages: [], summaries: [], messageCount: 0, updatedAt: Date.now() } : s)
         return { settings: { ...settings, sessions }, messages: [] }
       }),
 
@@ -562,7 +545,7 @@ export const useChatStore = create<ChatStore>()(
         if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
         const activeSessionId = settings.activeSessionId === id ? sortedSessions(sessions)[0].id : settings.activeSessionId
         const tombstones = { ...settings.tombstones, [id]: Date.now() }
-        const nextSettings = { ...settings, sessions, activeSessionId, tombstones }
+        const nextSettings = normalizeSettings({ ...settings, sessions, activeSessionId, tombstones })
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
@@ -576,9 +559,7 @@ export const useChatStore = create<ChatStore>()(
             if (summary.sourceMessageIds?.length) return !summary.sourceMessageIds.includes(id)
             return !(s.messages[deletedIndex].timestamp >= summary.startAt && s.messages[deletedIndex].timestamp <= summary.endAt)
           })
-          const summaryIds = new Set(summaries.map(item => item.id))
-          const stageSummaries = (s.stageSummaries || []).filter(stage => stage.sourceSummaryIds.every(id => summaryIds.has(id)))
-          return { ...s, messages, summaries, stageSummaries, messageCount: messages.length, updatedAt: Date.now() }
+          return { ...s, messages, summaries, messageCount: messages.length, updatedAt: Date.now() }
         })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -595,9 +576,7 @@ export const useChatStore = create<ChatStore>()(
           const summaries = (s.summaries || []).filter((summary) => summary.sourceMessageIds?.length
             ? summary.sourceMessageIds.every((messageId) => keptIds.has(messageId))
             : keptIds.has(summary.coveredUntilMessageId))
-          const summaryIds = new Set(summaries.map(item => item.id))
-          const stageSummaries = (s.stageSummaries || []).filter(stage => stage.sourceSummaryIds.every(summaryId => summaryIds.has(summaryId)))
-          return { ...s, messages, summaries, stageSummaries, messageCount: messages.length, updatedAt: Date.now() }
+          return { ...s, messages, summaries, messageCount: messages.length, updatedAt: Date.now() }
         })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -619,8 +598,7 @@ export const useChatStore = create<ChatStore>()(
             summaries: (active.summaries || []).filter((summary) => summary.sourceMessageIds?.length
               ? summary.sourceMessageIds.every((messageId) => branchMessageIds.has(messageId))
               : branchMessageIds.has(summary.coveredUntilMessageId)).map((summary) => ({ ...summary, id: makeId('sum'), sessionId: newId })),
-            summaryConfig: active.summaryConfig ? { ...active.summaryConfig } : undefined,
-            stageSummaries: [],
+            summaryConfig: { ...(active.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount }), modeVersion: 2, anchorMessageId: active.messages[idx]?.id, anchorTimestamp: active.messages[idx]?.timestamp },
             pinned: false,
             createdAt: now,
             updatedAt: now,
@@ -706,7 +684,7 @@ export const useChatStore = create<ChatStore>()(
         sessions = sessions.filter((s) => s.id === keepId || !isBlankSession(s))
         if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
         const activeSessionId = sessions.some((s) => s.id === settings.activeSessionId) ? settings.activeSessionId : sortedSessions(sessions)[0].id
-        const nextSettings = { ...settings, sessions, activeSessionId, tombstones }
+        const nextSettings = normalizeSettings({ ...settings, sessions, activeSessionId, tombstones })
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
@@ -846,8 +824,7 @@ export const useChatStore = create<ChatStore>()(
             title: `${active.title || '对话'} · 续窗`,
             messages: tail,
             summaries: (active.summaries || []).slice(-(active.summaryConfig?.injectCount || settings.summaryInjectCount)).map((summary, index, copied) => ({ ...summary, id: makeId('sum'), sessionId: id, coveredUntilMessageId: index === copied.length - 1 ? (tail[tail.length - 1]?.id || summary.coveredUntilMessageId) : summary.coveredUntilMessageId })),
-            summaryConfig: active.summaryConfig ? { ...active.summaryConfig } : undefined,
-            stageSummaries: [],
+            summaryConfig: { ...(active.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount }), modeVersion: 2, anchorMessageId: tail[tail.length - 1]?.id, anchorTimestamp: tail[tail.length - 1]?.timestamp },
             pinned: false,
             createdAt: now,
             updatedAt: now,
@@ -883,17 +860,8 @@ export const useChatStore = create<ChatStore>()(
 
       updateSummary: (sessionId, id, patch) => set((state) => {
         const settings = normalizeSettings(state.settings)
-        const contentChanged = ['eventSummary', 'fireEmotion', 'starEmotion', 'structure'].some(key => Object.prototype.hasOwnProperty.call(patch, key))
         const sessions = settings.sessions.map((session) => session.id === sessionId
-          ? { ...session, summaries: (session.summaries || []).map((item) => item.id === id ? { ...item, ...patch } : item), stageSummaries: contentChanged ? (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)) : (session.stageSummaries || []), updatedAt: Date.now() } : session)
-        const nextSettings = { ...settings, sessions }
-        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
-      }),
-
-      addStageSummary: (sessionId, summary) => set((state) => {
-        const settings = normalizeSettings(state.settings)
-        const sessions = settings.sessions.map((session) => session.id === sessionId
-          ? { ...session, stageSummaries: [...(session.stageSummaries || []), summary], updatedAt: Date.now() } : session)
+          ? { ...session, summaries: (session.summaries || []).map((item) => item.id === id ? { ...item, ...patch } : item), updatedAt: Date.now() } : session)
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
@@ -901,16 +869,22 @@ export const useChatStore = create<ChatStore>()(
       deleteSummary: (sessionId, id) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const sessions = settings.sessions.map((session) => session.id === sessionId
-          ? { ...session, summaries: (session.summaries || []).filter((item) => item.id !== id), stageSummaries: (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)), updatedAt: Date.now() } : session)
+          ? { ...session, summaries: (session.summaries || []).filter((item) => item.id !== id), updatedAt: Date.now() } : session)
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 
       updateSessionSummaryConfig: (sessionId, patch) => set((state) => {
         const settings = normalizeSettings(state.settings)
-        const sessions = settings.sessions.map((session) => session.id === sessionId
-          ? { ...session, summaryConfig: { ...(session.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount }), ...patch }, updatedAt: Date.now() }
-          : session)
+        const sessions = settings.sessions.map((session) => {
+          if (session.id !== sessionId) return session
+          const base = session.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount, modeVersion: 2 as const }
+          const reenabled = patch.autoEnabled === true && base.autoEnabled === false
+          const last = session.messages[session.messages.length - 1]
+          return { ...session, summaryConfig: { ...base, ...patch, modeVersion: 2 as const,
+            anchorMessageId: reenabled ? last?.id : base.anchorMessageId,
+            anchorTimestamp: reenabled ? last?.timestamp : base.anchorTimestamp }, updatedAt: Date.now() }
+        })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
