@@ -218,3 +218,11 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - anchor 只能在摘要 API 成功并写入正文后推进；失败不推进，避免静默丢段。
 - 阶段摘要与结构化字段不符合当前需求，继续保留只会增加 prompt/UI/失效传播复杂度；本次从类型、生成 effect、注入和界面一起删除，而非只隐藏。
 - 开关 knob 使用 absolute + translate 容易受尺寸和样式变化影响；使用固定 track padding + layout spring 后，滑块始终被滑轨几何边界约束。
+
+## 2026-07-06 — 摘要能力恢复 debug
+
+- 摘要数据不应为了“前端只显示 10 张”而在 Zustand 中 `slice` 后覆盖；正确做法是在 `SummaryDialog` 计算 `visibleSummaries/visibleStages`，完整数组仍由 ChatSync 写进 `/persistent`。
+- 普通摘要内容被编辑、重新生成或删除后，引用它的阶段摘要必须失效删除，否则阶段摘要会继续携带旧内容；store 的 `updateSummary/deleteSummary` 已联动清理，随后自动重新压缩。
+- 锁定只阻止单张重新生成，不阻止手动查看、纠错标记和持久化。
+- v2 封存游标必须保留；恢复高级功能不能重新启用“倒追 4000 多层旧历史”。
+- 阶段摘要兼容旧字段：旧数据使用 `overview`，新数据使用纯正文 `content`；normalize 时兼容读取。

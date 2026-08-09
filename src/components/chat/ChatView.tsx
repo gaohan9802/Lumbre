@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
-  getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary,
+  getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary, StageSummary,
 } from '@/lib/chatStore'
 import { photos as photosApi } from '@/lib/api'
 import { ChatSettings } from './ChatSettings'
@@ -123,7 +123,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary,
+    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
@@ -142,6 +142,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
   const [summaryGenerating, setSummaryGenerating] = useState(false)
+  const [stageSummaryGenerating, setStageSummaryGenerating] = useState(false)
+  const stageAttemptRef = useRef('')
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [timelineCurrent, setTimelineCurrent] = useState<TimelineCurrent | null>(null)
   const [timelineNow, setTimelineNow] = useState(Date.now())
@@ -256,7 +258,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     const statusInjection = timelineCurrent ? `[小火当前状态]\n正在做：${timelineCurrent.title}\n已持续：${Math.max(1, Math.floor((Date.now() - new Date(timelineCurrent.start_at).getTime()) / 60000))}分钟${timelineCurrent.tags?.length ? `\n标签：${timelineCurrent.tags.join('、')}` : ''}${timelineCurrent.note ? `\n开始备注：${timelineCurrent.note}` : ''}` : ''
     const summaryConfig = activeSession?.summaryConfig || { injectCount: settings.summaryInjectCount }
     const recentSummaries = [...(activeSession?.summaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, summaryConfig.injectCount).reverse()
-    const summaryInjection = recentSummaries.length ? `[最近记忆摘要｜马德里时间]\n${recentSummaries.map((item, i) => `记忆${i + 1}（${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}）\n${item.eventSummary}`).join('\n\n---\n\n')}` : ''
+    const recentStages = [...(activeSession?.stageSummaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, 2).reverse()
+    const summaryInjection = recentSummaries.length || recentStages.length ? `[长期对话摘要｜马德里时间]\n${recentStages.map((item, i) => `阶段摘要${i + 1}（${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}）\n${item.title}\n${item.content}`).join('\n\n---\n\n')}${recentStages.length && recentSummaries.length ? '\n\n=== 最近细节 ===\n\n' : ''}${recentSummaries.map((item, i) => `记忆${i + 1}（${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}）\n${item.eventSummary}`).join('\n\n---\n\n')}` : ''
     const bookmarkInjections = [summaryInjection, readingInjection, statusInjection].filter(Boolean).join('\n\n')
 
     // Always stream the transport. A non-streaming /api/chat returns zero bytes
@@ -393,6 +396,60 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     } catch (err) { if (!silent) console.error('summary generation failed', err); return false }
     finally { setSummaryGenerating(false) }
   }, [summaryGenerating, addSummary])
+
+  const regenerateSummary = useCallback(async (summary: ChatSummary) => {
+    const state = useChatStore.getState()
+    const session = state.settings.sessions.find(item => item.id === summary.sessionId)
+    if (!session || summary.locked || summaryGenerating) return false
+    const ids = new Set(summary.sourceMessageIds || [])
+    const segment = ids.size ? session.messages.filter(message => ids.has(message.id)) : session.messages.filter(message => message.timestamp >= summary.startAt && message.timestamp <= summary.endAt)
+    if (!segment.length) return false
+    setSummaryGenerating(true)
+    try {
+      const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
+      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
+      const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
+      const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model, api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: model } : undefined }) })
+      const data = await res.json()
+      if (!res.ok || !data.content) throw new Error(data.error || '摘要重新生成失败')
+      updateSummary(session.id, summary.id, { eventSummary: String(data.content).trim(), needsCorrection: false, editedAt: Date.now() })
+      return true
+    } catch (err) { console.error('summary regeneration failed', err); return false }
+    finally { setSummaryGenerating(false) }
+  }, [summaryGenerating, updateSummary])
+
+  const generateStageSummary = useCallback(async () => {
+    const state = useChatStore.getState()
+    const session = state.settings.sessions.find(item => item.id === state.settings.activeSessionId)
+    if (!session || session.partial || stageSummaryGenerating || session.summaryConfig?.autoEnabled === false) return false
+    const covered = new Set((session.stageSummaries || []).flatMap(item => item.sourceSummaryIds))
+    const available = [...(session.summaries || [])].sort((a, b) => a.startAt - b.startAt).filter(item => !covered.has(item.id))
+    if (available.length < 10) return false
+    const batch = available.slice(0, 10)
+    const attemptKey = batch.map(item => item.id).join(',')
+    if (stageAttemptRef.current === attemptKey) return false
+    stageAttemptRef.current = attemptKey
+    setStageSummaryGenerating(true)
+    try {
+      const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
+      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
+      const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
+      const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'stage', summaries: batch.map(item => ({ content: item.eventSummary })), model, api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: model } : undefined }) })
+      const data = await res.json()
+      if (!res.ok || !data.content) throw new Error(data.error || '阶段摘要生成失败')
+      const stage: StageSummary = { id: `stage-${Date.now()}`, sessionId: session.id, createdAt: Date.now(), startAt: batch[0].startAt, endAt: batch[9].endAt, sourceSummaryIds: batch.map(item => item.id), title: String(data.title || '一段共同经历').trim(), content: String(data.content).trim() }
+      addStageSummary(session.id, stage)
+      stageAttemptRef.current = ''
+      return true
+    } catch (err) { console.error('stage summary generation failed', err); return false }
+    finally { setStageSummaryGenerating(false) }
+  }, [stageSummaryGenerating, addStageSummary])
+
+  useEffect(() => {
+    if (!activeSession || activeSession.partial || stageSummaryGenerating || activeSession.summaryConfig?.autoEnabled === false) return
+    const timer = setTimeout(() => { void generateStageSummary() }, 1200)
+    return () => clearTimeout(timer)
+  }, [activeSession?.id, activeSession?.summaries?.length, activeSession?.stageSummaries?.length, activeSession?.partial, activeSession?.summaryConfig?.autoEnabled, stageSummaryGenerating, generateStageSummary])
 
   useEffect(() => {
     const config = activeSession?.summaryConfig
@@ -1204,7 +1261,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           {/* settings / model / bookmark dialogs */}
           <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={async (msg, fn) => { const ok = await ask(msg); if (ok) fn() }} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
-          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} onGenerate={() => { void generateNextSummary(false) }} />
+          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} onGenerate={() => { void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
           <TimelineTimerModal open={timelineOpen} current={timelineCurrent} onClose={() => setTimelineOpen(false)} onChanged={() => refreshTimelineCurrent()} />
         </>,
