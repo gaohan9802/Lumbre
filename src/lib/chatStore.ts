@@ -577,6 +577,7 @@ export const useChatStore = create<ChatStore>()(
           const deletedIndex = s.messages.findIndex((m) => m.id === id)
           const messages = s.messages.filter((m) => m.id !== id)
           const summaries = deletedIndex < 0 ? (s.summaries || []) : (s.summaries || []).filter((summary) => {
+            if (summary.locked) return true
             if (summary.sourceMessageIds?.length) return !summary.sourceMessageIds.includes(id)
             return !(s.messages[deletedIndex].timestamp >= summary.startAt && s.messages[deletedIndex].timestamp <= summary.endAt)
           })
@@ -596,9 +597,9 @@ export const useChatStore = create<ChatStore>()(
           if (idx < 0) return s
           const messages = s.messages.slice(0, idx)
           const keptIds = new Set(messages.map((m) => m.id))
-          const summaries = (s.summaries || []).filter((summary) => summary.sourceMessageIds?.length
+          const summaries = (s.summaries || []).filter((summary) => summary.locked || (summary.sourceMessageIds?.length
             ? summary.sourceMessageIds.every((messageId) => keptIds.has(messageId))
-            : keptIds.has(summary.coveredUntilMessageId))
+            : keptIds.has(summary.coveredUntilMessageId)))
           const summaryIds = new Set(summaries.map(item => item.id))
           const stageSummaries = (s.stageSummaries || []).filter(stage => stage.sourceSummaryIds.every(id => summaryIds.has(id)))
           return { ...s, messages, summaries, stageSummaries, messageCount: messages.length, updatedAt: Date.now() }
@@ -888,9 +889,15 @@ export const useChatStore = create<ChatStore>()(
       updateSummary: (sessionId, id, patch) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const contentChanged = Object.prototype.hasOwnProperty.call(patch, 'eventSummary')
-        const sessions = settings.sessions.map((session) => session.id === sessionId
-          ? { ...session, summaries: (session.summaries || []).map((item) => item.id === id ? { ...item, ...patch } : item),
-              stageSummaries: contentChanged ? (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)) : (session.stageSummaries || []), updatedAt: Date.now() } : session)
+        const sessions = settings.sessions.map((session) => {
+          if (session.id !== sessionId) return session
+          const current = (session.summaries || []).find(item => item.id === id)
+          if (!current) return session
+          // A locked summary is immutable. The only permitted change is unlocking it.
+          if (current.locked && !(Object.keys(patch).length === 1 && patch.locked === false)) return session
+          return { ...session, summaries: (session.summaries || []).map((item) => item.id === id ? { ...item, ...patch } : item),
+            stageSummaries: contentChanged ? (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)) : (session.stageSummaries || []), updatedAt: Date.now() }
+        })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
@@ -905,8 +912,12 @@ export const useChatStore = create<ChatStore>()(
 
       deleteSummary: (sessionId, id) => set((state) => {
         const settings = normalizeSettings(state.settings)
-        const sessions = settings.sessions.map((session) => session.id === sessionId
-          ? { ...session, summaries: (session.summaries || []).filter((item) => item.id !== id), stageSummaries: (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)), updatedAt: Date.now() } : session)
+        const sessions = settings.sessions.map((session) => {
+          if (session.id !== sessionId) return session
+          const target = (session.summaries || []).find(item => item.id === id)
+          if (!target || target.locked) return session
+          return { ...session, summaries: (session.summaries || []).filter((item) => item.id !== id), stageSummaries: (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)), updatedAt: Date.now() }
+        })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
@@ -916,11 +927,9 @@ export const useChatStore = create<ChatStore>()(
         const sessions = settings.sessions.map((session) => {
           if (session.id !== sessionId) return session
           const base = session.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount, modeVersion: 2 as const }
-          const reenabled = patch.autoEnabled === true && base.autoEnabled === false
-          const last = session.messages[session.messages.length - 1]
-          return { ...session, summaryConfig: { ...base, ...patch, modeVersion: 2 as const,
-            anchorMessageId: reenabled ? last?.id : base.anchorMessageId,
-            anchorTimestamp: reenabled ? last?.timestamp : base.anchorTimestamp }, updatedAt: Date.now() }
+          // The auto switch controls scheduling only. It must never move the
+          // summary boundary or silently mark messages as covered.
+          return { ...session, summaryConfig: { ...base, ...patch, modeVersion: 2 as const }, updatedAt: Date.now() }
         })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }

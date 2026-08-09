@@ -43,17 +43,15 @@ export function isRoundCovered(round: SummaryRound, summaries: ChatSummary[]) {
   return round.messages.every(message => summaries.some(summary => summaryCoversMessage(summary, message)))
 }
 
-export function newestPendingRounds(messages: ChatMessage[], summaries: ChatSummary[]) {
-  const rounds = buildSummaryRounds(messages)
-  let count = 0
-  for (let i = rounds.length - 1; i >= 0; i--) {
-    if (isRoundCovered(rounds[i], summaries)) break
-    count++
-  }
-  return count
+export function pendingSummaryRounds(messages: ChatMessage[], summaries: ChatSummary[]) {
+  return buildSummaryRounds(messages).filter(round => !isRoundCovered(round, summaries))
 }
 
-export function selectReverseSummarySegment(
+export function newestPendingRounds(messages: ChatMessage[], summaries: ChatSummary[]) {
+  return pendingSummaryRounds(messages, summaries).length
+}
+
+export function selectSummarySegment(
   messages: ChatMessage[],
   summaries: ChatSummary[],
   turnSize: number,
@@ -62,23 +60,18 @@ export function selectReverseSummarySegment(
   const rounds = buildSummaryRounds(messages)
   if (!rounds.length) return []
 
-  const groups: SummaryRound[][] = []
+  // Progress is derived from the source messages actually stored by summaries.
+  // Always take the earliest contiguous uncovered block so there is one strict
+  // boundary between “already summarized” and “not summarized yet”.
   let group: SummaryRound[] = []
   for (const round of rounds) {
     if (isRoundCovered(round, summaries)) {
-      if (group.length) groups.push(group)
-      group = []
-    } else group.push(round)
+      if (group.length) break
+      continue
+    }
+    group.push(round)
   }
-  if (group.length) groups.push(group)
-
-  // Both automatic and manual generation choose the newest still-uncovered
-  // block. Repeated automatic calls therefore walk backward from the present
-  // instead of starting at the beginning of the conversation.
-  for (let i = groups.length - 1; i >= 0; i--) {
-    if (groups[i].length < turnSize) continue
-    const chosen = groups[i].slice(-turnSize)
-    return messages.slice(chosen[0].startIndex, chosen[chosen.length - 1].endIndex + 1)
-  }
-  return []
+  if (!group.length || (autoOnly && group.length < turnSize)) return []
+  const chosen = group.slice(0, Math.min(turnSize, group.length))
+  return messages.slice(chosen[0].startIndex, chosen[chosen.length - 1].endIndex + 1)
 }

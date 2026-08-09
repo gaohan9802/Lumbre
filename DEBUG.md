@@ -226,3 +226,9 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 锁定只阻止单张重新生成，不阻止手动查看、纠错标记和持久化。
 - v2 封存游标必须保留；恢复高级功能不能重新启用“倒追 4000 多层旧历史”。
 - 阶段摘要兼容旧字段：旧数据使用 `overview`，新数据使用纯正文 `content`；normalize 时兼容读取。
+
+## 2026-08-08 — 摘要重复生成 / 游标语义 debug
+- 根因一：摘要列表已经写入，但 pending 只按 anchor 后的轮数计算，不检查这些消息是否已被摘要的 `sourceMessageIds` 覆盖；摘要写入与 anchor 更新又是两次 store mutation，中间 effect 可重入，同一批消息会重复请求。
+- 根因二：false→true 会把 anchor 直接推进到最后消息，相当于把关闭期间对话静默标成“已整理”，导致 UI、手动整理和自动整理三个标准不一致。
+- 修复：anchor 只负责一次性封存升级前旧历史；封存后的实时整理进度完全由摘要来源 ID 推导。自动开关不得改 anchor。请求锁使用 ref 同步生效，避免 state 异步窗口。
+- 锁定保护必须下沉到 Zustand action，不能只 disabled 按钮；否则其他调用方仍可修改/删除。原消息删除/截断的摘要失效清理也保留 locked 摘要，防止旁路删除。

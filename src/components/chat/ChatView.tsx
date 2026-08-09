@@ -21,7 +21,7 @@ import { TimelineTimerModal, TimelineCurrent } from '@/components/timeline/Timel
 import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
-import { buildSummaryRounds, messagesAfterSummaryAnchor } from '@/lib/chat-summary'
+import { buildSummaryRounds, messagesAfterSummaryAnchor, selectSummarySegment } from '@/lib/chat-summary'
 
 /* ── helpers ────────────────────────────── */
 
@@ -142,6 +142,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
   const [summaryGenerating, setSummaryGenerating] = useState(false)
+  const summaryGeneratingRef = useRef(false)
   const [stageSummaryGenerating, setStageSummaryGenerating] = useState(false)
   const stageAttemptRef = useRef('')
   const [timelineOpen, setTimelineOpen] = useState(false)
@@ -369,14 +370,14 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const generateNextSummary = useCallback(async (silent = false, autoOnly = false) => {
     const state = useChatStore.getState()
     const session = state.settings.sessions.find(item => item.id === state.settings.activeSessionId)
-    if (!session || session.partial || summaryGenerating) return false
+    if (!session || session.partial || summaryGeneratingRef.current) return false
     const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
     if (autoOnly && !config.autoEnabled) return false
     const pendingMessages = messagesAfterSummaryAnchor(session.messages, config.anchorMessageId, config.anchorTimestamp)
-    const rounds = buildSummaryRounds(pendingMessages)
-    if ((!autoOnly && rounds.length < 1) || (autoOnly && rounds.length < config.turnSize)) return false
-    const chosen = rounds.slice(0, Math.min(config.turnSize, rounds.length))
-    const segment = pendingMessages.slice(chosen[0].startIndex, chosen[chosen.length - 1].endIndex + 1)
+    const segment = selectSummarySegment(pendingMessages, session.summaries || [], config.turnSize, autoOnly)
+    if (!segment.length) return false
+    const chosen = buildSummaryRounds(segment)
+    summaryGeneratingRef.current = true
     setSummaryGenerating(true)
     try {
       const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
@@ -391,11 +392,10 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         startAt: segment[0].timestamp, endAt: segment[segment.length-1].timestamp, createdAt: Date.now(), turnCount: chosen.length,
         messageCount: segment.length, sourceMessageIds: segment.map(message => message.id), coveredUntilMessageId: segment[segment.length-1].id,
         eventSummary: String(data.content).trim() })
-      useChatStore.getState().updateSessionSummaryConfig(session.id, { anchorMessageId: segment[segment.length-1].id, anchorTimestamp: segment[segment.length-1].timestamp })
       return true
     } catch (err) { if (!silent) console.error('summary generation failed', err); return false }
-    finally { setSummaryGenerating(false) }
-  }, [summaryGenerating, addSummary])
+    finally { summaryGeneratingRef.current = false; setSummaryGenerating(false) }
+  }, [addSummary])
 
   const regenerateSummary = useCallback(async (summary: ChatSummary) => {
     const state = useChatStore.getState()
