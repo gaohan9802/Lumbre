@@ -232,3 +232,9 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 根因二：false→true 会把 anchor 直接推进到最后消息，相当于把关闭期间对话静默标成“已整理”，导致 UI、手动整理和自动整理三个标准不一致。
 - 修复：anchor 只负责一次性封存升级前旧历史；封存后的实时整理进度完全由摘要来源 ID 推导。自动开关不得改 anchor。请求锁使用 ref 同步生效，避免 state 异步窗口。
 - 锁定保护必须下沉到 Zustand action，不能只 disabled 按钮；否则其他调用方仍可修改/删除。原消息删除/截断的摘要失效清理也保留 locked 摘要，防止旁路删除。
+
+## 2026-08-08 — 公网鉴权 P0
+- 鉴权不能只做客户端遮罩；middleware 同时覆盖 HTML 与 `/api/*` 才能防止直接请求数据接口。
+- 未配置密码必须 fail closed。当前要求 `LUMBRE_ACCESS_PASSWORD` 至少 12 位，否则业务页面重定向到配置提示，API 返回 503。
+- Session Cookie 使用 HMAC 签名、HttpOnly、Secure（生产）、SameSite=Strict；服务端不保存明文 session 文件，适合 Zeabur 多次重启。
+- `_next` 静态资源需公开以加载登录页；上传照片、聊天同步、日记等业务内容仍全部在受保护 API 后。

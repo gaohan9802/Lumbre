@@ -2552,3 +2552,24 @@ author 默认 star（🐆），AI 就是星星。
 - 手动与自动整理共用同一套覆盖判定和分段标准，始终从最早的连续未整理区间向后推进。
 - 锁定摘要在 store 层禁止正文、纠错状态等任何修改，也禁止删除；仅允许明确解锁。UI 同步禁用编辑、纠错、重生成和删除。
 - 删除摘要新增二次确认，明确提示不可撤销及阶段摘要联动失效。
+
+## 2026-08-08 — P0 公网鉴权
+
+### 完成
+- 新增全站 `middleware.ts`：除登录页、登录 API 和 PWA 必需静态资源外，页面与全部 `/api/*` 默认拒绝匿名访问。
+- 页面匿名访问跳转 `/login` 并保留安全的站内 return URL；API 匿名访问返回 JSON 401，不再泄露同步、照片、日记、记忆等数据。
+- 新增单用户密码登录页与 `/api/auth/login`、`/api/auth/logout`。
+- 登录态使用 HMAC-SHA256 签名的随机 session token；Cookie 为 HttpOnly、生产环境 Secure、SameSite=Strict，30 天过期。
+- 登录接口按来源 IP 做进程内 15 分钟 / 8 次基础限流；响应全部 `no-store`，不记录密码。
+- 未配置或密码短于 12 位时 fail closed：页面只显示配置提示，API 返回 503，不会退回公开模式。
+- 增加 DENY frame、nosniff、no-referrer、Permissions-Policy 安全响应头。
+
+### Zeabur 必配
+- `LUMBRE_ACCESS_PASSWORD`：至少 12 位强密码。
+- `LUMBRE_AUTH_SECRET`：建议另设一个高强度随机值；未设置时暂用访问密码签名 Cookie。
+
+### Debug 笔记
+- 不能只在前端 page.tsx 显示密码框：那样 `/api/sync`、`/api/photos/*` 仍能被绕过 UI 直接读取。鉴权必须位于 middleware/API 之前。
+- `_next/static` 与 `_next/image` 必须放行，否则匿名用户连登录页所需 JS/CSS 都无法加载；业务数据不应打进这些静态资源。
+- PWA 的 manifest、service worker 和图标允许公开，但 service worker 调用的业务 API 仍受 Cookie 鉴权。
+- 修改 `LUMBRE_ACCESS_PASSWORD` 或 `LUMBRE_AUTH_SECRET` 会让已有签名 Cookie 自动失效，等同强制所有设备重新登录。
