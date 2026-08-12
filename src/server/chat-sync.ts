@@ -22,6 +22,7 @@ const SESSIONS_DIR = path.join(CHAT_DIR, 'sessions')
 const SNAPSHOTS_DIR = path.join(CHAT_DIR, 'snapshots')
 const MANIFEST_FILE = path.join(CHAT_DIR, 'manifest.json')
 const MANIFEST_BAK = path.join(CHAT_DIR, 'manifest.bak')
+const STORE_LOCK = path.join(CHAT_DIR, '.store-lock')
 
 export interface SessionManifestItem {
   id: string
@@ -52,6 +53,27 @@ function atomicWrite(file: string, value: string) {
   const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`)
   fs.writeFileSync(tmp, value, 'utf-8')
   fs.renameSync(tmp, file)
+}
+
+/** Serialize manifest/session mutations across sync requests and Zeabur workers. */
+function withStoreLock<T>(fn: () => T): T {
+  fs.mkdirSync(CHAT_DIR, { recursive: true })
+  const deadline = Date.now() + 5000
+  while (true) {
+    try {
+      fs.mkdirSync(STORE_LOCK)
+      fs.writeFileSync(path.join(STORE_LOCK, 'owner.json'), JSON.stringify({ pid: process.pid, at: Date.now() }))
+      break
+    } catch {
+      try {
+        const age = Date.now() - fs.statSync(STORE_LOCK).mtimeMs
+        if (age > 30_000) { fs.rmSync(STORE_LOCK, { recursive: true, force: true }); continue }
+      } catch {}
+      if (Date.now() >= deadline) throw new Error('chat store lock timeout')
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+    }
+  }
+  try { return fn() } finally { try { fs.rmSync(STORE_LOCK, { recursive: true, force: true }) } catch {} }
 }
 
 function safeId(id: string) {
@@ -94,12 +116,23 @@ function isBlankSession(s: any) {
   return (s?.messages?.length || 0) === 0 && !s?.pinned && (!s?.title || s.title === '新的对话')
 }
 
+function preserveServerWakeMessages(existing: any, incoming: any) {
+  const incomingMessages = Array.isArray(incoming?.messages) ? incoming.messages : []
+  const ids = new Set(incomingMessages.map((m: any) => m?.id).filter(Boolean))
+  const missingWake = (Array.isArray(existing?.messages) ? existing.messages : [])
+    .filter((m: any) => m?._wake && m?.id && !ids.has(m.id))
+  if (!missingWake.length) return incoming
+  const messages = [...incomingMessages, ...missingWake].sort((a: any, b: any) => (Number(a?.timestamp) || 0) - (Number(b?.timestamp) || 0))
+  return { ...incoming, messages }
+}
+
 function pickSession(a: any, b: any) {
   const aBlank = isBlankSession(a)
   const bBlank = isBlankSession(b)
   if (aBlank && !bBlank) return b
   if (bBlank && !aBlank) return a
-  return (Number(b?.updatedAt) || 0) > (Number(a?.updatedAt) || 0) ? b : a
+  if ((Number(b?.updatedAt) || 0) > (Number(a?.updatedAt) || 0)) return preserveServerWakeMessages(a, b)
+  return a
 }
 
 function writeSession(session: any, snapshot = true) {
@@ -229,6 +262,12 @@ export function loadSyncState(): SyncState {
 
 /** Merge only submitted session files. Returns the compact resulting manifest. */
 export function mergeSyncDelta(client: SyncState): SyncManifest {
+  return withStoreLock(() => mergeSyncDeltaUnlocked(client))
+}
+
+function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
+  // Invalidate the process cache after waiting for another worker's lock.
+  manifestCache = null
   const current = loadSyncManifest()
   const tombstones: Record<string, number> = { ...current.tombstones }
   for (const [id, ts] of Object.entries(client.tombstones || {})) {
@@ -248,7 +287,7 @@ export function mergeSyncDelta(client: SyncState): SyncManifest {
       continue
     }
     // Do not rewrite an unchanged long session.
-    if (!existing || winner === incoming) writeSession(winner)
+    if (!existing || winner !== existing) writeSession(winner)
     meta.set(winner.id, {
       id: winner.id,
       updatedAt: Number(winner.updatedAt) || 0,
@@ -276,6 +315,34 @@ export function mergeSyncDelta(client: SyncState): SyncManifest {
   }
   saveManifest(manifest)
   return manifest
+}
+
+
+/** Atomically append one message to the latest server copy of a session. */
+export function appendSyncSessionMessage(sessionId: string, message: any): { appended: boolean; sessionUpdatedAt: number; messageCount: number } {
+  return withStoreLock(() => {
+    manifestCache = null
+    const manifest = loadSyncManifest()
+    const meta = manifest.sessions.find(item => item.id === sessionId)
+    if (!meta) throw new Error(`wake session not found: ${sessionId}`)
+    const session = readJson(sessionFile(sessionId)) || readJson(sessionBak(sessionId))
+    if (!session?.id) throw new Error(`wake session unreadable: ${sessionId}`)
+    const messages = Array.isArray(session.messages) ? session.messages : []
+    if (messages.some((item: any) => item?.id === message?.id)) {
+      return { appended: false, sessionUpdatedAt: Number(session.updatedAt) || 0, messageCount: messages.length }
+    }
+    const now = Math.max(Date.now(), (Number(session.updatedAt) || 0) + 1, Number(message?.timestamp) || 0)
+    const updated = { ...session, messages: [...messages, message], updatedAt: now }
+    writeSession(updated)
+    const next: SyncManifest = {
+      ...manifest,
+      sessions: manifest.sessions.map(item => item.id === sessionId
+        ? { id: sessionId, updatedAt: now, messageCount: updated.messages.length }
+        : item),
+    }
+    saveManifest(next)
+    return { appended: true, sessionUpdatedAt: now, messageCount: updated.messages.length }
+  })
 }
 
 // Legacy helpers retained for compatibility with any old server imports.

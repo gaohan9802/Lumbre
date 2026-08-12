@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  loadWakeConfig, saveWakeConfig, loadWakeLogs,
+  loadWakeConfig, loadWakeLogs, updateWakeSettings,
   startWakeEngine, stopWakeEngine, reportActivity,
   nextWakeInfo, scheduleWake,
 } from '@/server/autowake'
@@ -27,14 +27,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, alarm })
   }
 
-  const config = loadWakeConfig()
-
-  if (body.enabled !== undefined) config.enabled = !!body.enabled
-  if (body.sessionId !== undefined) config.sessionId = body.sessionId
-  if (body.customPrompt !== undefined) config.customPrompt = body.customPrompt
-  if (body.pushEnabled !== undefined) config.pushEnabled = !!body.pushEnabled
-
-  saveWakeConfig(config)
+  const config = updateWakeSettings({
+    ...(body.enabled !== undefined ? { enabled: !!body.enabled } : {}),
+    ...(body.sessionId !== undefined ? { sessionId: body.sessionId || null } : {}),
+    ...(body.customPrompt !== undefined ? { customPrompt: body.customPrompt } : {}),
+    ...(body.pushEnabled !== undefined ? { pushEnabled: !!body.pushEnabled } : {}),
+  })
 
   if (config.enabled) {
     startWakeEngine()

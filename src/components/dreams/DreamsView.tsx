@@ -18,6 +18,11 @@ interface WakeLog {
   actions: { type: string; name?: string; input?: any; result?: string; timestamp: number }[]
   response: string
   silent: boolean
+  trigger?: 'interval' | 'alarm'
+  startedAt?: number
+  finishedAt?: number
+  sessionWrite?: 'appended' | 'duplicate' | 'skipped' | 'failed'
+  error?: string
 }
 
 interface WakeConfig {
@@ -267,7 +272,7 @@ export function DreamsView() {
                   )}
                   {config.lastWakeAt > 0 && <p>上次醒来：{fmtRelative(config.lastWakeAt)}</p>}
                   {config.lastActivityAt > 0 && <p>上次活动：{fmtRelative(config.lastActivityAt)}</p>}
-                  <p>规则：白天(9-24点)每小时 · 深夜(0-9点)每3小时 · 30分钟内有对话则跳过</p>
+                  <p>规则：白天(9-24点)每小时 · 深夜(0-9点)每3小时 · 所有唤醒（含闹钟）都等待对话安静30分钟</p>
                 </div>
               )}
             </div>
@@ -378,6 +383,13 @@ export function DreamsView() {
                               <span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>触发原因</span>
                               <p className="text-xs mt-0.5">{log.reason}</p>
                             </div>
+
+                            <div className={`text-[10px] grid grid-cols-2 gap-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                              <span>类型：{log.trigger === 'alarm' ? '闹钟' : '定时'}</span>
+                              <span>写入：{log.sessionWrite || '旧记录'}</span>
+                              {log.startedAt && log.finishedAt && <span>耗时：{Math.max(0, Math.round((log.finishedAt - log.startedAt) / 1000))}秒</span>}
+                            </div>
+                            {log.error && <p className={`text-[10px] rounded-lg p-2 ${n ? 'bg-night-error/10 text-night-error' : 'bg-red-50 text-red-600'}`}>{log.error}</p>}
 
                             {log.actions.length > 0 && (
                               <div>

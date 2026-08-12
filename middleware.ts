@@ -28,6 +28,13 @@ export async function middleware(request: NextRequest) {
 
   if (isPublic) return securityHeaders(NextResponse.next())
 
+  // Server-side heartbeat calls /api/chat through localhost and has no browser cookie.
+  // Keep the bypass secret-only; never trust host/origin headers by themselves.
+  const internalSecret = process.env.LUMBRE_INTERNAL_SECRET || process.env.LUMBRE_AUTH_SECRET || process.env.LUMBRE_ACCESS_PASSWORD
+  if (pathname === '/api/chat' && internalSecret && request.headers.get('x-lumbre-internal') === internalSecret) {
+    return securityHeaders(NextResponse.next())
+  }
+
   if (!isAuthConfigured()) {
     if (pathname.startsWith('/api/')) {
       return securityHeaders(NextResponse.json(

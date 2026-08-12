@@ -238,3 +238,11 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 未配置密码必须 fail closed。当前要求 `LUMBRE_ACCESS_PASSWORD` 至少 12 位，否则业务页面重定向到配置提示，API 返回 503。
 - Session Cookie 使用 HMAC 签名、HttpOnly、Secure（生产）、SameSite=Strict；服务端不保存明文 session 文件，适合 Zeabur 多次重启。
 - `_next` 静态资源需公开以加载登录页；上传照片、聊天同步、日记等业务内容仍全部在受保护 API 后。
+
+## 2026-08-08 — 自主唤醒可靠性 debug
+- 闹钟遵守冷却时不能在“到点但仍冷却”这一 tick 删除 alarm；必须保持 pending，只有真正执行一次唤醒后才消费，否则闹钟会静默丢失。
+- 只做原子 append 仍不足以保证聊天框永不丢唤醒：客户端可能持有 append 前的完整 session，稍后以更大 `updatedAt` 上传并覆盖。sync merge 必须显式保留 incoming 中缺少的服务器 `_wake` 消息。
+- session 文件和 manifest 是两份关联状态；append 与普通 sync 都必须共用同一个 `/persistent/chat/.store-lock`，否则两个 worker 会各自读旧 manifest 后覆盖对方的 meta 更新。
+- `/api/chat` 已受全站 middleware 保护，服务端 localhost fetch 不带浏览器 Cookie，会得到 401。内部调用必须使用专用 secret header，并且 middleware 只能按 secret 放行，不能仅信任 localhost Host/Origin。
+- `lastActivityAt` 只是上报缓存，分片 session 最后一条 user 消息才是可复核真源；冷却判断和 UI 预计时间必须共用同一个 effective activity 算法。
+- push 标签只有在 `pushEnabled` 且实际调用发送后才算“已做动作”；关闭 push 时模型输出的标签被剥离，但不应凭空生成“推送过”的防重复记录。

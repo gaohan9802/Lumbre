@@ -2573,3 +2573,21 @@ author 默认 star（🐆），AI 就是星星。
 - `_next/static` 与 `_next/image` 必须放行，否则匿名用户连登录页所需 JS/CSS 都无法加载；业务数据不应打进这些静态资源。
 - PWA 的 manifest、service worker 和图标允许公开，但 service worker 调用的业务 API 仍受 Cookie 鉴权。
 - 修改 `LUMBRE_ACCESS_PASSWORD` 或 `LUMBRE_AUTH_SECRET` 会让已有签名 Cookie 自动失效，等同强制所有设备重新登录。
+
+## 2026-08-08 — 自主唤醒可靠性修复
+
+### 完成
+- `wake_me` 不再绕过 30 分钟对话冷却：到点后闹钟保持 pending，待主对话安静满 30 分钟后继续触发，不会因冷却被丢弃。
+- 冷却时间同时参考 `wake-config.lastActivityAt` 与目标分片会话最后一条 user 消息时间，取较新者；“预计下一次唤醒”也按同一规则展示。
+- 新增进程内 `wakeInFlight` 与 `/persistent/.wake-engine-lease` 跨 worker lease；唤醒开始后不会被 2 分钟 timer 重入，多 Zeabur worker 也只允许一个执行者。
+- 唤醒模型请求增加 2 分钟 Abort 超时、HTTP status/error body 检查；公网鉴权开启后，localhost `/api/chat` 使用 secret-only internal header，不依赖浏览器 Cookie。
+- 唤醒写回改为 `appendSyncSessionMessage()`：执行结束时读取最新分片并按消息 ID 追加，不再拿启动时旧 session 整体覆盖。
+- chat sync 写入增加 `/persistent/chat/.store-lock` 串行化；较新的客户端 session 覆盖时会保留服务器上缺失的 `_wake` 消息，避免客户端旧快照再次抹掉刚追加的唤醒气泡。
+- 防重复升级为持久化结构 digest：保存工具名、关键对象/URL、完整 input 指纹、发言摘要与实际发送的 push；下一次唤醒注入最近 12 次 digest。
+- 唤醒日志增加 trigger、started/finished、冷却依据、写入结果和错误；现实与梦境详情页显示触发类型、耗时、session 写入状态与错误。
+- wake config 与日志改为原子写；activity、闹钟、UI 设置和唤醒完成状态通过 config lock 合并，避免旧配置覆盖新活动时间或新闹钟。
+
+### 验证
+- 使用现有依赖执行 `tsc --noEmit`：通过；项目环境原缺少 `web-push` 包，临时仅添加未提交的模块声明后完成全量类型检查。
+- `git diff --check`：通过。
+- 未运行 Next production build，继续交由 Zeabur 自动构建。
