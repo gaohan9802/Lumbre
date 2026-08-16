@@ -246,3 +246,10 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - `/api/chat` 已受全站 middleware 保护，服务端 localhost fetch 不带浏览器 Cookie，会得到 401。内部调用必须使用专用 secret header，并且 middleware 只能按 secret 放行，不能仅信任 localhost Host/Origin。
 - `lastActivityAt` 只是上报缓存，分片 session 最后一条 user 消息才是可复核真源；冷却判断和 UI 预计时间必须共用同一个 effective activity 算法。
 - push 标签只有在 `pushEnabled` 且实际调用发送后才算“已做动作”；关闭 push 时模型输出的标签被剥离，但不应凭空生成“推送过”的防重复记录。
+
+## 2026-08-08 — 摘要消失、吞对话、Web Push / load failed
+- **摘要消失根因**：会话同步是整份 newer-wins；旧客户端或本地 partial 尾部可带着更大的 `updatedAt` 上传空 `summaries/stageSummaries`，把服务器摘要字段一起抹掉。修复为：服务器已有摘要而 incoming 为空时保留；读取时从 session `.bak` 和 14 天快照恢复。
+- **吞 3–4 轮根因**：localStorage 只保留 100 条 warm tail，但 partial session 曾可能以 newer-wins 覆盖完整持久文件；另外普通同步有 1.8 秒 debounce，发完马上刷新/关闭存在未上传窗口。修复为 partial 按 message id 合并，且每条 user/assistant 消息立即调用原子 append 接口。
+- **Push 测试无反馈**：旧 UI 把所有 `sent=0` 都显示成“没有订阅”，掩盖了 VAPID mismatch、410、网络错误。现在校验浏览器 subscription 的 applicationServerKey；密钥变化自动重订阅，服务端返回去敏后的真实错误和 502。
+- **`load failed` 判断**：通常是浏览器 FetchError / Safari 网络层错误，表示请求没有完整拿到响应；聊天若已有部分 SSE 输出，保留部分内容并手动重 Roll；若零输出可安全重试。工具调用或写操作已开始后禁止自动整轮重试，避免重复发邮件、写日记、写记忆等副作用。
+- **验证**：`tsc --noEmit` 通过（当前共享 node_modules 缺 web-push 包类型，临时声明只用于验证并已删除）；`git diff --check` 通过。
