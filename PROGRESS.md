@@ -2591,3 +2591,22 @@ author 默认 star（🐆），AI 就是星星。
 - 使用现有依赖执行 `tsc --noEmit`：通过；项目环境原缺少 `web-push` 包，临时仅添加未提交的模块声明后完成全量类型检查。
 - `git diff --check`：通过。
 - 未运行 Next production build，继续交由 Zeabur 自动构建。
+# Lumbre — 项目进度与 debug 笔记
+
+## 2026-08-08 — 摘要、聊天持久化与 Web Push 修复
+
+### 已完成
+- 修复分片聊天同步：partial 本地尾部会话不再覆盖服务器完整会话；按 message id 合并，保留服务器唤醒消息。
+- 服务端新增逐条 `append_message` 持久化接口；用户消息和 assistant 消息在发送/收到后立即写入 `/persistent/chat/sessions/`，降低刷新/网络断开造成的 3–4 轮丢失。
+- 摘要保护：旧客户端上传空摘要时不再抹掉已有摘要；从 `.bak` 与最近快照恢复缺失的普通/阶段摘要。
+- Web Push：校验 subscription key；检测 VAPID key 变化后自动退订并重订阅；测试接口返回实际失败原因；Service Worker install/activate 后立即接管页面。
+
+### Debug 结论
+- `load failed` 不是单一错误。聊天上游的 `terminated/socket/fetch failed` 多为中转站断流、超时或网络连接中断；已保留已收到内容，建议直接重 Roll，不自动重试已开始输出的 turn，避免重复工具副作用。
+- 现在 push 测试若失败会返回 HTTP 502 与具体错误；若 `subscriptions=0`，说明浏览器订阅没有保存；若出现 404/410，服务端会清理失效订阅。
+- 代码验证：TypeScript（临时补齐当前环境缺失的 web-push 类型声明后）通过；`git diff --check` 通过。未在低内存环境执行 Next build。
+
+### 待部署后观察
+- 发送一条消息后立刻刷新，确认用户消息与 assistant 消息都存在。
+- 摘要窗口应恢复原有 1 条阶段摘要 + 10 条普通摘要（若持久卷中仍有备份/快照）。
+- 重新开启 PWA 推送并点击测试，查看“已发送 N 条”或具体错误。
