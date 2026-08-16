@@ -112,8 +112,50 @@ function readJson(file: string): any | null {
   try { return JSON.parse(fs.readFileSync(file, 'utf-8')) } catch { return null }
 }
 
+function summaryCount(session: any) {
+  return (Array.isArray(session?.summaries) ? session.summaries.length : 0)
+    + (Array.isArray(session?.stageSummaries) ? session.stageSummaries.length : 0)
+}
+
+/** Recover summary metadata from the rotating backup/daily snapshots after an
+ * older client accidentally uploaded an empty summary array. Message content is
+ * never replaced here; only the missing summary layer is restored. */
+function recoverMissingSummaries(session: any): any {
+  if (!session?.id || summaryCount(session) > 0 || session?._summaryRecoveryV1) return session
+  const candidates: any[] = []
+  const bak = readJson(sessionBak(session.id))
+  if (bak?.id === session.id) candidates.push(bak)
+  try {
+    const days = fs.readdirSync(SNAPSHOTS_DIR).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().reverse()
+    for (const day of days) {
+      const snap = readJson(path.join(SNAPSHOTS_DIR, day, `${safeId(session.id)}.json`))
+      if (snap?.id === session.id) candidates.push(snap)
+    }
+  } catch {}
+  const source = candidates.find(item => summaryCount(item) > 0)
+  if (!source) return session
+  return {
+    ...session,
+    summaries: Array.isArray(source.summaries) ? source.summaries : [],
+    stageSummaries: Array.isArray(source.stageSummaries) ? source.stageSummaries : [],
+    summaryConfig: session.summaryConfig || source.summaryConfig,
+    _summaryRecoveryV1: { at: Date.now(), fromUpdatedAt: Number(source.updatedAt) || 0 },
+  }
+}
+
 function isBlankSession(s: any) {
   return (s?.messages?.length || 0) === 0 && !s?.pinned && (!s?.title || s.title === '新的对话')
+}
+
+function mergeMessagesById(existing: any[], incoming: any[]) {
+  const map = new Map<string, any>()
+  for (const message of [...existing, ...incoming]) {
+    const id = String(message?.id || '')
+    if (!id) continue
+    const current = map.get(id)
+    map.set(id, !current || (Number(message?.timestamp) || 0) >= (Number(current?.timestamp) || 0) ? message : current)
+  }
+  return Array.from(map.values()).sort((a: any, b: any) => (Number(a?.timestamp) || 0) - (Number(b?.timestamp) || 0))
 }
 
 function preserveServerWakeMessages(existing: any, incoming: any) {
@@ -131,8 +173,29 @@ function pickSession(a: any, b: any) {
   const bBlank = isBlankSession(b)
   if (aBlank && !bBlank) return b
   if (bBlank && !aBlank) return a
-  if ((Number(b?.updatedAt) || 0) > (Number(a?.updatedAt) || 0)) return preserveServerWakeMessages(a, b)
-  return a
+  if ((Number(b?.updatedAt) || 0) <= (Number(a?.updatedAt) || 0)) return a
+
+  // A partial client session contains only the local warm tail. It must never
+  // replace the complete durable file. Merge its newly-created tail by id and
+  // retain server-only messages + summary metadata.
+  if (b?.partial) {
+    const messages = mergeMessagesById(Array.isArray(a?.messages) ? a.messages : [], Array.isArray(b?.messages) ? b.messages : [])
+    return preserveServerWakeMessages(a, {
+      ...a, ...b, partial: false, messages, messageCount: messages.length,
+      summaries: summaryCount(b) ? b.summaries : a.summaries,
+      stageSummaries: summaryCount(b) ? b.stageSummaries : a.stageSummaries,
+      summaryConfig: b.summaryConfig || a.summaryConfig,
+    })
+  }
+
+  // Old/background clients occasionally submit a newer full chat without the
+  // summary fields introduced later. Empty metadata must not erase a populated
+  // durable summary layer merely because that client opened the conversation.
+  const incoming = preserveServerWakeMessages(a, b)
+  if (summaryCount(a) > 0 && summaryCount(incoming) === 0) {
+    return { ...incoming, summaries: a.summaries, stageSummaries: a.stageSummaries, summaryConfig: incoming.summaryConfig || a.summaryConfig }
+  }
+  return incoming
 }
 
 function writeSession(session: any, snapshot = true) {
@@ -244,8 +307,12 @@ export function loadSyncSessions(ids: string[]): any[] {
   const result: any[] = []
   for (const id of ids) {
     if (!allowed.has(id)) continue
-    const session = readJson(sessionFile(id)) || readJson(sessionBak(id))
-    if (session?.id === id) result.push(session)
+    const raw = readJson(sessionFile(id)) || readJson(sessionBak(id))
+    if (raw?.id === id) {
+      const session = recoverMissingSummaries(raw)
+      if (session !== raw) writeSession(session, false)
+      result.push(session)
+    }
   }
   return result
 }
@@ -340,6 +407,47 @@ export function appendSyncSessionMessage(sessionId: string, message: any): { app
         ? { id: sessionId, updatedAt: now, messageCount: updated.messages.length }
         : item),
     }
+    saveManifest(next)
+    return { appended: true, sessionUpdatedAt: now, messageCount: updated.messages.length }
+  })
+}
+
+/** Atomically append a browser-created message. Creates the session when this
+ * is the first message, so a refresh immediately after Send cannot lose it. */
+export function upsertSyncSessionMessage(sessionId: string, message: any, meta: any = {}): { appended: boolean; sessionUpdatedAt: number; messageCount: number } {
+  return withStoreLock(() => {
+    manifestCache = null
+    const manifest = loadSyncManifest()
+    const oldMeta = manifest.sessions.find(item => item.id === sessionId)
+    const existing = oldMeta ? (readJson(sessionFile(sessionId)) || readJson(sessionBak(sessionId))) : null
+    const base = existing?.id ? existing : {
+      id: sessionId,
+      title: meta.title || '新的对话',
+      messages: [],
+      pinned: !!meta.pinned,
+      createdAt: Number(meta.createdAt) || Date.now(),
+      updatedAt: 0,
+      summaries: [],
+      stageSummaries: [],
+      summaryConfig: meta.summaryConfig,
+    }
+    const messages = Array.isArray(base.messages) ? base.messages : []
+    if (messages.some((item: any) => item?.id === message?.id)) {
+      return { appended: false, sessionUpdatedAt: Number(base.updatedAt) || 0, messageCount: messages.length }
+    }
+    const now = Math.max(Date.now(), (Number(base.updatedAt) || 0) + 1, Number(message?.timestamp) || 0)
+    const updated = {
+      ...base,
+      title: meta.title || base.title,
+      pinned: meta.pinned !== undefined ? !!meta.pinned : !!base.pinned,
+      messages: [...messages, message],
+      messageCount: messages.length + 1,
+      partial: false,
+      updatedAt: now,
+    }
+    writeSession(updated)
+    const item = { id: sessionId, updatedAt: now, messageCount: updated.messages.length }
+    const next: SyncManifest = { ...manifest, sessions: oldMeta ? manifest.sessions.map(x => x.id === sessionId ? item : x) : [...manifest.sessions, item] }
     saveManifest(next)
     return { appended: true, sessionUpdatedAt: now, messageCount: updated.messages.length }
   })

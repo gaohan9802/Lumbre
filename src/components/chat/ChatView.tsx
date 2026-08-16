@@ -459,6 +459,18 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   }, [activeSession?.id, activeSession?.updatedAt, activeSession?.partial, activeSession?.summaryConfig?.autoEnabled,
     activeSession?.summaryConfig?.turnSize, activeSession?.summaryConfig?.anchorMessageId, summaryGenerating, generateNextSummary])
 
+  const durableAppend = useCallback((session: any, message: ChatMessage) => {
+    if (!session?.id || !message?.id) return
+    void fetch('/api/sync', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'append_message', sessionId: session.id, message, sessionMeta: {
+        title: session.title, pinned: session.pinned, createdAt: session.createdAt,
+        summaryConfig: session.summaryConfig,
+      } }),
+      keepalive: true,
+    }).catch(() => {})
+  }, [])
+
   const handleSend = async () => {
     if ((!input.trim() && pendingImages.length === 0) || isLoading) return
     const profile = getActiveProfile(settings)
@@ -475,6 +487,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
     stickBottomRef.current = true
     addMessage(userMsg)
+    durableAppend(activeSession, userMsg)
     onTurn?.('user', userMsg.content)
     setInput('')
     setPendingImages([])
@@ -497,7 +510,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
     await doSend(apiMessages, (data) => {
       const assistantContent = data.content || data.error || '...'
-      addMessage({
+      const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: assistantContent,
@@ -511,7 +524,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         content_blocks: data.content_blocks,
         providerId: profile?.id,
         modelId: model,
-      })
+      }
+      addMessage(assistantMsg)
+      durableAppend(activeSession, assistantMsg)
       onTurn?.('assistant', assistantContent)
       setIsLoading(false)
       setStreamText('')

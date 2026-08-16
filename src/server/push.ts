@@ -75,6 +75,7 @@ export async function sendPushMessages(messages: string[], title = '星星醒了
   let subscriptions = listPushSubscriptions()
   let sent = 0
   let failed = 0
+  const errors: string[] = []
   const dead = new Set<string>()
   for (const message of clean) {
     const payload = JSON.stringify({ title, body: message.slice(0, 180), url: '/', tag: `star-wake-${Date.now()}-${sent}` })
@@ -83,7 +84,9 @@ export async function sendPushMessages(messages: string[], title = '星星醒了
       if (result.status === 'fulfilled') sent++
       else {
         failed++
-        const status = Number((result.reason as any)?.statusCode || 0)
+        const reason: any = result.reason
+        errors.push(String(reason?.statusCode || reason?.message || reason || 'push failed').slice(0, 300))
+        const status = Number(reason?.statusCode || 0)
         if (status === 404 || status === 410) dead.add(subscriptions[index].endpoint)
       }
     })
@@ -92,5 +95,5 @@ export async function sendPushMessages(messages: string[], title = '星星醒了
     subscriptions = subscriptions.filter((s) => !dead.has(s.endpoint))
     atomicWrite(SUBS_FILE, subscriptions)
   }
-  return { sent, failed, subscriptions: subscriptions.length }
+  return { sent, failed, subscriptions: subscriptions.length, errors: Array.from(new Set(errors)).slice(0, 8) }
 }

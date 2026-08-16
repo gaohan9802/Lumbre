@@ -118,11 +118,21 @@ export function DreamsView() {
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') throw new Error('通知权限没有开启')
       const registration = await navigator.serviceWorker.register('/sw.js')
-      const info = await fetch('/api/push', { cache: 'no-store' }).then((r) => r.json())
+      await navigator.serviceWorker.ready
+      const infoRes = await fetch('/api/push', { cache: 'no-store' })
+      const info = await infoRes.json()
+      if (!infoRes.ok || !info.publicKey) throw new Error(info.error || '无法读取推送密钥')
+      const serverKey = urlBase64ToUint8Array(info.publicKey)
       let subscription = await registration.pushManager.getSubscription()
-      if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(info.publicKey) })
-      await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'subscribe', subscription: subscription.toJSON() }) })
-      await fetch('/api/wake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pushEnabled: true }) })
+      const currentKey = subscription?.options?.applicationServerKey ? new Uint8Array(subscription.options.applicationServerKey) : null
+      const keyMatches = currentKey && currentKey.length === serverKey.length && currentKey.every((value, index) => value === serverKey[index])
+      if (subscription && !keyMatches) { await subscription.unsubscribe(); subscription = null }
+      if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: serverKey })
+      const subRes = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'subscribe', subscription: subscription.toJSON() }) })
+      const subData = await subRes.json()
+      if (!subRes.ok) throw new Error(subData.error || '保存推送订阅失败')
+      const wakeRes = await fetch('/api/wake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pushEnabled: true }) })
+      if (!wakeRes.ok) throw new Error('启用唤醒推送失败')
       if (config) setConfig({ ...config, pushEnabled: true })
       setPushStatus('已连接这台设备')
     } catch (err: any) { setPushStatus(err?.message || '开启失败') }
@@ -150,8 +160,9 @@ export function DreamsView() {
     try {
       const r = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'test' }) })
       const d = await r.json()
-      setPushStatus(d.sent ? `已发送 ${d.sent} 条` : '没有可用的订阅设备')
-    } catch { setPushStatus('测试发送失败') }
+      if (!r.ok) throw new Error(d.errors?.join('；') || d.error || '推送服务返回失败')
+      setPushStatus(d.sent ? `已发送 ${d.sent} 条` : `没有可用的订阅设备（订阅 ${d.subscriptions || 0}）`)
+    } catch (err: any) { setPushStatus(err?.message || '测试发送失败') }
     setPushBusy(false)
   }
 

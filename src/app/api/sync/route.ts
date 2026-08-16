@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadSyncManifest, loadSyncSessions, loadSyncState, mergeSyncDelta } from '@/server/chat-sync'
+import { loadSyncManifest, loadSyncSessions, loadSyncState, mergeSyncDelta, upsertSyncSessionMessage } from '@/server/chat-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +36,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}))
+    if (body.action === 'append_message' && body.sessionId && body.message?.id) {
+      return json({ ok: true, ...upsertSyncSessionMessage(String(body.sessionId), body.message, body.sessionMeta || {}) })
+    }
     const client = {
       sessions: Array.isArray(body.sessions) ? body.sessions : [],
       tombstones: body.tombstones && typeof body.tombstones === 'object' ? body.tombstones : {},
