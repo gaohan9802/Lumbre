@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Download, Check, Power, Plus } from 'lucide-react'
+import { X, Download, Check, Power, Plus, Trash2 } from 'lucide-react'
 import { useTheme } from '@/lib/theme'
 import {
   useChatStore,
@@ -41,6 +41,7 @@ export function ModelDialog({ open, onClose }: Props) {
     setAllModelsEnabled,
     addManualModel,
     updateModelMeta,
+    deleteModel,
   } = useChatStore()
 
   const [addOpen, setAddOpen] = useState(false)
@@ -173,6 +174,14 @@ export function ModelDialog({ open, onClose }: Props) {
                                 <div className="text-[10px] opacity-40 truncate">{m.id}</div>
                               </button>
                               {active && <Check size={15} className={`flex-shrink-0 ${isNight ? 'text-night-amber' : 'text-day-pink'}`} />}
+                              {expanded && (
+                                <button
+                                  disabled={p.models.length <= 1}
+                                  onClick={() => { if (confirm(`删除模型「${m.name || m.id}」？此操作不会删除整个 API。`)) deleteModel(p.id, m.id) }}
+                                  className="p-1 text-red-500/60 hover:text-red-500 disabled:opacity-20 disabled:cursor-not-allowed"
+                                  title={p.models.length <= 1 ? '每个 API 至少保留一个模型' : '删除这个模型'}
+                                ><Trash2 size={13} /></button>
+                              )}
                             </div>
                             <div className="flex items-center gap-3 mt-1.5 pl-1 text-[10px] opacity-60">
                               <span>输入 {fmtPrice(m.inputPrice)}/1M</span>

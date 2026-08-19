@@ -86,6 +86,18 @@ async function pullIncremental() {
     await fetchSessionBatch(needed.slice(i, i + 40))
   }
 
+  // On a fresh device/reload, a local blank draft must not remain selected
+  // after the real sessions arrive. Resume the newest conversation once; do
+  // not change selection on later background syncs.
+  const hydrated = useChatStore.getState()
+  const active = hydrated.settings.sessions.find(s => s.id === hydrated.settings.activeSessionId)
+  if (!active || isBlankSession(active)) {
+    const latest = hydrated.settings.sessions
+      .filter(s => !isBlankSession(s))
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+    if (latest) hydrated.setActiveSession(latest.id)
+  }
+
   pushedSnapshot = snapshotFromManifest(manifest)
   pushedConfigAt = Number(data.configUpdatedAt) || 0
   bootstrapped = true

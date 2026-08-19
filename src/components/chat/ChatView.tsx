@@ -156,7 +156,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
   const [editingMsgText, setEditingMsgText] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [modelSearchText, setModelSearchText] = useState('')
   const [modelFilterProvider, setModelFilterProvider] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
 
@@ -171,6 +170,17 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const stickBottomRef = useRef(true)
 
   useEffect(() => { setMounted(true) }, [])
+  // Entering Chat should resume the most recently used conversation, not a
+  // stale/blank draft left active by an earlier reload or another device.
+  useEffect(() => {
+    const latest = settings.sessions
+      .filter((session) => !((session.messageCount || session.messages.length) === 0 && !session.pinned))
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+    if (latest && latest.id !== settings.activeSessionId) setActiveSession(latest.id)
+    // This is intentionally mount-only: once the user switches chats, sync or
+    // incoming wake messages must not pull the UI away from their choice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const refreshTimelineCurrent = useCallback(async () => {
     try { const r = await fetch('/api/timeline', { cache: 'no-store' }); const d = await r.json(); setTimelineCurrent(d.current || null) } catch {}
   }, [])
@@ -576,32 +586,35 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       // User retry: regenerate the AI response that follows
       const idx = messages.findIndex(m => m.id === msg.id)
       const nextMsg = messages[idx + 1]
-      if (nextMsg && nextMsg.role === 'assistant') {
-        const slice = stableSlice(messages.slice(0, idx + 1), settings.contextLength)
-        const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
+      const slice = stableSlice(messages.slice(0, idx + 1), settings.contextLength)
+      const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
 
-        await doSend(apiMessages, (data) => {
-          const newVersion: MessageVersion = {
-            content: data.content || data.error || '...',
-            timestamp: Date.now(),
-            thinking: data.thinking,
-            input_tokens: data.input_tokens,
-            output_tokens: data.output_tokens,
-            cache_read_tokens: data.cache_read_tokens,
-            cache_creation_tokens: data.cache_creation_tokens,
-            tool_calls: data.tool_calls,
-            content_blocks: data.content_blocks,
-            providerId: profile?.id,
-            modelId: model,
-          }
-          addMessageVersion(nextMsg.id, newVersion)
-          setIsLoading(false)
-          setStreamText('')
-          setStreamThinking('')
-        })
-      } else {
+      await doSend(apiMessages, (data) => {
+        const reply = {
+          content: data.content || data.error || '...',
+          timestamp: Date.now(),
+          thinking: data.thinking,
+          input_tokens: data.input_tokens,
+          output_tokens: data.output_tokens,
+          cache_read_tokens: data.cache_read_tokens,
+          cache_creation_tokens: data.cache_creation_tokens,
+          tool_calls: data.tool_calls,
+          content_blocks: data.content_blocks,
+          providerId: profile?.id,
+          modelId: model,
+        }
+        if (nextMsg?.role === 'assistant') {
+          addMessageVersion(nextMsg.id, reply)
+        } else {
+          const assistantMsg: ChatMessage = { id: `${Date.now()}-reroll`, role: 'assistant', ...reply }
+          addMessage(assistantMsg)
+          durableAppend(useChatStore.getState().settings.sessions.find(session => session.id === useChatStore.getState().settings.activeSessionId), assistantMsg)
+        }
         setIsLoading(false)
-      }
+        setStreamText('')
+        setStreamThinking('')
+        setStreamBlocks([])
+      })
     }
   }
 
@@ -695,10 +708,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   const filteredModels = enabledModels.filter(({ profile, model }) => {
     if (modelFilterProvider && profile.name !== modelFilterProvider) return false
-    if (modelSearchText) {
-      const q = modelSearchText.toLowerCase()
-      return (model.name || '').toLowerCase().includes(q) || model.id.toLowerCase().includes(q) || profile.name.toLowerCase().includes(q)
-    }
     return true
   })
 
@@ -814,7 +823,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               </div>
             )}
 
-            <AnimatePresence initial={false}>
+            <div>
               {visibleMessages.map((msg) => {
                 const isUser = msg.role === 'user'
                 const versions = msg.versions || []
@@ -823,7 +832,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 const isEditing = editingMsgId === msg.id
 
                 return (
-                  <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex">
+                  <div key={msg.id} className="flex mb-4">
                     <div className="w-full space-y-1">
                       {/* wake indicator */}
                       {(msg as any)._wake && (
@@ -1042,10 +1051,10 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                       )}
 
                     </div>
-                  </motion.div>
+                  </div>
                 )
               })}
-            </AnimatePresence>
+            </div>
 
             {/* loading / streaming */}
             {isLoading && (
@@ -1158,7 +1167,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             <div className={`chat-input-tray flex items-end gap-2 px-3 py-2 rounded-2xl border transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50 focus-within:shadow-[0_10px_30px_rgba(226,168,75,0.10)]' : 'bg-[#fffaf7]/95 border-day-muted/10 shadow-[0_8px_24px_rgba(93,64,55,0.10)] focus-within:border-day-pink/35 focus-within:shadow-[0_10px_30px_rgba(239,64,103,0.10)]'}`}>
               <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
                 placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
-                className={`no-frame flex-1 resize-none bg-transparent outline-none text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
+                className={`no-frame flex-1 resize-none bg-transparent outline-none text-base md:text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
               <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
               <button onClick={() => setTimelineOpen(true)} title={timelineCurrent ? `结束：${timelineCurrent.title}` : '开始计时'} className={`p-2 rounded-xl flex-shrink-0 ${timelineCurrent ? (n ? 'text-night-amber bg-night-amber/10' : 'text-day-pink bg-day-pinkLight') : 'opacity-60 hover:opacity-100'}`}><Clock3 size={16}/></button>
               <button onClick={() => imgInputRef.current?.click()} disabled={uploadingImg} title="上传图片到照片墙"
@@ -1213,21 +1222,14 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                   style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
                   {/* drag handle */}
                   <div className="flex justify-center pt-2 pb-1"><div className={`w-10 h-1 rounded-full ${n ? 'bg-night-border' : 'bg-gray-300'}`} /></div>
-                  {/* search */}
-                  <div className="px-4 pb-2">
-                    <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl ${n ? 'bg-night-surface' : 'bg-gray-50'}`}>
-                      <Search size={14} className="opacity-40" />
-                      <input value={modelSearchText} onChange={(e) => setModelSearchText(e.target.value)} placeholder="搜索模型…"
-                        className="bg-transparent outline-none text-sm flex-1" autoFocus />
-                    </div>
-                  </div>
+                  <div className="px-4 pb-2 text-xs opacity-50">选择要使用的模型</div>
                   {/* model list */}
                   <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1">
                     {filteredModels.map(({ profile, model }) => {
                       const active = settings.activeProfileId === profile.id && settings.model === model.id
                       return (
                         <button key={`${profile.id}-${model.id}`}
-                          onClick={() => { setActiveModel(profile.id, model.id); setModelPickerOpen(false); setModelSearchText('') }}
+                          onClick={() => { setActiveModel(profile.id, model.id); setModelPickerOpen(false) }}
                           className={`w-full text-left px-3 py-2.5 rounded-xl ${active ? (n ? 'bg-night-amber/15' : 'bg-day-lemon') : (n ? 'hover:bg-night-surface' : 'hover:bg-gray-50')}`}>
                           <div className="flex items-center justify-between">
                             <div className="min-w-0">

@@ -261,6 +261,7 @@ interface ChatStore {
   addManualModel: (profileId: string, modelId: string) => void
   setAllModelsEnabled: (profileId: string, enabled: boolean) => void
   updateModelMeta: (profileId: string, modelId: string, patch: Partial<ProviderModel>) => void
+  deleteModel: (profileId: string, modelId: string) => void
 
   continueSession: (tailCount?: number) => string
 
@@ -830,6 +831,22 @@ export const useChatStore = create<ChatStore>()(
           ? { ...p, models: p.models.map((m) => m.id === modelId ? { ...m, ...patch } : m) }
           : p)
         const nextSettings = bumpConfig({ ...settings, apiProfiles: profiles })
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
+      deleteModel: (profileId, modelId) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const profiles = settings.apiProfiles.map((p) => {
+          if (p.id !== profileId || p.models.length <= 1) return p
+          const models = p.models.filter((m) => m.id !== modelId)
+          if (models.length === p.models.length) return p
+          const fallback = models.find((m) => m.enabled) || models[0]
+          return { ...p, models, defaultModel: p.defaultModel === modelId ? fallback.id : p.defaultModel }
+        })
+        const active = profiles.find((p) => p.id === settings.activeProfileId) || profiles[0]
+        const selectedStillExists = active.models.some((m) => m.id === settings.model)
+        const model = selectedStillExists ? settings.model : (active.models.find((m) => m.enabled) || active.models[0]).id
+        const nextSettings = bumpConfig(normalizeSettings({ ...settings, apiProfiles: profiles, model }))
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 

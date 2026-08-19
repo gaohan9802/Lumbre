@@ -253,3 +253,11 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - **Push 测试无反馈**：旧 UI 把所有 `sent=0` 都显示成“没有订阅”，掩盖了 VAPID mismatch、410、网络错误。现在校验浏览器 subscription 的 applicationServerKey；密钥变化自动重订阅，服务端返回去敏后的真实错误和 502。
 - **`load failed` 判断**：通常是浏览器 FetchError / Safari 网络层错误，表示请求没有完整拿到响应；聊天若已有部分 SSE 输出，保留部分内容并手动重 Roll；若零输出可安全重试。工具调用或写操作已开始后禁止自动整轮重试，避免重复发邮件、写日记、写记忆等副作用。
 - **验证**：`tsc --noEmit` 通过（当前共享 node_modules 缺 web-push 包类型，临时声明只用于验证并已删除）；`git diff --check` 通过。
+
+## 2026-08-19 — Chat 白屏重载与字号变小
+- iOS Safari/PWA 对小于 16px 的 input/textarea 会在聚焦时自动放大 viewport；页面随后若被 WebKit 内存回收并恢复，容易表现为整页字号比例异常。聊天主输入框移动端必须至少 16px，并设置 `-webkit-text-size-adjust: 100%`。
+- `maximum-scale=1` 不能替代输入框 16px：不同 iOS/PWA 版本仍可能调整视觉 viewport，正确修复是输入控件本身满足字号阈值。
+- 长会话即使只显示最近 50 条，每条都使用 Framer Motion 仍会建立大量动画状态/合成工作；消息正文没有必要逐条常驻动画。保留加载气泡和弹窗动画即可。
+- “默认最新会话”有两个时机：localStorage rehydrate 后 ChatView mount，以及 `/persistent` manifest/session hydrate 后。只修 mount 会在新设备或空白草稿场景失效；同步完成后需再做一次仅针对 blank active session 的选择。
+- user 重 Roll 不能假设下一条一定存在 assistant。发送后刷新、旧同步丢回复或请求中断时，按钮此前直接结束，表现为空按钮；应在无下一条回复时创建新 assistant。
+- 删除具体模型必须同时维护 profile.defaultModel 与全局 settings.model；否则 UI 已删模型但请求仍带旧 model id。每个 API 至少留一个模型，避免 normalize 时又把已删默认模型自动补回来。
