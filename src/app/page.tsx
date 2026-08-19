@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import { useApp } from '@/lib/store'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
+import { ViewErrorBoundary } from '@/components/layout/ViewErrorBoundary'
 import { motion, AnimatePresence } from 'framer-motion'
 
 function ViewLoading() {
@@ -62,7 +63,9 @@ export default function Home() {
             transition={{ duration: 0.14 }}
             className="flex-1 overflow-hidden"
           >
-            <View />
+            <ViewErrorBoundary key={activeTab}>
+              <View />
+            </ViewErrorBoundary>
           </motion.div>
         </AnimatePresence>
       </main>

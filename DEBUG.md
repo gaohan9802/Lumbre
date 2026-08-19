@@ -261,3 +261,10 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - “默认最新会话”有两个时机：localStorage rehydrate 后 ChatView mount，以及 `/persistent` manifest/session hydrate 后。只修 mount 会在新设备或空白草稿场景失效；同步完成后需再做一次仅针对 blank active session 的选择。
 - user 重 Roll 不能假设下一条一定存在 assistant。发送后刷新、旧同步丢回复或请求中断时，按钮此前直接结束，表现为空按钮；应在无下一条回复时创建新 assistant。
 - 删除具体模型必须同时维护 profile.defaultModel 与全局 settings.model；否则 UI 已删模型但请求仍带旧 model id。每个 API 至少留一个模型，避免 normalize 时又把已删默认模型自动补回来。
+
+## 2026-08-19 — Chat 停止生成与重 Roll 持久化
+- Abort 不能直接当普通错误处理，否则已经流到浏览器的部分回复会消失；`doSend` 现在把累计的 text/thinking/tool blocks 返回给正常落盘回调。
+- active session 切换时必须 abort 旧 reader，否则回调会按“当前会话”写入，产生跨会话串回复。
+- 版本更新没有独立 append API，因此重 Roll/编辑后立即调用公开的 `syncChatNow()`，复用现有增量 newer-wins 同步；新建 assistant 仍走原子 `append_message`。
+- 编辑 user 后直接调用 retry 前必须先从 Zustand 重新读取 messages，否则 React 闭包仍是编辑前版本，模型会收到旧文本。
+- 模型拉取提示使用 `Record<profileId, status>`，避免共享字符串显示在错误 API 卡片下。

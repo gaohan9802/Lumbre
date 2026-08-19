@@ -46,7 +46,7 @@ export function ModelDialog({ open, onClose }: Props) {
 
   const [addOpen, setAddOpen] = useState(false)
   const [fetchingId, setFetchingId] = useState<string | null>(null)
-  const [fetchError, setFetchError] = useState('')
+  const [fetchStatus, setFetchStatus] = useState<Record<string, { ok: boolean; text: string }>>({})
   const [editPriceKey, setEditPriceKey] = useState<string | null>(null) // `${profileId}:${modelId}`
   const [expandedProfile, setExpandedProfile] = useState<string | null>(null)
   const [manualModel, setManualModel] = useState('')
@@ -98,7 +98,7 @@ export function ModelDialog({ open, onClose }: Props) {
     const p = settings.apiProfiles.find((x) => x.id === providerId)
     if (!p) return
     setFetchingId(providerId)
-    setFetchError('')
+    setFetchStatus((prev) => { const next = { ...prev }; delete next[providerId]; return next })
     try {
       const data = await chat.models({ provider: p.provider, baseUrl: p.baseUrl, apiKey: p.apiKey })
       if (data.error) throw new Error(data.error)
@@ -109,9 +109,9 @@ export function ModelDialog({ open, onClose }: Props) {
       })).filter((m: any) => m.id)
       if (models.length === 0) throw new Error('API 返回了模型但格式无法解析。')
       setProviderModels(providerId, models, true)
-      setFetchError(`✓ 成功拉取 ${models.length} 个模型`)
+      setFetchStatus((prev) => ({ ...prev, [providerId]: { ok: true, text: `✓ 成功拉取 ${models.length} 个模型` } }))
     } catch (err: any) {
-      setFetchError(err?.message || '拉取失败')
+      setFetchStatus((prev) => ({ ...prev, [providerId]: { ok: false, text: err?.message || '拉取失败' } }))
     } finally {
       setFetchingId(null)
     }
@@ -240,7 +240,11 @@ export function ModelDialog({ open, onClose }: Props) {
                             <Download size={11} /> {fetchingId === p.id ? '拉取中' : '拉取'}
                           </button>
                         </div>
-                        {fetchError && <div className="text-xs text-day-error dark:text-night-error whitespace-pre-wrap">{fetchError}</div>}
+                        {fetchStatus[p.id] && (
+                          <div className={`text-xs whitespace-pre-wrap ${fetchStatus[p.id].ok ? (isNight ? 'text-night-amber' : 'text-green-600') : 'text-day-error dark:text-night-error'}`}>
+                            {fetchStatus[p.id].text}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

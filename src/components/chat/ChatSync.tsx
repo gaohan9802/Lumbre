@@ -140,7 +140,7 @@ async function syncCycle() {
   pushedConfigAt = Number(data.configUpdatedAt) || pushedConfigAt
 }
 
-function doSync() {
+export function syncChatNow() {
   if (inFlight) return inFlight
   inFlight = syncCycle()
     .then(() => {
@@ -160,33 +160,33 @@ export function ChatSync() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    doSync()
-    const iv = setInterval(doSync, 45000)
+    syncChatNow()
+    const iv = setInterval(syncChatNow, 45000)
     const unsub = useChatStore.subscribe((state, prev) => {
       if (applyingRemote) return
       if (state.settings.sessions !== prev.settings.sessions || state.settings.configUpdatedAt !== prev.settings.configUpdatedAt) {
         if (timer.current) clearTimeout(timer.current)
-        timer.current = setTimeout(doSync, 1800)
+        timer.current = setTimeout(syncChatNow, 1800)
       }
     })
 
     const resume = () => {
-      if (document.visibilityState === 'visible') doSync()
+      if (document.visibilityState === 'visible') syncChatNow()
     }
     const offline = () => useSyncStatus.getState().setSyncStatus({ phase: 'offline', error: '当前离线' })
-    window.addEventListener('online', doSync)
+    window.addEventListener('online', syncChatNow)
     window.addEventListener('offline', offline)
-    window.addEventListener('lumbre:sync-retry', doSync)
-    window.addEventListener('focus', doSync)
+    window.addEventListener('lumbre:sync-retry', syncChatNow)
+    window.addEventListener('focus', syncChatNow)
     document.addEventListener('visibilitychange', resume)
 
     return () => {
       clearInterval(iv)
       unsub()
-      window.removeEventListener('online', doSync)
+      window.removeEventListener('online', syncChatNow)
       window.removeEventListener('offline', offline)
-      window.removeEventListener('lumbre:sync-retry', doSync)
-      window.removeEventListener('focus', doSync)
+      window.removeEventListener('lumbre:sync-retry', syncChatNow)
+      window.removeEventListener('focus', syncChatNow)
       document.removeEventListener('visibilitychange', resume)
       if (timer.current) clearTimeout(timer.current)
     }

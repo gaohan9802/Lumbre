@@ -2626,3 +2626,33 @@ author 默认 star（🐆），AI 就是星星。
 - `tsc --noEmit` 通过（仅为当前共享依赖缺失的 `web-push` 类型使用临时声明，验证后已删除）。
 - `git diff --check` 通过。
 - 当前 shell 无 npm，无法执行 Next production build；未上传前已完成 TypeScript 静态验证。
+
+## 2026-08-19 — Chat 稳定性 v2：停止生成与即时版本同步
+
+### 完成
+- Chat 主请求接入 `AbortController`；生成期间发送按钮切换为停止按钮。手动停止后保留已收到的文字、思考与工具块，并正常保存为 assistant 消息。
+- 切换会话或卸载 ChatView 时主动终止旧流，避免旧回复写入新 active session。
+- assistant 重 Roll、已有 assistant 的 user 重试和 user 编辑版本完成后立即触发增量同步，不再只等待 1.8 秒防抖。
+- user 编辑保存后询问是否按新内容重算后续回复；复用现有重 Roll 管道，有回复时新增版本，无回复时新建 assistant。
+- 模型拉取成功/错误提示改为按 API profile 隔离，多个 API 展开时不再串位。
+
+### 验证
+- 隔离仓库现有未跟踪且引用缺失 `TgChatView` 的 `ChatWrapper.tsx` 后，`./node_modules/.bin/tsc --noEmit` 通过。
+- `git diff --check` 通过。
+- 本次未运行 production build；Zeabur 自动构建。
+
+## 2026-08-19 — Chat 流式完成判定、白屏兜底与 PWA 冷启动优化
+
+### 完成
+- Chat 前端收到 SSE `done` 后立即结束读取并保存回复，不再等待移动端代理迟迟不返回 FIN；修复“日志已有全部 output tokens，但页面继续卡很久”的典型假死。
+- 增加无 body 错误处理与末尾半截 SSE frame 兼容。
+- 主模块增加 React Error Boundary：单个视图渲染异常时显示可恢复页面，不再直接白屏；保留本地/服务器数据。
+- Service Worker 为同源静态 JS/CSS/字体/图片增加 stale-while-revalidate 缓存；API 不进入缓存，避免 PWA 切后台后重新加载静态资源时长时间白屏。
+
+### 验证
+- `git diff --check` 通过。
+- 当前环境未执行 production build；提交后由 Zeabur 自动构建。
+
+### Debug 笔记
+- 该问题不是模型 token 生成慢：上游 usage 已完成时，浏览器仍等待 `ReadableStream` 的 FIN。移动端代理/HTTP keep-alive 可能延迟 FIN，因此以业务层 `done` 事件作为完成信号。
+- Service Worker 只缓存版本化静态资源与图片，明确跳过 `/api/*`，避免聊天/同步数据被旧缓存污染。

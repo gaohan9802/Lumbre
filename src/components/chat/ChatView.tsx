@@ -6,7 +6,7 @@ import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft,
-  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus, Clock3, FileText,
+  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus, Clock3, FileText, Square,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -22,6 +22,7 @@ import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
 import { buildSummaryRounds, messagesAfterSummaryAnchor, selectSummarySegment } from '@/lib/chat-summary'
+import { syncChatNow } from './ChatSync'
 
 /* ── helpers ────────────────────────────── */
 
@@ -168,8 +169,10 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const [pendingImages, setPendingImages] = useState<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickBottomRef = useRef(true)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => () => abortControllerRef.current?.abort(), [settings.activeSessionId])
   // Entering Chat should resume the most recently used conversation, not a
   // stale/blank draft left active by an earlier reload or another device.
   useEffect(() => {
@@ -283,10 +286,18 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     setStreamText('')
     setStreamThinking('')
     setStreamBlocks([])
+    let fullText = ''
+    let fullThinking = ''
+    let toolCalls: any[] = []
+    let contentBlocks: ContentBlock[] = []
+    let usage: any = {}
+    const controller = new AbortController()
+    abortControllerRef.current = controller
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: sendMessages,
           system: systemPrompt,
@@ -307,14 +318,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         onDone({ content: `Error ${res.status}: ${errText.slice(0, 200)}`, error: true })
         return
       }
-      const reader = res.body!.getReader()
+      if (!res.body) throw new Error('响应没有可读取的流')
+      const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buf = ''
-      let fullText = ''
-      let fullThinking = ''
-      let toolCalls: any[] = []
-      let contentBlocks: ContentBlock[] = []
-      let usage: any = {}
+      let streamDone = false
 
       // Keep the exact event order from the tool loop. Text/thinking chunks are
       // merged only while they are adjacent; a tool call closes the current
@@ -358,9 +366,27 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               fullText += errorText
               appendContentBlock({ type: 'text', content: errorText })
               if (live) setStreamText(fullText)
-            } else if (evt.type === 'done') { usage = evt }
+            } else if (evt.type === 'done') {
+              usage = evt
+              // The server sends `done` before the SSE terminator. Do not wait
+              // for a proxy/socket FIN: mobile Safari can keep reader.read()
+              // pending for minutes after the complete answer already arrived.
+              streamDone = true
+            }
           } catch { /* ignore parse errors (incl. keepalive comments) */ }
         }
+        if (streamDone) {
+          try { await reader.cancel() } catch {}
+          break
+        }
+      }
+      // A final partial line is uncommon, but proxies are allowed to split the
+      // last SSE frame. Parse it once so a completed answer is never lost.
+      if (!streamDone && buf.startsWith('data: ')) {
+        try {
+          const evt = JSON.parse(buf.slice(6))
+          if (evt.type === 'done') usage = evt
+        } catch {}
       }
       onDone({
         content: fullText,
@@ -373,7 +399,19 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         cache_creation_tokens: usage.cache_creation_tokens,
       })
     } catch (err: any) {
-      onDone({ content: err?.message || '连接失败了…', error: true })
+      if (err?.name === 'AbortError') {
+        onDone({
+          content: fullText || '已停止生成。',
+          thinking: fullThinking || undefined,
+          tool_calls: toolCalls.length ? toolCalls : undefined,
+          content_blocks: contentBlocks.length ? contentBlocks : undefined,
+          stopped: true,
+        })
+      } else {
+        onDone({ content: err?.message || '连接失败了…', error: true })
+      }
+    } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null
     }
   }
 
@@ -548,18 +586,23 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   /* ── retry ────────────────────────────── */
 
-  const handleRetry = async (msg: ChatMessage) => {
-    const ok = await ask(msg.role === 'assistant' ? '重新生成这条回复？' : '重新发送并生成回复？')
-    if (!ok) return
+  const handleRetry = async (msg: ChatMessage, skipConfirm = false) => {
+    if (isLoading) return
+    if (!skipConfirm) {
+      const ok = await ask(msg.role === 'assistant' ? '重新生成这条回复？' : '重新发送并生成回复？')
+      if (!ok) return
+    }
 
     const profile = getActiveProfile(settings)
     const model = settings.model
     setIsLoading(true)
+    const currentMessages = useChatStore.getState().messages
 
     if (msg.role === 'assistant') {
       // Re-generate: use messages up to (but not including) this assistant message
-      const idx = messages.findIndex(m => m.id === msg.id)
-      const slice = stableSlice(messages.slice(0, idx), settings.contextLength)
+      const idx = currentMessages.findIndex(m => m.id === msg.id)
+      if (idx < 0) { setIsLoading(false); return }
+      const slice = stableSlice(currentMessages.slice(0, idx), settings.contextLength)
       const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
 
       await doSend(apiMessages, (data) => {
@@ -577,6 +620,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           modelId: model,
         }
         addMessageVersion(msg.id, newVersion)
+        void syncChatNow()
         setIsLoading(false)
         setStreamText('')
         setStreamThinking('')
@@ -584,9 +628,10 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       })
     } else {
       // User retry: regenerate the AI response that follows
-      const idx = messages.findIndex(m => m.id === msg.id)
-      const nextMsg = messages[idx + 1]
-      const slice = stableSlice(messages.slice(0, idx + 1), settings.contextLength)
+      const idx = currentMessages.findIndex(m => m.id === msg.id)
+      if (idx < 0) { setIsLoading(false); return }
+      const nextMsg = currentMessages[idx + 1]
+      const slice = stableSlice(currentMessages.slice(0, idx + 1), settings.contextLength)
       const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
 
       await doSend(apiMessages, (data) => {
@@ -605,6 +650,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         }
         if (nextMsg?.role === 'assistant') {
           addMessageVersion(nextMsg.id, reply)
+          void syncChatNow()
         } else {
           const assistantMsg: ChatMessage = { id: `${Date.now()}-reroll`, role: 'assistant', ...reply }
           addMessage(assistantMsg)
@@ -645,20 +691,24 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     setEditingMsgId(msg.id)
     setEditingMsgText(msg.content)
   }
-  const finishEditMsg = () => {
+  const finishEditMsg = async () => {
     if (!editingMsgId) return
     const msg = messages.find(m => m.id === editingMsgId)
-    if (msg && editingMsgText.trim() && editingMsgText !== msg.content) {
+    const nextText = editingMsgText.trim()
+    setEditingMsgId(null)
+    setEditingMsgText('')
+    if (msg && nextText && nextText !== msg.content) {
       const newVersion: MessageVersion = {
-        content: editingMsgText.trim(),
+        content: nextText,
         timestamp: Date.now(),
         providerId: msg.providerId,
         modelId: msg.modelId,
       }
-      addMessageVersion(editingMsgId, newVersion)
+      addMessageVersion(msg.id, newVersion)
+      void syncChatNow()
+      const regenerate = await ask('已保存修改。要按新内容重新生成后面的回复吗？')
+      if (regenerate) await handleRetry({ ...msg, ...newVersion }, true)
     }
-    setEditingMsgId(null)
-    setEditingMsgText('')
   }
 
   /* ── key handling ─────────────────────── */
@@ -1174,10 +1224,17 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 className={`p-2 rounded-xl flex-shrink-0 opacity-60 hover:opacity-100 disabled:opacity-30 ${uploadingImg ? 'animate-pulse' : ''}`}>
                 <ImagePlus size={16} />
               </button>
-              <button onClick={handleSend} disabled={(!input.trim() && pendingImages.length === 0) || isLoading}
-                className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || pendingImages.length) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
-                <Send size={16} />
-              </button>
+              {isLoading ? (
+                <button onClick={() => abortControllerRef.current?.abort()} title="停止生成"
+                  className={`p-2 rounded-xl transition-all flex-shrink-0 ${n ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}>
+                  <Square size={15} fill="currentColor" />
+                </button>
+              ) : (
+                <button onClick={handleSend} disabled={!input.trim() && pendingImages.length === 0}
+                  className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || pendingImages.length) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
+                  <Send size={16} />
+                </button>
+              )}
             </div>
 
             {/* model selector chip */}
