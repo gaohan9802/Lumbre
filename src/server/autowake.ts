@@ -6,8 +6,8 @@
  *  - 00:00–09:00: every 3 hours
  *  - one-off alarms (wake_me) become due at their scheduled time.
  *
- * All wakes, including alarms, wait until the conversation has been quiet for
- * 30 minutes. Due alarms stay pending and fire after cooldown instead of being lost.
+ * Interval wakes wait until the conversation has been quiet for 30 minutes.
+ * Explicit wake_me alarms bypass that cooldown and fire at their requested time.
  * Each wake is limited to 3 tool calls and records a structured action digest.
  *
  * Runs as setInterval in the Next.js process. Logs stored to /persistent/wake-logs.json.
@@ -25,8 +25,10 @@ const WAKE_LOG_PATH = path.join(PERSISTENT, 'wake-logs.json')
 const WAKE_CONFIG_PATH = path.join(PERSISTENT, 'wake-config.json')
 const WAKE_CONFIG_LOCK = path.join(PERSISTENT, '.wake-config-lock')
 const WAKE_LEASE_DIR = path.join(PERSISTENT, '.wake-engine-lease')
-const WAKE_LEASE_MS = 5 * 60 * 1000
+const WAKE_LEASE_MS = 8 * 60 * 1000
 const WAKE_REQUEST_TIMEOUT_MS = 2 * 60 * 1000
+const WAKE_EMPTY_RETRIES = 3
+const WAKE_RETRY_BASE_MS = 2 * 60 * 1000
 const COOLDOWN_MS = 30 * 60 * 1000
 
 const MAX_WAKE_TOOL_CALLS = 3
@@ -49,9 +51,11 @@ export interface WakeLog {
   silent: boolean
   activityAt?: number
   sessionUpdatedAtBefore?: number
-  sessionWrite?: 'appended' | 'duplicate' | 'skipped' | 'failed'
+  sessionWrite?: 'appended' | 'duplicate' | 'skipped' | 'failed' | 'silent'
   error?: string
   digest?: WakeDigest
+  outputTokens?: number
+  responseKind?: 'spoken' | 'silent' | 'empty' | 'error'
 }
 
 export interface WakeAction {
@@ -75,6 +79,8 @@ export interface WakeConfig {
   customPrompt?: string      // editable wake prompt template
   alarms?: WakeAlarm[]       // one-off scheduled wakes (wake_me)
   pushEnabled?: boolean      // allow model-selected Web Push after waking
+  consecutiveFailures?: number
+  nextRetryAt?: number        // backoff after transport/upstream failures
 }
 
 const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
@@ -148,9 +154,11 @@ export function loadWakeConfig(): WakeConfig {
       customPrompt: raw.customPrompt || undefined,
       alarms: Array.isArray(raw.alarms) ? raw.alarms : [],
       pushEnabled: !!raw.pushEnabled,
+      consecutiveFailures: Math.max(0, Number(raw.consecutiveFailures) || 0),
+      nextRetryAt: Math.max(0, Number(raw.nextRetryAt) || 0),
     }
   } catch {
-    return { enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0, alarms: [], pushEnabled: false }
+    return { enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0, alarms: [], pushEnabled: false, consecutiveFailures: 0, nextRetryAt: 0 }
   }
 }
 
@@ -190,11 +198,14 @@ export function reportActivity() {
 
 /** Schedule a one-off wake at a specific time. Returns the stored alarm. */
 export function scheduleWake(at: number, note?: string): WakeAlarm {
-  const alarm: WakeAlarm = { at, note: note || undefined }
+  if (!Number.isFinite(at) || at <= Date.now()) throw new Error('wake time must be in the future')
+  const cleanNote = String(note || '').trim().slice(0, 500)
+  const alarm: WakeAlarm = { at: Math.floor(at), note: cleanNote || undefined }
   mutateWakeConfig(config => {
     if (!config.alarms) config.alarms = []
-    config.alarms.push(alarm)
-    config.alarms.sort((a, b) => a.at - b.at)
+    const duplicate = config.alarms.some(item => Math.abs(item.at - alarm.at) < 1000 && item.note === alarm.note)
+    if (!duplicate) config.alarms.push(alarm)
+    config.alarms = config.alarms.filter(item => Number.isFinite(item.at)).sort((a, b) => a.at - b.at).slice(0, 100)
   })
   return alarm
 }
@@ -243,13 +254,12 @@ export function computeNextWakeAt(config: WakeConfig): number {
   return Math.max(base + intervalMsFor(base), effectiveActivityAt(config) + COOLDOWN_MS)
 }
 
-/** Soonest interval/alarm wake after applying the same cooldown used by execution. */
+/** Soonest interval/alarm wake. Explicit alarms intentionally bypass activity cooldown. */
 export function nextWakeInfo(config: WakeConfig): { at: number; isAlarm: boolean; note?: string } {
-  const activityReadyAt = effectiveActivityAt(config) + COOLDOWN_MS
-  const intervalAt = computeNextWakeAt(config)
+  const intervalAt = Math.max(computeNextWakeAt(config), Number(config.nextRetryAt) || 0)
   const alarms = (config.alarms || []).sort((a, b) => a.at - b.at)
   if (alarms.length) {
-    const alarmAt = Math.max(alarms[0].at, activityReadyAt)
+    const alarmAt = alarms[0].at
     if (alarmAt < intervalAt) return { at: alarmAt, isAlarm: true, note: alarms[0].note }
   }
   return { at: intervalAt, isAlarm: false }
@@ -260,9 +270,10 @@ function shouldWakeNow(config: WakeConfig): { should: boolean; reason: string; a
   if (!config.enabled || !config.sessionId) return { should: false, reason: 'disabled', activityAt }
 
   const now = Date.now()
-  // Alarms remain pending while cooling down; they are consumed only after a real wake attempt.
-  if (now - activityAt < COOLDOWN_MS) return { should: false, reason: 'recent_activity', activityAt }
 
+  // wake_me is an explicit appointment made by the model. It bypasses both
+  // conversation cooldown and ordinary retry backoff; an alarm must never be
+  // silently postponed because a previous interval request failed.
   const dueAlarm = (config.alarms || []).find(a => a.at <= now)
   if (dueAlarm) return {
     should: true,
@@ -272,6 +283,8 @@ function shouldWakeNow(config: WakeConfig): { should: boolean; reason: string; a
     activityAt,
   }
 
+  if ((Number(config.nextRetryAt) || 0) > now) return { should: false, reason: 'failure_backoff', activityAt }
+  if (now - activityAt < COOLDOWN_MS) return { should: false, reason: 'recent_activity', activityAt }
   if (now - config.lastWakeAt < intervalMsFor(now)) return { should: false, reason: 'too_soon', activityAt }
   const isNightHours = madridHour(now) >= 0 && madridHour(now) < 9
   return { should: true, reason: isNightHours ? '深夜了，世界很安静。' : '醒来看看，阳光或者雨。', trigger: 'interval', activityAt }
@@ -393,36 +406,52 @@ ${JSON.stringify(recentDigests)}`
   let deliveredPushes: string[] = []
   let sessionWrite: WakeLog['sessionWrite'] = 'skipped'
   let wakeError: string | undefined
+  let data: any = {}
+  let hasActions = false
 
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), WAKE_REQUEST_TIMEOUT_MS)
-    let res: Response
-    try {
-      res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-lumbre-internal': process.env.LUMBRE_INTERNAL_SECRET || process.env.LUMBRE_AUTH_SECRET || process.env.LUMBRE_ACCESS_PASSWORD || '',
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-        messages: apiMessages,
-        system: systemPrompt,
-        model: modelOverride,
-        api_profile: apiProfile,
-        tools_enabled: true,
-        max_tool_calls: MAX_WAKE_TOOL_CALLS,
-        stream: false,
-          _wake: true,
-        }),
-      })
-    } finally { clearTimeout(timeout) }
+    let lastEmpty = ''
+    for (let attempt = 1; attempt <= WAKE_EMPTY_RETRIES; attempt++) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), WAKE_REQUEST_TIMEOUT_MS)
+      let res: Response
+      try {
+        res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-lumbre-internal': process.env.LUMBRE_INTERNAL_SECRET || process.env.LUMBRE_AUTH_SECRET || process.env.LUMBRE_ACCESS_PASSWORD || '',
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            messages: apiMessages, system: systemPrompt, model: modelOverride,
+            api_profile: apiProfile, tools_enabled: true,
+            max_tool_calls: MAX_WAKE_TOOL_CALLS, stream: false, _wake: true,
+          }),
+        })
+      } finally { clearTimeout(timeout) }
 
-    const rawBody = await res.text()
-    let data: any = {}
-    try { data = rawBody ? JSON.parse(rawBody) : {} } catch {}
-    if (!res.ok) throw new Error(`wake chat HTTP ${res.status}: ${String(data.error || rawBody || res.statusText).slice(0, 500)}`)
+      const rawBody = await res.text()
+      data = {}
+      try { data = rawBody ? JSON.parse(rawBody) : {} } catch {}
+      if (!res.ok) throw new Error(`wake chat HTTP ${res.status}: ${String(data.error || rawBody || res.statusText).slice(0, 500)}`)
+
+      // Some OpenAI-compatible relays occasionally return HTTP 200 with an
+      // empty choice and usage.output_tokens=0. This is not a conscious
+      // [SILENT]; treating it as one produced the repeated "skipped" records.
+      const content = typeof data.content === 'string' ? data.content.trim() : ''
+      const usableContent = content && content !== '(no response from model)'
+      const hasTools = Array.isArray(data.tool_calls) && data.tool_calls.length > 0
+      const hasThinking = typeof data.thinking === 'string' && data.thinking.trim().length > 0
+      const outputTokens = Number(data.output_tokens) || 0
+      if (usableContent || hasTools) break
+      lastEmpty = `empty successful response (attempt ${attempt}/${WAKE_EMPTY_RETRIES}, output_tokens=0)`
+      if (attempt < WAKE_EMPTY_RETRIES) await new Promise(resolve => setTimeout(resolve, 1200 * attempt))
+    }
+    const finalContent = String(data.content || '').trim()
+    if ((!finalContent || finalContent === '(no response from model)') && !(data.tool_calls?.length)) {
+      throw new Error(lastEmpty || 'empty successful response from wake model')
+    }
 
     if (data.tool_calls) {
       toolCalls = data.tool_calls
@@ -448,7 +477,7 @@ ${JSON.stringify(recentDigests)}`
       actions.push({ type: 'message', name: 'web_push', input: { messages: pushMessages }, result: JSON.stringify(pushResult), timestamp: Date.now() })
     }
 
-    const hasActions = toolCalls.length > 0 || deliveredPushes.length > 0
+    hasActions = toolCalls.length > 0 || deliveredPushes.length > 0
     const traceSummary = hasActions
       ? `〔唤醒行动：${toolCalls.map((tc: any) => `${tc.name}(${actionTarget(tc.input) || '无目标'})`).join('、')}${deliveredPushes.length ? `；推送${deliveredPushes.length}条` : ''}〕`
       : ''
@@ -495,19 +524,31 @@ ${traceSummary}` : responseText)
     silent,
     activityAt,
     sessionUpdatedAtBefore: Number(wakeSession?.updatedAt) || 0,
-    sessionWrite,
+    sessionWrite: silent && !hasActions && !wakeError ? 'silent' : sessionWrite,
     error: wakeError,
     digest,
+    outputTokens: Number(data.output_tokens) || 0,
+    responseKind: wakeError ? 'error' : (responseText === '[SILENT]' ? 'silent' : (responseText.startsWith('Wake error:') ? 'error' : 'spoken')),
   }
 
   const logs = loadWakeLogs()
   logs.push(log)
   saveWakeLogs(logs)
 
-  // Update config: bump lastWakeAt, consume the fired alarm.
+  // Successful model turns advance the schedule and consume the alarm.
+  // Transport/empty-response failures stay pending and use bounded backoff,
+  // preventing both lost alarms and a rapid paid retry storm.
   mutateWakeConfig(fresh => {
-    fresh.lastWakeAt = Math.max(fresh.lastWakeAt, Date.now())
-    if (alarm) fresh.alarms = (fresh.alarms || []).filter(a => !(a.at === alarm.at && a.note === alarm.note))
+    if (!wakeError || !responseText.startsWith('Wake error:')) {
+      fresh.lastWakeAt = Math.max(fresh.lastWakeAt, Date.now())
+      fresh.consecutiveFailures = 0
+      fresh.nextRetryAt = 0
+      if (alarm) fresh.alarms = (fresh.alarms || []).filter(a => !(a.at === alarm.at && a.note === alarm.note))
+    } else {
+      const failures = Math.min(8, (Number(fresh.consecutiveFailures) || 0) + 1)
+      fresh.consecutiveFailures = failures
+      fresh.nextRetryAt = Date.now() + Math.min(30 * 60 * 1000, WAKE_RETRY_BASE_MS * Math.pow(2, failures - 1))
+    }
   })
 
   return log
@@ -567,7 +608,7 @@ async function wakeTick() {
 
 export function startWakeEngine() {
   if (wakeInterval) return
-  wakeInterval = setInterval(() => { wakeTick().catch(err => console.error('[AutoWake] Error:', err)) }, 2 * 60 * 1000)
+  wakeInterval = setInterval(() => { wakeTick().catch(err => console.error('[AutoWake] Error:', err)) }, 30 * 1000)
   // Also check shortly after process startup instead of waiting a full timer period.
   setTimeout(() => { wakeTick().catch(err => console.error('[AutoWake] Startup error:', err)) }, 5000)
   console.log('[AutoWake] Engine started')

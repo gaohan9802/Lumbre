@@ -2656,3 +2656,30 @@ author 默认 star（🐆），AI 就是星星。
 ### Debug 笔记
 - 该问题不是模型 token 生成慢：上游 usage 已完成时，浏览器仍等待 `ReadableStream` 的 FIN。移动端代理/HTTP keep-alive 可能延迟 FIN，因此以业务层 `done` 事件作为完成信号。
 - Service Worker 只缓存版本化静态资源与图片，明确跳过 `/api/*`，避免聊天/同步数据被旧缓存污染。
+
+---
+
+## 2026-07-?? — 自动唤醒空响应/闹钟与 Chat 白屏修复
+
+### 自动唤醒
+- 修复 HTTP 200 但 `content` 为空、`output_tokens=0` 被误判成合法 `[SILENT]`：现在最多重试 3 次，仍为空则记录明确 error，不再显示成 skipped/静默成功。
+- 真正由模型输出的 `[SILENT]` 单独标记为 `sessionWrite=silent`，与“未写入/失败”区分；日志新增 output tokens。
+- `wake_me` 自定闹钟绕过 30 分钟对话冷却，按设定时间触发；调度检查频率从 2 分钟改为 30 秒，降低闹钟迟到。
+- 闹钟也绕过普通心跳失败退避；失败时不消费闹钟，后续继续尝试，避免闹钟丢失。
+- 普通心跳失败增加指数退避（2/4/8…分钟，上限30分钟），避免上游故障时反复付费调用。
+- 唤醒 lease 从5分钟延长到8分钟，覆盖“3次空响应重试 + 单次2分钟超时”的最坏耗时，降低多 worker 重复唤醒风险。
+- wake_me 输入增加未来时间校验、note 长度限制、重复闹钟去重、最多保留100个，避免异常配置膨胀。
+
+### Chat 白屏
+- Service Worker 升级 v3：Next.js chunk 与页面导航改为 network-first，避免部署后旧 chunk 和新 build manifest 混用导致 React 白屏；离线时才回退缓存。
+- Error Boundary 恢复时强制 remount，并提供整页 reload，避免同一个坏组件树原地再次崩溃。
+- Markdown 内联解析移除正则 lookbehind，兼容较旧 iOS WebView/Safari（旧引擎解析不支持时会直接导致 Chat chunk 加载失败/白屏）。
+
+### 验证
+- `git diff --check` 通过。
+- `tsc --noEmit` 通过。
+
+### Debug 笔记
+- “API 调用成功”不等于模型成功输出：部分中转会返回 200 + 空 choices/空 content + 0 output tokens，业务层必须判空并重试。
+- `sessionWrite=skipped` 原本同时表示真正静默和空响应，观测语义混乱；状态必须区分 silent / skipped / failed。
+- PWA 对带 hash 的 Next chunk 使用 stale-while-revalidate 有部署一致性风险：HTML/build manifest 和 JS chunk 可能来自不同版本。代码 chunk 应 network-first，缓存只作离线 fallback。

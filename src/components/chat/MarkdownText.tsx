@@ -4,7 +4,7 @@ import React, { memo } from 'react'
 
 function inline(text: string): React.ReactNode[] {
   const tokens: React.ReactNode[] = []
-  const pattern = /(`[^`]+`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|(?<!\*)\*([^*\n]+)\*(?!\*)|(?<!_)_([^_\n]+)_(?!_))/g
+  const pattern = /(`[^`]+`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_)/g
   let last = 0
   let match: RegExpExecArray | null
   while ((match = pattern.exec(text))) {
