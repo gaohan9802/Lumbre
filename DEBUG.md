@@ -268,3 +268,9 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 版本更新没有独立 append API，因此重 Roll/编辑后立即调用公开的 `syncChatNow()`，复用现有增量 newer-wins 同步；新建 assistant 仍走原子 `append_message`。
 - 编辑 user 后直接调用 retry 前必须先从 Zustand 重新读取 messages，否则 React 闭包仍是编辑前版本，模型会收到旧文本。
 - 模型拉取提示使用 `Record<profileId, status>`，避免共享字符串显示在错误 API 卡片下。
+
+## 2026-08-19 — Chat 使用中突然白屏
+- 高风险点 1：MarkdownText 仍有 `(?<!...)` lookbehind，旧 iOS WebKit 可能在加载 chunk 时语法失败。
+- 高风险点 2：历史消息字段未经运行时校验，`content: null/object` 会在 `trim()` 或 React children 处直接抛错。
+- 高风险点 3：流式每 token setState，并对累计全文重新 Markdown 分词，长回复在 iOS PWA 中会制造明显 O(n²) 分配压力。
+- 修法保持主体不动：局部 Error Boundary、旧数据按需 normalize、80ms stream paint、流式纯文本/完成后 Markdown。

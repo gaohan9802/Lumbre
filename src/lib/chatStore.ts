@@ -336,6 +336,70 @@ export function snapshotOfMessage(m: ChatMessage): MessageVersion {
   }
 }
 
+function safeText(value: any): string {
+  if (typeof value === 'string') return value
+  if (value == null) return ''
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try { return JSON.stringify(value) } catch { return '[无法显示的旧消息]' }
+}
+
+function normalizeContentBlock(block: any): ContentBlock | null {
+  if (!block || !['thinking', 'text', 'tool_call'].includes(block.type)) return null
+  return {
+    type: block.type,
+    content: block.content == null ? undefined : safeText(block.content),
+    name: block.name == null ? undefined : safeText(block.name),
+    input: block.input && typeof block.input === 'object' ? block.input : undefined,
+    result: block.result == null ? undefined : safeText(block.result),
+  }
+}
+
+function normalizeVersion(version: any): MessageVersion {
+  return {
+    ...version,
+    content: safeText(version?.content),
+    thinking: version?.thinking == null ? undefined : safeText(version.thinking),
+    timestamp: Number(version?.timestamp) || Date.now(),
+    tool_calls: Array.isArray(version?.tool_calls) ? version.tool_calls.filter(Boolean).map((call: any) => ({
+      name: safeText(call?.name),
+      input: call?.input && typeof call.input === 'object' ? call.input : {},
+      result: safeText(call?.result),
+    })) : undefined,
+    content_blocks: Array.isArray(version?.content_blocks)
+      ? version.content_blocks.map(normalizeContentBlock).filter(Boolean) as ContentBlock[]
+      : undefined,
+  }
+}
+
+function normalizeMessage(message: any): ChatMessage | null {
+  if (!message || !['user', 'assistant'].includes(message.role)) return null
+  const blocksValid = !message.content_blocks || (Array.isArray(message.content_blocks) && message.content_blocks.every((block: any) =>
+    block && ['thinking', 'text', 'tool_call'].includes(block.type) &&
+    (block.content == null || typeof block.content === 'string') &&
+    (block.name == null || typeof block.name === 'string') &&
+    (block.result == null || typeof block.result === 'string')))
+  const versionsValid = !message.versions || (Array.isArray(message.versions) && message.versions.every((version: any) =>
+    version && typeof version.content === 'string' && (version.thinking == null || typeof version.thinking === 'string')))
+  const imagesValid = !message.images || (Array.isArray(message.images) && message.images.every((image: any) => typeof image === 'string'))
+  // Preserve object identity for the normal path. normalizeSettings runs for
+  // every store mutation; cloning thousands of valid messages here would cause
+  // exactly the memory churn and WebKit tab kills this guard is meant to stop.
+  if (typeof message.id === 'string' && typeof message.content === 'string' &&
+      (message.thinking == null || typeof message.thinking === 'string') &&
+      blocksValid && versionsValid && imagesValid) return message as ChatMessage
+  const normalized = normalizeVersion(message)
+  const versions = Array.isArray(message.versions) ? message.versions.map(normalizeVersion) : undefined
+  return {
+    ...message,
+    ...normalized,
+    id: safeText(message.id) || genId('message'),
+    role: message.role,
+    images: Array.isArray(message.images) ? message.images.filter((image: any) => typeof image === 'string') : undefined,
+    versions,
+    versionIndex: versions?.length ? Math.max(0, Math.min(Number(message.versionIndex) || 0, versions.length - 1)) : undefined,
+  }
+}
+
 function normalizeProfile(p: any): ApiProfile {
   const provider: ApiProvider = p?.provider || 'anthropic'
   const defaultModel = p?.defaultModel || (provider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-4o')
@@ -378,7 +442,7 @@ function normalizeSettings(settings: any): ChatSettings {
     ? settings.sessions.map((s: any) => ({
         id: s.id || makeId('session'),
         title: s.title || '新的对话',
-        messages: Array.isArray(s.messages) ? s.messages : [],
+        messages: Array.isArray(s.messages) ? s.messages.map(normalizeMessage).filter(Boolean) as ChatMessage[] : [],
         pinned: !!s.pinned,
         createdAt: s.createdAt || Date.now(),
         updatedAt: s.updatedAt || s.createdAt || Date.now(),
@@ -407,7 +471,7 @@ function normalizeSettings(settings: any): ChatSettings {
           anchorTimestamp: s.summaryConfig?.modeVersion === 2 ? s.summaryConfig?.anchorTimestamp : (Array.isArray(s.messages) ? s.messages[s.messages.length - 1]?.timestamp : undefined),
         },
       }))
-    : [{ ...DEFAULT_SETTINGS.sessions[0], messages: oldMessages }]
+    : [{ ...DEFAULT_SETTINGS.sessions[0], messages: oldMessages.map(normalizeMessage).filter(Boolean) as ChatMessage[] }]
 
   const activeSessionId = sessions.some((s) => s.id === settings?.activeSessionId)
     ? settings.activeSessionId

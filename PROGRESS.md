@@ -2683,3 +2683,23 @@ author 默认 star（🐆），AI 就是星星。
 - “API 调用成功”不等于模型成功输出：部分中转会返回 200 + 空 choices/空 content + 0 output tokens，业务层必须判空并重试。
 - `sessionWrite=skipped` 原本同时表示真正静默和空响应，观测语义混乱；状态必须区分 silent / skipped / failed。
 - PWA 对带 hash 的 Next chunk 使用 stale-while-revalidate 有部署一致性风险：HTML/build manifest 和 JS chunk 可能来自不同版本。代码 chunk 应 network-first，缓存只作离线 fallback。
+
+## 2026-08-19 — Chat 白屏稳定性 v3（仅防崩溃层）
+
+### 完成
+- 不改变 Chat 会话、发送、同步与持久化主体架构，只增加局部恢复和输入数据容错。
+- Chat 动态入口增加专用 Error Boundary：单条异常旧消息或瞬时 React 渲染错误不再把整个页面打成永久白屏；先自动重挂载一次，失败时显示“立即恢复聊天”，且绝不清空 store 或草稿。
+- 修复 Markdown 仍残留的 regexp lookbehind；改为无 lookbehind 的等价解析，避免旧版 iOS PWA/WebKit 在解析 Chat chunk 时直接失败。
+- chatStore 对服务端/旧 localStorage 消息做按需修复：兼容 null、数字、对象型 content/thinking/tool result，过滤非法消息和图片字段，防止 `.trim()`、Markdown 与 React children 渲染阶段崩溃。
+- 正常消息保持原对象引用，避免每次 store 更新克隆数千条历史消息造成 WebKit 内存抖动。
+- 流式回复 UI 从“每个 token 都重绘整棵 Markdown”改为最多每 80ms 刷新一次；流式阶段用安全纯文本，完成后再按 Markdown 渲染。完整字节与最终保存内容不变，显著减少 iOS 长回复期间的 CPU、DOM 分配与内存峰值。
+- 删除仓库里未跟踪、引用不存在 `TgChatView` 的实验性 `ChatWrapper.tsx`，不纳入产品代码。
+
+### Debug 笔记
+- 白屏并非只有 PWA chunk 缓存一种原因。Chat render path 对 `msg.content.trim()`、block content、tool result 都默认服务端数据永远是 string；任意一条历史脏数据即可让 React 子树整体抛错。
+- 流式时对不断增长的全文反复执行 Markdown 分词属于 O(n²) 级累计工作；在 iOS PWA 内存较紧时表现为使用中突然白屏/页面进程被杀。节流加“完成后再 Markdown”比修改聊天主体架构风险更低。
+- Error Boundary 只能捕获 React 渲染异常，不能挽救已被 iOS 杀死的 WebContent 进程；降低流式重绘和对象分配才是防止进程被杀的关键。
+
+### 验证
+- `tsc --noEmit` 通过（共享环境缺失 `web-push` 类型时使用临时声明，验证后删除）。
+- `git diff --check` 通过。

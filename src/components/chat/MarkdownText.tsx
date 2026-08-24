@@ -4,7 +4,9 @@ import React, { memo } from 'react'
 
 function inline(text: string): React.ReactNode[] {
   const tokens: React.ReactNode[] = []
-  const pattern = /(`[^`]+`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_)/g
+  // Avoid regexp lookbehind: older iOS PWA/WebKit can fail while parsing the whole Chat chunk.
+  // Capture the prefix for single * / _ emphasis and put it back into output.
+  const pattern = /(`[^`]+`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|(^|[^*])\*([^*\n]+)\*(?!\*)|(^|[^_])_([^_\n]+)_(?!_))/gm
   let last = 0
   let match: RegExpExecArray | null
   while ((match = pattern.exec(text))) {
@@ -14,7 +16,12 @@ function inline(text: string): React.ReactNode[] {
     else if (match[2] && match[3]) tokens.push(<a key={match.index} href={match[3]} target="_blank" rel="noreferrer" className="underline underline-offset-2 opacity-90 hover:opacity-100">{match[2]}</a>)
     else if (match[4] || match[5]) tokens.push(<strong key={match.index}>{match[4] || match[5]}</strong>)
     else if (match[6]) tokens.push(<del key={match.index}>{match[6]}</del>)
-    else tokens.push(<em key={match.index}>{match[7] || match[8]}</em>)
+    else {
+      const prefix = match[7] || match[9] || ''
+      const value = match[8] || match[10] || ''
+      if (prefix) tokens.push(prefix)
+      tokens.push(<em key={match.index}>{value}</em>)
+    }
     last = pattern.lastIndex
   }
   if (last < text.length) tokens.push(text.slice(last))

@@ -24,7 +24,7 @@ function ViewLoading() {
 // Memory, Diary, Photos...) was bundled into the initial page, so opening the
 // PWA had to parse the whole application before showing anything.
 const ChatSync = dynamic(() => import('@/components/chat/ChatSync').then(m => m.ChatSync), { ssr: false })
-const ChatView = dynamic(() => import('@/components/chat/ChatView').then(m => m.ChatView), { loading: ViewLoading, ssr: false })
+const ChatView = dynamic(() => import('@/components/chat/ChatRecoveryBoundary').then(m => m.ChatRecoveryBoundary), { loading: ViewLoading, ssr: false })
 const TimelineHubView = dynamic(() => import('@/components/timeline/TimelineHubView').then(m => m.TimelineHubView), { loading: ViewLoading, ssr: false })
 const DiaryView = dynamic(() => import('@/components/diary/DiaryView').then(m => m.DiaryView), { loading: ViewLoading, ssr: false })
 const NotesView = dynamic(() => import('@/components/notes/NotesView').then(m => m.NotesView), { loading: ViewLoading, ssr: false })

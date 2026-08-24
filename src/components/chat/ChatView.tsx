@@ -26,7 +26,9 @@ import { syncChatNow } from './ChatSync'
 
 /* ── helpers ────────────────────────────── */
 
-const fmtFullTs = (ts: number) => formatMadrid(ts)
+const fmtFullTs = (ts: number) => {
+  try { return formatMadrid(Number(ts) || Date.now()) } catch { return '' }
+}
 
 const fmtShortDate = (ts: number) => {
   const d = new Date(ts)
@@ -291,6 +293,20 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     let toolCalls: any[] = []
     let contentBlocks: ContentBlock[] = []
     let usage: any = {}
+    let paintTimer: ReturnType<typeof setTimeout> | null = null
+    const paintStream = () => {
+      paintTimer = null
+      if (!live) return
+      setStreamText(fullText)
+      setStreamThinking(fullThinking)
+      setStreamBlocks(contentBlocks.map((item) => ({ ...item })))
+    }
+    // iOS PWA becomes unstable when Markdown and the whole message list are
+    // reconciled for every token. Paint at most once per 80ms while preserving
+    // every byte in the local accumulators and final saved message.
+    const scheduleStreamPaint = () => {
+      if (live && !paintTimer) paintTimer = setTimeout(paintStream, 80)
+    }
     const controller = new AbortController()
     abortControllerRef.current = controller
     try {
@@ -335,7 +351,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         } else {
           contentBlocks.push(block)
         }
-        if (live) setStreamBlocks(contentBlocks.map((item) => ({ ...item })))
+        scheduleStreamPaint()
       }
 
       while (true) {
@@ -353,11 +369,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             if (evt.type === 'text') {
               fullText += evt.content
               appendContentBlock({ type: 'text', content: evt.content })
-              if (live) setStreamText(fullText)
+              scheduleStreamPaint()
             } else if (evt.type === 'thinking') {
               fullThinking += evt.content
               appendContentBlock({ type: 'thinking', content: evt.content })
-              if (live) setStreamThinking(fullThinking)
+              scheduleStreamPaint()
             } else if (evt.type === 'tool_call') {
               toolCalls.push(evt)
               appendContentBlock({ type: 'tool_call', name: evt.name, input: evt.input, result: evt.result })
@@ -365,7 +381,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               const errorText = (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
               fullText += errorText
               appendContentBlock({ type: 'text', content: errorText })
-              if (live) setStreamText(fullText)
+              scheduleStreamPaint()
             } else if (evt.type === 'done') {
               usage = evt
               // The server sends `done` before the SSE terminator. Do not wait
@@ -388,6 +404,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           if (evt.type === 'done') usage = evt
         } catch {}
       }
+      if (paintTimer) clearTimeout(paintTimer)
+      paintStream()
       onDone({
         content: fullText,
         thinking: fullThinking || undefined,
@@ -411,6 +429,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         onDone({ content: err?.message || '连接失败了…', error: true })
       }
     } finally {
+      if (paintTimer) clearTimeout(paintTimer)
       if (abortControllerRef.current === controller) abortControllerRef.current = null
     }
   }
@@ -1143,8 +1162,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     }
                     if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                       return (
-                        <div key={bi} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
-                          <MarkdownText content={block.content} cursor={isLast} />
+                        <div key={bi} className={`block w-fit max-w-[87%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
+                          {block.content}{isLast && <span className="stream-cursor">…</span>}
                         </div>
                       )
                     }
