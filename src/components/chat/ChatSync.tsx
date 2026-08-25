@@ -18,7 +18,7 @@ let inFlight: Promise<void> | null = null
 let pushedSnapshot: Record<string, number> = {}
 let pushedConfigAt = -1
 
-type ManifestItem = { id: string; updatedAt: number; messageCount?: number }
+type ManifestItem = { id: string; updatedAt: number; messageCount?: number; title?: string; pinned?: boolean; createdAt?: number }
 
 async function syncFetch(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 15000) {
   const controller = new AbortController()
@@ -59,7 +59,8 @@ async function fetchSessionBatch(ids: string[]) {
 }
 
 async function pullIncremental() {
-  const before = useChatStore.getState().settings
+  const beforeState = useChatStore.getState()
+  const before = beforeState.settings
   const params = new URLSearchParams({
     mode: 'manifest',
     configUpdatedAt: String(before.configUpdatedAt || 0),
@@ -69,26 +70,37 @@ async function pullIncremental() {
   const data = await res.json()
   const manifest: ManifestItem[] = Array.isArray(data.sessions) ? data.sessions : []
 
-  // Tombstones/config are tiny and can be applied before fetching message data.
   applyRemote({ sessions: [], tombstones: data.tombstones || {}, config: data.config, configUpdatedAt: data.configUpdatedAt })
 
-  const local = useChatStore.getState().settings.sessions
-  const localMap = new Map(local.map(s => [s.id, s]))
-  const needed = manifest
-    .filter(remote => {
-      const cur = localMap.get(remote.id)
-      return !cur || cur.partial || (Number(remote.updatedAt) || 0) > (Number(cur.updatedAt) || 0)
-    })
-    .map(s => s.id)
+  // Materialize lightweight manifest stubs so the session drawer is complete
+  // without downloading every conversation body.
+  const knownIds = new Set(useChatStore.getState().settings.sessions.map(s => s.id))
+  const stubs = manifest.filter(item => !knownIds.has(item.id)).map(item => ({
+    id: item.id, title: item.title || '历史对话', messages: [], pinned: !!item.pinned,
+    createdAt: Number(item.createdAt) || Number(item.updatedAt) || Date.now(),
+    updatedAt: Number(item.updatedAt) || 0, messageCount: Number(item.messageCount) || 0,
+    partial: true,
+  }))
+  if (stubs.length) applyRemote({ sessions: stubs, tombstones: {} })
 
-  // Keep URLs modest and let the UI breathe between bounded responses.
-  for (let i = 0; i < needed.length; i += 40) {
-    await fetchSessionBatch(needed.slice(i, i + 40))
+  const state = useChatStore.getState()
+  const local = state.settings.sessions
+  const localMap = new Map(local.map(s => [s.id, s]))
+  const newestRemote = [...manifest].sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))[0]
+  const currentActive = localMap.get(state.settings.activeSessionId)
+  const preferredId = (!currentActive || isBlankSession(currentActive)) ? newestRemote?.id : currentActive.id
+
+  // Hydrate only the conversation the user is actually entering. Previously
+  // every partial 4000-message session was downloaded at boot, so the 50-row
+  // render limit saved React work but not network/JSON/Zustand/localStorage work.
+  if (preferredId) {
+    const remote = manifest.find(item => item.id === preferredId)
+    const cur = localMap.get(preferredId)
+    if (remote && (!cur || cur.partial || Number(remote.updatedAt) > Number(cur.updatedAt))) {
+      await fetchSessionBatch([preferredId])
+    }
   }
 
-  // On a fresh device/reload, a local blank draft must not remain selected
-  // after the real sessions arrive. Resume the newest conversation once; do
-  // not change selection on later background syncs.
   const hydrated = useChatStore.getState()
   const active = hydrated.settings.sessions.find(s => s.id === hydrated.settings.activeSessionId)
   if (!active || isBlankSession(active)) {
@@ -103,6 +115,13 @@ async function pullIncremental() {
   bootstrapped = true
 }
 
+async function hydrateActiveSession() {
+  if (!bootstrapped || !navigator.onLine) return
+  const state = useChatStore.getState()
+  const active = state.settings.sessions.find(s => s.id === state.settings.activeSessionId)
+  if (!active?.partial) return
+  await fetchSessionBatch([active.id])
+}
 async function syncCycle() {
   useSyncStatus.getState().setSyncStatus({ phase: navigator.onLine ? 'syncing' : 'offline', error: '' })
   if (!navigator.onLine) return
@@ -110,7 +129,7 @@ async function syncCycle() {
 
   const { settings } = useChatStore.getState()
   const syncSessions = settings.sessions.filter(s => !isBlankSession(s))
-  const changed = syncSessions.filter(s => pushedSnapshot[s.id] !== s.updatedAt)
+  const changed = syncSessions.filter(s => pushedSnapshot[s.id] !== s.updatedAt && !(s.partial && pushedSnapshot[s.id] === undefined))
   const configAt = settings.configUpdatedAt || 0
   const configChanged = configAt !== pushedConfigAt
 
@@ -164,6 +183,9 @@ export function ChatSync() {
     const iv = setInterval(syncChatNow, 45000)
     const unsub = useChatStore.subscribe((state, prev) => {
       if (applyingRemote) return
+      if (state.settings.activeSessionId !== prev.settings.activeSessionId) {
+        void hydrateActiveSession().catch(() => {})
+      }
       if (state.settings.sessions !== prev.settings.sessions || state.settings.configUpdatedAt !== prev.settings.configUpdatedAt) {
         if (timer.current) clearTimeout(timer.current)
         timer.current = setTimeout(syncChatNow, 1800)

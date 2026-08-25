@@ -2703,3 +2703,18 @@ author 默认 star（🐆），AI 就是星星。
 ### 验证
 - `tsc --noEmit` 通过（共享环境缺失 `web-push` 类型时使用临时声明，验证后删除）。
 - `git diff --check` 通过。
+
+## 2026-08-24 — Chat 摘要回退、唤醒空回、白屏与进入慢
+
+### 完成
+- **摘要 21→20 回退**：确认不是 20 条存储上限。根因是会话同步按整份 `updatedAt` newer-wins，摘要更新与普通消息更新共用同一时间戳；旧客户端/partial 尾部可用较新的会话时间把 21 张摘要覆盖回 20 张。新增 `summaryRevision`，摘要新增/编辑/删除/阶段摘要都独立递增；服务端按 revision 合并摘要层，相同 revision 保留更完整的一侧。
+- 摘要生成、重生成、阶段摘要完成后立即 `syncChatNow()`，不再等待 1.8 秒 debounce，降低生成后立刻刷新造成的丢失窗口。
+- **自动唤醒空回**：延续并验证本地未推送修复 `adfde7d`：区分 `[SILENT]` 与上游 HTTP 200/0 output token 空响应；空响应最多重试 3 次，失败进入指数退避且闹钟不被消费；唤醒 tick 从 2 分钟缩短到 30 秒，显式 `wake_me` 按时执行。
+- **白屏恢复**：延续 `adfde7d` 的 PWA/错误恢复修复：Next chunk 与导航 network-first，避免部署后新旧 chunk 混用；视图崩溃显示可重试恢复页，不再只留纯白屏；Markdown 非法 URL 不再导致渲染树崩溃。
+- **Chat 进入速度**：50 条懒加载此前只限制 React 渲染，启动同步仍下载所有 partial 长会话。现在 manifest 带 title/pinned/createdAt，启动只拉当前/最新会话完整正文；其他会话先建轻量 stub，用户点开时再按需 hydrate。
+- localStorage 从“每个会话最多 100 条+全部摘要”改为“仅 active 会话 50 条 warm tail；其他会话只存 metadata”，显著降低 iOS 启动同步 JSON.parse、Zustand normalize 和持久化主线程压力。
+
+### 验证
+- `tsc --noEmit` 通过。
+- `git diff --check` 通过。
+- 当前 shell 有 node_modules 但没有 npm 可执行文件，`npm run build` 无法启动（exit 127）；未把此环境问题误判为项目 build 失败。

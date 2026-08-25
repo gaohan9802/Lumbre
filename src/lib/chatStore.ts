@@ -113,6 +113,7 @@ export interface ChatSession {
   messageCount?: number
   summaries?: ChatSummary[]
   stageSummaries?: StageSummary[]
+  summaryRevision?: number
   summaryConfig?: SessionSummaryConfig
 }
 
@@ -455,6 +456,7 @@ function normalizeSettings(settings: any): ChatSettings {
           sourceMessageIds: item.sourceMessageIds, coveredUntilMessageId: item.coveredUntilMessageId || '',
           eventSummary: String(item.eventSummary || item.overview || item.content || '').trim(), locked: !!item.locked, needsCorrection: !!item.needsCorrection, editedAt: item.editedAt,
         })).filter((item: ChatSummary) => item.eventSummary) : [],
+        summaryRevision: Math.max(0, Number(s.summaryRevision) || 0),
         stageSummaries: Array.isArray(s.stageSummaries) ? s.stageSummaries.map((item: any) => ({
           id: item.id || makeId('stage'), sessionId: s.id, createdAt: item.createdAt || Date.now(),
           startAt: item.startAt || item.createdAt || Date.now(), endAt: item.endAt || item.createdAt || Date.now(),
@@ -577,7 +579,7 @@ export const useChatStore = create<ChatStore>()(
 
       clearMessages: () => set((state) => {
         const settings = normalizeSettings(state.settings)
-        const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId ? { ...s, messages: [], summaries: [], stageSummaries: [], messageCount: 0, updatedAt: Date.now() } : s)
+        const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId ? { ...s, messages: [], summaries: [], stageSummaries: [], summaryRevision: (s.summaryRevision || 0) + 1, messageCount: 0, updatedAt: Date.now() } : s)
         return { settings: { ...settings, sessions }, messages: [] }
       }),
 
@@ -648,7 +650,7 @@ export const useChatStore = create<ChatStore>()(
           })
           const summaryIds = new Set(summaries.map(item => item.id))
           const stageSummaries = (s.stageSummaries || []).filter(stage => stage.sourceSummaryIds.every(id => summaryIds.has(id)))
-          return { ...s, messages, summaries, stageSummaries, messageCount: messages.length, updatedAt: Date.now() }
+          return { ...s, messages, summaries, stageSummaries, summaryRevision: summaries.length !== (s.summaries || []).length ? (s.summaryRevision || 0) + 1 : (s.summaryRevision || 0), messageCount: messages.length, updatedAt: Date.now() }
         })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -667,7 +669,7 @@ export const useChatStore = create<ChatStore>()(
             : keptIds.has(summary.coveredUntilMessageId)))
           const summaryIds = new Set(summaries.map(item => item.id))
           const stageSummaries = (s.stageSummaries || []).filter(stage => stage.sourceSummaryIds.every(id => summaryIds.has(id)))
-          return { ...s, messages, summaries, stageSummaries, messageCount: messages.length, updatedAt: Date.now() }
+          return { ...s, messages, summaries, stageSummaries, summaryRevision: summaries.length !== (s.summaries || []).length ? (s.summaryRevision || 0) + 1 : (s.summaryRevision || 0), messageCount: messages.length, updatedAt: Date.now() }
         })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -962,7 +964,7 @@ export const useChatStore = create<ChatStore>()(
       addSummary: (sessionId, summary) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const sessions = settings.sessions.map((session) => session.id === sessionId
-          ? { ...session, summaries: [...(session.summaries || []), summary], updatedAt: Date.now() } : session)
+          ? { ...session, summaries: [...(session.summaries || []), summary], summaryRevision: (session.summaryRevision || 0) + 1, updatedAt: Date.now() } : session)
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
@@ -977,7 +979,7 @@ export const useChatStore = create<ChatStore>()(
           // A locked summary is immutable. The only permitted change is unlocking it.
           if (current.locked && !(Object.keys(patch).length === 1 && patch.locked === false)) return session
           return { ...session, summaries: (session.summaries || []).map((item) => item.id === id ? { ...item, ...patch } : item),
-            stageSummaries: contentChanged ? (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)) : (session.stageSummaries || []), updatedAt: Date.now() }
+            stageSummaries: contentChanged ? (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)) : (session.stageSummaries || []), summaryRevision: (session.summaryRevision || 0) + 1, updatedAt: Date.now() }
         })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -986,7 +988,7 @@ export const useChatStore = create<ChatStore>()(
       addStageSummary: (sessionId, summary) => set((state) => {
         const settings = normalizeSettings(state.settings)
         const sessions = settings.sessions.map((session) => session.id === sessionId
-          ? { ...session, stageSummaries: [...(session.stageSummaries || []), summary], updatedAt: Date.now() } : session)
+          ? { ...session, stageSummaries: [...(session.stageSummaries || []), summary], summaryRevision: (session.summaryRevision || 0) + 1, updatedAt: Date.now() } : session)
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
@@ -997,7 +999,7 @@ export const useChatStore = create<ChatStore>()(
           if (session.id !== sessionId) return session
           const target = (session.summaries || []).find(item => item.id === id)
           if (!target || target.locked) return session
-          return { ...session, summaries: (session.summaries || []).filter((item) => item.id !== id), stageSummaries: (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)), updatedAt: Date.now() }
+          return { ...session, summaries: (session.summaries || []).filter((item) => item.id !== id), stageSummaries: (session.stageSummaries || []).filter(stage => !stage.sourceSummaryIds.includes(id)), summaryRevision: (session.summaryRevision || 0) + 1, updatedAt: Date.now() }
         })
         const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -1040,8 +1042,14 @@ export const useChatStore = create<ChatStore>()(
             ...settings,
             sessions: settings.sessions.map((session) => {
               const fullCount = session.partial ? (session.messageCount || session.messages.length) : session.messages.length
-              if (fullCount <= 100) return { ...session, messageCount: fullCount, partial: false }
-              return { ...session, messages: session.messages.slice(-100), messageCount: fullCount, partial: true }
+              const active = session.id === settings.activeSessionId
+              // Only the active chat gets a 50-message warm tail. Other chats
+              // keep metadata only and hydrate on selection. Persisting 100
+              // messages + all summaries for every session made startup parse
+              // far more than the 50 rows React actually rendered.
+              if (!active) return { ...session, messages: [], summaries: [], stageSummaries: [], messageCount: fullCount, partial: fullCount > 0 }
+              if (fullCount <= 50) return { ...session, messageCount: fullCount, partial: false }
+              return { ...session, messages: session.messages.slice(-50), messageCount: fullCount, partial: true }
             }),
           },
         } as any

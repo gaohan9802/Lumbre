@@ -459,6 +459,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         startAt: segment[0].timestamp, endAt: segment[segment.length-1].timestamp, createdAt: Date.now(), turnCount: chosen.length,
         messageCount: segment.length, sourceMessageIds: segment.map(message => message.id), coveredUntilMessageId: segment[segment.length-1].id,
         eventSummary: String(data.content).trim() })
+      void syncChatNow()
       return true
     } catch (err) { if (!silent) console.error('summary generation failed', err); return false }
     finally { summaryGeneratingRef.current = false; setSummaryGenerating(false) }
@@ -480,6 +481,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const data = await res.json()
       if (!res.ok || !data.content) throw new Error(data.error || '摘要重新生成失败')
       updateSummary(session.id, summary.id, { eventSummary: String(data.content).trim(), needsCorrection: false, editedAt: Date.now() })
+      void syncChatNow()
       return true
     } catch (err) { console.error('summary regeneration failed', err); return false }
     finally { setSummaryGenerating(false) }
@@ -506,6 +508,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       if (!res.ok || !data.content) throw new Error(data.error || '阶段摘要生成失败')
       const stage: StageSummary = { id: `stage-${Date.now()}`, sessionId: session.id, createdAt: Date.now(), startAt: batch[0].startAt, endAt: batch[9].endAt, sourceSummaryIds: batch.map(item => item.id), title: String(data.title || '一段共同经历').trim(), content: String(data.content).trim() }
       addStageSummary(session.id, stage)
+      void syncChatNow()
       stageAttemptRef.current = ''
       return true
     } catch (err) { console.error('stage summary generation failed', err); return false }

@@ -28,6 +28,9 @@ export interface SessionManifestItem {
   id: string
   updatedAt: number
   messageCount: number
+  title?: string
+  pinned?: boolean
+  createdAt?: number
 }
 
 export interface SyncManifest {
@@ -100,6 +103,9 @@ function normalizeManifest(raw: any): SyncManifest {
           id: String(s.id),
           updatedAt: Number(s.updatedAt) || 0,
           messageCount: Number(s.messageCount) || 0,
+          title: typeof s.title === 'string' ? s.title : undefined,
+          pinned: !!s.pinned,
+          createdAt: Number(s.createdAt) || undefined,
         }))
       : [],
     tombstones: raw?.tombstones && typeof raw.tombstones === 'object' ? raw.tombstones : {},
@@ -158,6 +164,32 @@ function mergeMessagesById(existing: any[], incoming: any[]) {
   return Array.from(map.values()).sort((a: any, b: any) => (Number(a?.timestamp) || 0) - (Number(b?.timestamp) || 0))
 }
 
+function mergeSummaryLayer(existing: any, incoming: any) {
+  const aRevision = Math.max(0, Number(existing?.summaryRevision) || 0)
+  const bRevision = Math.max(0, Number(incoming?.summaryRevision) || 0)
+  if (bRevision > aRevision) return {
+    summaries: Array.isArray(incoming?.summaries) ? incoming.summaries : [],
+    stageSummaries: Array.isArray(incoming?.stageSummaries) ? incoming.stageSummaries : [],
+    summaryConfig: incoming?.summaryConfig || existing?.summaryConfig,
+    summaryRevision: bRevision,
+  }
+  if (aRevision > bRevision) return {
+    summaries: Array.isArray(existing?.summaries) ? existing.summaries : [],
+    stageSummaries: Array.isArray(existing?.stageSummaries) ? existing.stageSummaries : [],
+    summaryConfig: existing?.summaryConfig || incoming?.summaryConfig,
+    summaryRevision: aRevision,
+  }
+  // Equal revisions usually mean an older client updated unrelated chat data.
+  // Keep the richer summary layer so 21 summaries can never fall back to 20.
+  const source = summaryCount(incoming) >= summaryCount(existing) ? incoming : existing
+  return {
+    summaries: Array.isArray(source?.summaries) ? source.summaries : [],
+    stageSummaries: Array.isArray(source?.stageSummaries) ? source.stageSummaries : [],
+    summaryConfig: incoming?.summaryConfig || existing?.summaryConfig,
+    summaryRevision: aRevision,
+  }
+}
+
 function preserveServerWakeMessages(existing: any, incoming: any) {
   const incomingMessages = Array.isArray(incoming?.messages) ? incoming.messages : []
   const ids = new Set(incomingMessages.map((m: any) => m?.id).filter(Boolean))
@@ -181,10 +213,7 @@ function pickSession(a: any, b: any) {
   if (b?.partial) {
     const messages = mergeMessagesById(Array.isArray(a?.messages) ? a.messages : [], Array.isArray(b?.messages) ? b.messages : [])
     return preserveServerWakeMessages(a, {
-      ...a, ...b, partial: false, messages, messageCount: messages.length,
-      summaries: summaryCount(b) ? b.summaries : a.summaries,
-      stageSummaries: summaryCount(b) ? b.stageSummaries : a.stageSummaries,
-      summaryConfig: b.summaryConfig || a.summaryConfig,
+      ...a, ...b, ...mergeSummaryLayer(a, b), partial: false, messages, messageCount: messages.length,
     })
   }
 
@@ -192,10 +221,7 @@ function pickSession(a: any, b: any) {
   // summary fields introduced later. Empty metadata must not erase a populated
   // durable summary layer merely because that client opened the conversation.
   const incoming = preserveServerWakeMessages(a, b)
-  if (summaryCount(a) > 0 && summaryCount(incoming) === 0) {
-    return { ...incoming, summaries: a.summaries, stageSummaries: a.stageSummaries, summaryConfig: incoming.summaryConfig || a.summaryConfig }
-  }
-  return incoming
+  return { ...incoming, ...mergeSummaryLayer(a, incoming) }
 }
 
 function writeSession(session: any, snapshot = true) {
@@ -275,7 +301,7 @@ function ensureInitialized() {
       for (const session of sessions) writeSession(session, false)
       saveManifest({
         version: 2,
-        sessions: sessions.map(s => ({ id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0 })),
+        sessions: sessions.map(s => ({ id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0 })),
         tombstones,
         config: legacy.config,
         configUpdatedAt: Number(legacy.configUpdatedAt) || 0,
@@ -359,6 +385,7 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
       id: winner.id,
       updatedAt: Number(winner.updatedAt) || 0,
       messageCount: winner.messages?.length || 0,
+      title: winner.title, pinned: !!winner.pinned, createdAt: Number(winner.createdAt) || 0,
     })
   }
 
@@ -404,7 +431,7 @@ export function appendSyncSessionMessage(sessionId: string, message: any): { app
     const next: SyncManifest = {
       ...manifest,
       sessions: manifest.sessions.map(item => item.id === sessionId
-        ? { id: sessionId, updatedAt: now, messageCount: updated.messages.length }
+        ? { id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
         : item),
     }
     saveManifest(next)
@@ -446,7 +473,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       updatedAt: now,
     }
     writeSession(updated)
-    const item = { id: sessionId, updatedAt: now, messageCount: updated.messages.length }
+    const item = { id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
     const next: SyncManifest = { ...manifest, sessions: oldMeta ? manifest.sessions.map(x => x.id === sessionId ? item : x) : [...manifest.sessions, item] }
     saveManifest(next)
     return { appended: true, sessionUpdatedAt: now, messageCount: updated.messages.length }

@@ -274,3 +274,11 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 高风险点 2：历史消息字段未经运行时校验，`content: null/object` 会在 `trim()` 或 React children 处直接抛错。
 - 高风险点 3：流式每 token setState，并对累计全文重新 Markdown 分词，长回复在 iOS PWA 中会制造明显 O(n²) 分配压力。
 - 修法保持主体不动：局部 Error Boundary、旧数据按需 normalize、80ms stream paint、流式纯文本/完成后 Markdown。
+
+## 2026-08-24 — Chat 四项稳定性 debug
+- 摘要数量回退不是数组 `slice(20)` 或存储上限。真正冲突单位是“整份 session”：消息、标题、摘要共用 `updatedAt`，任何旧客户端的普通变更都可能让旧摘要层以 newer-wins 覆盖新摘要层。需要摘要自己的单调 revision，不能继续拿摘要数量当版本号（删除摘要时数量会下降）。
+- 摘要 revision 相等时保留 richer layer 是旧数据迁移兜底；revision 建立后，新增/修改/删除都按 revision 决胜，允许用户真实删除摘要。
+- “只渲染 50 条”不等于“只加载 50 条”。此前 ChatSync 会根据 manifest 把所有 partial session 分批全量拉回，因此多个长会话仍会占满网络、JSON.parse、Zustand normalize 和 WebKit 内存。正确边界是 manifest metadata + active session body + on-demand hydration。
+- 非 active 会话可在 localStorage 只留 metadata，但 manifest 必须包含 title/pinned/createdAt，否则新设备会话列表只能显示空标题，且仍需下载正文才能画侧栏。
+- 唤醒日志里的正常 input + output_tokens=0 是上游/中转空成功响应，不是模型主动 `[SILENT]`。二者必须分开记录与重试，否则系统会把故障伪装成“静默醒来”。
+- PWA 白屏常见组合是部署后旧 service worker cache + 新 HTML/build manifest，或渲染阶段未捕获异常。Next chunk/navigation 使用 network-first，同时保留 ErrorBoundary 可见恢复界面。
