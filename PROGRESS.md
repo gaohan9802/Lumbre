@@ -2750,3 +2750,17 @@ author 默认 star（🐆），AI 就是星星。
 - 初次尝试类型检查时发现当前临时容器的 `node_modules/.bin/tsc` 不存在，无法在此容器执行 tsc；已执行 `git diff --check` 通过。
 - 鼓励话定时器使用递归 `setTimeout`，避免固定间隔；依赖只放当前活动和鼓励池，避免每次 state 更新重置计时器。
 - 设置页的编辑、删除、启停均复用现有 `/api/encouragement` 接口和 `/persistent/timeline/encouragements.json`，不增加新的数据路径。
+
+## 2026-07-08 — Timeline 文案清理与 Todo 收据风格
+
+### 完成
+- 删除 Timeline 页面两句旧文案：
+  - “一天不是被切碎的，是一段一段活过来的。”
+  - “每一秒都算数”
+- Timeline 日间模式改为直接沿用 Todo 的收据视觉语言：暖灰背景、`receipt-paper` 纸张、虚线边框、较小圆角、NEST · TIME DESK 标题体系与收据阴影。
+- 当前专注开始时立即显示一条随机可用鼓励话；之后继续按 180–300 秒随机间隔刷新。
+- 刷新仍最多保留 3 条鼓励话，旧鼓励继续向下堆叠。
+
+### Debug 笔记
+- 初始鼓励话显示放在 `current + encouragements` effect 内：首次 current 到达时可能尚未加载鼓励话，列表加载完成后 effect 会再次运行并补上首条。
+- 本次只修改 `TimelineView.tsx` 与项目记录，未改动 `/persistent` 数据文件。
