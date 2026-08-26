@@ -2734,3 +2734,19 @@ author 默认 star（🐆），AI 就是星星。
 - `TimelineTimerModal` 的标签状态从字符串改为数组，提交时直接传给后端。
 - `tsc --noEmit` 通过；`git diff --check` 通过。遵循 Zeabur 小内存环境，不在服务器运行 `next build`，交由 Zeabur 自动构建。
 - 所有 Timeline/鼓励数据使用 `DATA_DIR || /persistent`，适配 Zeabur 永久挂载。
+
+## 2026-08-24 — Timeline 设置面板与舒缓鼓励话节奏
+
+### 完成
+- Timeline 增加「设置」入口，新增设置面板：
+  - 标签管理：新增、删除、保存活动标签。
+  - 鼓励话管理：新增/编辑/删除鼓励话，支持常驻或按标签匹配。
+  - 支持启用/停用鼓励话，列表展示匹配标签与状态。
+- 鼓励话弹出节奏从固定 45 秒改为随机 3–5 分钟。
+- 屏幕同时保留最近 3 条鼓励话，新消息置顶，超出 3 条自动移除最旧一条。
+- 设置面板沿用 Todo 页面的大字号层级、圆角纸面卡片、低对比辅助文字和主题色按钮，但未直接复制 Todo 结构。
+
+### Debug 笔记
+- 初次尝试类型检查时发现当前临时容器的 `node_modules/.bin/tsc` 不存在，无法在此容器执行 tsc；已执行 `git diff --check` 通过。
+- 鼓励话定时器使用递归 `setTimeout`，避免固定间隔；依赖只放当前活动和鼓励池，避免每次 state 更新重置计时器。
+- 设置页的编辑、删除、启停均复用现有 `/api/encouragement` 接口和 `/persistent/timeline/encouragements.json`，不增加新的数据路径。
