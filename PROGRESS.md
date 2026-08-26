@@ -2718,3 +2718,19 @@ author 默认 star（🐆），AI 就是星星。
 - `tsc --noEmit` 通过。
 - `git diff --check` 通过。
 - 当前 shell 有 node_modules 但没有 npm 可执行文件，`npm run build` 无法启动（exit 127）；未把此环境问题误判为项目 build 失败。
+
+
+## 2026-07-15 — Timeline 专注计时器与星星鼓励话
+
+### 完成
+- Timeline 当前活动下新增大圆形正向计时器，按秒刷新，显示 HH:MM:SS。
+- 当前活动下增加随机鼓励气泡，每 45 秒从常驻鼓励和当前标签匹配鼓励中抽取，避免重复调用模型。
+- Timeline 标签改为必选、多选，默认标签：学习/工作/外出/娱乐/家务/旅行/阅读/运动；标签持久化在 `/persistent/timeline/tags.json`，可通过 API 修改。
+- 新增 `/api/encouragement`：支持批量创建、列表、当前活动匹配、编辑、删除；数据存储在 `/persistent/timeline/encouragements.json`。
+- 星星新增工具：`write_timeline_encouragements`（一次写多条）、`read_timeline_encouragements`、`edit_timeline_encouragement`、`delete_timeline_encouragement`。
+- Timeline 工具保留原有只读生活时间线能力。
+
+### Debug 笔记
+- `TimelineTimerModal` 的标签状态从字符串改为数组，提交时直接传给后端。
+- `tsc --noEmit` 通过；`git diff --check` 通过。遵循 Zeabur 小内存环境，不在服务器运行 `next build`，交由 Zeabur 自动构建。
+- 所有 Timeline/鼓励数据使用 `DATA_DIR || /persistent`，适配 Zeabur 永久挂载。

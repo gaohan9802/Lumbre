@@ -6,6 +6,8 @@ import { parseMadridDateTime } from '@/lib/madrid-time'
 const DATA_DIR = process.env.DATA_DIR || '/persistent'
 const DIR = path.join(DATA_DIR, 'timeline')
 const FILE = path.join(DIR, 'timeline.json')
+const TAG_FILE = path.join(DIR, 'tags.json')
+export const DEFAULT_TIMELINE_TAGS = ['学习','工作','外出','娱乐','家务','旅行','阅读','运动']
 
 export interface TimelineRecord {
   id: string
@@ -28,6 +30,14 @@ function read(): TimelineData {
     const data = JSON.parse(fs.readFileSync(FILE, 'utf-8'))
     return { records: Array.isArray(data.records) ? data.records : [] }
   } catch { return { records: [] } }
+}
+export function getTimelineTags(): string[] {
+  ensure(); try { const x = JSON.parse(fs.readFileSync(TAG_FILE, 'utf-8')); return Array.isArray(x) && x.length ? Array.from(new Set(x.map(String).map(s=>s.trim()).filter(Boolean))).slice(0,30) : DEFAULT_TIMELINE_TAGS } catch { return DEFAULT_TIMELINE_TAGS }
+}
+export function setTimelineTags(input: unknown): string[] {
+  const list = Array.isArray(input) ? Array.from(new Set(input.map(String).map(s=>s.trim()).filter(Boolean))).slice(0,30) : DEFAULT_TIMELINE_TAGS
+  if (!list.length) throw new Error('至少保留一个标签')
+  ensure(); fs.writeFileSync(TAG_FILE, JSON.stringify(list, null, 2)); return list
 }
 function write(data: TimelineData) {
   ensure()
@@ -65,6 +75,7 @@ export function startActivity(title: string, tags?: unknown, note?: string, star
     updated_at: now,
   }
   if (!record.title) throw new Error('请填写正在做什么')
+  if (!record.tags.length) throw new Error('请选择至少一个标签')
   data.records.unshift(record)
   write(data)
   return record
@@ -93,7 +104,7 @@ export function updateActivity(id: string, patch: Partial<TimelineRecord>): Time
     if (!title) throw new Error('事情名称不能为空')
     record.title = title
   }
-  if (patch.tags !== undefined) record.tags = cleanTags(patch.tags)
+  if (patch.tags !== undefined) { record.tags = cleanTags(patch.tags); if (!record.tags.length) throw new Error('请选择至少一个标签') }
   if (patch.note !== undefined) record.note = String(patch.note || '').trim().slice(0, 2000) || undefined
   if (patch.end_note !== undefined) record.end_note = String(patch.end_note || '').trim().slice(0, 2000) || undefined
   if (patch.start_at !== undefined) record.start_at = validDate(patch.start_at) || record.start_at

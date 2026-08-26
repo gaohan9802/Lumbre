@@ -2,7 +2,8 @@
 
 import { APP_TIME_ZONE, addMadridDays, formatMadridInput, madridDayBounds, madridDateKey, madridIsoWeekday, parseMadridDateTime } from '@/lib/madrid-time'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Clock3, Pencil, Trash2, X, Save } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock3, Pencil, Trash2, X, Save, Sparkles, Settings2 } from 'lucide-react'
+import { encouragement as encouragementApi } from '@/lib/api'
 import { useTheme } from '@/lib/theme'
 import { timeline as timelineApi } from '@/lib/api'
 import { TimelineTimerModal, TimelineCurrent } from './TimelineTimerModal'
@@ -24,6 +25,12 @@ export function TimelineView(){
   const [timerOpen,setTimerOpen]=useState(false)
   const [editing,setEditing]=useState<RecordT|null>(null)
   const [loading,setLoading]=useState(true)
+  const [now,setNow]=useState(Date.now())
+  const [encouragements,setEncouragements]=useState<any[]>([])
+  const [tags,setTags]=useState<string[]>([])
+  const [tagEditor,setTagEditor]=useState(false)
+  const [tagDraft,setTagDraft]=useState('')
+  const [bubble,setBubble]=useState<any>(null)
   const monday=useMemo(()=>{
     const noon=parseMadridDateTime(`${date}T12:00:00`) || new Date()
     const weekday=madridIsoWeekday(noon)
@@ -35,7 +42,10 @@ export function TimelineView(){
     const [day,week]=await Promise.all([timelineApi.list(from,to),timelineApi.list(weekFrom,weekTo)])
     setRecords(day.records||[]);setWeekRecords(week.records||[]);setCurrent(day.current||week.current||null);setLoading(false)
   },[date,monday])
-  useEffect(()=>{load();const t=setInterval(load,30000);return()=>clearInterval(t)},[load])
+  useEffect(()=>{load(); const t=setInterval(load,30000); return()=>clearInterval(t)},[load])
+  useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(t)},[])
+  useEffect(()=>{(async()=>{try{const d=await encouragementApi.list();setEncouragements(d.encouragements||[]);setTags(d.tags||[])}catch{}})()},[])
+  useEffect(()=>{if(!current)return; const t=setInterval(()=>{const pool=encouragements.filter(x=>x.enabled&&(x.scope==='permanent'||x.tags.some((v:string)=>current.tags.includes(v)))); if(pool.length)setBubble(pool[Math.floor(Math.random()*pool.length)])},45000); return()=>clearInterval(t)},[current,encouragements])
   const move=(days:number)=>setDate(addMadridDays(date,days))
   const [dayStartIso,dayEndIso]=dayBounds(date); const dayStart=new Date(dayStartIso).getTime(); const dayEnd=new Date(dayEndIso).getTime(); const daySpan=Math.max(1,dayEnd-dayStart)
   const blocks=records.map((r,i)=>{const s=Math.max(dayStart,new Date(r.start_at).getTime());const e=Math.min(dayEnd,r.end_at?new Date(r.end_at).getTime():Date.now());return{r,top:((s-dayStart)/daySpan)*100,height:Math.max(1.3,((Math.max(s,e)-s)/daySpan)*100),color:COLORS[i%COLORS.length]}})
@@ -47,6 +57,11 @@ export function TimelineView(){
     <div className="max-w-6xl mx-auto px-4 md:px-7 py-6 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6"><div><h1 className="font-serif text-2xl">Timeline</h1><p className={`text-xs mt-1 ${n?'text-night-muted':'text-day-muted'}`}>一天不是被切碎的，是一段一段活过来的。</p></div><button onClick={()=>setTimerOpen(true)} className={`px-4 py-2.5 rounded-xl flex items-center gap-2 ${n?'bg-night-amber text-night-bg':'bg-day-pink text-white'}`}><Clock3 size={15}/>{current?'查看当前状态':'开始一件事'}</button></div>
       {current&&<button onClick={()=>setTimerOpen(true)} className={`w-full mb-5 p-4 rounded-2xl border text-left ${n?'bg-night-card border-night-amber/25':'bg-white border-day-pink/20 shadow-sm'}`}><div className="text-[10px] opacity-50">此刻正在</div><div className="font-medium mt-1">{current.title}</div><div className="text-xs opacity-55 mt-1">从 {fmtTime(current.start_at)} 开始 · 点击结束</div></button>}
+      {current && <section className={`mb-5 rounded-3xl border p-5 text-center ${n?'bg-night-card border-night-border':'bg-white border-day-border shadow-sm'}`}>
+        <div className="text-[10px] uppercase tracking-[0.2em] opacity-45 mb-3">正在专注 · {current.tags.join(' / ')}</div>
+        <div className={`mx-auto w-56 h-56 rounded-full grid place-items-center border-[10px] ${n?'border-night-amber/70':'border-day-pink/55'}`}><div><div className="font-mono text-4xl md:text-5xl tracking-wider">{(()=>{const sec=Math.max(0,Math.floor((now-new Date(current.start_at).getTime())/1000));return `${String(Math.floor(sec/3600)).padStart(2,'0')}:${String(Math.floor(sec%3600/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`})()}</div><div className="text-[10px] opacity-45 mt-2">每一秒都算数</div></div></div>
+        {bubble && <div className={`relative mx-auto mt-5 max-w-md rounded-2xl px-4 py-3 text-sm ${n?'bg-night-surface':'bg-day-pinkLight'}`}><Sparkles size={13} className="absolute left-3 top-3 opacity-60"/><span className="block px-4">{bubble.text}</span></div>}
+      </section>}
       <div className="flex items-center justify-center gap-3 mb-5"><button onClick={()=>move(-1)} className="p-2 rounded-full hover:bg-black/5"><ChevronLeft size={18}/></button><input type="date" value={date} onChange={e=>setDate(e.target.value)} className={`no-frame rounded-xl border px-3 py-2 text-sm ${n?'bg-night-card border-night-border':'bg-white border-day-border'}`}/><button onClick={()=>setDate(dayKey(new Date()))} className="text-xs opacity-60 hover:opacity-100">今天</button><button onClick={()=>move(1)} className="p-2 rounded-full hover:bg-black/5"><ChevronRight size={18}/></button></div>
       <div className="grid lg:grid-cols-[1.45fr_0.8fr] gap-5">
         <section className={`rounded-3xl border p-4 md:p-6 ${n?'bg-night-card border-night-border':'bg-white border-day-border shadow-sm'}`}>
@@ -63,7 +78,7 @@ export function TimelineView(){
         </aside>
       </div>
     </div>
-    <TimelineTimerModal open={timerOpen} current={current} onClose={()=>setTimerOpen(false)} onChanged={()=>load()}/>
+    <TimelineTimerModal open={timerOpen} availableTags={tags} current={current} onClose={()=>setTimerOpen(false)} onChanged={()=>load()}/>
     {editing&&<><div className="fixed inset-0 z-[80] bg-black/45" onClick={()=>setEditing(null)}/><div className={`fixed z-[81] inset-x-4 mx-auto top-[10dvh] max-w-lg rounded-3xl border p-5 max-h-[80dvh] overflow-y-auto ${n?'bg-night-surface border-night-border':'bg-white border-day-border'}`}><div className="flex justify-between mb-4"><h3 className="font-medium">编辑记录</h3><button onClick={()=>setEditing(null)}><X size={17}/></button></div><div className="space-y-3 text-xs"><label className="block">事情<input value={editing.title} onChange={e=>setEditing({...editing,title:e.target.value})} className={`no-frame mt-1 w-full rounded-xl border px-3 py-2 ${n?'bg-night-bg border-night-border':'bg-day-bg border-day-border'}`}/></label><label className="block">标签<input value={editing.tags.join(', ')} onChange={e=>setEditing({...editing,tags:e.target.value.split(/[,，\s]+/).filter(Boolean)})} className={`no-frame mt-1 w-full rounded-xl border px-3 py-2 ${n?'bg-night-bg border-night-border':'bg-day-bg border-day-border'}`}/></label><div className="grid grid-cols-2 gap-2"><label>开始<input type="datetime-local" value={formatMadridInput(editing.start_at)} onChange={e=>setEditing({...editing,start_at:e.target.value})} className={`no-frame mt-1 w-full rounded-xl border px-2 py-2 ${n?'bg-night-bg border-night-border':'bg-day-bg border-day-border'}`}/></label><label>结束<input type="datetime-local" value={editing.end_at?formatMadridInput(editing.end_at):''} onChange={e=>setEditing({...editing,end_at:e.target.value||undefined})} className={`no-frame mt-1 w-full rounded-xl border px-2 py-2 ${n?'bg-night-bg border-night-border':'bg-day-bg border-day-border'}`}/></label></div><label className="block">开始备注<textarea value={editing.note||''} onChange={e=>setEditing({...editing,note:e.target.value})} rows={3} className={`no-frame mt-1 w-full rounded-xl border px-3 py-2 ${n?'bg-night-bg border-night-border':'bg-day-bg border-day-border'}`}/></label><label className="block">结束备注<textarea value={editing.end_note||''} onChange={e=>setEditing({...editing,end_note:e.target.value})} rows={3} className={`no-frame mt-1 w-full rounded-xl border px-3 py-2 ${n?'bg-night-bg border-night-border':'bg-day-bg border-day-border'}`}/></label><button onClick={saveEdit} className={`w-full py-3 rounded-xl flex justify-center items-center gap-2 ${n?'bg-night-amber text-night-bg':'bg-day-pink text-white'}`}><Save size={14}/>保存修改</button></div></div></>}
   </div>
 }

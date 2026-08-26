@@ -10,12 +10,12 @@ export interface TimelineCurrent {
   id: string; title: string; tags: string[]; note?: string; start_at: string; end_at?: string
 }
 
-export function TimelineTimerModal({ open, current, onClose, onChanged }: {
-  open: boolean; current: TimelineCurrent | null; onClose: () => void; onChanged: (record?: TimelineCurrent | null) => void
+export function TimelineTimerModal({ open, current, availableTags = ['学习','工作','外出','娱乐','家务','旅行','阅读','运动'], onClose, onChanged }: {
+  open: boolean; current: TimelineCurrent | null; availableTags?: string[]; onClose: () => void; onChanged: (record?: TimelineCurrent | null) => void
 }) {
   const { theme } = useTheme(); const n = theme === 'night'
   const [title, setTitle] = useState('')
-  const [tags, setTags] = useState('')
+  const [tags, setTags] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [endNote, setEndNote] = useState('')
   const [stage, setStage] = useState<'main'|'end-note'>('main')
@@ -26,11 +26,12 @@ export function TimelineTimerModal({ open, current, onClose, onChanged }: {
 
   const start = async () => {
     if (!title.trim()) return setError('先写下要做什么')
+    if (!tags.length) return setError('请选择至少一个标签')
     setBusy(true); setError('')
     const data = await timelineApi.start(title.trim(), tags, note)
     setBusy(false)
     if (data.error) return setError(data.error)
-    setTitle(''); setTags(''); setNote(''); onChanged(data.record); onClose()
+    setTitle(''); setTags([]); setNote(''); onChanged(data.record); onClose()
   }
   const stop = async () => {
     if (!current) return
@@ -55,7 +56,7 @@ export function TimelineTimerModal({ open, current, onClose, onChanged }: {
         <div className="grid grid-cols-2 gap-2"><button onClick={()=>setStage('main')} className={`py-2.5 rounded-xl border ${n?'border-night-border':'border-day-border'}`}>返回</button><button disabled={busy} onClick={stop} className={`py-2.5 rounded-xl ${n?'bg-night-amber text-night-bg':'bg-day-pink text-white'}`}>{busy?'保存中…':'结束并保存'}</button></div>
       </div> : <div className="space-y-3">
         <div><label className="text-xs">我要开始做什么 *</label><input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="例如：写论文" className={`no-frame mt-1 w-full rounded-xl border px-3 py-2.5 outline-none ${n?'bg-night-bg border-night-border':'bg-day-bg border-day-border'}`}/></div>
-        <div><label className="text-xs">标签 <span className="opacity-45">（选填）</span></label><input value={tags} onChange={e=>setTags(e.target.value)} placeholder="论文, 学习" className={`no-frame mt-1 w-full rounded-xl border px-3 py-2.5 outline-none ${n?'bg-night-bg border-night-border':'bg-day-bg border-day-border'}`}/></div>
+        <div><label className="text-xs">标签 <span className="opacity-45">（必选，可多选）</span></label><div className="mt-2 flex flex-wrap gap-2">{availableTags.map(tag=><button type="button" key={tag} onClick={()=>setTags(tags.includes(tag)?tags.filter(x=>x!==tag):[...tags,tag])} className={`rounded-full border px-3 py-1.5 text-xs transition ${tags.includes(tag)?(n?'border-night-amber bg-night-amber/20 text-night-amber':'border-day-pink bg-day-pinkLight text-day-text'):(n?'border-night-border':'border-day-border')}`}>{tag}</button>)}</div></div>
         <div><label className="text-xs">备注 <span className="opacity-45">（选填）</span></label><textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} placeholder="这次想完成到哪里……" className={`no-frame mt-1 w-full resize-none rounded-xl border px-3 py-2 outline-none ${n?'bg-night-bg border-night-border':'bg-day-bg border-day-border'}`}/></div>
         {error&&<p className="text-xs text-red-500">{error}</p>}
         <button disabled={busy||!title.trim()} onClick={start} className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-35 ${n?'bg-night-amber text-night-bg':'bg-day-pink text-white'}`}><Play size={14}/>{busy?'开始中…':'开始计时'}</button>

@@ -118,6 +118,8 @@ export const timeline = {
   stop: (id?: string, end_note?: string, end_at?: string) => post('/api/timeline', { action: 'stop', id, end_note, end_at }),
   update: (id: string, patch: any) => post('/api/timeline', { action: 'update', id, patch }),
   remove: (id: string) => post('/api/timeline', { action: 'delete', id }),
+  tags: () => get('/api/timeline'),
+  setTags: (tags: string[]) => post('/api/timeline', { action: 'tags', tags }),
 }
 
 // ── Tesis (thesis progress) ─────────────────────────────
@@ -151,3 +153,5 @@ export const period = {
   config: (cycle_days?: number, period_length?: number) =>
     post('/api/period', { action: 'config', cycle_days, period_length }),
 }
+
+export const encouragement = { list: () => get('/api/encouragement'), match: () => get('/api/encouragement?match=1'), create: (text:string, scope:'permanent'|'tags', tags:string[]) => post('/api/encouragement',{action:'create',text,scope,tags}), createMany:(items:any[])=>post('/api/encouragement',{action:'create_many',items}), update:(id:string,patch:any)=>post('/api/encouragement',{action:'update',id,patch}), remove:(id:string)=>post('/api/encouragement',{action:'delete',id}), setTags:(tags:string[])=>post('/api/encouragement',{action:'tags',tags}) }

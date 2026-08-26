@@ -25,7 +25,8 @@ function madridTime(d: Date | number = new Date()): string {
   }).format(date)
 }
 import { getTodos, commentTodo, addTodo, editTodo, removeTodo } from './todo-store'
-import { getCurrentActivity, listActivities, timelineDurationSeconds } from './timeline-store'
+import { getCurrentActivity, listActivities, timelineDurationSeconds, getTimelineTags, startActivity, stopActivity } from './timeline-store'
+import { createManyEncouragements, listEncouragements, updateEncouragement, deleteEncouragement, matchingEncouragements } from './encouragement-store'
 import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { scheduleWake } from './autowake'
@@ -400,6 +401,14 @@ const PHOTO_TOOLS: ToolDef[] = [
 
 // ── Life timeline tools (read-only for 星星) ───────────
 const LIFE_TIMELINE_TOOLS: ToolDef[] = [
+  {
+    name: 'write_timeline_encouragements',
+    description: '给Timeline写一条或多条鼓励话。一次调用可以写多条，避免重复调用。scope=permanent常驻；scope=tags只在当前活动标签命中时弹出，tags可多选。',
+    input_schema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { text:{type:'string'}, scope:{type:'string',enum:['permanent','tags']}, tags:{type:'array',items:{type:'string'}} }, required:['text'] } } }, required:['items'] },
+  },
+  { name: 'read_timeline_encouragements', description: '查看Timeline全部鼓励话及当前可匹配的鼓励话。', input_schema: { type:'object', properties:{} } },
+  { name: 'edit_timeline_encouragement', description: '编辑Timeline鼓励话。', input_schema: { type:'object', properties:{ id:{type:'string'}, text:{type:'string'}, scope:{type:'string'}, tags:{type:'array',items:{type:'string'}}, enabled:{type:'boolean'} }, required:['id'] } },
+  { name: 'delete_timeline_encouragement', description: '删除Timeline鼓励话。', input_schema: { type:'object', properties:{ id:{type:'string'} }, required:['id'] } },
   {
     name: 'read_life_timeline',
     description: '只读查看小火的生活时间线。可查某一天、某一周或任意起止时间；不提供编辑权限。date 查特定日；week_start 查从该日开始7天；不传参数查今天。也会返回当前正在做什么和已经持续多久。',
@@ -1058,6 +1067,11 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
         return r === 'ok' ? '💬 评论成功' : r
       }
 
+
+      case 'write_timeline_encouragements': return JSON.stringify({ created: createManyEncouragements(input.items || []) })
+      case 'read_timeline_encouragements': { const c=getCurrentActivity(); return JSON.stringify({ tags:getTimelineTags(), all:listEncouragements(), matching:matchingEncouragements(c?.tags||[]) }) }
+      case 'edit_timeline_encouragement': return JSON.stringify(updateEncouragement(input.id, input))
+      case 'delete_timeline_encouragement': return deleteEncouragement(input.id) ? '已删除鼓励话' : '鼓励话不存在'
 
       // Life timeline → read-only for 星星
       case 'read_life_timeline': {
