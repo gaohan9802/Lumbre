@@ -2764,3 +2764,23 @@ author 默认 star（🐆），AI 就是星星。
 ### Debug 笔记
 - 初始鼓励话显示放在 `current + encouragements` effect 内：首次 current 到达时可能尚未加载鼓励话，列表加载完成后 effect 会再次运行并补上首条。
 - 本次只修改 `TimelineView.tsx` 与项目记录，未改动 `/persistent` 数据文件。
+
+## 2026-08-19 — 新增「券包」Feature
+
+### 完成
+- 新增永久文件存储 `src/server/coupon-store.ts`：`/persistent/coupons/coupons.json`，原子写入。
+- 券模型包含签发人、持有人、名称、规则、状态、签发/使用/过期时间、双方签字、使用上限/已用次数、签发原因、完整 history。
+- 实现 pending → active → used/expired/voided 状态流转；过期在读取时自动检查。
+- 实现签发、持有人签字、编辑、持有人使用、双方确认作废；未签字券允许签发人单方面作废。
+- 新增 `/api/coupons` GET/POST API。
+- Chat 输入框下方新增「🎟️ 券包」，位于模型 API 管理旁边；新增券包页面，券按过期时间优先、无过期按创建时间倒序排列。
+- 券包页面使用 Todo 小票视觉，支持新增、签字、编辑、使用、发起/确认作废、history 展开、分享确认。
+- 分享会生成结构化券卡文字并填入 Chat 输入框，AI 可读到完整券内容。
+- `couponContext()` 注入每次 Chat 的 volatile 上下文，因此前端券包状态变化会随下一次对话反馈给星星。
+- 星星新增工具：`read_coupons`、`create_coupon`、`sign_coupon`、`edit_coupon`、`use_coupon`、`void_coupon`、`confirm_void_coupon`。
+
+### 验证 / Debug
+- `git diff --check` 通过。
+- TypeScript 检查仅剩项目既有的 `web-push` 类型缺失，不是本次改动引入；本次新增代码未产生新的 TS 错误。
+- 未执行 Next production build，遵循低内存 shell 约定，交 Zeabur 自动构建。
+- commit `2b4fbfb` 已推送 `main`，Zeabur 将自动部署。
