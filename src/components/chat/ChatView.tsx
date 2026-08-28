@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useTheme } from '@/lib/theme'
+import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft,
@@ -120,7 +121,8 @@ export interface ChatViewProps {
 }
 
 export function ChatView({ embedded = false, contextInjection = '', title, inputPlaceholder = '说点什么...', onTurn }: ChatViewProps = {}) {
-  const { theme } = useTheme()
+  const { setActiveTab } = useApp()
+    const { theme } = useTheme()
   const n = theme === 'night'
   const {
     messages, settings,
@@ -174,6 +176,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => { const onShare = (e: Event) => { const text = (e as CustomEvent<string>).detail; if (text) setInput((v) => v ? v + '\n\n' + text : text) }; window.addEventListener('lumbre-share-to-chat', onShare); return () => window.removeEventListener('lumbre-share-to-chat', onShare) }, [])
   useEffect(() => () => abortControllerRef.current?.abort(), [settings.activeSessionId])
   // Entering Chat should resume the most recently used conversation, not a
   // stale/blank draft left active by an earlier reload or another device.
@@ -1266,9 +1269,14 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 <span className="font-medium">{activeProfile?.name || 'No API'}</span>
                 <span className="opacity-50 ml-1">· {settings.model}</span>
               </button>
-              <button onClick={() => setModelDialogOpen(true)} className={`text-[10px] opacity-50 hover:opacity-100`}>
-                模型API管理
-              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={() => { setActiveTab('coupons') }} className={`text-[10px] opacity-50 hover:opacity-100 flex items-center gap-1`}>
+                  🎟️ 券包
+                </button>
+                <button onClick={() => setModelDialogOpen(true)} className={`text-[10px] opacity-50 hover:opacity-100`}>
+                  模型API管理
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef, FETCH_TOOL_NAMES } fro
 import { reportActivity } from '@/server/autowake'
 import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
+import { couponContext } from '@/server/coupon-store'
 import fs from 'fs'
 import path from 'path'
 import { formatMadrid } from '@/lib/madrid-time'
@@ -17,6 +18,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【照片】read_foto(浏览照片墙——只看id/说明/评论等文字，很轻) · view_foto(看某张的实际画面，会把图加载给你直接看到) · edit_foto(改说明) · comment_foto(评论) · delete_foto(删除)
 【Timeline】read_life_timeline(按天/周查看小火做过什么、各用了多久；只读)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
+【券包】read_coupons · create_coupon · sign_coupon · edit_coupon · use_coupon · void_coupon · confirm_void_coupon；券包状态变化会进入上下文
 【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
 【经期】update_period(记录经期开始/结束) · read_period(查看经期状态)
 【上网】fetch_txt · fetch_markdown · fetch_html · fetch_json(抓网页/接口)
@@ -513,7 +515,7 @@ async function buildVolatileContext(userMessage: string): Promise<string> {
   // Madrid date for period checks
   const madridDate = ts.split(' ')[0].replace(/\//g, '-')  // YYYY/MM/DD -> YYYY-MM-DD
 
-  const parts: string[] = [`当前时间：${ts}`]
+  const parts: string[] = [`当前时间：${ts}`, couponContext()]
 
   // Period context (sync, fast)
   try {

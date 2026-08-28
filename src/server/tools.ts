@@ -33,6 +33,7 @@ import { scheduleWake } from './autowake'
 import { executeGalatea } from './galatea'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
+import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
 
 // ── Claude tool schema type ─────────────────────────────
 
@@ -489,6 +490,17 @@ const TODO_TOOLS: ToolDef[] = [
   },
 ]
 
+// ── Coupon promise wallet tools ─────────────────────────
+const COUPON_TOOLS: ToolDef[] = [
+ { name:'read_coupons', description:'查看券包全部承诺券及状态、双方签字、使用次数和操作历史。任何券包前端状态变化也会自动进入上下文。', input_schema:{type:'object',properties:{}} },
+ { name:'create_coupon', description:'签发一张双方承诺券。你只能以 star 身份签发，issuer 自动签字；holder 需要之后确认签字才生效。', input_schema:{type:'object',properties:{name:{type:'string'},description:{type:'string'},holder:{type:'string',description:'fire 或 star'},useLimit:{type:'integer'},expiresAt:{type:'string'},reason:{type:'string'}},required:['name','description','holder']} },
+ { name:'sign_coupon', description:'以持有人身份签字确认一张 pending 券；只有 holder 能用此工具。', input_schema:{type:'object',properties:{id:{type:'string'}},required:['id']} },
+ { name:'edit_coupon', description:'编辑尚未完成/未过期/未作废券的名字、规则、次数、过期时间或签发原因。', input_schema:{type:'object',properties:{id:{type:'string'},name:{type:'string'},description:{type:'string'},useLimit:{type:'integer'},expiresAt:{type:'string'},reason:{type:'string'}},required:['id']} },
+ { name:'use_coupon', description:'以持有人身份使用一张 active 券；系统会检查状态、次数和过期时间。', input_schema:{type:'object',properties:{id:{type:'string'}},required:['id']} },
+ { name:'void_coupon', description:'发起作废或作废未签字券。已生效券必须由另一方确认，不能单方面撕毁。', input_schema:{type:'object',properties:{id:{type:'string'}},required:['id']} },
+ { name:'confirm_void_coupon', description:'确认另一方发起的作废申请，双方确认后券才作废。', input_schema:{type:'object',properties:{id:{type:'string'}},required:['id']} },
+]
+
 // ── Tesis (thesis) tools ────────────────────────────────
 
 const THESIS_TOOLS: ToolDef[] = [
@@ -811,7 +823,7 @@ const BOOKMARK_TOOLS: ToolDef[] = [
   },
 ]
 
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...LIFE_TIMELINE_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS, ...BOOKMARK_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...LIFE_TIMELINE_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS, ...BOOKMARK_TOOLS, ...COUPON_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -1146,6 +1158,15 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
         const r = commentTodo(input.id, input.author || 'star', input.content, input.date)
         return r === 'ok' ? '💬 已点评' : r
       }
+
+      // Coupon promise wallet
+      case 'read_coupons': return JSON.stringify(listCoupons())
+      case 'create_coupon': return JSON.stringify({ok:true,coupon:createCoupon(input, 'star')})
+      case 'sign_coupon': return JSON.stringify({ok:true,coupon:signCoupon(input.id, 'fire')})
+      case 'edit_coupon': return JSON.stringify({ok:true,coupon:updateCoupon(input.id, input, 'star')})
+      case 'use_coupon': return JSON.stringify({ok:true,coupon:useCoupon(input.id, 'fire')})
+      case 'void_coupon': return JSON.stringify({ok:true,coupon:requestVoid(input.id, 'star')})
+      case 'confirm_void_coupon': return JSON.stringify({ok:true,coupon:confirmVoid(input.id, 'fire')})
 
       // Tesis (thesis) → local store
       case 'read_thesis': {

@@ -118,8 +118,6 @@ export const timeline = {
   stop: (id?: string, end_note?: string, end_at?: string) => post('/api/timeline', { action: 'stop', id, end_note, end_at }),
   update: (id: string, patch: any) => post('/api/timeline', { action: 'update', id, patch }),
   remove: (id: string) => post('/api/timeline', { action: 'delete', id }),
-  tags: () => get('/api/timeline'),
-  setTags: (tags: string[]) => post('/api/timeline', { action: 'tags', tags }),
 }
 
 // ── Tesis (thesis progress) ─────────────────────────────
@@ -154,4 +152,23 @@ export const period = {
     post('/api/period', { action: 'config', cycle_days, period_length }),
 }
 
-export const encouragement = { list: () => get('/api/encouragement'), match: () => get('/api/encouragement?match=1'), create: (text:string, scope:'permanent'|'tags', tags:string[]) => post('/api/encouragement',{action:'create',text,scope,tags}), createMany:(items:any[])=>post('/api/encouragement',{action:'create_many',items}), update:(id:string,patch:any)=>post('/api/encouragement',{action:'update',id,patch}), remove:(id:string)=>post('/api/encouragement',{action:'delete',id}), setTags:(tags:string[])=>post('/api/encouragement',{action:'tags',tags}) }
+// ── Coupon promise wallet ──────────────────────────────
+export const coupons = {
+  list: () => get('/api/coupons'),
+  add: (data: any) => post('/api/coupons', { action: 'add', ...data }),
+  sign: (id: string, actor: string) => post('/api/coupons', { action: 'sign', id, actor }),
+  edit: (id: string, patch: any, actor: string) => post('/api/coupons', { action: 'edit', id, patch, actor }),
+  use: (id: string, actor: string) => post('/api/coupons', { action: 'use', id, actor }),
+  void: (id: string, actor: string) => post('/api/coupons', { action: 'void', id, actor }),
+  confirmVoid: (id: string, actor: string) => post('/api/coupons', { action: 'confirm_void', id, actor }),
+}
+
+export const coupons = {
+  list: () => get('/api/coupons'),
+  add: (data: any) => post('/api/coupons', { action: 'add', ...data }),
+  sign: (id: string, actor: string) => post('/api/coupons', { action: 'sign', id, actor }),
+  edit: (id: string, patch: any, actor: string) => post('/api/coupons', { action: 'edit', id, patch, actor }),
+  use: (id: string, actor: string) => post('/api/coupons', { action: 'use', id, actor }),
+  void: (id: string, actor: string) => post('/api/coupons', { action: 'void', id, actor }),
+  confirmVoid: (id: string, actor: string) => post('/api/coupons', { action: 'confirm_void', id, actor }),
+}

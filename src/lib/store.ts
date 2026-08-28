@@ -2,9 +2,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-type Tab = 'chat' | 'timeline' | 'diary' | 'notes' | 'todo' | 'photos' | 'memory' | 'dreams'
+type Tab = 'chat' | 'coupons' | 'timeline' | 'diary' | 'notes' | 'todo' | 'photos' | 'memory' | 'dreams'
 
-const VALID_TABS: Tab[] = ['chat', 'timeline', 'diary', 'notes', 'todo', 'photos', 'memory', 'dreams']
+const VALID_TABS: Tab[] = ['chat', 'coupons', 'timeline', 'diary', 'notes', 'todo', 'photos', 'memory', 'dreams']
 
 interface AppStore {
   // Navigation
