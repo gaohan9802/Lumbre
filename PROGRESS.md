@@ -2791,3 +2791,10 @@ author 默认 star（🐆），AI 就是星星。
 - TypeScript 检查仅剩项目既有的 `web-push` 类型缺失，不是本次改动引入；本次新增代码未产生新的 TS 错误。
 - 未执行 Next production build，遵循低内存 shell 约定，交 Zeabur 自动构建。
 - commit `2b4fbfb` 已推送 `main`，Zeabur 将自动部署。
+
+
+## 2026-08-28 — Zeabur build failure follow-up
+- 根因：`src/components/timeline/TimelineView.tsx` 引用了 `encouragement as encouragementApi`，但 `src/lib/api.ts` 没有导出该客户端，Zeabur 的 TypeScript 编译因此失败：`TS2305: Module "@/lib/api" has no exported member 'encouragement'`。
+- 修复：在 `src/lib/api.ts` 增加 `encouragement.list/create/update/remove/setTags`，与 `/api/encouragement` route 的 action 完整对应。
+- 验证：干净 checkout 安装依赖后执行 `tsc --noEmit --pretty false`，EXIT=0。
+- 修复 commit：`1ddd8eb2 fix: add missing encouragement api client`。
