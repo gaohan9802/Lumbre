@@ -282,3 +282,10 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 非 active 会话可在 localStorage 只留 metadata，但 manifest 必须包含 title/pinned/createdAt，否则新设备会话列表只能显示空标题，且仍需下载正文才能画侧栏。
 - 唤醒日志里的正常 input + output_tokens=0 是上游/中转空成功响应，不是模型主动 `[SILENT]`。二者必须分开记录与重试，否则系统会把故障伪装成“静默醒来”。
 - PWA 白屏常见组合是部署后旧 service worker cache + 新 HTML/build manifest，或渲染阶段未捕获异常。Next chunk/navigation 使用 network-first，同时保留 ErrorBoundary 可见恢复界面。
+
+
+## 2026-08-28 — Zeabur build failure follow-up
+- 根因：`src/components/timeline/TimelineView.tsx` 引用了 `encouragement as encouragementApi`，但 `src/lib/api.ts` 没有导出该客户端，Zeabur 的 TypeScript 编译因此失败：`TS2305: Module "@/lib/api" has no exported member 'encouragement'`。
+- 修复：在 `src/lib/api.ts` 增加 `encouragement.list/create/update/remove/setTags`，与 `/api/encouragement` route 的 action 完整对应。
+- 验证：干净 checkout 安装依赖后执行 `tsc --noEmit --pretty false`，EXIT=0。
+- 修复 commit：`1ddd8eb2 fix: add missing encouragement api client`。
