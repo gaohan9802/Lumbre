@@ -5,7 +5,8 @@ import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import { photos as photosApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, Plus, MessageCircle, X, Pencil, Trash2, Check, Send, Lock, Unlock, Eye, EyeOff } from 'lucide-react'
+import { Camera, Plus, MessageCircle, X, Pencil, Trash2, Check, Send, Lock, Unlock, Eye, EyeOff, Share2 } from 'lucide-react'
+import { shareToChat } from '@/lib/share'
 import { formatMadridShort } from '@/lib/madrid-time'
 
 interface PhotoComment { author: string; content: string; time: string }
@@ -76,6 +77,8 @@ export function PhotosView() {
       if (!fresh) setActive(null)
     }
   }, [photos]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sharePhoto = (p: PhotoEntry) => shareToChat({kind:'photo', title:'📷 照片', subtitle:`${emojiFor(p.author)} · ${fmt(p.created_at)}`, body:p.caption, imageUrl:p.url, metadata:{...p}})
 
   const onPick = () => fileRef.current?.click()
 
@@ -223,7 +226,7 @@ export function PhotosView() {
                   <img src={p.url} alt={p.caption} className="w-full aspect-square object-cover" loading="lazy" />
                   <div className="p-2 space-y-1">
                     {p.caption && <p className="text-[11px] line-clamp-2">{p.caption}</p>}
-                    <div className="flex items-center justify-between text-[10px] opacity-50">
+                    <div className="flex items-center justify-between text-[10px] opacity-50"><span role="button" tabIndex={0} onClick={(e)=>{e.stopPropagation();sharePhoto(p)}} onKeyDown={(e)=>{if(e.key==='Enter'){e.stopPropagation();sharePhoto(p)}}} className="flex items-center gap-1 hover:opacity-100 cursor-pointer"><Share2 size={10}/> 分享</span>
                       <span>{emojiFor(p.author)} {fmt(p.created_at)}</span>
                       <span className="flex items-center gap-1">
                         {p.locked && <Lock size={9} />}
@@ -253,6 +256,7 @@ export function PhotosView() {
               <div className="flex items-center justify-between p-3 sticky top-0 backdrop-blur-md">
                 <span className="text-xs opacity-50">{emojiFor(active.author)} · {fmt(active.created_at)}</span>
                 <div className="flex items-center gap-1">
+                  <button onClick={() => sharePhoto(active)} className="p-2 rounded-xl opacity-60 hover:opacity-100"><Share2 size={16}/></button>
                   <button onClick={() => toggleLock(active.id, !!active.locked)}
                     className="p-2 rounded-xl opacity-60 hover:opacity-100" title={active.locked ? '解锁' : '上锁'}>
                     {active.locked ? <Unlock size={16} /> : <Lock size={16} />}

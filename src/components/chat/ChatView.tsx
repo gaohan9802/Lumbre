@@ -14,6 +14,7 @@ import {
   getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary, StageSummary,
 } from '@/lib/chatStore'
 import { photos as photosApi } from '@/lib/api'
+import type { SharedCard } from '@/lib/share'
 import { ChatSettings } from './ChatSettings'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
@@ -171,12 +172,28 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const imgInputRef = useRef<HTMLInputElement>(null)
   const [uploadingImg, setUploadingImg] = useState(false)
   const [pendingImages, setPendingImages] = useState<string[]>([])
+  const [pendingShare, setPendingShare] = useState<SharedCard | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickBottomRef = useRef(true)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
-  useEffect(() => { const onShare = (e: Event) => { const text = (e as CustomEvent<string>).detail; if (text) setInput((v) => v ? v + '\n\n' + text : text) }; window.addEventListener('lumbre-share-to-chat', onShare); return () => window.removeEventListener('lumbre-share-to-chat', onShare) }, [])
+  useEffect(() => {
+    const accept = (detail: SharedCard | string) => {
+      if (typeof detail === 'string') setInput((v) => v ? v + '\n\n' + detail : detail)
+      else setPendingShare(detail)
+    }
+    const onShare = (e: Event) => {
+      const detail = (e as CustomEvent<SharedCard | string>).detail
+      if (detail) accept(detail)
+    }
+    try {
+      const raw = sessionStorage.getItem('lumbre-pending-share')
+      if (raw) { accept(JSON.parse(raw) as SharedCard); sessionStorage.removeItem('lumbre-pending-share') }
+    } catch {}
+    window.addEventListener('lumbre-share-to-chat', onShare)
+    return () => window.removeEventListener('lumbre-share-to-chat', onShare)
+  }, [])
   useEffect(() => () => abortControllerRef.current?.abort(), [settings.activeSessionId])
   // Entering Chat should resume the most recently used conversation, not a
   // stale/blank draft left active by an earlier reload or another device.
@@ -545,7 +562,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   }, [])
 
   const handleSend = async () => {
-    if ((!input.trim() && pendingImages.length === 0) || isLoading) return
+    if ((!input.trim() && pendingImages.length === 0 && !pendingShare) || isLoading) return
     const profile = getActiveProfile(settings)
     const model = settings.model
     const now = Date.now()
@@ -555,6 +572,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       content: input.trim(),
       timestamp: now,
       images: pendingImages.length ? pendingImages : undefined,
+      sharedCard: pendingShare || undefined,
       providerId: profile?.id,
       modelId: model,
     }
@@ -564,6 +582,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     onTurn?.('user', userMsg.content)
     setInput('')
     setPendingImages([])
+    setPendingShare(null)
     setIsLoading(true)
 
     const history = [...messages, userMsg]
@@ -578,7 +597,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         ).join('\n')
         msgContent = (msgContent || '') + '\n' + summary
       }
-      return { role: m.role, content: msgContent, images: m.images }
+      const cardText = m.sharedCard ? `\n\n[已分享卡片｜${m.sharedCard.kind}]\n${JSON.stringify(m.sharedCard.metadata)}\n${m.sharedCard.body || ''}` : ''
+      return { role: m.role, content: msgContent + cardText, images: m.images }
     })
 
     await doSend(apiMessages, (data) => {
@@ -1066,9 +1086,16 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             <button onClick={finishEditMsg} className={`text-xs font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>保存</button>
                           </div>
                         </div>
-                      ) : ((isUser || !msg.content_blocks || msg.content_blocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0)) ? (
+                      ) : ((isUser || !msg.content_blocks || msg.content_blocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
                         <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[87%] rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : {}) : (aColor ? aiBubbleStyle : {})}>
+                          {msg.sharedCard && (
+                            <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
+                              <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
+                              {msg.sharedCard.imageUrl && <img src={msg.sharedCard.imageUrl} alt="" className="w-full max-h-48 object-contain" />}
+                              <div className="px-3 pb-2 text-[11px] whitespace-pre-wrap">{msg.sharedCard.subtitle}{msg.sharedCard.body ? `\n${msg.sharedCard.body}` : ''}</div>
+                            </div>
+                          )}
                           {msg.images && msg.images.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mb-1.5">
                               {msg.images.map((src, i) => (
@@ -1208,6 +1235,21 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               </div>
             </div>
 
+            {/* pending shared card */}
+            {pendingShare && (
+              <div className={`mx-1 mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface' : 'border-day-pink/20 bg-white'}`}>
+                <div className="flex items-center justify-between px-3 py-2 text-xs">
+                  <span>📎 已带入 {pendingShare.title}</span>
+                  <button onClick={() => setPendingShare(null)} className="opacity-50"><X size={14} /></button>
+                </div>
+                <div className="px-3 pb-2 text-[11px] space-y-1">
+                  {pendingShare.imageUrl && <img src={pendingShare.imageUrl} alt="" className="w-full max-h-40 object-contain rounded-lg" />}
+                  <div className="font-medium">{pendingShare.subtitle}</div>
+                  <div className="whitespace-pre-wrap opacity-70">{pendingShare.body}</div>
+                  <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all opacity-45">{JSON.stringify(pendingShare.metadata, null, 2)}</pre>
+                </div>
+              </div>
+            )}
             {/* pending image previews */}
             {/* Photo wall prompt */}
             {photoPrompt && (
@@ -1255,8 +1297,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                   <Square size={15} fill="currentColor" />
                 </button>
               ) : (
-                <button onClick={handleSend} disabled={!input.trim() && pendingImages.length === 0}
-                  className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || pendingImages.length) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
+                <button onClick={handleSend} disabled={!input.trim() && pendingImages.length === 0 && !pendingShare}
+                  className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
                   <Send size={16} />
                 </button>
               )}
@@ -1270,7 +1312,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 <span className="opacity-50 ml-1">· {settings.model}</span>
               </button>
               <div className="flex items-center gap-3">
-                <button onClick={() => { setActiveTab('coupons') }} className={`text-[10px] opacity-50 hover:opacity-100 flex items-center gap-1`}>
+                <button onClick={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} className={`text-[10px] opacity-50 hover:opacity-100 flex items-center gap-1`}>
                   🎟️ 券包
                 </button>
                 <button onClick={() => setModelDialogOpen(true)} className={`text-[10px] opacity-50 hover:opacity-100`}>

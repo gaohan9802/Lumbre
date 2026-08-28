@@ -4,6 +4,7 @@
  * and sync across devices through /api/sync (config merged by configUpdatedAt).
  */
 import { create } from 'zustand'
+import type { SharedCard } from '@/lib/share'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
 /** A content block in a message — renders inline in order */
@@ -25,6 +26,7 @@ export interface MessageVersion {
   cache_creation_tokens?: number
   tool_calls?: { name: string; input: Record<string, any>; result: string }[]
   content_blocks?: ContentBlock[]  // ordered inline blocks (thinking/text/tool interleaved)
+  sharedCard?: SharedCard
   providerId?: string
   modelId?: string
 }
@@ -33,6 +35,7 @@ export interface ChatMessage extends MessageVersion {
   id: string
   role: 'user' | 'assistant'
   images?: string[]
+  sharedCard?: SharedCard
   versions?: MessageVersion[]
   versionIndex?: number
 }
@@ -334,6 +337,7 @@ export function snapshotOfMessage(m: ChatMessage): MessageVersion {
     tool_calls: m.tool_calls,
     providerId: m.providerId,
     modelId: m.modelId,
+    sharedCard: m.sharedCard,
   }
 }
 
@@ -366,6 +370,7 @@ function normalizeVersion(version: any): MessageVersion {
       input: call?.input && typeof call.input === 'object' ? call.input : {},
       result: safeText(call?.result),
     })) : undefined,
+    sharedCard: version?.sharedCard && typeof version.sharedCard === 'object' ? version.sharedCard : undefined,
     content_blocks: Array.isArray(version?.content_blocks)
       ? version.content_blocks.map(normalizeContentBlock).filter(Boolean) as ContentBlock[]
       : undefined,
@@ -396,6 +401,7 @@ function normalizeMessage(message: any): ChatMessage | null {
     id: safeText(message.id) || genId('message'),
     role: message.role,
     images: Array.isArray(message.images) ? message.images.filter((image: any) => typeof image === 'string') : undefined,
+    sharedCard: message.sharedCard && typeof message.sharedCard === 'object' ? message.sharedCard : undefined,
     versions,
     versionIndex: versions?.length ? Math.max(0, Math.min(Number(message.versionIndex) || 0, versions.length - 1)) : undefined,
   }

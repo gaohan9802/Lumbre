@@ -1,5 +1,6 @@
 'use client'
 
+import { shareToChat } from '@/lib/share'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -337,6 +338,7 @@ export function MemoryView() {
                 <button onClick={() => setEditing(!editing)} className={`p-1 rounded ${editing ? c.accentBg : ''}`}>
                   <Edit3 size={14} className={editing ? '' : 'opacity-40'} />
                 </button>
+                <button onClick={() => shareToChat({kind:'memory', title:'🧠 '+selectedBucket.name, subtitle:selectedBucket.domain?.join?.('、') || '', body:selectedBucket.content_preview || selectedBucket.content || '', metadata:{...selectedBucket}})} className="p-1" title="分享到 Chat">↗</button>
                 <button onClick={() => setSelectedBucket(null)} className="p-1"><X size={16} className="opacity-40" /></button>
               </div>
             </div>
@@ -891,6 +893,7 @@ function BucketRow({ bucket, isNight, onSelect, showDomain, compact, relationTag
   const relation = relationTag || extractRelation(bucket)
   const icon = bucket.pinned ? '📌' : bucket.type === 'feel' ? '🫧' : bucket.digested ? '🌿' : bucket.resolved ? '💤' : '💭'
 
+  const shareBucket = () => shareToChat({kind:'memory', title:'🧠 '+bucket.name, subtitle:bucket.domain?.join?.('、') || '', body:bucket.content_preview || '', metadata:{...bucket}})
   return (
     <button onClick={() => batchMode && toggleBatch ? toggleBatch(bucket.id) : onSelect(bucket)}
       className={`w-full text-left px-2.5 py-2 rounded-lg transition-colors hover:${isNight ? 'bg-night-surface/60' : 'bg-gray-50'} ${compact ? 'py-1.5' : ''} ${selected ? (isNight ? 'bg-night-amber/10 ring-1 ring-night-amber/30' : 'bg-day-pinkLight ring-1 ring-day-pink/30') : ''}`}>
@@ -904,6 +907,7 @@ function BucketRow({ bucket, isNight, onSelect, showDomain, compact, relationTag
         <span className={`text-[10px] px-1.5 py-0.5 rounded ${c.accentBg} ${c.accent} flex-shrink-0`}>{relation}</span>
         <span className="text-xs flex-1 min-w-0 truncate">{bucket.name}</span>
         <span className={`text-[10px] flex-shrink-0 ${c.muted}`}>{bucket.score?.toFixed(1)}</span>
+        <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); shareBucket() }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); shareBucket() } }} className={`text-[10px] opacity-50 hover:opacity-100 cursor-pointer ${c.muted}`} title="分享到 Chat">↗</span>
       </div>
       {showDomain && bucket.domain?.length > 0 && (
         <div className={`flex gap-1 mt-1 ${batchMode ? 'ml-11' : 'ml-7'}`}>{bucket.domain.map(d => <span key={d} className={`text-[9px] px-1 py-0.5 rounded ${c.surface} ${c.muted}`}>{d}</span>)}</div>

@@ -107,7 +107,8 @@ export function Sidebar() {
                     whileHover={reduceMotion ? undefined : { y: -2, scale: 1.006 }}
                     whileTap={{ scale: 0.975, y: 1 }}
                     onClick={() => {
-                      setActiveTab(tab.id)
+                      if (tab.id === 'coupons') { setActiveTab('chat'); window.dispatchEvent(new CustomEvent('lumbre-open-coupons')) }
+                      else setActiveTab(tab.id)
                       window.setTimeout(() => setSidebarOpen(false), 90)
                     }}
                     aria-label={tab.label}

@@ -2813,3 +2813,18 @@ author 默认 star（🐆），AI 就是星星。
 - 只重试 HTTP 429，其他状态码沿用原错误处理；网络断流和已开始流式响应不自动重试。
 - 验证：`node_modules/.bin/tsc --noEmit --pretty false` 通过；`git diff --check` 通过。
 - 遵守项目约定，未在低内存环境执行 production build；交由 Zeabur 自动构建。
+
+## 2026-08-28 — 券包弹窗与全模块分享到 Chat
+
+### 完成
+- 券包从独立前端页面改为全局弹窗，不再覆盖/替代 Todo 页面；旧设备若停留在 `coupons` tab 会自动回到 Chat。
+- 新增统一 `src/lib/share.ts` 分享协议：组件发送结构化 `SharedCard`，通过 sessionStorage + window event 交给 Chat，支持从任意页面切到 Chat 后继续处理。
+- 券包分享不再复制纯文本，而是把完整券对象（包含 history、签字、状态、次数、时间等 metadata）作为渲染卡片放进 Chat 输入区；用户可以补充说明，再点击发送。
+- Chat 消息新增可选 `sharedCard` 字段，持久化/同步/历史渲染/模型上下文均保留分享卡片；照片卡片显示图片，metadata 以结构化 JSON 送入模型。
+- 日记、纸条、券、待办项、照片、记忆详情与记忆列表均新增分享到 Chat 入口。
+
+### Debug 笔记
+- 不能让券包复用 `activeTab` 渲染，否则页面组件会占据 Todo 的显示位置；应由 page 全局挂载一次，导航事件只负责打开弹窗。
+- 分享事件可能发生在 Chat 尚未挂载的瞬间，因此不能只依赖 `window.dispatchEvent`；使用 sessionStorage 作为一次性 handoff，Chat mount 后读取并清理。
+- 记忆列表/日记列表/照片网格内部已有可点击容器，分享控件需要阻止冒泡；避免嵌套 button 时改用带键盘支持的 `span[role=button]`。
+- 本次未运行 production build；临时 checkout 无依赖，`git diff --check` 通过。交由 Zeabur 构建。

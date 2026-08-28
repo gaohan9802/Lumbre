@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/store'
 import { todo as todoApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Check, MessageCircle, Send, History, ChevronLeft, Pencil, Trash2 } from 'lucide-react'
+import { X, Check, MessageCircle, Send, History, ChevronLeft, Pencil, Trash2, Share2 } from 'lucide-react'
 import { format } from 'date-fns'
+import { shareToChat } from '@/lib/share'
 import { madridDateKey } from '@/lib/madrid-time'
 
 interface TodoComment { author: string; content: string; time: string }
@@ -88,6 +89,8 @@ export function TodoView() {
     setEditDraft('')
     load(viewDate)
   }
+  const shareTodo = (item: TodoItem) => shareToChat({kind:'todo', title:'🧾 待办项', subtitle:`${item.done?'已完成':'未完成'} · ${emojiFor(item.author)}`, body:item.text, metadata:{...item, date:viewDate}})
+
   const addComment = async (id: string) => {
     if (!commentDraft.trim()) return
     await todoApi.comment(id, currentUser, commentDraft.trim(), isToday ? undefined : viewDate)
@@ -180,10 +183,12 @@ export function TodoView() {
                     </div>
                   ) : (
                     <span className={`flex-1 ${item.done ? 'line-through text-receipt-ink/40' : 'text-receipt-ink'}`}>
+
                       {item.carried && <span title="从前一天顺延" className="text-receipt-stamp mr-1">↻</span>}
                       {item.text}
                     </span>
                   )}
+                  <button onClick={() => shareTodo(item)} className="opacity-50 group-hover:opacity-100 hover:!opacity-100"><Share2 size={12}/></button>
                   <span className="text-xs" title={item.author === 'fire' ? '猜猜写的' : '星星写的'}>{emojiFor(item.author)}</span>
                   <button onClick={() => { setEditingId(item.id); setEditDraft(item.text) }}
                     className="opacity-0 group-hover:opacity-40 hover:opacity-100 transition">

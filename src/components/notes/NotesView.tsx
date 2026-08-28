@@ -7,6 +7,7 @@ import { formatMadridShort } from '@/lib/madrid-time'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Send, Trash2, X } from 'lucide-react'
 import { notes as notesApi } from '@/lib/api'
+import { shareToChat } from '@/lib/share'
 
 interface Note {
   id: string
@@ -163,6 +164,7 @@ export function NotesView() {
               const isExpanded = expandedNote === note.id
               const hasReplies = note.replies && note.replies.length > 0
               const canDelete = note.author === currentUser
+              const shareNote = () => shareToChat({kind:'note', title:'📌 小纸条', subtitle:`${note.author==='star'?'🐆':'🦦'} · ${note.created_at}`, body:note.content, metadata:{...note}})
 
               return (
                 <motion.div
@@ -201,6 +203,8 @@ export function NotesView() {
                   >
                     {note.content}
                   </p>
+
+                  <button onClick={(e)=>{e.stopPropagation();shareNote()}} className="mt-2 text-[11px] opacity-40 hover:opacity-100 flex items-center gap-1">↗ 分享到 Chat</button>
 
                   {/* Replies */}
                   {hasReplies && (

@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { ViewErrorBoundary } from '@/components/layout/ViewErrorBoundary'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect } from 'react'
 
 function ViewLoading() {
   return (
@@ -36,7 +37,7 @@ const DreamsView = dynamic(() => import('@/components/dreams/DreamsView').then(m
 
 const views = {
   chat: ChatView,
-  coupons: CouponsView,
+  coupons: () => null,
   timeline: TimelineHubView,
   diary: DiaryView,
   notes: NotesView,
@@ -47,12 +48,21 @@ const views = {
 }
 
 export default function Home() {
-  const { activeTab } = useApp()
+  const { activeTab, setActiveTab } = useApp()
+  useEffect(() => {
+    if (activeTab === 'coupons') setActiveTab('chat')
+  }, [activeTab, setActiveTab])
+  useEffect(() => {
+    const onNavigate = () => setActiveTab('chat')
+    window.addEventListener('lumbre-navigate-chat', onNavigate)
+    return () => window.removeEventListener('lumbre-navigate-chat', onNavigate)
+  }, [setActiveTab])
   const View = views[activeTab] || ChatView
 
   return (
     <div className="h-dvh overflow-hidden">
       <ChatSync />
+      <CouponsView />
       <Sidebar />
       <main className="flex h-full flex-col overflow-hidden relative">
         <TopBar />

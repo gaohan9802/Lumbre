@@ -7,11 +7,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Lock, Clock, ChevronLeft, Send,
   Trash2, MessageCircle, FilePlus2, Key, Eye, Timer,
-  BookText, Mail, Hourglass, Hash,
+  BookText, Mail, Hourglass, Hash, Share2,
 } from 'lucide-react'
 import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { diary } from '@/lib/api'
+import { shareToChat } from '@/lib/share'
 
 interface Comment {
   commenter?: string
@@ -245,6 +246,8 @@ export function DiaryView() {
     }
   }
 
+  const shareEntry = (entry: DiaryEntry) => shareToChat({kind:'diary', title:displayTitle(entry), subtitle:`${entry.author==='star'?'🐆':'🦦'} · ${entry.date}`, body:entry.content, metadata:{...entry}})
+
   const canEdit = selected && selected.author === currentUser
 
   const noFrame = 'no-frame'
@@ -278,6 +281,9 @@ export function DiaryView() {
             >
               <Plus size={18} />
             </button>
+          )}
+          {selected && (
+            <span role="button" tabIndex={0} onClick={() => shareEntry(selected)} className="p-2 rounded-xl opacity-50 hover:opacity-100 cursor-pointer" title="分享到 Chat"><Share2 size={15} /></span>
           )}
           {selected && canEdit && (
             <button onClick={handleDelete} className="p-2 rounded-xl opacity-30 hover:opacity-100 hover:text-day-error dark:hover:text-night-error transition">
@@ -566,7 +572,10 @@ export function DiaryView() {
                                   <Lock size={10} /> 需要密码解锁
                                 </p>
                               ) : (
-                                <p className={`text-xs line-clamp-2 leading-relaxed ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{entry.content}</p>
+                                <>
+                                  <p className={`text-xs line-clamp-2 leading-relaxed ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{entry.content}</p>
+                                  <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); shareEntry(entry) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); shareEntry(entry) } }} className="mt-2 text-[10px] opacity-40 hover:opacity-100 flex items-center gap-1 cursor-pointer"><Share2 size={11}/> 分享到 Chat</span>
+                                </>
                               )}
                             </motion.button>
                           ))}
