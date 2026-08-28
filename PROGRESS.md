@@ -2828,3 +2828,17 @@ author 默认 star（🐆），AI 就是星星。
 - 分享事件可能发生在 Chat 尚未挂载的瞬间，因此不能只依赖 `window.dispatchEvent`；使用 sessionStorage 作为一次性 handoff，Chat mount 后读取并清理。
 - 记忆列表/日记列表/照片网格内部已有可点击容器，分享控件需要阻止冒泡；避免嵌套 button 时改用带键盘支持的 `span[role=button]`。
 - 本次未运行 production build；临时 checkout 无依赖，`git diff --check` 通过。交由 Zeabur 构建。
+
+
+## 2026-08-28 — 修复最新 Zeabur build failure（分享到 Chat）
+
+### 根因与修复
+- 最新提交 `7f6b562` 的 Zeabur check failed。
+- 根因是 `src/components/memory/MemoryView.tsx` 分享记忆卡时读取 `selectedBucket.content`，但 `Bucket` 类型只定义了 `content_preview`，触发 `TS2339: Property 'content' does not exist on type 'Bucket'`。
+- 已改为使用类型中存在的 `selectedBucket.content_preview`。
+- 复核发现共享 shell 的 node_modules 缺少 `web-push` 包，属于验证环境依赖不完整，不是本次改动引入；生产 package.json/package-lock 仍声明该依赖。
+
+### 验证与部署
+- clean checkout 后 TypeScript 检查由 1 个本次错误 + 1 个环境缺依赖错误，降为仅环境缺依赖 `web-push`。
+- `git diff --check` 通过。
+- 修复提交后推送 `main`，由 Zeabur 自动重新构建。

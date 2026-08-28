@@ -295,3 +295,12 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 只能在拿到 Response、尚未读取正文时重试；不能对已经开始的 SSE 或已执行工具的 turn 自动重放。
 - `Retry-After` 可能过大，等待时间需要上限；失败后要把 429 解释成渠道拥堵/额度/并发问题，而不是只显示 `Upstream 429`。
 - 本轮还清除了误引入的不存在 `ChatWrapper` 引用，避免 Zeabur TypeScript 构建失败。
+
+
+## 2026-08-28 — 最新 build failure：Memory 分享卡类型错误
+
+- Zeabur 失败提交：`7f6b562`，失败 check 为 Zeabur deployment build。
+- 精确错误：`src/components/memory/MemoryView.tsx(341,206): TS2339 Property 'content' does not exist on type 'Bucket'`。
+- 触发代码是记忆详情分享到 Chat 的 `selectedBucket.content_preview || selectedBucket.content || ''`；当前前端 `Bucket` 接口只有 `content_preview`，虽然服务端完整桶可能有 content，但不能直接从该类型读取。
+- 修复：删除不存在的 `selectedBucket.content` fallback，仅使用 `content_preview`。
+- clean checkout 类型检查复核后，本次错误消失；剩余 `src/server/push.ts` 的 `Cannot find module 'web-push'` 来自 shell 共享 node_modules 未安装该包，package.json 已正确声明，交 Zeabur 生产安装验证。

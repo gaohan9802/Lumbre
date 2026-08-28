@@ -338,7 +338,7 @@ export function MemoryView() {
                 <button onClick={() => setEditing(!editing)} className={`p-1 rounded ${editing ? c.accentBg : ''}`}>
                   <Edit3 size={14} className={editing ? '' : 'opacity-40'} />
                 </button>
-                <button onClick={() => shareToChat({kind:'memory', title:'🧠 '+selectedBucket.name, subtitle:selectedBucket.domain?.join?.('、') || '', body:selectedBucket.content_preview || selectedBucket.content || '', metadata:{...selectedBucket}})} className="p-1" title="分享到 Chat">↗</button>
+                <button onClick={() => shareToChat({kind:'memory', title:'🧠 '+selectedBucket.name, subtitle:selectedBucket.domain?.join?.('、') || '', body:selectedBucket.content_preview || '', metadata:{...selectedBucket}})} className="p-1" title="分享到 Chat">↗</button>
                 <button onClick={() => setSelectedBucket(null)} className="p-1"><X size={16} className="opacity-40" /></button>
               </div>
             </div>
