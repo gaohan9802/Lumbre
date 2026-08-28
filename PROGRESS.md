@@ -2798,3 +2798,18 @@ author 默认 star（🐆），AI 就是星星。
 - 修复：在 `src/lib/api.ts` 增加 `encouragement.list/create/update/remove/setTags`，与 `/api/encouragement` route 的 action 完整对应。
 - 验证：干净 checkout 安装依赖后执行 `tsc --noEmit --pretty false`，EXIT=0。
 - 修复 commit：`1ddd8eb2 fix: add missing encouragement api client`。
+
+## 2026-08-28 — Chat 上游 429 限流自动重试
+
+### 完成
+- `/api/chat` 的 Anthropic、OpenAI-compatible 非流式与流式请求统一接入 429 重试。
+- 仅在上游响应尚未进入正文/流式读取前重试，最多 3 次；不会重放已开始的工具调用或输出，避免副作用重复执行。
+- 读取 `Retry-After`，同时设置 0.7s/1.4s 递增等待、最多 8s，并加入少量随机抖动。
+- 429 错误改为明确中文提示，说明限流原因、自动重试结果及切换渠道建议。
+- 清理工作区中误留下的 `ChatWrapper` 引用和无关 lockfile/tsbuildinfo 变更，恢复 `page.tsx` 使用现有 `ChatView`。
+
+### Debug 笔记
+- 本轮首次类型检查发现 `page.tsx` 引用了仓库不存在的 `ChatWrapper`，该引用属于未跟踪实验改动；恢复为现有 `ChatView` 后通过。
+- 只重试 HTTP 429，其他状态码沿用原错误处理；网络断流和已开始流式响应不自动重试。
+- 验证：`node_modules/.bin/tsc --noEmit --pretty false` 通过；`git diff --check` 通过。
+- 遵守项目约定，未在低内存环境执行 production build；交由 Zeabur 自动构建。

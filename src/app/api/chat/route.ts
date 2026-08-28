@@ -122,6 +122,40 @@ function normalizeAnthropicBase(baseUrl: string) {
   return trimSlash(baseUrl || 'https://api.anthropic.com')
 }
 
+/**
+ * Rate-limit aware upstream request. Relays frequently answer 429 with a
+ * Retry-After header while their queue recovers. Retry only before a response
+ * body is accepted; never replay an already-started stream or tool turn.
+ */
+async function fetchUpstreamWithRetry(url: string, init: RequestInit, meta: { provider: Provider; model: string }) {
+  const maxAttempts = 3
+  let last: Response | undefined
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(url, init)
+    if (res.status !== 429 || attempt === maxAttempts - 1) return res
+    last = res
+    const retryAfterRaw = res.headers.get('retry-after') || ''
+    const retryAfterSeconds = Number(retryAfterRaw)
+    const headerDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? retryAfterSeconds * 1000
+      : 0
+    // Keep a single request from hanging indefinitely when a relay returns a
+    // huge Retry-After. The next attempt is still useful for transient 429s.
+    const delay = Math.min(8000, Math.max(700 * (attempt + 1), headerDelay)) + Math.floor(Math.random() * 350)
+    try { await res.arrayBuffer() } catch { /* release the failed body */ }
+    console.warn(`[chat upstream 429] provider=${meta.provider} model=${meta.model} attempt=${attempt + 1}/${maxAttempts} retry_ms=${delay}`)
+    await new Promise(resolve => setTimeout(resolve, delay))
+  }
+  return last!
+}
+
+function upstreamErrorMessage(status: number, text: string): string {
+  if (status === 429) {
+    return '模型上游正在限流（429），通常是该渠道瞬时拥堵、额度/并发已满。系统已自动重试；仍失败请稍等，或切换到另一个 API 渠道/模型。'
+  }
+  return `Upstream ${status}: ${text.slice(0, 800)}`
+}
+
 /** Parse a data: URL into media type + base64 payload. */
 function parseDataUrl(u: string): { media_type: string; data: string } | null {
   const m = /^data:([^;]+);base64,([\s\S]*)$/i.exec(u || '')
@@ -585,10 +619,10 @@ async function proxyAnthropic(params: {
     // Anthropic ignores temperature when thinking is enabled
     if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = ALL_TOOLS
 
-    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+    const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, { provider: 'anthropic', model })
     if (!res.ok) {
       const errText = await res.text()
-      return NextResponse.json({ error: `Upstream ${res.status}: ${errText.slice(0, 800)}` }, { status: res.status })
+      return NextResponse.json({ error: upstreamErrorMessage(res.status, errText) }, { status: res.status })
     }
 
     const data = await res.json()
@@ -694,10 +728,10 @@ async function streamAnthropic(params: {
     body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
     if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = ALL_TOOLS
 
-    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+    const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, { provider: 'anthropic', model })
     if (!res.ok) {
       const errText = await res.text()
-      send('error', { content: `Upstream ${res.status}: ${errText.slice(0, 400)}` })
+      send('error', { content: upstreamErrorMessage(res.status, errText).slice(0, 700) })
       return
     }
 
@@ -861,10 +895,10 @@ async function proxyOpenAI(params: {
     if (typeof temperature === 'number') body.temperature = temperature
     body.reasoning = { max_tokens: effectiveBudget }
 
-    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+    const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, { provider: 'openai-compatible', model })
     if (!res.ok) {
       const errText = await res.text()
-      return NextResponse.json({ error: `Upstream ${res.status}: ${errText.slice(0, 800)}` }, { status: res.status })
+      return NextResponse.json({ error: upstreamErrorMessage(res.status, errText) }, { status: res.status })
     }
 
     const data = await res.json()
@@ -984,10 +1018,10 @@ async function streamOpenAI(params: {
     if (typeof temperature === 'number') body.temperature = temperature
     body.reasoning = { max_tokens: effectiveStreamBudget }
 
-    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+    const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, { provider: 'openai-compatible', model })
     if (!res.ok) {
       const errText = await res.text()
-      send('error', { content: `Upstream ${res.status}: ${errText.slice(0, 400)}` })
+      send('error', { content: upstreamErrorMessage(res.status, errText).slice(0, 700) })
       return
     }
 

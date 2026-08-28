@@ -289,3 +289,9 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 修复：在 `src/lib/api.ts` 增加 `encouragement.list/create/update/remove/setTags`，与 `/api/encouragement` route 的 action 完整对应。
 - 验证：干净 checkout 安装依赖后执行 `tsc --noEmit --pretty false`，EXIT=0。
 - 修复 commit：`1ddd8eb2 fix: add missing encouragement api client`。
+
+## 2026-08-28 — Chat 429 限流处理
+- 上游 429 可以发生在每一轮模型请求，包括工具循环的后续轮；重试封装必须覆盖 Anthropic/OpenAI、流式/非流式四条路径。
+- 只能在拿到 Response、尚未读取正文时重试；不能对已经开始的 SSE 或已执行工具的 turn 自动重放。
+- `Retry-After` 可能过大，等待时间需要上限；失败后要把 429 解释成渠道拥堵/额度/并发问题，而不是只显示 `Upstream 429`。
+- 本轮还清除了误引入的不存在 `ChatWrapper` 引用，避免 Zeabur TypeScript 构建失败。
