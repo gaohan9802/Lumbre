@@ -153,15 +153,6 @@ export const period = {
 }
 
 // ── Coupon promise wallet ──────────────────────────────
-export const coupons = {
-  list: () => get('/api/coupons'),
-  add: (data: any) => post('/api/coupons', { action: 'add', ...data }),
-  sign: (id: string, actor: string) => post('/api/coupons', { action: 'sign', id, actor }),
-  edit: (id: string, patch: any, actor: string) => post('/api/coupons', { action: 'edit', id, patch, actor }),
-  use: (id: string, actor: string) => post('/api/coupons', { action: 'use', id, actor }),
-  void: (id: string, actor: string) => post('/api/coupons', { action: 'void', id, actor }),
-  confirmVoid: (id: string, actor: string) => post('/api/coupons', { action: 'confirm_void', id, actor }),
-}
 
 export const coupons = {
   list: () => get('/api/coupons'),

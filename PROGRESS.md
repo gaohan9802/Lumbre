@@ -199,6 +199,13 @@ git push -u origin main
 
 ---
 
+
+### 2026-08-28 — 券包构建失败修复
+- **症状**：Zeabur `next build` 失败，TypeScript 报 `Cannot redeclare exported variable 'coupons'` / `Import declaration conflicts with local declaration`。
+- **原因**：`src/lib/api.ts` 在券包 API 区域重复声明了两次 `export const coupons`，导致同一模块重复导出。
+- **修复**：删除重复声明，保留一份完整的券包 API client。
+- **验证**：`git diff --check` 通过；当前 shell 没有 npm/node，无法执行本地 `tsc`/`next build`，推送后由 Zeabur 进行生产构建验证。
+
 ## 2026-06-29（第二轮）Chat 页面大改
 
 ### 新增
