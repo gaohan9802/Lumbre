@@ -1162,7 +1162,7 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
       // Coupon promise wallet
       case 'read_coupons': return JSON.stringify(listCoupons())
       case 'create_coupon': return JSON.stringify({ok:true,coupon:createCoupon(input, 'star')})
-      case 'sign_coupon': return JSON.stringify({ok:true,coupon:signCoupon(input.id, 'fire')})
+      case 'sign_coupon': return JSON.stringify({ok:true,coupon:signCoupon(input.id, 'star')})
       case 'edit_coupon': return JSON.stringify({ok:true,coupon:updateCoupon(input.id, input, 'star')})
       case 'use_coupon': return JSON.stringify({ok:true,coupon:useCoupon(input.id, 'fire')})
       case 'void_coupon': return JSON.stringify({ok:true,coupon:requestVoid(input.id, 'star')})

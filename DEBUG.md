@@ -304,3 +304,11 @@ tail -20 /persistent/chat-upstream-errors.jsonl
 - 触发代码是记忆详情分享到 Chat 的 `selectedBucket.content_preview || selectedBucket.content || ''`；当前前端 `Bucket` 接口只有 `content_preview`，虽然服务端完整桶可能有 content，但不能直接从该类型读取。
 - 修复：删除不存在的 `selectedBucket.content` fallback，仅使用 `content_preview`。
 - clean checkout 类型检查复核后，本次错误消失；剩余 `src/server/push.ts` 的 `Cannot find module 'web-push'` 来自 shell 共享 node_modules 未安装该包，package.json 已正确声明，交 Zeabur 生产安装验证。
+
+## 2026-08-29 — 券包 sign coupon 与删除过期券
+
+- **症状**：星星调用 `sign_coupon` 时返回「只有持有人可以签字」，但该券的 holder 明明是星星。
+- **根因**：`src/server/tools.ts` 的 `sign_coupon` dispatcher 将身份硬编码成了 `fire`，没有使用星星调用券包工具时应有的 `star` 身份。
+- **修复**：改为 `signCoupon(input.id, 'star')`。前端手动签字仍按当前登录身份传递，不受影响。
+- **新增能力**：过期券可由前端删除；后端再次校验 `status === 'expired'`，不能通过伪造前端请求删除其他状态券。
+- **验证**：`git diff --check`；未在当前 shell 执行 Next build（仓库没有 node_modules，且项目记录说明完整 build 应交给 Zeabur）。

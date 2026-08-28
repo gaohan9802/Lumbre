@@ -45,6 +45,15 @@ export function createCoupon(input: any, actor: CouponParty): Coupon {
 export function signCoupon(id: string, actor: CouponParty): Coupon {
   const d=read(), c=d.coupons.find(x=>x.id===id); if(!c) throw new Error('券不存在'); if(c.holder!==actor) throw new Error('只有持有人可以签字'); if(c.status!=='pending') throw new Error('这张券当前不能签字'); c.holderSigned=true; c.status='active'; addHistory(c,'holder_signed',actor); write(d); return normalize(c)
 }
+export function deleteCoupon(id: string, actor: CouponParty): void {
+  const d = read()
+  const index = d.coupons.findIndex(x => x.id === id)
+  if (index < 0) throw new Error('券不存在')
+  const c = normalize(d.coupons[index])
+  if (c.status !== 'expired') throw new Error('只能删除已过期的券')
+  d.coupons.splice(index, 1)
+  write(d)
+}
 export function updateCoupon(id: string, patch: any, actor: CouponParty): Coupon {
   const d=read(), c=d.coupons.find(x=>x.id===id); if(!c) throw new Error('券不存在'); if(c.status==='voided'||c.status==='used'||c.status==='expired') throw new Error('当前状态不可编辑')
   if (patch.name !== undefined) c.name=String(patch.name).trim().slice(0,120); if(patch.description!==undefined)c.description=String(patch.description).slice(0,5000); if(patch.reason!==undefined)c.reason=String(patch.reason).slice(0,2000); if(patch.useLimit!==undefined)c.useLimit=Math.max(c.usedCount+1,Math.min(999,Number(patch.useLimit)||1)); if(patch.expiresAt!==undefined)c.expiresAt=patch.expiresAt ? (parseMadridDateTime(patch.expiresAt)?.toISOString() || c.expiresAt) : undefined

@@ -2842,3 +2842,12 @@ author 默认 star（🐆），AI 就是星星。
 - clean checkout 后 TypeScript 检查由 1 个本次错误 + 1 个环境缺依赖错误，降为仅环境缺依赖 `web-push`。
 - `git diff --check` 通过。
 - 修复提交后推送 `main`，由 Zeabur 自动重新构建。
+
+## 2026-08-29 — 券包签字与过期券清理
+
+### 完成
+- 修复 `sign_coupon` 工具身份错误：工具原先硬编码以 `fire` 签字；券包里的星星调用时应以 `star` 身份执行，现已改正。
+- 新增过期券删除能力：后端只允许删除状态为 `expired` 的券，避免误删生效中、待签字、已使用或已作废券。
+- 券包前端在过期券上显示「删除过期券」按钮，点击前确认，删除后自动刷新列表。
+- 新增 `/api/coupons` 的 `delete` action 与前端 API client `coupons.remove`。
+- 数据仍写入 `DATA_DIR/coupons/coupons.json`，Zeabur 默认持久化目录为 `/persistent`。
