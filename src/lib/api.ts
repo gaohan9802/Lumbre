@@ -152,6 +152,19 @@ export const period = {
     post('/api/period', { action: 'config', cycle_days, period_length }),
 }
 
+// ── Timeline encouragements ───────────────────────────
+export const encouragement = {
+  list: () => get('/api/encouragement'),
+  create: (text: string, scope: 'permanent' | 'tags', tags: string[] = []) =>
+    post('/api/encouragement', { action: 'create', text, scope, tags }),
+  update: (id: string, patch: any) =>
+    post('/api/encouragement', { action: 'update', id, patch }),
+  remove: (id: string) =>
+    post('/api/encouragement', { action: 'delete', id }),
+  setTags: (tags: string[]) =>
+    post('/api/encouragement', { action: 'tags', tags }),
+}
+
 // ── Coupon promise wallet ──────────────────────────────
 
 export const coupons = {
