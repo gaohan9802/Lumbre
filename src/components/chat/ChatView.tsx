@@ -24,7 +24,8 @@ import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
 import { buildSummaryRounds, messagesAfterSummaryAnchor, selectSummarySegment } from '@/lib/chat-summary'
-import { syncChatNow } from './ChatSync'
+import { loadEarlierChat, syncChatNow } from './ChatSync'
+import { flushChatOutbox, queueChatAppend } from '@/lib/chat-outbox'
 
 /* ── helpers ────────────────────────────── */
 
@@ -217,9 +218,30 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   // Lazy-load: only render the most recent messages to keep the window snappy.
   const PAGE = 50
   const [visibleCount, setVisibleCount] = useState(PAGE)
+  const [historyLoading, setHistoryLoading] = useState(false)
   useEffect(() => { setVisibleCount(PAGE) }, [settings.activeSessionId])
   const hiddenCount = Math.max(0, messages.length - visibleCount)
+  const serverHiddenCount = activeSession?.partial
+    ? Math.max(0, Number(activeSession.messageCount || 0) - messages.length)
+    : 0
   const visibleMessages = hiddenCount > 0 ? messages.slice(-visibleCount) : messages
+
+  const handleLoadEarlier = async () => {
+    if (hiddenCount > 0) {
+      setVisibleCount((count) => count + PAGE)
+      return
+    }
+    if (!activeSession?.id || !serverHiddenCount || historyLoading) return
+    setHistoryLoading(true)
+    try {
+      const loaded = await loadEarlierChat(activeSession.id)
+      if (loaded) setVisibleCount((count) => count + loaded)
+    } catch {
+      // SyncBadge already exposes connectivity errors; keep the chat usable.
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
 
   const handleScroll = () => {
     const el = scrollRef.current
@@ -275,7 +297,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   /* ── send ────────────────────────────── */
 
-  const doSend = async (sendMessages: { role: string; content: string; images?: string[] }[], onDone: (data: any) => void) => {
+  const doSend = async (sendMessages: { role: string; content: string; images?: string[] }[], onDone: (data: any) => void | Promise<void>) => {
     const profile = getActiveProfile(settings)
     const model = settings.model
 
@@ -351,7 +373,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       })
       if (!res.ok) {
         const errText = await res.text()
-        onDone({ content: `Error ${res.status}: ${errText.slice(0, 200)}`, error: true })
+        await onDone({ content: `Error ${res.status}: ${errText.slice(0, 200)}`, error: true })
         return
       }
       if (!res.body) throw new Error('响应没有可读取的流')
@@ -426,7 +448,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       }
       if (paintTimer) clearTimeout(paintTimer)
       paintStream()
-      onDone({
+      await onDone({
         content: fullText,
         thinking: fullThinking || undefined,
         tool_calls: toolCalls.length ? toolCalls : undefined,
@@ -438,7 +460,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       })
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        onDone({
+        await onDone({
           content: fullText || '已停止生成。',
           thinking: fullThinking || undefined,
           tool_calls: toolCalls.length ? toolCalls : undefined,
@@ -446,7 +468,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           stopped: true,
         })
       } else {
-        onDone({ content: err?.message || '连接失败了…', error: true })
+        await onDone({ content: err?.message || '连接失败了…', error: true })
       }
     } finally {
       if (paintTimer) clearTimeout(paintTimer)
@@ -549,16 +571,24 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   }, [activeSession?.id, activeSession?.updatedAt, activeSession?.partial, activeSession?.summaryConfig?.autoEnabled,
     activeSession?.summaryConfig?.turnSize, activeSession?.summaryConfig?.anchorMessageId, summaryGenerating, generateNextSummary])
 
-  const durableAppend = useCallback((session: any, message: ChatMessage) => {
+  const durableAppend = useCallback(async (session: any, message: ChatMessage) => {
     if (!session?.id || !message?.id) return
-    void fetch('/api/sync', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'append_message', sessionId: session.id, message, sessionMeta: {
-        title: session.title, pinned: session.pinned, createdAt: session.createdAt,
-        summaryConfig: session.summaryConfig,
-      } }),
-      keepalive: true,
-    }).catch(() => {})
+    try {
+      await queueChatAppend(session, message)
+    } catch {
+      // Very old/private Safari modes can disable both IndexedDB and
+      // localStorage. In that case, confirm the server write before painting.
+      const response = await fetch('/api/sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'append_message', sessionId: session.id, message, sessionMeta: {
+          title: session.title, pinned: session.pinned, createdAt: session.createdAt,
+          summaryConfig: session.summaryConfig,
+        } }),
+        cache: 'no-store',
+      })
+      if (!response.ok) throw new Error(`消息保存失败 (${response.status})`)
+    }
+    void flushChatOutbox().catch(() => {})
   }, [])
 
   const handleSend = async () => {
@@ -577,8 +607,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       modelId: model,
     }
     stickBottomRef.current = true
+    await durableAppend(activeSession, userMsg)
     addMessage(userMsg)
-    durableAppend(activeSession, userMsg)
     onTurn?.('user', userMsg.content)
     setInput('')
     setPendingImages([])
@@ -601,7 +631,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       return { role: m.role, content: msgContent + cardText, images: m.images }
     })
 
-    await doSend(apiMessages, (data) => {
+    await doSend(apiMessages, async (data) => {
       const assistantContent = data.content || data.error || '...'
       const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -618,8 +648,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         providerId: profile?.id,
         modelId: model,
       }
+      await durableAppend(activeSession, assistantMsg)
       addMessage(assistantMsg)
-      durableAppend(activeSession, assistantMsg)
       onTurn?.('assistant', assistantContent)
       setIsLoading(false)
       setStreamText('')
@@ -650,7 +680,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const slice = stableSlice(currentMessages.slice(0, idx), settings.contextLength)
       const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
 
-      await doSend(apiMessages, (data) => {
+      await doSend(apiMessages, async (data) => {
         const newVersion: MessageVersion = {
           content: data.content || data.error || '...',
           timestamp: Date.now(),
@@ -679,7 +709,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const slice = stableSlice(currentMessages.slice(0, idx + 1), settings.contextLength)
       const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
 
-      await doSend(apiMessages, (data) => {
+      await doSend(apiMessages, async (data) => {
         const reply = {
           content: data.content || data.error || '...',
           timestamp: Date.now(),
@@ -698,8 +728,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           void syncChatNow()
         } else {
           const assistantMsg: ChatMessage = { id: `${Date.now()}-reroll`, role: 'assistant', ...reply }
+          await durableAppend(useChatStore.getState().settings.sessions.find(session => session.id === useChatStore.getState().settings.activeSessionId), assistantMsg)
           addMessage(assistantMsg)
-          durableAppend(useChatStore.getState().settings.sessions.find(session => session.id === useChatStore.getState().settings.activeSessionId), assistantMsg)
         }
         setIsLoading(false)
         setStreamText('')
@@ -909,11 +939,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               </div>
             )}
 
-            {hiddenCount > 0 && (
+            {(hiddenCount > 0 || serverHiddenCount > 0) && (
               <div className="flex justify-center pb-2">
-                <button onClick={() => setVisibleCount((c) => c + PAGE)}
+                <button onClick={() => void handleLoadEarlier()} disabled={historyLoading}
                   className={`text-[11px] px-3 py-1.5 rounded-full opacity-60 hover:opacity-100 ${n ? 'bg-night-surface' : 'bg-gray-100'}`}>
-                  加载更早的 {Math.min(PAGE, hiddenCount)} 条（还有 {hiddenCount} 条）
+                  {historyLoading ? '加载中…' : `加载更早的 ${Math.min(PAGE, hiddenCount || serverHiddenCount)} 条（还有 ${hiddenCount + serverHiddenCount} 条）`}
                 </button>
               </div>
             )}

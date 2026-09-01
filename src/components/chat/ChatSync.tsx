@@ -11,6 +11,7 @@
 import { useEffect, useRef } from 'react'
 import { useChatStore, extractConfig, isBlankSession } from '@/lib/chatStore'
 import { useSyncStatus } from '@/lib/syncStatus'
+import { flushChatOutbox } from '@/lib/chat-outbox'
 
 let applyingRemote = false
 let bootstrapped = false
@@ -52,10 +53,25 @@ function applyRemote(data: any) {
 
 async function fetchSessionBatch(ids: string[]) {
   if (!ids.length) return
-  const params = new URLSearchParams({ mode: 'sessions', ids: ids.join(',') })
+  const params = new URLSearchParams({ mode: 'tails', ids: ids.join(','), limit: '120' })
   const res = await syncFetch(`/api/sync?${params.toString()}`)
   if (!res.ok) throw new Error(`同步请求失败 (${res.status})`)
   applyRemote(await res.json())
+}
+
+export async function loadEarlierChat(sessionId: string) {
+  const session = useChatStore.getState().settings.sessions.find(item => item.id === sessionId)
+  if (!session?.partial) return 0
+  const total = Math.max(Number(session.messageCount) || 0, session.messages.length)
+  const before = Math.max(0, total - session.messages.length)
+  if (!before) return 0
+  const params = new URLSearchParams({ mode: 'history', id: sessionId, before: String(before), limit: '50' })
+  const res = await syncFetch(`/api/sync?${params.toString()}`)
+  if (!res.ok) throw new Error(`历史消息加载失败 (${res.status})`)
+  const data = await res.json()
+  const messages = Array.isArray(data.messages) ? data.messages : []
+  useChatStore.getState().prependSessionMessages(sessionId, messages, Number(data.total) || total)
+  return messages.length
 }
 
 async function pullIncremental() {
@@ -125,6 +141,7 @@ async function hydrateActiveSession() {
 async function syncCycle() {
   useSyncStatus.getState().setSyncStatus({ phase: navigator.onLine ? 'syncing' : 'offline', error: '' })
   if (!navigator.onLine) return
+  await flushChatOutbox()
   if (!bootstrapped) await pullIncremental()
 
   const { settings } = useChatStore.getState()

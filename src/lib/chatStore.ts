@@ -250,6 +250,7 @@ interface ChatStore {
   switchMessageVersion: (id: string, index: number) => void
   deleteMessageVersion: (id: string, index: number) => void
   mergeRemote: (sessions: ChatSession[], tombstones: Record<string, number>) => void
+  prependSessionMessages: (sessionId: string, messages: ChatMessage[], total: number) => void
   mergeRemoteConfig: (config: any, ts: number) => void
   renameSession: (id: string, title: string) => void
   deleteSession: (id: string) => void
@@ -292,6 +293,16 @@ export function isBlankSession(s: any) {
 // "more messages wins" would resurrect it). The only guard is that a blank
 // scratch session (0 msgs, default title) must never clobber a real one.
 function pickSession(a: any, b: any) {
+  if (a?.partial && b?.partial) {
+    const newer = (b.updatedAt || 0) > (a.updatedAt || 0) ? b : a
+    const byId = new Map<string, ChatMessage>()
+    for (const message of [...(a.messages || []), ...(b.messages || [])]) {
+      if (message?.id) byId.set(message.id, message)
+    }
+    const messages = Array.from(byId.values()).sort((x, y) => (x.timestamp || 0) - (y.timestamp || 0))
+    const messageCount = Math.max(Number(a.messageCount) || 0, Number(b.messageCount) || 0, messages.length)
+    return { ...a, ...newer, messages, messageCount, partial: messages.length < messageCount }
+  }
   // A server session always beats a locally persisted tail, even when their
   // timestamps are equal. This is what lets startup paint the latest 100
   // messages immediately and hydrate the other 3900+ in the background.
@@ -785,6 +796,22 @@ export const useChatStore = create<ChatStore>()(
         if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
         const activeSessionId = sessions.some((s) => s.id === settings.activeSessionId) ? settings.activeSessionId : sortedSessions(sessions)[0].id
         const nextSettings = normalizeSettings({ ...settings, sessions, activeSessionId, tombstones })
+        return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+      }),
+
+      prependSessionMessages: (sessionId, incoming, total) => set((state) => {
+        const settings = normalizeSettings(state.settings)
+        const sessions = settings.sessions.map((session) => {
+          if (session.id !== sessionId) return session
+          const byId = new Map<string, ChatMessage>()
+          for (const message of [...incoming, ...session.messages]) {
+            if (message?.id) byId.set(message.id, message)
+          }
+          const messages = Array.from(byId.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+          const messageCount = Math.max(Number(total) || 0, messages.length)
+          return { ...session, messages, messageCount, partial: messages.length < messageCount }
+        })
+        const nextSettings = { ...settings, sessions }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       }),
 

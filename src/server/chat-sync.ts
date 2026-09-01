@@ -343,6 +343,41 @@ export function loadSyncSessions(ids: string[]): any[] {
   return result
 }
 
+/** Return only each conversation's warm tail. Large histories stay on disk
+ * until the user explicitly asks for older messages. */
+export function loadSyncSessionTails(ids: string[], requestedLimit = 120): any[] {
+  const limit = Math.max(20, Math.min(200, Math.floor(requestedLimit) || 120))
+  return loadSyncSessions(ids).map((session) => {
+    const messages = Array.isArray(session?.messages) ? session.messages : []
+    if (messages.length <= limit) return { ...session, messageCount: messages.length, partial: false }
+    return {
+      ...session,
+      messages: messages.slice(-limit),
+      messageCount: messages.length,
+      partial: true,
+    }
+  })
+}
+
+/** Read one bounded page immediately before `before` (an index in the durable
+ * message array). This keeps mobile clients from ever parsing a whole archive. */
+export function loadSyncSessionHistory(id: string, requestedBefore: number, requestedLimit = 50) {
+  const session = loadSyncSessions([id])[0]
+  if (!session) return null
+  const messages = Array.isArray(session.messages) ? session.messages : []
+  const total = messages.length
+  const before = Math.max(0, Math.min(total, Math.floor(requestedBefore) || 0))
+  const limit = Math.max(10, Math.min(100, Math.floor(requestedLimit) || 50))
+  const start = Math.max(0, before - limit)
+  return {
+    sessionId: id,
+    messages: messages.slice(start, before),
+    start,
+    total,
+    hasMore: start > 0,
+  }
+}
+
 export function loadSyncState(): SyncState {
   const manifest = loadSyncManifest()
   return {

@@ -306,22 +306,6 @@ const NOTES_TOOLS: ToolDef[] = [
 ]
 
 
-// ── Shell tool ──────────────────────────────────────────
-
-const SHELL_TOOLS: ToolDef[] = [
-  {
-    name: 'run',
-    description: '在服务器上执行 shell 命令并返回输出。用于系统管理、文件操作、调试等。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        command: { type: 'string', description: 'Shell 命令' },
-      },
-      required: ['command'],
-    },
-  },
-]
-
 // ── Weather & Location tools ────────────────────────────
 
 const CONTEXT_TOOLS: ToolDef[] = [
@@ -823,7 +807,7 @@ const BOOKMARK_TOOLS: ToolDef[] = [
   },
 ]
 
-export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...LIFE_TIMELINE_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...SHELL_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS, ...BOOKMARK_TOOLS, ...COUPON_TOOLS]
+export const ALL_TOOLS: ToolDef[] = [...MEMORY_TOOLS, ...DIARY_TOOLS, ...NOTES_TOOLS, ...PHOTO_TOOLS, ...LIFE_TIMELINE_TOOLS, ...TODO_TOOLS, ...THESIS_TOOLS, ...WISH_TOOLS, ...WAKE_TOOLS, ...FETCH_TOOLS, ...CONTEXT_TOOLS, ...PERIOD_TOOLS, ...GALATEA_TOOLS, ...GMAIL_TOOLS, ...BOOKMARK_TOOLS, ...COUPON_TOOLS]
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
@@ -873,11 +857,6 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
     // Memory → local Brain engine
     if (BRAIN_TOOLS.has(name)) {
       return executeMemoryTool(name, input)
-    }
-
-    // Shell → subprocess
-    if (name === 'run') {
-      return await executeShell(input.command)
     }
 
     // Context tools
@@ -1258,20 +1237,6 @@ export async function executeTool(name: string, input: Record<string, any>): Pro
   } catch (err: any) {
     return `Tool error (${name}): ${err.message}`
   }
-}
-
-/** Execute shell command */
-async function executeShell(command: string): Promise<string> {
-  const { exec } = require('child_process')
-  return new Promise((resolve) => {
-    exec(command, { timeout: 30000, maxBuffer: 1024 * 1024 }, (error: any, stdout: string, stderr: string) => {
-      if (error) {
-        resolve(`Exit ${error.code || 1}\n${stderr || error.message}\n${stdout}`.trim())
-      } else {
-        resolve((stdout + (stderr ? `\nSTDERR: ${stderr}` : '')).trim() || '(no output)')
-      }
-    })
-  })
 }
 
 /** Get weather for user's location */

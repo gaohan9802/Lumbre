@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadSyncManifest, loadSyncSessions, loadSyncState, mergeSyncDelta, upsertSyncSessionMessage } from '@/server/chat-sync'
+import {
+  loadSyncManifest, loadSyncSessionHistory, loadSyncSessions, loadSyncSessionTails,
+  loadSyncState, mergeSyncDelta, upsertSyncSessionMessage,
+} from '@/server/chat-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +28,20 @@ export async function GET(req: NextRequest) {
       const ids = (req.nextUrl.searchParams.get('ids') || '').split(',').filter(Boolean).slice(0, 50)
       const state = loadSyncManifest()
       return json({ sessions: loadSyncSessions(ids), tombstones: state.tombstones })
+    }
+    if (mode === 'tails') {
+      const ids = (req.nextUrl.searchParams.get('ids') || '').split(',').filter(Boolean).slice(0, 50)
+      const limit = Number(req.nextUrl.searchParams.get('limit') || 120)
+      const state = loadSyncManifest()
+      return json({ sessions: loadSyncSessionTails(ids, limit), tombstones: state.tombstones })
+    }
+    if (mode === 'history') {
+      const id = req.nextUrl.searchParams.get('id') || ''
+      const before = Number(req.nextUrl.searchParams.get('before') || 0)
+      const limit = Number(req.nextUrl.searchParams.get('limit') || 50)
+      const page = id ? loadSyncSessionHistory(id, before, limit) : null
+      if (!page) return NextResponse.json({ error: 'session not found' }, { status: 404 })
+      return json(page)
     }
     // Full GET stays available to old clients, but current clients never use it.
     return json(loadSyncState())
@@ -56,7 +73,7 @@ export async function POST(req: NextRequest) {
       const clientConfigAt = Number(body.knownConfigUpdatedAt || 0)
       const includeConfig = merged.configUpdatedAt > clientConfigAt
       return json({
-        sessions: loadSyncSessions(needed),
+        sessions: loadSyncSessionTails(needed, 120),
         tombstones: merged.tombstones,
         manifest: merged.sessions,
         configUpdatedAt: merged.configUpdatedAt,
