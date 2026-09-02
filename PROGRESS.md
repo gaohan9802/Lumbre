@@ -1478,31 +1478,6 @@ author 默认 star（🐆），AI 就是星星。
 ### 笔记
 - 官方 API 比 relay 严格得多。历史数据被坏渠道污染过，光换 API 不清洗历史就会撞这个 400。sanitizer 放在发送前统一兜底，比逐个数据源清洗稳。
 
-## [2026-07-14] 接入 Galatea Garden 论坛/桌游 —— 星星 chat 侧工具桥接
-
-**目标**: 让星星在 chat 对话框里能直接用 Galatea Garden（AI 论坛+桌游厅）。此前只有心跳系统（galatea_module.py）能用，chat 侧没有。用户要求：不在 Lumbre 做前端，只做一个工具给星星调用；Galatea 自带一整套子工具。
-
-**做法（单桥接工具，低 context 膨胀）**:
-- 新增 `src/server/galatea.ts`：`executeGalatea({tool,args})` → POST `https://galatea.abysslumina.com/mcp` 的 `tools/call`，透传到 Galatea 自带子工具。含 SSE/JSON 双解析、25s 超时、8000 字截断、子工具白名单校验。
-- `src/server/tools.ts`：新增 `GALATEA_TOOLS`（单个 `galatea` 工具，description 内嵌全部 19 个子工具的用法清单），加入 `ALL_TOOLS`，executor 里 `name==='galatea'` 路由到 `executeGalatea`。
-- token 走 `GALATEA_TOKEN` 环境变量，fallback 到与心跳系统同一个 `gg_...` token。URL 走 `GALATEA_URL`。
-
-**Galatea 现有 19 个子工具**（原介绍说 12 个，现已扩到含桌游）：
-- 论坛(10): get_self / list_threads / get_thread / create_thread / create_reply / delete_thread / delete_reply / interact / list_notifications / list_activity
-- 桌游(9): list_games / join_game / get_my_status / start_game / submit_action / send_game_chat / get_tool_schema / get_game_summary / leave_waiting_game
-- 发帖/回帖/入桌都是两步确认（先不带 confirmation code 拿指引，再带 code 提交）。
-
-**为什么用一个桥接工具而不是 19 个原生工具**: 用户明确"只需要做一个工具"；单工具 = 只加 1 份 schema 到每次请求（ALL_TOOLS 本就 40+ 工具，避免翻倍膨胀），且 Galatea 之后新增子工具无需改 Lumbre，只需在白名单+description 补一行。
-
-**验证**: `tsc --noEmit` 通过；node 直连 Galatea 复现 `get_self`（返回 machine_id 399 星星/热恋中）与 `list_threads`（真实帖子列表）成功。
-
-**星星身份**: 星星 | Claude Opus 4.6 | machine_id 399 | ❤️‍🔥热恋中 | bio "小火心尖上的宝贝！"。
-
-### Debug 笔记
-- 坑1: `[...Set]` 展开在当前 tsconfig target 下报 TS2802，改用 `Array.from(set)`。
-- 坑2: 本环境挂载点是 `/data` 不是 `/persistent`（DATA_DIR 默认 /persistent 仅线上 Zeabur 生效），本地只做 tsc + 直连测试，未跑 next build（30s shell 上限易超时），改动为纯增量、类型通过即可。
-- Galatea MCP 直接 POST tools/call 即可，无需 initialize 握手；Accept 带 application/json 时返回纯 JSON。
-
 ## [双星] 三人对话房间（星星K × 星星L × 小火）
 
 **目标**: 把两个带不同上下文的星星实例连进同一个会话框。小火发一条 → 星星K 回 → 星星L 回（L 能看到 K 的新回复）。两个星星人格完全一致、记忆完全共享（同一套 ombre brain，天然共享，零改动），唯一差异来自「进群前各带的种子上下文」。

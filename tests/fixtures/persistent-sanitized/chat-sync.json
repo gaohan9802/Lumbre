@@ -1,0 +1,20 @@
+{
+  "sessions": [
+    {
+      "id": "fixture-session",
+      "title": "[redacted:fixture]",
+      "messages": [
+        {
+          "id": "fixture-message",
+          "role": "user",
+          "content": "[redacted:fixture]",
+          "timestamp": 0
+        }
+      ],
+      "createdAt": 0,
+      "updatedAt": 0
+    }
+  ],
+  "tombstones": {},
+  "configUpdatedAt": 0
+}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef, FETCH_TOOL_NAMES } from '@/server/tools'
+import { isTrustedInternalRequest, toolsForUnattendedWake } from '@/server/safety-baseline'
 import { reportActivity } from '@/server/autowake'
 import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
@@ -437,8 +438,13 @@ export async function POST(req: NextRequest) {
       _wake,
     } = await req.json()
 
+    const unattendedWake = _wake === true && isTrustedInternalRequest(req.headers.get('x-lumbre-internal'))
+    if (_wake === true && !unattendedWake) {
+      return NextResponse.json({ error: 'Invalid unattended wake credentials' }, { status: 403 })
+    }
+
     // Report activity for auto-wake (unless this IS a wake call)
-    if (!_wake) {
+    if (!unattendedWake) {
       try { reportActivity() } catch {}
     }
 
@@ -464,7 +470,7 @@ export async function POST(req: NextRequest) {
       messages, system, model, apiKey, baseUrl, thinking_budget,
       prompt_caching, tools_enabled, temperature,
       bookmark_injections: bookmark_injections || '',
-      max_tool_calls, origin,
+      max_tool_calls, origin, unattendedWake,
     }
 
     if (stream) {
@@ -570,11 +576,12 @@ async function proxyAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
   tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
+  unattendedWake?: boolean;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
     thinking_budget, prompt_caching, tools_enabled, temperature,
-    bookmark_injections, max_tool_calls, origin,
+    bookmark_injections, max_tool_calls, origin, unattendedWake,
   } = params
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
@@ -615,7 +622,8 @@ async function proxyAnthropic(params: {
 
     body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
     // Anthropic ignores temperature when thinking is enabled
-    if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = ALL_TOOLS
+    const availableTools = unattendedWake ? toolsForUnattendedWake(ALL_TOOLS) : ALL_TOOLS
+    if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = availableTools
 
     const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, { provider: 'anthropic', model })
     if (!res.ok) {
@@ -656,7 +664,7 @@ async function proxyAnthropic(params: {
 
     const toolResults = await Promise.all(
       toolUses.map(async (tu) => {
-        const result = localizeToolTimes(await executeTool(tu.name, tu.input))
+        const result = localizeToolTimes(await executeTool(tu.name, tu.input, { unattendedWake }))
         allToolCalls.push({ name: tu.name, input: tu.input, result: toolResultForHistory(tu.name, result) })
         return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result, origin) }
       }),
@@ -681,12 +689,13 @@ async function streamAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
   tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
+  unattendedWake?: boolean;
   send: (type: string, data: any) => void;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
     thinking_budget, prompt_caching, tools_enabled, temperature,
-    bookmark_injections, send, max_tool_calls, origin,
+    bookmark_injections, send, max_tool_calls, origin, unattendedWake,
   } = params
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
@@ -724,7 +733,8 @@ async function streamAnthropic(params: {
     }
 
     body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
-    if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = ALL_TOOLS
+    const availableTools = unattendedWake ? toolsForUnattendedWake(ALL_TOOLS) : ALL_TOOLS
+    if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = availableTools
 
     const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, { provider: 'anthropic', model })
     if (!res.ok) {
@@ -814,7 +824,7 @@ async function streamAnthropic(params: {
 
     const toolResults = await Promise.all(
       toolUses.map(async (tu) => {
-        const result = localizeToolTimes(await executeTool(tu.name, tu.input))
+        const result = localizeToolTimes(await executeTool(tu.name, tu.input, { unattendedWake }))
         const histResult = toolResultForHistory(tu.name, result)
         allToolCalls.push({ name: tu.name, input: tu.input, result: histResult })
         send('tool_call', { name: tu.name, input: tu.input, result: histResult })
@@ -842,8 +852,9 @@ async function proxyOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
   tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
+  unattendedWake?: boolean;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, max_tool_calls, origin } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, max_tool_calls, origin, unattendedWake } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
@@ -864,7 +875,7 @@ async function proxyOpenAI(params: {
     }),
   ]
 
-  const openaiTools = toolsToOpenAI(ALL_TOOLS)
+  const openaiTools = toolsToOpenAI(unattendedWake ? toolsForUnattendedWake(ALL_TOOLS) : ALL_TOOLS)
   const url = `${normalizeOpenAIBase(baseUrl)}/chat/completions`
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -936,7 +947,7 @@ async function proxyOpenAI(params: {
         const fnName = tc.function?.name || ''
         let fnArgs: Record<string, any> = {}
         try { fnArgs = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
-        const result = localizeToolTimes(await executeTool(fnName, fnArgs))
+        const result = localizeToolTimes(await executeTool(fnName, fnArgs, { unattendedWake }))
         allToolCalls.push({ name: fnName, input: fnArgs, result: toolResultForHistory(fnName, result) })
         photoPartsP.push(...openaiPhotoFollowup(fnName, result, origin))
         return { role: 'tool' as const, tool_call_id: tc.id, content: toolResultText(fnName, result) }
@@ -965,9 +976,10 @@ async function streamOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
   tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
+  unattendedWake?: boolean;
   send: (type: string, data: any) => void;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, send, max_tool_calls, origin } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, send, max_tool_calls, origin, unattendedWake } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
@@ -986,7 +998,7 @@ async function streamOpenAI(params: {
     }),
   ]
 
-  const openaiTools = toolsToOpenAI(ALL_TOOLS)
+  const openaiTools = toolsToOpenAI(unattendedWake ? toolsForUnattendedWake(ALL_TOOLS) : ALL_TOOLS)
   const url = `${normalizeOpenAIBase(baseUrl)}/chat/completions`
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -1108,7 +1120,7 @@ async function streamOpenAI(params: {
       toolCalls.map(async (tc) => {
         let fnArgs: Record<string, any> = {}
         try { fnArgs = JSON.parse(tc.args || '{}') } catch { /* empty */ }
-        const result = localizeToolTimes(await executeTool(tc.name, fnArgs))
+        const result = localizeToolTimes(await executeTool(tc.name, fnArgs, { unattendedWake }))
         toolCallCount++
         send('tool_call', { name: tc.name, input: fnArgs, result: toolResultForHistory(tc.name, result) })
         photoPartsSO.push(...openaiPhotoFollowup(tc.name, result, origin))

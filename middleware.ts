@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authCookie, isAuthConfigured, verifySessionToken } from './src/lib/auth'
+import { shouldBlockDebugApi } from './src/server/safety-baseline'
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -27,6 +28,15 @@ export async function middleware(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.has(pathname) || pathname.startsWith('/_next/')
 
   if (isPublic) return securityHeaders(NextResponse.next())
+
+  // Do not expose filesystem probes, source inspection or model-call diagnostics
+  // in a production deployment, even to an authenticated browser session.
+  if (shouldBlockDebugApi(pathname)) {
+    return securityHeaders(NextResponse.json(
+      { error: 'Not Found' },
+      { status: 404, headers: { 'Cache-Control': 'no-store' } },
+    ))
+  }
 
   // Server-side heartbeat calls /api/chat through localhost and has no browser cookie.
   // Keep the bypass secret-only; never trust host/origin headers by themselves.
