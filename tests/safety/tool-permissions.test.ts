@@ -6,6 +6,7 @@ import test, { after, before } from 'node:test'
 
 const root = mkdtempSync(path.join(tmpdir(), 'lumbre-tool-permissions-'))
 process.env.DATA_DIR = root
+process.env.LUMBRE_AUTH_SECRET = 'stage-two-confirmation-secret-for-tests'
 
 let executor: typeof import('../../src/server/agent/executor')
 let confirmations: typeof import('../../src/server/data/repositories/tool-security')

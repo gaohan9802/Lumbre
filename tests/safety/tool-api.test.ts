@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test, { after, before } from 'node:test'
 
 const root = mkdtempSync(path.join(tmpdir(), 'lumbre-tool-api-'))
 process.env.DATA_DIR = root
+process.env.LUMBRE_AUTH_SECRET = 'stage-two-tool-api-secret-for-tests'
 
 let NextRequest: typeof import('next/server').NextRequest
 let executor: typeof import('../../src/server/agent/executor')
@@ -30,6 +31,7 @@ test('confirmation API executes the exact pending red operation once', async () 
     source: 'chat', actorId: 'lumbre-authenticated-user', sessionId: 'api-session',
   })
   const pending = JSON.parse(await executor.executeTool('delete_note', { note_id: note.id, author: 'star' }, context))
+  assert.equal(readFileSync(path.join(root, 'tool-confirmations.json'), 'utf8').includes(note.id), false)
 
   const wrongSession = new NextRequest('http://localhost/api/tools/confirm', {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -47,6 +49,7 @@ test('confirmation API executes the exact pending red operation once', async () 
   assert.equal((await response.json()).ok, true)
   assert.equal(noteStore.listNotes().some(item => item.id === note.id), false)
   assert.equal(existsSync(path.join(root, 'notes', `${note.id}.json.bak`)), true)
+  assert.equal(readFileSync(path.join(root, 'tool-confirmations.json.bak'), 'utf8').includes(note.id), false)
 
   const replay = new NextRequest('http://localhost/api/tools/confirm', {
     method: 'POST', headers: { 'content-type': 'application/json' },
