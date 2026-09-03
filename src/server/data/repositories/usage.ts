@@ -17,7 +17,17 @@ function usageFile(date: string): string {
 }
 
 function validRecords(value: unknown): value is UsageRecord[] {
-  return Array.isArray(value)
+  return Array.isArray(value) && value.every(record => (
+    !!record
+    && typeof record === 'object'
+    && typeof record.timestamp === 'string'
+    && typeof record.inputTokens === 'number'
+    && Number.isFinite(record.inputTokens)
+    && typeof record.outputTokens === 'number'
+    && Number.isFinite(record.outputTokens)
+    && typeof record.model === 'string'
+    && typeof record.provider === 'string'
+  ))
 }
 
 export function readUsageRecords(date: string): UsageRecord[] {

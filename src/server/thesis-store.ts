@@ -51,9 +51,22 @@ function emptyState(): ThesisState { return { chapters: [], comments: [], progre
 
 function normalizeState(raw: ThesisState): ThesisState {
   return {
-    chapters: Array.isArray(raw?.chapters) ? raw.chapters : [],
-    comments: Array.isArray(raw?.comments) ? raw.comments : [],
-    progress: Array.isArray(raw?.progress) ? raw.progress : [],
+    chapters: Array.isArray(raw?.chapters)
+      ? raw.chapters.filter(value => (
+        !!value
+        && typeof value === 'object'
+        && typeof value.id === 'string'
+        && typeof value.title === 'string'
+        && typeof value.totalPages === 'number'
+        && typeof value.currentPages === 'number'
+      ))
+      : [],
+    comments: Array.isArray(raw?.comments)
+      ? raw.comments.filter(value => !!value && typeof value === 'object' && typeof value.id === 'string' && typeof value.content === 'string')
+      : [],
+    progress: Array.isArray(raw?.progress)
+      ? raw.progress.filter(value => !!value && typeof value === 'object' && typeof value.date === 'string')
+      : [],
   }
 }
 

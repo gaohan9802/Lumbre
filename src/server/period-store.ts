@@ -5,18 +5,8 @@
  * Stores menstrual cycle data and reminder state.
  * Designed to inject context into chat, not to be a UI-heavy module.
  */
-import fs from 'fs'
-import path from 'path'
 import { addMadridDays, madridCalendarDayDiff } from '@/lib/madrid-time'
-
-const DATA_DIR = process.env.DATA_DIR || '/persistent'
-const PERIOD_DIR = path.join(DATA_DIR, 'period')
-const STATE_FILE = path.join(PERIOD_DIR, 'state.json')
-const NOTES_FILE = path.join(PERIOD_DIR, 'notes.json')
-
-function ensureDir() {
-  fs.mkdirSync(PERIOD_DIR, { recursive: true })
-}
+import { periodDate, readPeriodState, replacePeriodNotes, updatePeriodNotes, updatePeriodState } from './data/repositories/period'
 
 export interface PeriodState {
   last_period_start: string | null   // ISO date
@@ -41,99 +31,147 @@ const DEFAULT_STATE: PeriodState = {
   history: [],
 }
 
+function defaultState(): PeriodState {
+  return { ...DEFAULT_STATE, history: [] }
+}
+
+function normalizeState(raw: PeriodState): PeriodState {
+  return {
+    ...defaultState(),
+    ...raw,
+    history: Array.isArray(raw?.history) ? raw.history : [],
+  }
+}
+
 function readState(): PeriodState {
-  ensureDir()
-  try {
-    const raw = fs.readFileSync(STATE_FILE, 'utf-8')
-    const data = JSON.parse(raw)
-    return { ...DEFAULT_STATE, ...data }
-  } catch {
-    return { ...DEFAULT_STATE }
+  return normalizeState(readPeriodState(defaultState))
+}
+
+function mutateState(operation: (state: PeriodState) => void): PeriodState {
+  let result!: PeriodState
+  updatePeriodState(defaultState, raw => {
+    const state = normalizeState(raw)
+    operation(state)
+    result = state
+    return state
+  })
+  return result
+}
+
+function emptyNotes(): PeriodNotes { return {} }
+function normalizeNotes(raw: PeriodNotes): PeriodNotes {
+  return raw && typeof raw === 'object' ? raw : {}
+}
+
+function mutateNotes(operation: (notes: PeriodNotes) => { note: string; write: boolean }): string {
+  let note = ''
+  updatePeriodNotes(emptyNotes, raw => {
+    const notes = normalizeNotes(raw)
+    const outcome = operation(notes)
+    note = outcome.note
+    return outcome.write ? notes : undefined
+  })
+  return note
+}
+
+function resetNotes(): void {
+  replacePeriodNotes({})
+}
+
+function validStoredDate(value: unknown): string | null {
+  if (value === null) return null
+  if (typeof value !== 'string') return null
+  try { return periodDate(value) } catch { return null }
+}
+
+function sanitizeHistory(value: unknown): PeriodState['history'] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap(entry => {
+    if (!entry || typeof entry !== 'object') return []
+    const start = validStoredDate((entry as any).start)
+    const end = validStoredDate((entry as any).end)
+    return start ? [{ start, end: end || undefined }] : []
+  })
+}
+
+function validatedState(raw: PeriodState): PeriodState {
+  const state = normalizeState(raw)
+  const cycleDays = typeof state.cycle_days === 'number' && Number.isFinite(state.cycle_days)
+    ? Math.max(20, Math.min(45, Math.round(state.cycle_days)))
+    : DEFAULT_STATE.cycle_days
+  const periodLength = typeof state.period_length === 'number' && Number.isFinite(state.period_length)
+    ? Math.max(2, Math.min(12, Math.round(state.period_length)))
+    : DEFAULT_STATE.period_length
+  return {
+    ...state,
+    last_period_start: validStoredDate(state.last_period_start),
+    last_period_end: validStoredDate(state.last_period_end),
+    cycle_days: cycleDays,
+    period_length: periodLength,
+    history: sanitizeHistory(state.history),
   }
-}
-
-function writeState(state: PeriodState) {
-  ensureDir()
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8')
-}
-
-function readNotes(): PeriodNotes {
-  ensureDir()
-  try {
-    const raw = fs.readFileSync(NOTES_FILE, 'utf-8')
-    return JSON.parse(raw) || {}
-  } catch {
-    return {}
-  }
-}
-
-function writeNotes(notes: PeriodNotes) {
-  ensureDir()
-  fs.writeFileSync(NOTES_FILE, JSON.stringify(notes, null, 2), 'utf-8')
 }
 
 /** Get current period state */
 export function getPeriodState(): PeriodState {
-  return readState()
+  return validatedState(readState())
 }
 
 /** Record period start */
 export function recordPeriodStart(date: string): PeriodState {
-  const state = readState()
-  // If there was a previous period, archive it
-  if (state.last_period_start) {
-    state.history.push({
-      start: state.last_period_start,
-      end: state.last_period_end || undefined,
-    })
-    // Keep last 12 periods
-    if (state.history.length > 12) state.history = state.history.slice(-12)
-    // Recalculate cycle_days from history
-    if (state.history.length >= 2) {
-      const diffs: number[] = []
-      for (let i = 1; i < state.history.length; i++) {
-        const d = madridCalendarDayDiff(state.history[i].start, state.history[i - 1].start)
-        if (d >= 15 && d <= 60) diffs.push(d)
-      }
-      // Also include current cycle
-      const d = madridCalendarDayDiff(date, state.last_period_start)
-      if (d >= 15 && d <= 60) diffs.push(d)
-      if (diffs.length > 0) {
-        state.cycle_days = Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length)
-        state.cycle_days = Math.max(20, Math.min(45, state.cycle_days))
+  const startDate = periodDate(date)
+  const result = mutateState(raw => {
+    const state = validatedState(raw)
+    Object.assign(raw, state)
+    if (raw.last_period_start) {
+      raw.history.push({
+        start: raw.last_period_start,
+        end: raw.last_period_end || undefined,
+      })
+      if (raw.history.length > 12) raw.history = raw.history.slice(-12)
+      if (raw.history.length >= 2) {
+        const diffs: number[] = []
+        for (let i = 1; i < raw.history.length; i++) {
+          const difference = madridCalendarDayDiff(raw.history[i].start, raw.history[i - 1].start)
+          if (difference >= 15 && difference <= 60) diffs.push(difference)
+        }
+        const difference = madridCalendarDayDiff(startDate, raw.last_period_start)
+        if (difference >= 15 && difference <= 60) diffs.push(difference)
+        if (diffs.length > 0) {
+          raw.cycle_days = Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length)
+          raw.cycle_days = Math.max(20, Math.min(45, raw.cycle_days))
+        }
       }
     }
-  }
-  state.last_period_start = date
-  state.last_period_end = null
-  writeState(state)
-  // Reset reminder notes for new cycle
-  writeNotes({})
-  return state
+    raw.last_period_start = startDate
+    raw.last_period_end = null
+  })
+  resetNotes()
+  return result
 }
 
 /** Record period end */
 export function recordPeriodEnd(date: string): PeriodState {
-  const state = readState()
-  state.last_period_end = date
-  // Calculate period_length
-  if (state.last_period_start) {
-    const len = madridCalendarDayDiff(date, state.last_period_start) + 1
-    if (len >= 2 && len <= 12) {
-      state.period_length = len
+  const endDate = periodDate(date)
+  return mutateState(raw => {
+    const state = validatedState(raw)
+    Object.assign(raw, state)
+    raw.last_period_end = endDate
+    if (raw.last_period_start) {
+      const length = madridCalendarDayDiff(endDate, raw.last_period_start) + 1
+      if (length >= 2 && length <= 12) raw.period_length = length
     }
-  }
-  writeState(state)
-  return state
+  })
 }
 
 /** Update cycle config manually */
 export function updatePeriodConfig(cycleDays?: number, periodLength?: number): PeriodState {
-  const state = readState()
-  if (cycleDays != null) state.cycle_days = Math.max(20, Math.min(45, cycleDays))
-  if (periodLength != null) state.period_length = Math.max(2, Math.min(12, periodLength))
-  writeState(state)
-  return state
+  return mutateState(raw => {
+    const state = validatedState(raw)
+    Object.assign(raw, state)
+    if (cycleDays != null) raw.cycle_days = Math.max(20, Math.min(45, cycleDays))
+    if (periodLength != null) raw.period_length = Math.max(2, Math.min(12, periodLength))
+  })
 }
 
 /**
@@ -144,73 +182,61 @@ export function updatePeriodConfig(cycleDays?: number, periodLength?: number): P
  * @param todayStr - ISO date string for "today" (Madrid time)
  */
 export function getPeriodContext(userMessage: string, todayStr: string): string {
-  const state = readState()
+  const state = getPeriodState()
   if (!state.last_period_start) return ''
+  const today = periodDate(todayStr)
 
-  const notes = readNotes()
-  let changed = false
-  let note = ''
+  return mutateNotes(notes => {
+    let changed = false
+    let note = ''
+    const ended = state.last_period_end
+    const cycle = state.cycle_days
+    const periodLength = state.period_length
+    const day = madridCalendarDayDiff(today, state.last_period_start!) + 1
+    const compact = userMessage.replace(/\s/g, '')
+    const active = day >= 1 && day <= periodLength + 2 && !(ended && ended >= state.last_period_start!)
+    const periodKeywords = ['月经', '姨妈', '经期', '痛经', '生理期', '例假', '大姨妈', '来了没']
 
-  const ended = state.last_period_end
-  const cycle = state.cycle_days
-  const plen = state.period_length
-  const day = madridCalendarDayDiff(todayStr, state.last_period_start) + 1
-  const compact = userMessage.replace(/\s/g, '')
-
-  // Is period currently active?
-  const active = day >= 1 && day <= plen + 2 && !(ended && ended >= state.last_period_start)
-
-  // Scenario 1: User mentions period → show full info
-  const periodKeywords = ['月经', '姨妈', '经期', '痛经', '生理期', '例假', '大姨妈', '来了没']
-  if (periodKeywords.some(k => compact.includes(k))) {
-    if (active) {
-      note = `经期记录：这次从${state.last_period_start}开始，今天是第${day}天（她主动提了才给我看的，回应她就好，不用播报数字）`
-    } else {
-      const expStr = addMadridDays(state.last_period_start, cycle)
-      note = `经期记录：上次${state.last_period_start}开始，平均周期${cycle}天，下次预计${expStr}（她主动提了，回应她就好）`
-    }
-  }
-  // Scenario 2: First 2 days (most uncomfortable) → remind once per day
-  else if (active && day >= 1 && day <= 2 && notes.care_date !== todayStr) {
-    notes.care_date = todayStr
-    changed = true
-    note = `经期第${day}天，最难受的两天。今天提醒一次：自然关心她疼不疼、吃了没；之后除非她提，不再重复`
-  }
-  // Scenario 3: Near end → ask every 2 days
-  else if (active && day >= plen - 1) {
-    const daysSinceCheck = notes.end_check_date ? madridCalendarDayDiff(todayStr, notes.end_check_date) : Infinity
-    if (daysSinceCheck >= 2) {
-      notes.end_check_date = todayStr
+    if (periodKeywords.some(keyword => compact.includes(keyword))) {
+      if (active) {
+        note = `经期记录：这次从${state.last_period_start}开始，今天是第${day}天（她主动提了才给我看的，回应她就好，不用播报数字）`
+      } else {
+        const expected = addMadridDays(state.last_period_start!, cycle)
+        note = `经期记录：上次${state.last_period_start}开始，平均周期${cycle}天，下次预计${expected}（她主动提了，回应她就好）`
+      }
+    } else if (active && day >= 1 && day <= 2 && notes.care_date !== today) {
+      notes.care_date = today
       changed = true
-      note = `大约经期第${day}天，差不多快结束了。可以轻轻问一次结束了没；她答了记得用 update_period 更新`
-    }
-  }
-  // Scenario 4: Not in period, next one approaching → ask once per cycle
-  else if (!active) {
-    const expStr = addMadridDays(state.last_period_start, cycle)
-    const distance = madridCalendarDayDiff(expStr, todayStr)
-    if (distance >= -2 && distance <= 3 && notes.arrival_asked_for !== expStr) {
-      notes.arrival_asked_for = expStr
-      changed = true
-      note = `下次月经预计${expStr}前后。这个周期只主动问一次来了没，其余时候等她自己说`
-    }
-  }
-
-  // Also check ovulation period (排卵期) — typically cycle_days - 14, ±2 days
-  if (!note && !active && state.last_period_start) {
-    const ovulationDay = cycle - 14
-    const daysSinceStart = madridCalendarDayDiff(todayStr, state.last_period_start)
-    if (daysSinceStart >= ovulationDay - 2 && daysSinceStart <= ovulationDay + 2) {
-      // Only mention once — use care_date check (different from period care)
-      const ovKey = `ovulation_${todayStr}`
-      if (!(notes as any)[ovKey]) {
-        (notes as any)[ovKey] = true
+      note = `经期第${day}天，最难受的两天。今天提醒一次：自然关心她疼不疼、吃了没；之后除非她提，不再重复`
+    } else if (active && day >= periodLength - 1) {
+      const daysSinceCheck = notes.end_check_date ? madridCalendarDayDiff(today, notes.end_check_date) : Infinity
+      if (daysSinceCheck >= 2) {
+        notes.end_check_date = today
         changed = true
-        note = `排卵期前后（周期第${daysSinceStart}天附近），她可能情绪波动、身体不适。多一点耐心，不用提排卵期这个词`
+        note = `大约经期第${day}天，差不多快结束了。可以轻轻问一次结束了没；她答了记得用 update_period 更新`
+      }
+    } else if (!active) {
+      const expected = addMadridDays(state.last_period_start!, cycle)
+      const distance = madridCalendarDayDiff(expected, today)
+      if (distance >= -2 && distance <= 3 && notes.arrival_asked_for !== expected) {
+        notes.arrival_asked_for = expected
+        changed = true
+        note = `下次月经预计${expected}前后。这个周期只主动问一次来了没，其余时候等她自己说`
       }
     }
-  }
 
-  if (changed) writeNotes(notes)
-  return note
+    if (!note && !active) {
+      const ovulationDay = cycle - 14
+      const daysSinceStart = madridCalendarDayDiff(today, state.last_period_start!)
+      if (daysSinceStart >= ovulationDay - 2 && daysSinceStart <= ovulationDay + 2) {
+        const ovulationKey = `ovulation_${today}`
+        if (!(notes as any)[ovulationKey]) {
+          (notes as any)[ovulationKey] = true
+          changed = true
+          note = `排卵期前后（周期第${daysSinceStart}天附近），她可能情绪波动、身体不适。多一点耐心，不用提排卵期这个词`
+        }
+      }
+    }
+    return { note, write: changed }
+  })
 }

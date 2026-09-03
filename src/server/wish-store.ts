@@ -60,7 +60,10 @@ function normAuthor(a: any): string {
 function emptyState(): WishState { return { wishes: [] } }
 
 function normalizeState(raw: WishState): WishState {
-  return { wishes: Array.isArray(raw?.wishes) ? raw.wishes : [] }
+  const wishes = Array.isArray(raw?.wishes)
+    ? raw.wishes.filter(value => !!value && typeof value === 'object' && typeof value.id === 'string')
+    : []
+  return { wishes }
 }
 
 function readState(): WishState {
