@@ -1,4 +1,4 @@
-import { executeToolLegacy } from '@/server/tool-runtime'
+import { executeRegisteredToolHandler } from '@/server/tool-runtime'
 import { TOOL_DEFINITIONS } from './definitions'
 import { EXTERNAL_TOOL_POLICIES } from './tools/external'
 import { JOURNAL_TOOL_POLICIES } from './tools/journal'
@@ -26,7 +26,7 @@ function buildRegistry(): Map<string, RegisteredTool> {
     registry.set(policy.name, {
       ...policy,
       definition,
-      execute: input => executeToolLegacy(policy.name, input),
+      execute: input => executeRegisteredToolHandler(policy.name, input),
     })
   }
 

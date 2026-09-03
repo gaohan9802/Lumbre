@@ -222,6 +222,16 @@ function localizeToolTimes(result: string): string {
 }
 
 function toolResultText(name: string, result: string): string {
+  if (result.includes('"code":"CONFIRMATION_REQUIRED"')) {
+    try {
+      const payload = JSON.parse(result)
+      if (payload?.confirmation) {
+        const { token: _token, ...safeConfirmation } = payload.confirmation
+        return JSON.stringify({ ...payload, confirmation: safeConfirmation }).slice(0, 2000)
+      }
+    } catch { /* fall through to bounded plain text */ }
+    return result.replace(/"token":"[^"]+",?/, '').slice(0, 2000)
+  }
   if (FETCH_TOOL_NAMES.has(name)) return result.slice(0, 6000)
   // Email reads are structured JSON / full message text. The generic 300-char
   // summarizer used to cut JSON mid-object and made successful Gmail calls look

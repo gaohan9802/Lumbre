@@ -31,7 +31,6 @@ import { createManyEncouragements, listEncouragements, updateEncouragement, dele
 import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { scheduleWake } from './autowake'
-import { unattendedWakeDenial } from './safety-baseline'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
 import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
@@ -50,16 +49,11 @@ export interface ToolCallResult {
   error?: boolean
 }
 
-export async function executeToolLegacy(
+export async function executeRegisteredToolHandler(
   name: string,
   input: Record<string, any>,
-  context: { unattendedWake?: boolean } = {},
 ): Promise<string> {
   try {
-    if (context.unattendedWake) {
-      const denial = unattendedWakeDenial(name, input)
-      if (denial) return `Tool denied: ${denial}`
-    }
     // Memory → local Brain engine
     if (BRAIN_TOOLS.has(name)) {
       return executeMemoryTool(name, input)
@@ -543,4 +537,3 @@ function executeMemoryTool(name: string, input: Record<string, any>): string {
       return `Unknown memory tool: ${name}`
   }
 }
-

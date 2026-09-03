@@ -148,7 +148,8 @@ test('chat supports non-streaming and streaming response contracts without real 
     )
 
     let redToolTurn = 0
-    globalThis.fetch = async (input) => {
+    let redToolRoundTrip = ''
+    globalThis.fetch = async (input, init) => {
       const url = String(input)
       if (url.startsWith('https://wttr.in/')) return new Response('', { status: 503 })
       redToolTurn += 1
@@ -159,6 +160,7 @@ test('chat supports non-streaming and streaming response contracts without real 
           usage: { input_tokens: 2, output_tokens: 1 },
         }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
+      redToolRoundTrip = String(init?.body || '')
       return new Response(JSON.stringify({
         content: [{ type: 'text', text: 'waiting for confirmation' }],
         stop_reason: 'end_turn',
@@ -181,6 +183,8 @@ test('chat supports non-streaming and streaming response contracts without real 
     assert.equal(redToolResponse.status, 200)
     assert.equal(redToolBody.content, 'waiting for confirmation')
     assert.match(redToolBody.tool_calls[0].result, /CONFIRMATION_REQUIRED/)
+    assert.match(redToolRoundTrip, /CONFIRMATION_REQUIRED/)
+    assert.doesNotMatch(redToolRoundTrip, /\\"token\\":/)
 
     globalThis.fetch = async (input) => {
       const url = String(input)

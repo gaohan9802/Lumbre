@@ -40,5 +40,5 @@ export function confirmationTarget(name: string, input: Record<string, any>): st
       ? [input.id]
       : [input.id, input.bucket_id, input.note_id, input.target_date]
   const value = candidates.find(item => typeof item === 'string' && item.trim())
-  return value ? String(value).slice(0, 160) : undefined
+  return value ? String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 160) : undefined
 }
