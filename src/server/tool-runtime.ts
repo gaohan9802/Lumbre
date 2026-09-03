@@ -430,7 +430,7 @@ export async function executeToolLegacy(
       case 'fetch_markdown':
       case 'fetch_html':
       case 'fetch_json':
-        return await executeFetch(name, input.url, input.headers)
+        return await executeSafeFetch(name, input.url, input.headers)
 
       default:
         return `Unknown tool: ${name}`
@@ -544,33 +544,3 @@ function executeMemoryTool(name: string, input: Record<string, any>): string {
   }
 }
 
-
-/** Strip HTML tags to plain text */
-function htmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<\/(p|div|br|li|h[1-6]|tr)>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim()
-}
-
-/** Very light HTML → Markdown-ish conversion */
-function htmlToMarkdown(html: string): string {
-  let s = html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-  s = s.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h[1-6]>/gi, (_m, l, t) => '\n' + '#'.repeat(Number(l)) + ' ' + t.replace(/<[^>]+>/g, '').trim() + '\n')
-  s = s.replace(/<a[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href, t) => `[${t.replace(/<[^>]+>/g, '').trim()}](${href})`)
-  s = s.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, t) => '- ' + t.replace(/<[^>]+>/g, '').trim() + '\n')
-  s = s.replace(/<(strong|b)[^>]*>([\s\S]*?)<\/(strong|b)>/gi, (_m, _t, t2) => '**' + t2.replace(/<[^>]+>/g, '').trim() + '**')
-  return htmlToText(s)
-}
-
-/** Fetch a URL server-side; convert per tool. Result is capped to avoid token blowup. */
-async function executeFetch(tool: string, url: string, headers?: Record<string, string>): Promise<string> {
-  return executeSafeFetch(tool, url, headers)
-}
