@@ -9,17 +9,8 @@
  *  - comments: AI (or user) comments, only date + content (no tags).
  *      author: 'star' (🐆, AI) or 'fire' (🦦, user).
  */
-import fs from 'fs'
-import path from 'path'
 import { madridDateKey } from '@/lib/madrid-time'
-
-const DATA_DIR = process.env.DATA_DIR || '/persistent'
-const THESIS_DIR = path.join(DATA_DIR, 'thesis')
-const THESIS_FILE = path.join(THESIS_DIR, 'thesis.json')
-
-function ensureDir() {
-  fs.mkdirSync(THESIS_DIR, { recursive: true })
-}
+import { readThesisState, updateThesisState } from './data/repositories/thesis'
 
 export interface ThesisChapter {
   id: string
@@ -56,23 +47,29 @@ function genId(): string {
 
 function todayStr(): string { return madridDateKey() }
 
-function readState(): ThesisState {
-  ensureDir()
-  try {
-    const raw = JSON.parse(fs.readFileSync(THESIS_FILE, 'utf-8'))
-    return {
-      chapters: Array.isArray(raw.chapters) ? raw.chapters : [],
-      comments: Array.isArray(raw.comments) ? raw.comments : [],
-      progress: Array.isArray(raw.progress) ? raw.progress : [],
-    }
-  } catch {
-    return { chapters: [], comments: [], progress: [] }
+function emptyState(): ThesisState { return { chapters: [], comments: [], progress: [] } }
+
+function normalizeState(raw: ThesisState): ThesisState {
+  return {
+    chapters: Array.isArray(raw?.chapters) ? raw.chapters : [],
+    comments: Array.isArray(raw?.comments) ? raw.comments : [],
+    progress: Array.isArray(raw?.progress) ? raw.progress : [],
   }
 }
 
-function saveState(s: ThesisState) {
-  ensureDir()
-  fs.writeFileSync(THESIS_FILE, JSON.stringify(s, null, 2), 'utf-8')
+function readState(): ThesisState {
+  return normalizeState(readThesisState(emptyState))
+}
+
+function mutateState<T>(mutation: (state: ThesisState) => { result: T; write: boolean }): T {
+  let result!: T
+  updateThesisState(emptyState, raw => {
+    const state = normalizeState(raw)
+    const outcome = mutation(state)
+    result = outcome.result
+    return outcome.write ? state : undefined
+  })
+  return result
 }
 
 /** Upsert today's snapshot from the current chapters. */
@@ -109,64 +106,63 @@ export function getThesis() {
 }
 
 export function addChapter(title: string, totalPages: number): ThesisChapter {
-  const s = readState()
-  const now = new Date().toISOString()
-  const chapter: ThesisChapter = {
-    id: genId(),
-    title: title.trim() || '未命名章节',
-    totalPages: Math.max(0, Math.round(totalPages) || 0),
-    currentPages: 0,
-    created_at: now,
-    updated_at: now,
-  }
-  s.chapters.push(chapter)
-  recordProgress(s)
-  saveState(s)
-  return chapter
+  return mutateState(state => {
+    const now = new Date().toISOString()
+    const chapter: ThesisChapter = {
+      id: genId(),
+      title: title.trim() || '未命名章节',
+      totalPages: Math.max(0, Math.round(totalPages) || 0),
+      currentPages: 0,
+      created_at: now,
+      updated_at: now,
+    }
+    state.chapters.push(chapter)
+    recordProgress(state)
+    return { result: chapter, write: true }
+  })
 }
 
 export function updateChapter(
   id: string,
   patch: { title?: string; totalPages?: number; currentPages?: number }
 ): string {
-  const s = readState()
-  const c = s.chapters.find((x) => x.id === id)
-  if (!c) return 'not_found'
-  if (typeof patch.title === 'string') c.title = patch.title.trim() || c.title
-  if (typeof patch.totalPages === 'number' && isFinite(patch.totalPages)) {
-    c.totalPages = Math.max(0, Math.round(patch.totalPages))
-  }
-  if (typeof patch.currentPages === 'number' && isFinite(patch.currentPages)) {
-    c.currentPages = clampPages(patch.currentPages, c.totalPages)
-  } else {
-    // totalPages may have shrunk below currentPages
-    c.currentPages = clampPages(c.currentPages, c.totalPages)
-  }
-  c.updated_at = new Date().toISOString()
-  recordProgress(s)
-  saveState(s)
-  return 'ok'
+  return mutateState(state => {
+    const chapter = state.chapters.find(value => value.id === id)
+    if (!chapter) return { result: 'not_found', write: false }
+    if (typeof patch.title === 'string') chapter.title = patch.title.trim() || chapter.title
+    if (typeof patch.totalPages === 'number' && isFinite(patch.totalPages)) {
+      chapter.totalPages = Math.max(0, Math.round(patch.totalPages))
+    }
+    if (typeof patch.currentPages === 'number' && isFinite(patch.currentPages)) {
+      chapter.currentPages = clampPages(patch.currentPages, chapter.totalPages)
+    } else {
+      chapter.currentPages = clampPages(chapter.currentPages, chapter.totalPages)
+    }
+    chapter.updated_at = new Date().toISOString()
+    recordProgress(state)
+    return { result: 'ok', write: true }
+  })
 }
 
 export function removeChapter(id: string): string {
-  const s = readState()
-  const before = s.chapters.length
-  s.chapters = s.chapters.filter((x) => x.id !== id)
-  if (s.chapters.length === before) return 'not_found'
-  recordProgress(s)
-  saveState(s)
-  return 'ok'
+  return mutateState(state => {
+    const before = state.chapters.length
+    state.chapters = state.chapters.filter(value => value.id !== id)
+    if (state.chapters.length === before) return { result: 'not_found', write: false }
+    recordProgress(state)
+    return { result: 'ok', write: true }
+  })
 }
 
 export function commentThesis(author: string, content: string): string {
   if (!content.trim()) return 'empty'
-  const s = readState()
-  s.comments.push({
-    id: genId(),
-    author,
-    content: content.trim(),
-    time: new Date().toISOString(),
+  return mutateState(state => {
+    state.comments.push({
+      id: genId(),
+      author,
+      content: content.trim(),
+      time: new Date().toISOString(),
+    })
+    return { result: 'ok', write: true }
   })
-  saveState(s)
-  return 'ok'
 }

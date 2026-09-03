@@ -1,51 +1,19 @@
-import fs from 'fs'
-import path from 'path'
 import { madridDateKey, parseMadridDateTime } from '@/lib/madrid-time'
-
-const USAGE_DIR = '/persistent/usage'
-
-function ensureDir() {
-  if (!fs.existsSync(USAGE_DIR)) fs.mkdirSync(USAGE_DIR, { recursive: true })
-}
-
-interface UsageRecord {
-  timestamp: string
-  inputTokens: number
-  outputTokens: number
-  model: string
-  provider: string
-}
-
-function getFilePath(date: string) {
-  return path.join(USAGE_DIR, `${date}.json`)
-}
+import { appendUsageRecord, readUsageRecords } from './data/repositories/usage'
 
 export function recordUsage(inputTokens: number, outputTokens: number, model: string, provider: string) {
-  ensureDir()
   const now = new Date()
   const date = madridDateKey(now)
-  const filePath = getFilePath(date)
-
-  let records: UsageRecord[] = []
-  try {
-    if (fs.existsSync(filePath)) {
-      records = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-    }
-  } catch {}
-
-  records.push({
+  appendUsageRecord(date, {
     timestamp: now.toISOString(),
     inputTokens,
     outputTokens,
     model,
     provider,
   })
-
-  fs.writeFileSync(filePath, JSON.stringify(records, null, 2))
 }
 
 export function getUsageStats() {
-  ensureDir()
   const now = new Date()
   const today = madridDateKey(now)
 
@@ -55,14 +23,7 @@ export function getUsageStats() {
     const todayNoon = parseMadridDateTime(`${today}T12:00:00`) || now
     const d = new Date(todayNoon.getTime() - i * 86400000)
     const dateStr = madridDateKey(d)
-    const filePath = getFilePath(dateStr)
-
-    let records: UsageRecord[] = []
-    try {
-      if (fs.existsSync(filePath)) {
-        records = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-      }
-    } catch {}
+    const records = readUsageRecords(dateStr)
 
     const input = records.reduce((sum, r) => sum + r.inputTokens, 0)
     const output = records.reduce((sum, r) => sum + r.outputTokens, 0)
