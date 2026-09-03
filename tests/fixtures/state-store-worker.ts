@@ -24,6 +24,10 @@ async function main(): Promise<void> {
         keys: { p256dh: `p256dh-${workerId}-${i}`, auth: `auth-${workerId}-${i}` },
       })
     }
+  } else if (store === 'wake') {
+    const { scheduleWake } = await import('../../src/server/autowake')
+    const base = Date.now() + 60 * 60 * 1000 + Number(workerId) * 60 * 1000
+    for (let i = 0; i < count; i += 1) scheduleWake(base + i * 2000, `worker-${workerId}-${i}`)
   } else {
     throw new Error(`Unknown state store: ${store}`)
   }

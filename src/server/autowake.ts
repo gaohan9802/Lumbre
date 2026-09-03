@@ -13,18 +13,20 @@
  * Runs as setInterval in the Next.js process. Logs stored to /persistent/wake-logs.json.
  */
 
-import * as fs from 'fs'
-import * as path from 'path'
 import { createHash, randomUUID } from 'crypto'
 import { appendSyncSessionMessage, loadSyncManifest, loadSyncSessions } from './chat-sync'
+import {
+  acquireWakeLeaseData,
+  appendWakeLogData,
+  readWakeConfigData,
+  readWakeLogData,
+  releaseWakeLeaseData,
+  updateWakeConfigData,
+  writeWakeConfigData,
+} from './data/repositories/wake'
 import { getCurrentActivity } from './timeline-store'
 import { sendPushMessages } from './push'
 
-const PERSISTENT = '/persistent'
-const WAKE_LOG_PATH = path.join(PERSISTENT, 'wake-logs.json')
-const WAKE_CONFIG_PATH = path.join(PERSISTENT, 'wake-config.json')
-const WAKE_CONFIG_LOCK = path.join(PERSISTENT, '.wake-config-lock')
-const WAKE_LEASE_DIR = path.join(PERSISTENT, '.wake-engine-lease')
 const WAKE_LEASE_MS = 8 * 60 * 1000
 const WAKE_REQUEST_TIMEOUT_MS = 2 * 60 * 1000
 const WAKE_EMPTY_RETRIES = 3
@@ -101,73 +103,41 @@ const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 
 // ── Persistence ──────────────────────────────────────
 
-function ensureDir() {
-  try { fs.mkdirSync(PERSISTENT, { recursive: true }) } catch {}
+function defaultWakeConfig(): WakeConfig {
+  return { enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0, alarms: [], pushEnabled: false, consecutiveFailures: 0, nextRetryAt: 0 }
 }
 
-function atomicWrite(file: string, value: string) {
-  ensureDir()
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
-  fs.writeFileSync(tmp, value, 'utf-8')
-  fs.renameSync(tmp, file)
-}
-
-function withConfigLock<T>(fn: () => T): T {
-  ensureDir()
-  const deadline = Date.now() + 3000
-  while (true) {
-    try { fs.mkdirSync(WAKE_CONFIG_LOCK); break } catch {
-      try {
-        if (Date.now() - fs.statSync(WAKE_CONFIG_LOCK).mtimeMs > 15_000) {
-          fs.rmSync(WAKE_CONFIG_LOCK, { recursive: true, force: true }); continue
-        }
-      } catch {}
-      if (Date.now() >= deadline) throw new Error('wake config lock timeout')
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
-    }
+function normalizeWakeConfig(raw: any): WakeConfig {
+  return {
+    enabled: !!raw?.enabled,
+    sessionId: typeof raw?.sessionId === 'string' && raw.sessionId ? raw.sessionId : null,
+    lastWakeAt: Math.max(0, Number(raw?.lastWakeAt) || 0),
+    lastActivityAt: Math.max(0, Number(raw?.lastActivityAt) || 0),
+    customPrompt: typeof raw?.customPrompt === 'string' && raw.customPrompt ? raw.customPrompt : undefined,
+    alarms: Array.isArray(raw?.alarms)
+      ? raw.alarms.filter((alarm: any) => alarm && Number.isFinite(Number(alarm.at))).map((alarm: any) => ({
+        at: Math.floor(Number(alarm.at)),
+        note: typeof alarm.note === 'string' && alarm.note ? alarm.note : undefined,
+      }))
+      : [],
+    pushEnabled: !!raw?.pushEnabled,
+    consecutiveFailures: Math.max(0, Number(raw?.consecutiveFailures) || 0),
+    nextRetryAt: Math.max(0, Number(raw?.nextRetryAt) || 0),
   }
-  try { return fn() } finally { try { fs.rmSync(WAKE_CONFIG_LOCK, { recursive: true, force: true }) } catch {} }
 }
 
 export function loadWakeLogs(): WakeLog[] {
-  try {
-    return JSON.parse(fs.readFileSync(WAKE_LOG_PATH, 'utf-8'))
-  } catch {
-    return []
-  }
-}
-
-function saveWakeLogs(logs: WakeLog[]) {
-  ensureDir()
-  const trimmed = logs.slice(-200)
-  atomicWrite(WAKE_LOG_PATH, JSON.stringify(trimmed, null, 2))
+  return readWakeLogData().filter((value): value is WakeLog => (
+    !!value && typeof value === 'object' && typeof (value as WakeLog).id === 'string'
+  ))
 }
 
 export function loadWakeConfig(): WakeConfig {
-  try {
-    const raw = JSON.parse(fs.readFileSync(WAKE_CONFIG_PATH, 'utf-8'))
-    return {
-      enabled: !!raw.enabled,
-      sessionId: raw.sessionId || null,
-      lastWakeAt: raw.lastWakeAt || 0,
-      lastActivityAt: raw.lastActivityAt || 0,
-      customPrompt: raw.customPrompt || undefined,
-      alarms: Array.isArray(raw.alarms) ? raw.alarms : [],
-      pushEnabled: !!raw.pushEnabled,
-      consecutiveFailures: Math.max(0, Number(raw.consecutiveFailures) || 0),
-      nextRetryAt: Math.max(0, Number(raw.nextRetryAt) || 0),
-    }
-  } catch {
-    return { enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0, alarms: [], pushEnabled: false, consecutiveFailures: 0, nextRetryAt: 0 }
-  }
-}
-
-function writeWakeConfig(config: WakeConfig) {
-  atomicWrite(WAKE_CONFIG_PATH, JSON.stringify(config, null, 2))
+  return normalizeWakeConfig(readWakeConfigData(defaultWakeConfig))
 }
 
 export function saveWakeConfig(config: WakeConfig) {
-  withConfigLock(() => writeWakeConfig(config))
+  writeWakeConfigData(normalizeWakeConfig(config))
 }
 
 export function updateWakeSettings(patch: Partial<Pick<WakeConfig, 'enabled' | 'sessionId' | 'customPrompt' | 'pushEnabled'>>): WakeConfig {
@@ -180,10 +150,9 @@ export function updateWakeSettings(patch: Partial<Pick<WakeConfig, 'enabled' | '
 }
 
 function mutateWakeConfig(mutator: (config: WakeConfig) => void): WakeConfig {
-  return withConfigLock(() => {
-    const config = loadWakeConfig()
+  return updateWakeConfigData(defaultWakeConfig, raw => {
+    const config = normalizeWakeConfig(raw)
     mutator(config)
-    writeWakeConfig(config)
     return config
   })
 }
@@ -531,9 +500,7 @@ ${traceSummary}` : responseText)
     responseKind: wakeError ? 'error' : (responseText === '[SILENT]' ? 'silent' : (responseText.startsWith('Wake error:') ? 'error' : 'spoken')),
   }
 
-  const logs = loadWakeLogs()
-  logs.push(log)
-  saveWakeLogs(logs)
+  appendWakeLogData(log)
 
   // Successful model turns advance the schedule and consume the alarm.
   // Transport/empty-response failures stay pending and use bounded backoff,
@@ -560,29 +527,12 @@ let wakeInterval: ReturnType<typeof setInterval> | null = null
 let wakeInFlight = false
 
 function acquireWakeLease(): string | null {
-  ensureDir()
   const token = `${process.pid}-${randomUUID()}`
-  try {
-    fs.mkdirSync(WAKE_LEASE_DIR)
-    fs.writeFileSync(path.join(WAKE_LEASE_DIR, 'lease.json'), JSON.stringify({ token, startedAt: Date.now(), expiresAt: Date.now() + WAKE_LEASE_MS }))
-    return token
-  } catch {
-    try {
-      const lease = JSON.parse(fs.readFileSync(path.join(WAKE_LEASE_DIR, 'lease.json'), 'utf-8'))
-      if (Number(lease.expiresAt) < Date.now()) {
-        fs.rmSync(WAKE_LEASE_DIR, { recursive: true, force: true })
-        return acquireWakeLease()
-      }
-    } catch {}
-    return null
-  }
+  return acquireWakeLeaseData(token, WAKE_LEASE_MS) ? token : null
 }
 
 function releaseWakeLease(token: string) {
-  try {
-    const lease = JSON.parse(fs.readFileSync(path.join(WAKE_LEASE_DIR, 'lease.json'), 'utf-8'))
-    if (lease.token === token) fs.rmSync(WAKE_LEASE_DIR, { recursive: true, force: true })
-  } catch {}
+  releaseWakeLeaseData(token)
 }
 
 async function wakeTick() {
