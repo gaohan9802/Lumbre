@@ -396,6 +396,7 @@ ${JSON.stringify(recentDigests)}`
             messages: apiMessages, system: systemPrompt, model: modelOverride,
             api_profile: apiProfile, tools_enabled: true,
             max_tool_calls: MAX_WAKE_TOOL_CALLS, stream: false, _wake: true,
+            session_id: config.sessionId || undefined,
           }),
         })
       } finally { clearTimeout(timeout) }

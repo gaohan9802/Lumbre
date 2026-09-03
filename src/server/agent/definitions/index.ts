@@ -1,0 +1,11 @@
+import { EXTERNAL_TOOL_DEFINITIONS } from './external'
+import { JOURNAL_TOOL_DEFINITIONS } from './journal'
+import { LIFE_TOOL_DEFINITIONS } from './life'
+import { MEMORY_TOOL_DEFINITIONS } from './memory'
+
+export const TOOL_DEFINITIONS = [
+  ...MEMORY_TOOL_DEFINITIONS,
+  ...JOURNAL_TOOL_DEFINITIONS,
+  ...LIFE_TOOL_DEFINITIONS,
+  ...EXTERNAL_TOOL_DEFINITIONS,
+]

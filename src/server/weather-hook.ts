@@ -8,7 +8,7 @@
  * Design principle: weather data is the AI's "senses", not a report to the user.
  * The AI should naturally mention weather when relevant, not announce it.
  */
-import { getUserContext } from './tools'
+import { getUserContext } from './agent/tools/user-context'
 
 interface WeatherCache {
   date: string           // YYYY-MM-DD

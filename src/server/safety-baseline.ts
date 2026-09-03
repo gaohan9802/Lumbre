@@ -1,4 +1,4 @@
-import type { ToolDef } from './tools'
+import type { ToolDef } from './agent/types'
 
 const DEBUG_API_PREFIXES = ['/api/debug', '/api/memory/breath-debug']
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ALL_TOOLS } from '@/server/tools'
+import { ALL_TOOLS } from '@/server/agent/registry'
 
 export async function POST(req: NextRequest) {
   const { apiKey, message = '你现在有哪些工具可以用？简要列出' } = await req.json()

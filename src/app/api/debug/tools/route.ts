@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ALL_TOOLS } from '@/server/tools'
+import { ALL_TOOLS } from '@/server/agent/registry'
 
 export async function GET() {
   return NextResponse.json({
