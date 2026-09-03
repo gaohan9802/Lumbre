@@ -3,13 +3,20 @@
  * Replaces external proxy to xiaohuo.zeabur.app.
  * Stores buckets as JSON in /persistent/buckets/.
  */
-import fs from 'fs'
-import path from 'path'
-
-const DATA_DIR = process.env.DATA_DIR || '/persistent'
-const BUCKETS_DIR = path.join(DATA_DIR, 'buckets')
-const INDEX_FILE = path.join(BUCKETS_DIR, '_index.json')
-const BRAIN_CONFIG_FILE = path.join(DATA_DIR, 'brain-config.json')
+import {
+  listMemoryBucketIds,
+  memoryDirectoryMtime,
+  memoryDirectoryPath,
+  memoryDirectorySize,
+  readMemoryBucket,
+  readMemoryConfig,
+  removeMemoryBucket,
+  seedMemoryBucketsIfSparse,
+  updateMemoryBucket,
+  writeMemoryBucket,
+  writeMemoryConfig,
+  writeMemoryIndex,
+} from './data/repositories/memory'
 
 // ── Types ──
 
@@ -77,50 +84,7 @@ export interface BrainConfig {
 
 // ── Helpers ──
 
-function ensureDir() {
-  fs.mkdirSync(BUCKETS_DIR, { recursive: true })
-}
-
-function seedIfEmpty() {
-  ensureDir()
-  const existing = fs.readdirSync(BUCKETS_DIR).filter(f => f.endsWith('.json') && f !== '_index.json')
-  if (existing.length >= 100) return // only seed when very few buckets exist // already has data
-
-  // Try to find seed file
-  const candidates = [
-    path.join(DATA_DIR, 'buckets.json'),
-    path.join(process.cwd(), 'src', 'seed', 'buckets.json'),
-    path.join(__dirname, '..', '..', 'seed', 'buckets.json'),
-  ]
-  let seedPath: string | null = null
-  for (const p of candidates) {
-    if (fs.existsSync(p)) { seedPath = p; break }
-  }
-  if (!seedPath) return
-
-  try {
-    const raw = JSON.parse(fs.readFileSync(seedPath, 'utf-8'))
-    if (!Array.isArray(raw)) return
-    for (const bucket of raw) {
-      if (!bucket.id) continue
-      fs.writeFileSync(
-        path.join(BUCKETS_DIR, `${bucket.id}.json`),
-        JSON.stringify(bucket, null, 2),
-        'utf-8'
-      )
-    }
-    console.log(`[brain] Seeded ${raw.length} buckets from ${seedPath}`)
-  } catch (e) {
-    console.error('[brain] Failed to seed buckets:', e)
-  }
-}
-
-// Seed on module load
-seedIfEmpty()
-
-function bucketPath(id: string): string {
-  return path.join(BUCKETS_DIR, `${id}.json`)
-}
+seedMemoryBucketsIfSparse()
 
 function generateId(): string {
   const bytes = new Uint8Array(6)
@@ -157,7 +121,7 @@ function computeScore(meta: BucketMeta): number {
 
 let bucketCache: Map<string, Bucket> | null = null
 let indexCache: IndexEntry[] | null = null
-let cacheLoadedAt = 0
+let cacheDirectoryMtime = -1
 
 function invalidateCache() {
   bucketCache = null
@@ -167,25 +131,22 @@ function invalidateCache() {
 // ── Core CRUD ──
 
 export function loadAllBuckets(): Bucket[] {
-  ensureDir()
-  if (bucketCache && Date.now() - cacheLoadedAt < 30000) {
+  const directoryMtime = memoryDirectoryMtime()
+  if (bucketCache && directoryMtime === cacheDirectoryMtime) {
     return Array.from(bucketCache.values())
   }
 
-  const files = fs.readdirSync(BUCKETS_DIR).filter(f => f.endsWith('.json') && f !== '_index.json')
-  console.log(`[brain] loadAllBuckets: found ${files.length} files in ${BUCKETS_DIR}`)
+  const ids = listMemoryBucketIds()
+  console.log(`[brain] loadAllBuckets: found ${ids.length} files in ${memoryDirectoryPath()}`)
   const map = new Map<string, Bucket>()
 
-  for (const file of files) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(path.join(BUCKETS_DIR, file), 'utf-8'))
-      const bucket = normalizeBucket(raw)
-      if (bucket) map.set(bucket.id, bucket)
-    } catch { /* skip corrupt files */ }
+  for (const id of ids) {
+    const bucket = normalizeBucket(readMemoryBucket(id))
+    if (bucket?.id === id) map.set(bucket.id, bucket)
   }
 
   bucketCache = map
-  cacheLoadedAt = Date.now()
+  cacheDirectoryMtime = memoryDirectoryMtime()
   console.log(`[brain] loadAllBuckets: loaded ${map.size} buckets`)
   return Array.from(map.values())
 }
@@ -244,37 +205,38 @@ function normalizeBucket(raw: any): Bucket | null {
   }
 }
 
+function mutateBucket(id: string, update: (bucket: Bucket) => void): Bucket | null {
+  const result = updateMemoryBucket(id, normalizeBucket, bucket => {
+    update(bucket)
+    bucket.score = computeScore(bucket.metadata)
+    return bucket
+  })
+  if (result) invalidateCache()
+  return result
+}
+
 export function getBucket(id: string): Bucket | null {
-  const all = loadAllBuckets()
+  loadAllBuckets()
   return bucketCache?.get(id) || null
 }
 
 export function saveBucket(bucket: Bucket): void {
-  ensureDir()
-  indexCache = null
   bucket.score = computeScore(bucket.metadata)
-  fs.writeFileSync(bucketPath(bucket.id), JSON.stringify(bucket, null, 2))
-  if (bucketCache) {
-    bucketCache.set(bucket.id, bucket)
-  }
+  writeMemoryBucket(bucket.id, bucket)
+  invalidateCache()
 }
 
 export function deleteBucket(id: string): boolean {
-  indexCache = null
-  const fp = bucketPath(id)
-  if (!fs.existsSync(fp)) return false
-  fs.unlinkSync(fp)
-  if (bucketCache) bucketCache.delete(id)
-  return true
+  const removed = removeMemoryBucket(id)
+  if (removed) invalidateCache()
+  return removed
 }
 
 export function archiveBucket(id: string): boolean {
-  const bucket = getBucket(id)
-  if (!bucket) return false
-  bucket.metadata.resolved = true
-  bucket.metadata.digested = true
-  saveBucket(bucket)
-  return true
+  return !!mutateBucket(id, bucket => {
+    bucket.metadata.resolved = true
+    bucket.metadata.digested = true
+  })
 }
 
 // ── Index ──
@@ -303,7 +265,7 @@ export function buildIndex(writeFile = true): IndexEntry[] {
   }))
   entries.sort((a, b) => b.score - a.score)
   indexCache = entries
-  if (writeFile) { try { fs.writeFileSync(INDEX_FILE, JSON.stringify(entries, null, 2)) } catch {} }
+  if (writeFile) { try { writeMemoryIndex(entries) } catch {} }
   return entries
 }
 
@@ -474,43 +436,33 @@ export function breathDebug(query: string, valence?: number, arousal?: number): 
 // ── Edit ──
 
 export function editBucket(id: string, changes: Partial<BucketMeta> & { content?: string }): Bucket | null {
-  const bucket = getBucket(id)
-  if (!bucket) return null
-
-  if (changes.name !== undefined) bucket.metadata.name = changes.name
-  if (changes.importance !== undefined) bucket.metadata.importance = changes.importance
-  if (changes.valence !== undefined) bucket.metadata.valence = changes.valence
-  if (changes.arousal !== undefined) bucket.metadata.arousal = changes.arousal
-  if (changes.tags !== undefined) bucket.metadata.tags = changes.tags
-  if (changes.domain !== undefined) bucket.metadata.domain = changes.domain
-  if (changes.pinned !== undefined) bucket.metadata.pinned = changes.pinned
-  if (changes.resolved !== undefined) bucket.metadata.resolved = changes.resolved
-  if (changes.digested !== undefined) bucket.metadata.digested = changes.digested
-  if (changes.type !== undefined) bucket.metadata.type = changes.type
-  if (changes.content !== undefined) bucket.content = changes.content
-
-  bucket.metadata.last_active = new Date().toISOString()
-  saveBucket(bucket)
-  return bucket
+  return mutateBucket(id, bucket => {
+    if (changes.name !== undefined) bucket.metadata.name = changes.name
+    if (changes.importance !== undefined) bucket.metadata.importance = changes.importance
+    if (changes.valence !== undefined) bucket.metadata.valence = changes.valence
+    if (changes.arousal !== undefined) bucket.metadata.arousal = changes.arousal
+    if (changes.tags !== undefined) bucket.metadata.tags = changes.tags
+    if (changes.domain !== undefined) bucket.metadata.domain = changes.domain
+    if (changes.pinned !== undefined) bucket.metadata.pinned = changes.pinned
+    if (changes.resolved !== undefined) bucket.metadata.resolved = changes.resolved
+    if (changes.digested !== undefined) bucket.metadata.digested = changes.digested
+    if (changes.type !== undefined) bucket.metadata.type = changes.type
+    if (changes.content !== undefined) bucket.content = changes.content
+    bucket.metadata.last_active = new Date().toISOString()
+  })
 }
 
 // ── Pin / Resolve toggles ──
 
 export function togglePin(id: string): Bucket | null {
-  const bucket = getBucket(id)
-  if (!bucket) return null
-  bucket.metadata.pinned = !bucket.metadata.pinned
-  if (bucket.metadata.pinned) bucket.metadata.type = 'permanent'
-  saveBucket(bucket)
-  return bucket
+  return mutateBucket(id, bucket => {
+    bucket.metadata.pinned = !bucket.metadata.pinned
+    if (bucket.metadata.pinned) bucket.metadata.type = 'permanent'
+  })
 }
 
 export function toggleResolve(id: string): Bucket | null {
-  const bucket = getBucket(id)
-  if (!bucket) return null
-  bucket.metadata.resolved = !bucket.metadata.resolved
-  saveBucket(bucket)
-  return bucket
+  return mutateBucket(id, bucket => { bucket.metadata.resolved = !bucket.metadata.resolved })
 }
 
 // ── Hold (create new bucket) ──
@@ -585,34 +537,23 @@ export function traceBucket(id: string, changes: {
     return { ok: deleteBucket(id) }
   }
 
-  const bucket = getBucket(id)
-  if (!bucket) return { ok: false }
-
-  if (changes.resolved !== undefined && changes.resolved !== -1) {
-    bucket.metadata.resolved = changes.resolved === 1
-  }
-  if (changes.pinned !== undefined && changes.pinned !== -1) {
-    bucket.metadata.pinned = changes.pinned === 1
-    if (bucket.metadata.pinned) bucket.metadata.type = 'permanent'
-  }
-  if (changes.digested !== undefined && changes.digested !== -1) {
-    bucket.metadata.digested = changes.digested === 1
-  }
-  if (changes.content !== undefined) bucket.content = changes.content
-  if (changes.name !== undefined) bucket.metadata.name = changes.name
-  if (changes.importance !== undefined) bucket.metadata.importance = changes.importance
-  if (changes.valence !== undefined && changes.valence >= 0) bucket.metadata.valence = changes.valence
-  if (changes.arousal !== undefined && changes.arousal >= 0) bucket.metadata.arousal = changes.arousal
-  if (changes.tags !== undefined) {
-    bucket.metadata.tags = changes.tags.split(',').map(t => t.trim()).filter(Boolean)
-  }
-  if (changes.domain !== undefined) {
-    bucket.metadata.domain = changes.domain.split(',').map(d => d.trim()).filter(Boolean)
-  }
-
-  bucket.metadata.last_active = new Date().toISOString()
-  saveBucket(bucket)
-  return { ok: true, bucket }
+  const bucket = mutateBucket(id, current => {
+    if (changes.resolved !== undefined && changes.resolved !== -1) current.metadata.resolved = changes.resolved === 1
+    if (changes.pinned !== undefined && changes.pinned !== -1) {
+      current.metadata.pinned = changes.pinned === 1
+      if (current.metadata.pinned) current.metadata.type = 'permanent'
+    }
+    if (changes.digested !== undefined && changes.digested !== -1) current.metadata.digested = changes.digested === 1
+    if (changes.content !== undefined) current.content = changes.content
+    if (changes.name !== undefined) current.metadata.name = changes.name
+    if (changes.importance !== undefined) current.metadata.importance = changes.importance
+    if (changes.valence !== undefined && changes.valence >= 0) current.metadata.valence = changes.valence
+    if (changes.arousal !== undefined && changes.arousal >= 0) current.metadata.arousal = changes.arousal
+    if (changes.tags !== undefined) current.metadata.tags = changes.tags.split(',').map(tag => tag.trim()).filter(Boolean)
+    if (changes.domain !== undefined) current.metadata.domain = changes.domain.split(',').map(domain => domain.trim()).filter(Boolean)
+    current.metadata.last_active = new Date().toISOString()
+  })
+  return bucket ? { ok: true, bucket } : { ok: false }
 }
 
 // ── Dream (digest recent changes) ──
@@ -666,33 +607,23 @@ export function pulse(): {
 // ── Config ──
 
 export function getConfig(): BrainConfig {
-  try {
-    return JSON.parse(fs.readFileSync(BRAIN_CONFIG_FILE, 'utf-8'))
-  } catch {
-    return {}
-  }
+  return readMemoryConfig<BrainConfig>()
 }
 
 export function saveConfig(config: BrainConfig): void {
-  fs.writeFileSync(BRAIN_CONFIG_FILE, JSON.stringify(config, null, 2))
+  writeMemoryConfig(config)
 }
 
 // ── Status ──
 
 export function getStatus() {
   const all = loadAllBuckets()
-  let totalSize = 0
-  try {
-    const files = fs.readdirSync(BUCKETS_DIR)
-    for (const f of files) {
-      try { totalSize += fs.statSync(path.join(BUCKETS_DIR, f)).size } catch {}
-    }
-  } catch {}
+  const totalSize = memoryDirectorySize()
 
   return {
     version: '2.0.0-lumbre',
     bucket_count: all.length,
-    data_dir: BUCKETS_DIR,
+    data_dir: memoryDirectoryPath(),
     data_size_mb: Number((totalSize / 1048576).toFixed(2)),
     decay_engine: 'ebbinghaus-v2',
     vector_search: false,

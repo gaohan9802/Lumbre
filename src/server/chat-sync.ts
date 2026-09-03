@@ -10,19 +10,22 @@
  * helpers keep the /api/sync protocol stable while avoiding full archive
  * reads and full-file rewrites for ordinary sync cycles.
  */
-import fs from 'fs'
-import path from 'path'
 import { madridDateKey } from '@/lib/madrid-time'
-
-const DATA_DIR = process.env.DATA_DIR || '/persistent'
-const LEGACY_FILE = path.join(DATA_DIR, 'chat-sync.json')
-const LEGACY_BAK = path.join(DATA_DIR, 'chat-sync.bak')
-const CHAT_DIR = path.join(DATA_DIR, 'chat')
-const SESSIONS_DIR = path.join(CHAT_DIR, 'sessions')
-const SNAPSHOTS_DIR = path.join(CHAT_DIR, 'snapshots')
-const MANIFEST_FILE = path.join(CHAT_DIR, 'manifest.json')
-const MANIFEST_BAK = path.join(CHAT_DIR, 'manifest.bak')
-const STORE_LOCK = path.join(CHAT_DIR, '.store-lock')
+import {
+  archiveLegacyChatState,
+  chatManifestExists,
+  chatManifestMtime,
+  ensureChatStorage,
+  isValidChatSessionId,
+  readChatManifest,
+  readChatSession,
+  readChatSessionRecoveryCopies,
+  readLegacyChatStates,
+  removeChatSession,
+  withChatStoreLock,
+  writeChatManifest,
+  writeChatSession,
+} from './data/repositories/chat'
 
 export interface SessionManifestItem {
   id: string
@@ -51,46 +54,6 @@ export interface SyncState {
 let manifestCache: { mtimeMs: number; value: SyncManifest } | null = null
 let initialized = false
 
-function atomicWrite(file: string, value: string) {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`)
-  fs.writeFileSync(tmp, value, 'utf-8')
-  fs.renameSync(tmp, file)
-}
-
-/** Serialize manifest/session mutations across sync requests and Zeabur workers. */
-function withStoreLock<T>(fn: () => T): T {
-  fs.mkdirSync(CHAT_DIR, { recursive: true })
-  const deadline = Date.now() + 5000
-  while (true) {
-    try {
-      fs.mkdirSync(STORE_LOCK)
-      fs.writeFileSync(path.join(STORE_LOCK, 'owner.json'), JSON.stringify({ pid: process.pid, at: Date.now() }))
-      break
-    } catch {
-      try {
-        const age = Date.now() - fs.statSync(STORE_LOCK).mtimeMs
-        if (age > 30_000) { fs.rmSync(STORE_LOCK, { recursive: true, force: true }); continue }
-      } catch {}
-      if (Date.now() >= deadline) throw new Error('chat store lock timeout')
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
-    }
-  }
-  try { return fn() } finally { try { fs.rmSync(STORE_LOCK, { recursive: true, force: true }) } catch {} }
-}
-
-function safeId(id: string) {
-  return Buffer.from(id).toString('base64url')
-}
-
-function sessionFile(id: string) {
-  return path.join(SESSIONS_DIR, `${safeId(id)}.json`)
-}
-
-function sessionBak(id: string) {
-  return path.join(SESSIONS_DIR, `${safeId(id)}.bak`)
-}
-
 function emptyManifest(): SyncManifest {
   return { version: 2, sessions: [], tombstones: {}, configUpdatedAt: 0 }
 }
@@ -99,7 +62,7 @@ function normalizeManifest(raw: any): SyncManifest {
   return {
     version: 2,
     sessions: Array.isArray(raw?.sessions)
-      ? raw.sessions.filter((s: any) => s?.id).map((s: any) => ({
+      ? raw.sessions.filter((s: any) => isValidChatSessionId(s?.id)).map((s: any) => ({
           id: String(s.id),
           updatedAt: Number(s.updatedAt) || 0,
           messageCount: Number(s.messageCount) || 0,
@@ -114,10 +77,6 @@ function normalizeManifest(raw: any): SyncManifest {
   }
 }
 
-function readJson(file: string): any | null {
-  try { return JSON.parse(fs.readFileSync(file, 'utf-8')) } catch { return null }
-}
-
 function summaryCount(session: any) {
   return (Array.isArray(session?.summaries) ? session.summaries.length : 0)
     + (Array.isArray(session?.stageSummaries) ? session.stageSummaries.length : 0)
@@ -128,16 +87,8 @@ function summaryCount(session: any) {
  * never replaced here; only the missing summary layer is restored. */
 function recoverMissingSummaries(session: any): any {
   if (!session?.id || summaryCount(session) > 0 || session?._summaryRecoveryV1) return session
-  const candidates: any[] = []
-  const bak = readJson(sessionBak(session.id))
-  if (bak?.id === session.id) candidates.push(bak)
-  try {
-    const days = fs.readdirSync(SNAPSHOTS_DIR).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().reverse()
-    for (const day of days) {
-      const snap = readJson(path.join(SNAPSHOTS_DIR, day, `${safeId(session.id)}.json`))
-      if (snap?.id === session.id) candidates.push(snap)
-    }
-  } catch {}
+  const candidates = (readChatSessionRecoveryCopies(session.id) as any[])
+    .filter((candidate: any) => candidate?.id === session.id)
   const source = candidates.find(item => summaryCount(item) > 0)
   if (!source) return session
   return {
@@ -225,59 +176,20 @@ function pickSession(a: any, b: any) {
 }
 
 function writeSession(session: any, snapshot = true) {
-  const file = sessionFile(session.id)
-  try { if (fs.existsSync(file)) fs.copyFileSync(file, sessionBak(session.id)) } catch {}
-  const json = JSON.stringify(session)
-  atomicWrite(file, json)
-  // Snapshot only sessions that actually changed, once per day. This keeps the
-  // old durability guarantee without copying the entire chat archive daily.
-  if (snapshot) try {
-    const day = madridDateKey()
-    const dayDir = path.join(SNAPSHOTS_DIR, day)
-    const snap = path.join(dayDir, `${safeId(session.id)}.json`)
-    if (!fs.existsSync(snap)) atomicWrite(snap, json)
-    const days = fs.readdirSync(SNAPSHOTS_DIR).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort()
-    for (const old of days.slice(0, Math.max(0, days.length - 14))) {
-      try { fs.rmSync(path.join(SNAPSHOTS_DIR, old), { recursive: true, force: true }) } catch {}
-    }
-  } catch {}
+  writeChatSession(session.id, session, madridDateKey(), snapshot)
 }
 
 function removeSession(id: string) {
-  try { fs.unlinkSync(sessionFile(id)) } catch {}
+  try { removeChatSession(id) } catch {}
 }
 
 function saveManifest(manifest: SyncManifest) {
-  fs.mkdirSync(CHAT_DIR, { recursive: true })
-  try { if (fs.existsSync(MANIFEST_FILE)) fs.copyFileSync(MANIFEST_FILE, MANIFEST_BAK) } catch {}
-  atomicWrite(MANIFEST_FILE, JSON.stringify(manifest))
-  try {
-    const mtimeMs = fs.statSync(MANIFEST_FILE).mtimeMs
-    manifestCache = { mtimeMs, value: manifest }
-  } catch { manifestCache = null }
-
-  // A compact daily manifest snapshot is enough to reconstruct which session
-  // backups belong to the store without copying every long conversation daily.
-  try {
-    const day = madridDateKey()
-    const snap = path.join(CHAT_DIR, `manifest.${day}.json`)
-    if (!fs.existsSync(snap)) atomicWrite(snap, JSON.stringify(manifest))
-    const snaps = fs.readdirSync(CHAT_DIR).filter(f => /^manifest\.\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort()
-    for (const old of snaps.slice(0, Math.max(0, snaps.length - 14))) {
-      try { fs.unlinkSync(path.join(CHAT_DIR, old)) } catch {}
-    }
-  } catch {}
+  const mtimeMs = writeChatManifest(manifest, madridDateKey())
+  manifestCache = mtimeMs === null ? null : { mtimeMs, value: manifest }
 }
 
 function legacyState(): SyncState | null {
-  const candidates = [LEGACY_FILE, LEGACY_BAK]
-  try {
-    const snaps = fs.readdirSync(DATA_DIR)
-      .filter(f => /^chat-sync\.\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort().reverse()
-    candidates.push(...snaps.map(f => path.join(DATA_DIR, f)))
-  } catch {}
-  for (const file of candidates) {
-    const raw = readJson(file)
+  for (const raw of readLegacyChatStates() as any[]) {
     if (raw && Array.isArray(raw.sessions)) return {
       sessions: raw.sessions,
       tombstones: raw.tombstones && typeof raw.tombstones === 'object' ? raw.tombstones : {},
@@ -289,9 +201,9 @@ function legacyState(): SyncState | null {
 }
 
 function ensureInitialized() {
-  if (initialized && fs.existsSync(MANIFEST_FILE)) return
-  fs.mkdirSync(SESSIONS_DIR, { recursive: true })
-  if (!fs.existsSync(MANIFEST_FILE)) {
+  if (initialized && chatManifestExists()) return
+  ensureChatStorage()
+  if (!chatManifestExists()) {
     const legacy = legacyState()
     if (legacy) {
       const tombstones = legacy.tombstones || {}
@@ -307,7 +219,7 @@ function ensureInitialized() {
         configUpdatedAt: Number(legacy.configUpdatedAt) || 0,
       })
       // Keep the old archive as an untouched migration backup.
-      try { fs.copyFileSync(LEGACY_FILE, path.join(DATA_DIR, 'chat-sync.pre-v2.json')) } catch {}
+      archiveLegacyChatState()
     } else saveManifest(emptyManifest())
   }
   initialized = true
@@ -315,16 +227,15 @@ function ensureInitialized() {
 
 export function loadSyncManifest(): SyncManifest {
   ensureInitialized()
-  try {
-    const mtimeMs = fs.statSync(MANIFEST_FILE).mtimeMs
+  const mtimeMs = chatManifestMtime()
+  if (mtimeMs !== null) {
     if (manifestCache?.mtimeMs === mtimeMs) return manifestCache.value
-    const raw = readJson(MANIFEST_FILE) || readJson(MANIFEST_BAK)
+    const raw = readChatManifest()
     const value = normalizeManifest(raw)
     manifestCache = { mtimeMs, value }
     return value
-  } catch {
-    return normalizeManifest(readJson(MANIFEST_BAK) || emptyManifest())
   }
+  return normalizeManifest(readChatManifest() || emptyManifest())
 }
 
 export function loadSyncSessions(ids: string[]): any[] {
@@ -333,7 +244,7 @@ export function loadSyncSessions(ids: string[]): any[] {
   const result: any[] = []
   for (const id of ids) {
     if (!allowed.has(id)) continue
-    const raw = readJson(sessionFile(id)) || readJson(sessionBak(id))
+    const raw = readChatSession(id) as any
     if (raw?.id === id) {
       const session = recoverMissingSummaries(raw)
       if (session !== raw) writeSession(session, false)
@@ -390,7 +301,7 @@ export function loadSyncState(): SyncState {
 
 /** Merge only submitted session files. Returns the compact resulting manifest. */
 export function mergeSyncDelta(client: SyncState): SyncManifest {
-  return withStoreLock(() => mergeSyncDeltaUnlocked(client))
+  return withChatStoreLock(() => mergeSyncDeltaUnlocked(client))
 }
 
 function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
@@ -449,12 +360,12 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
 
 /** Atomically append one message to the latest server copy of a session. */
 export function appendSyncSessionMessage(sessionId: string, message: any): { appended: boolean; sessionUpdatedAt: number; messageCount: number } {
-  return withStoreLock(() => {
+  return withChatStoreLock(() => {
     manifestCache = null
     const manifest = loadSyncManifest()
     const meta = manifest.sessions.find(item => item.id === sessionId)
     if (!meta) throw new Error(`wake session not found: ${sessionId}`)
-    const session = readJson(sessionFile(sessionId)) || readJson(sessionBak(sessionId))
+    const session = readChatSession(sessionId) as any
     if (!session?.id) throw new Error(`wake session unreadable: ${sessionId}`)
     const messages = Array.isArray(session.messages) ? session.messages : []
     if (messages.some((item: any) => item?.id === message?.id)) {
@@ -477,11 +388,11 @@ export function appendSyncSessionMessage(sessionId: string, message: any): { app
 /** Atomically append a browser-created message. Creates the session when this
  * is the first message, so a refresh immediately after Send cannot lose it. */
 export function upsertSyncSessionMessage(sessionId: string, message: any, meta: any = {}): { appended: boolean; sessionUpdatedAt: number; messageCount: number } {
-  return withStoreLock(() => {
+  return withChatStoreLock(() => {
     manifestCache = null
     const manifest = loadSyncManifest()
     const oldMeta = manifest.sessions.find(item => item.id === sessionId)
-    const existing = oldMeta ? (readJson(sessionFile(sessionId)) || readJson(sessionBak(sessionId))) : null
+    const existing = oldMeta ? readChatSession(sessionId) as any : null
     const base = existing?.id ? existing : {
       id: sessionId,
       title: meta.title || '新的对话',

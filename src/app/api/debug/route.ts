@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
 import { ALL_TOOLS } from '@/server/tools'
+import { inspectLegacyChatRaw, inspectLegacyChatSessions, inspectPersistentData } from '@/server/data/diagnostics'
 
 export async function GET(req: NextRequest) {
   const testMode = req.nextUrl.searchParams.get('test')
@@ -19,111 +18,16 @@ export async function GET(req: NextRequest) {
   }
 
   if (testMode === 'raw') {
-    const dir = process.env.DATA_DIR || '/persistent'
-    const out: any = {}
-    try {
-      const txt = fs.readFileSync(path.join(dir, 'chat-sync.json'), 'utf-8')
-      out.fileSize = txt.length
-      out.head = txt.slice(0, 800)
-      out.tail = txt.slice(-400)
-      let parsed: any = null
-      try { parsed = JSON.parse(txt) } catch (e: any) { out.parseError = e.message }
-      if (parsed && typeof parsed === 'object') {
-        out.topKeys = Object.keys(parsed).map(k => {
-          const v = (parsed as any)[k]
-          const type = Array.isArray(v) ? `array[${v.length}]` : typeof v
-          let len: any = undefined
-          try { len = JSON.stringify(v).length } catch {}
-          return { key: k, type, jsonLen: len }
-        })
-      }
-    } catch (e: any) {
-      out.error = e.message
-    }
-    return NextResponse.json(out)
+    return NextResponse.json(inspectLegacyChatRaw())
   }
 
   if (testMode === 'sessions') {
-    const dir = process.env.DATA_DIR || '/persistent'
-    const out: any = { source: null, count: 0, sessions: [] }
-    const readSessions = (file: string) => {
-      try {
-        const raw = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'))
-        const sess = Array.isArray(raw.sessions) ? raw.sessions : []
-        return sess.map((x: any) => ({
-          id: x.id,
-          title: x.title,
-          messages: Array.isArray(x.messages) ? x.messages.length : 0,
-          updatedAt: x.updatedAt,
-          firstMsg: Array.isArray(x.messages) && x.messages[0] ? String(x.messages[0].content || '').slice(0, 40) : '',
-        }))
-      } catch { return null }
-    }
-    for (const f of ['chat-sync.json', 'chat-sync.bak']) {
-      const r = readSessions(f)
-      if (r) { out.source = f; out.count = r.length; out.sessions = r; break }
-    }
-    try {
-      const snaps = fs.readdirSync(dir).filter(f => /^chat-sync\.\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort()
-      out.snapshots = snaps
-    } catch { out.snapshots = [] }
-    return NextResponse.json(out)
-  }
-
-  const cwd = process.cwd()
-  const dataDir = process.env.DATA_DIR || '/persistent'
-  const diaryDir = path.join(dataDir, 'diaries')
-  const notesDir = path.join(dataDir, 'notes')
-
-  const check = (p: string) => {
-    try {
-      const stat = fs.statSync(p)
-      if (stat.isDirectory()) {
-        const files = fs.readdirSync(p)
-        return { exists: true, type: 'dir', count: files.length, files: files.slice(0, 10) }
-      }
-      return { exists: true, type: 'file', size: stat.size }
-    } catch {
-      return { exists: false }
-    }
-  }
-
-  let sampleDiary = null
-  try {
-    const files = fs.readdirSync(diaryDir).filter(f => f.endsWith('.json'))
-    if (files.length > 0) {
-      const content = fs.readFileSync(path.join(diaryDir, files[0]), 'utf-8')
-      sampleDiary = { filename: files[0], content: content.slice(0, 200) }
-    }
-  } catch (e: any) {
-    sampleDiary = { error: e.message }
-  }
-
-  // chat-sync durability probe (proves the volume actually persists writes)
-  const syncFile = path.join(dataDir, 'chat-sync.json')
-  let chatSync: any = check(syncFile)
-  try {
-    const marker = path.join(dataDir, '.write-probe')
-    fs.mkdirSync(dataDir, { recursive: true })
-    fs.writeFileSync(marker, String(Date.now()))
-    fs.unlinkSync(marker)
-    chatSync = { ...chatSync, writable: true }
-  } catch (e: any) {
-    chatSync = { ...chatSync, writable: false, writeError: e.message }
+    return NextResponse.json(inspectLegacyChatSessions())
   }
 
   return NextResponse.json({
-    version: 'v3-tool-debug-20260707',
-    cwd, dataDir, diaryDir, notesDir,
-    chatSync,
-    chatSyncBak: check(path.join(dataDir, 'chat-sync.bak')),
-    persistent: check(dataDir),
-    diaries: check(diaryDir),
-    notes: check(notesDir),
-    seedDir: check(path.join(cwd, 'src', 'seed')),
-    bucketsDir: check(path.join(dataDir, 'buckets')),
+    ...inspectPersistentData(),
     tools: { count: ALL_TOOLS.length, names: ALL_TOOLS.map(t => t.name) },
-    sampleDiary,
   })
 }
 

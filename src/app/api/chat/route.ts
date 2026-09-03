@@ -5,9 +5,8 @@ import { reportActivity } from '@/server/autowake'
 import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
 import { couponContext } from '@/server/coupon-store'
-import fs from 'fs'
-import path from 'path'
 import { formatMadrid } from '@/lib/madrid-time'
+import { appendChatUpstreamError } from '@/server/data/log'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -36,8 +35,6 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 语气自然温柔，像真正的伴侣。不要列工具清单给用户看，直接用就好。`
 
 type Provider = 'anthropic' | 'openai-compatible'
-
-const CHAT_UPSTREAM_ERROR_LOG = path.join('/persistent', 'chat-upstream-errors.jsonl')
 
 function errorDetails(err: any) {
   const cause = err?.cause
@@ -79,18 +76,7 @@ function logUpstreamStreamError(meta: {
     toolCallCount: meta.toolCallCount,
     ...errorDetails(meta.error),
   }) + '\n'
-  try {
-    fs.mkdirSync(path.dirname(CHAT_UPSTREAM_ERROR_LOG), { recursive: true })
-    // Bound the permanent log: keep the previous ~1 MiB as a single backup.
-    try {
-      if (fs.statSync(CHAT_UPSTREAM_ERROR_LOG).size > 1024 * 1024) {
-        fs.renameSync(CHAT_UPSTREAM_ERROR_LOG, CHAT_UPSTREAM_ERROR_LOG + '.1')
-      }
-    } catch { /* file does not exist yet */ }
-    fs.appendFileSync(CHAT_UPSTREAM_ERROR_LOG, line, 'utf8')
-  } catch {
-    console.error('[chat upstream stream error]', line.trim())
-  }
+  if (!appendChatUpstreamError(line)) console.error('[chat upstream stream error]', line.trim())
 }
 
 function friendlyStreamError(err: any, hadOutput: boolean): string {

@@ -1,12 +1,6 @@
 /** iOS/desktop Web Push storage and delivery. Persistent under /persistent/push. */
-import fs from 'fs'
-import path from 'path'
 import webpush from 'web-push'
-
-const DATA_DIR = process.env.DATA_DIR || '/persistent'
-const DIR = path.join(DATA_DIR, 'push')
-const SUBS_FILE = path.join(DIR, 'subscriptions.json')
-const VAPID_FILE = path.join(DIR, 'vapid.json')
+import { getOrCreateVapidKeys, readPushSubscriptionData, updatePushSubscriptionData } from './data/repositories/push'
 
 export interface StoredPushSubscription {
   endpoint: string
@@ -16,26 +10,27 @@ export interface StoredPushSubscription {
   userAgent?: string
 }
 
-function ensureDir() { fs.mkdirSync(DIR, { recursive: true }) }
-function atomicWrite(file: string, data: unknown) {
-  ensureDir()
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8')
-  fs.renameSync(tmp, file)
+function validSubscription(value: unknown): value is StoredPushSubscription {
+  if (!value || typeof value !== 'object') return false
+  const subscription = value as StoredPushSubscription
+  return typeof subscription.endpoint === 'string'
+    && !!subscription.endpoint
+    && !!subscription.keys
+    && typeof subscription.keys.p256dh === 'string'
+    && !!subscription.keys.p256dh
+    && typeof subscription.keys.auth === 'string'
+    && !!subscription.keys.auth
+}
+
+function normalizeSubscriptions(value: unknown[]): StoredPushSubscription[] {
+  return value.filter(validSubscription)
 }
 
 function getVapidKeys() {
   const envPublic = process.env.VAPID_PUBLIC_KEY?.trim()
   const envPrivate = process.env.VAPID_PRIVATE_KEY?.trim()
   if (envPublic && envPrivate) return { publicKey: envPublic, privateKey: envPrivate }
-  ensureDir()
-  try {
-    const saved = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf-8'))
-    if (saved.publicKey && saved.privateKey) return saved
-  } catch {}
-  const generated = webpush.generateVAPIDKeys()
-  atomicWrite(VAPID_FILE, generated)
-  return generated
+  return getOrCreateVapidKeys(() => webpush.generateVAPIDKeys())
 }
 
 function configure() {
@@ -47,24 +42,25 @@ function configure() {
 export function getVapidPublicKey() { return configure().publicKey }
 
 export function listPushSubscriptions(): StoredPushSubscription[] {
-  ensureDir()
-  try {
-    const raw = JSON.parse(fs.readFileSync(SUBS_FILE, 'utf-8'))
-    return Array.isArray(raw) ? raw.filter((s) => s?.endpoint && s?.keys?.p256dh && s?.keys?.auth) : []
-  } catch { return [] }
+  return normalizeSubscriptions(readPushSubscriptionData())
 }
 
 export function savePushSubscription(subscription: StoredPushSubscription) {
-  const subscriptions = listPushSubscriptions()
-  const next = subscriptions.filter((s) => s.endpoint !== subscription.endpoint)
-  next.push({ ...subscription, createdAt: Date.now() })
-  atomicWrite(SUBS_FILE, next)
+  let next: StoredPushSubscription[] = []
+  updatePushSubscriptionData(raw => {
+    next = normalizeSubscriptions(raw).filter(value => value.endpoint !== subscription.endpoint)
+    next.push({ ...subscription, createdAt: Date.now() })
+    return next
+  })
   return next.length
 }
 
 export function removePushSubscription(endpoint: string) {
-  const next = listPushSubscriptions().filter((s) => s.endpoint !== endpoint)
-  atomicWrite(SUBS_FILE, next)
+  let next: StoredPushSubscription[] = []
+  updatePushSubscriptionData(raw => {
+    next = normalizeSubscriptions(raw).filter(subscription => subscription.endpoint !== endpoint)
+    return next
+  })
   return next.length
 }
 
@@ -92,8 +88,10 @@ export async function sendPushMessages(messages: string[], title = '星星醒了
     })
   }
   if (dead.size) {
-    subscriptions = subscriptions.filter((s) => !dead.has(s.endpoint))
-    atomicWrite(SUBS_FILE, subscriptions)
+    updatePushSubscriptionData(raw => {
+      subscriptions = normalizeSubscriptions(raw).filter(subscription => !dead.has(subscription.endpoint))
+      return subscriptions
+    })
   }
   return { sent, failed, subscriptions: subscriptions.length, errors: Array.from(new Set(errors)).slice(0, 8) }
 }
