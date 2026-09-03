@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 import { getDataDir } from '../../src/server/data/config'
 import { DataCorruptionError, DataPathError } from '../../src/server/data/errors'
-import { readJsonFile, removeJsonFile, updateJsonFile, writeJsonFile } from '../../src/server/data/json-file'
+import { readJsonFile, removeJsonFile, removeJsonFileIf, updateJsonFile, writeJsonFile } from '../../src/server/data/json-file'
 import { withFileLock } from '../../src/server/data/lock'
 import { resolveDataPath } from '../../src/server/data/safe-path'
 
@@ -76,6 +76,15 @@ test('safe deletion retains the exact previous file as a backup', () => {
   assert.equal(existsSync(file), false)
   assert.deepEqual(JSON.parse(readFileSync(`${file}.bak`, 'utf8')), { keep: 'before delete' })
   assert.equal(removeJsonFile(file), false)
+})
+
+test('conditional deletion checks and backs up under one file lock', () => {
+  const file = path.join(root, 'conditional-deletion', 'state.json')
+  writeJsonFile(file, { owner: 'fire' })
+  assert.equal(removeJsonFileIf(file, {}, value => (value as any).owner === 'star'), 'rejected')
+  assert.equal(existsSync(file), true)
+  assert.equal(removeJsonFileIf(file, {}, value => (value as any).owner === 'fire'), 'removed')
+  assert.deepEqual(JSON.parse(readFileSync(`${file}.bak`, 'utf8')), { owner: 'fire' })
 })
 
 test('locked read-modify-write updates do not leave locks behind', () => {

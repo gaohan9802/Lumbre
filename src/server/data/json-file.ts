@@ -67,20 +67,41 @@ export function writeJsonFile(filePath: string, value: unknown): void {
   withFileLock(filePath, () => writeJsonUnlocked(filePath, value))
 }
 
+function removeJsonUnlocked(filePath: string): boolean {
+  if (!fs.existsSync(filePath)) return false
+  const backupPath = `${filePath}.bak`
+  const temporaryBackupPath = uniqueTemporaryPath(backupPath)
+  try {
+    fs.copyFileSync(filePath, temporaryBackupPath)
+    fs.renameSync(temporaryBackupPath, backupPath)
+    fs.unlinkSync(filePath)
+    return true
+  } finally {
+    try { fs.unlinkSync(temporaryBackupPath) } catch {}
+  }
+}
+
 /** Delete a JSON file only after retaining its exact previous bytes as `.bak`. */
 export function removeJsonFile(filePath: string): boolean {
+  return withFileLock(filePath, () => removeJsonUnlocked(filePath))
+}
+
+export type ConditionalRemoveResult = 'removed' | 'not_found' | 'rejected'
+
+/** Check ownership or another condition and delete under one uninterrupted lock. */
+export function removeJsonFileIf<T>(
+  filePath: string,
+  options: JsonReadOptions<T>,
+  allow: (current: T) => boolean,
+): ConditionalRemoveResult {
   return withFileLock(filePath, () => {
-    if (!fs.existsSync(filePath)) return false
-    const backupPath = `${filePath}.bak`
-    const temporaryBackupPath = uniqueTemporaryPath(backupPath)
-    try {
-      fs.copyFileSync(filePath, temporaryBackupPath)
-      fs.renameSync(temporaryBackupPath, backupPath)
-      fs.unlinkSync(filePath)
-      return true
-    } finally {
-      try { fs.unlinkSync(temporaryBackupPath) } catch {}
+    let current: T
+    try { current = readJsonFile(filePath, options) } catch (error) {
+      if (error instanceof DataFileNotFoundError) return 'not_found'
+      throw error
     }
+    if (!allow(current)) return 'rejected'
+    return removeJsonUnlocked(filePath) ? 'removed' : 'not_found'
   })
 }
 
