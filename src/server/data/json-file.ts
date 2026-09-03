@@ -43,11 +43,15 @@ function uniqueTemporaryPath(filePath: string): string {
   return `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
 }
 
-function writeJsonUnlocked(filePath: string, value: unknown): void {
+export interface JsonWriteOptions {
+  backupPath?: string
+}
+
+function writeJsonUnlocked(filePath: string, value: unknown, options: JsonWriteOptions = {}): void {
   const directory = path.dirname(filePath)
   fs.mkdirSync(directory, { recursive: true })
   const temporaryPath = uniqueTemporaryPath(filePath)
-  const backupPath = `${filePath}.bak`
+  const backupPath = options.backupPath || `${filePath}.bak`
   const temporaryBackupPath = uniqueTemporaryPath(backupPath)
 
   try {
@@ -63,13 +67,13 @@ function writeJsonUnlocked(filePath: string, value: unknown): void {
   }
 }
 
-export function writeJsonFile(filePath: string, value: unknown): void {
-  withFileLock(filePath, () => writeJsonUnlocked(filePath, value))
+export function writeJsonFile(filePath: string, value: unknown, options: JsonWriteOptions = {}): void {
+  withFileLock(filePath, () => writeJsonUnlocked(filePath, value, options))
 }
 
-function removeJsonUnlocked(filePath: string): boolean {
+function removeJsonUnlocked(filePath: string, options: JsonWriteOptions = {}): boolean {
   if (!fs.existsSync(filePath)) return false
-  const backupPath = `${filePath}.bak`
+  const backupPath = options.backupPath || `${filePath}.bak`
   const temporaryBackupPath = uniqueTemporaryPath(backupPath)
   try {
     fs.copyFileSync(filePath, temporaryBackupPath)
@@ -82,8 +86,8 @@ function removeJsonUnlocked(filePath: string): boolean {
 }
 
 /** Delete a JSON file only after retaining its exact previous bytes as `.bak`. */
-export function removeJsonFile(filePath: string): boolean {
-  return withFileLock(filePath, () => removeJsonUnlocked(filePath))
+export function removeJsonFile(filePath: string, options: JsonWriteOptions = {}): boolean {
+  return withFileLock(filePath, () => removeJsonUnlocked(filePath, options))
 }
 
 export type ConditionalRemoveResult = 'removed' | 'not_found' | 'rejected'

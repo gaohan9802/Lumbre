@@ -1,3 +1,5 @@
+export {}
+
 async function main(): Promise<void> {
   const [store, countText, workerId] = process.argv.slice(2)
   const count = Number(countText)
