@@ -14,6 +14,14 @@ async function main(): Promise<void> {
   } else if (store === 'timeline') {
     const { startActivity } = await import('../../src/server/timeline-store')
     startActivity(`activity-${workerId}`, ['test'], undefined, '2026-09-03T10:00:00+02:00')
+  } else if (store === 'push') {
+    const { savePushSubscription } = await import('../../src/server/push')
+    for (let i = 0; i < count; i += 1) {
+      savePushSubscription({
+        endpoint: `https://push.example/${workerId}/${i}`,
+        keys: { p256dh: `p256dh-${workerId}-${i}`, auth: `auth-${workerId}-${i}` },
+      })
+    }
   } else {
     throw new Error(`Unknown state store: ${store}`)
   }
