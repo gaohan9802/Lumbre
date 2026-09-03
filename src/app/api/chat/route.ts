@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ALL_TOOLS, FETCH_TOOL_NAMES, toolsForContext, type ToolDef } from '@/server/agent/registry'
+import { FETCH_TOOL_NAMES, toolsForContext, type ToolDef } from '@/server/agent/registry'
 import { executeToolBatch, type ToolCallResult } from '@/server/agent/executor'
 import { createToolContext } from '@/server/agent/context'
 import { isTrustedInternalRequest } from '@/server/safety-baseline'

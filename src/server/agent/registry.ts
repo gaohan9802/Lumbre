@@ -36,8 +36,13 @@ function buildRegistry(): Map<string, RegisteredTool> {
 }
 
 const REGISTRY = buildRegistry()
+const ORDERED_REGISTRY = TOOL_DEFINITIONS.map(definition => {
+  const tool = REGISTRY.get(definition.name)
+  if (!tool) throw new Error(`Missing registered tool: ${definition.name}`)
+  return tool
+})
 
-export const ALL_TOOLS: ToolDef[] = Array.from(REGISTRY.values()).map(tool => tool.definition)
+export const ALL_TOOLS: ToolDef[] = ORDERED_REGISTRY.map(tool => tool.definition)
 export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
 
 export function getRegisteredTool(name: string): RegisteredTool | undefined {
@@ -45,7 +50,7 @@ export function getRegisteredTool(name: string): RegisteredTool | undefined {
 }
 
 export function toolsForContext(context: ToolCallContext): ToolDef[] {
-  return Array.from(REGISTRY.values())
+  return ORDERED_REGISTRY
     .filter(tool => {
       const decision = evaluateToolPolicy(tool, {}, context)
       return decision.allowed || decision.requiresConfirmation
