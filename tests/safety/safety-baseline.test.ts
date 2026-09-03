@@ -19,6 +19,11 @@ test('production blocks every known debug API while development keeps them avail
   assert.equal(shouldBlockDebugApi('/api/chat', 'production'), false)
 })
 
+test('Next.js discovers the safety middleware alongside the src app directory', () => {
+  assert.equal(existsSync(new URL('../../src/middleware.ts', import.meta.url)), true)
+  assert.equal(existsSync(new URL('../../middleware.ts', import.meta.url)), false)
+})
+
 test('unattended wake hides and denies destructive or external-write tools', () => {
   const tools = [
     { name: 'read_diary', description: 'read', input_schema: { type: 'object' as const, properties: {} } },

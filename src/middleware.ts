@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authCookie, isAuthConfigured, verifySessionToken } from './src/lib/auth'
-import { shouldBlockDebugApi } from './src/server/safety-baseline'
+import { authCookie, isAuthConfigured, verifySessionToken } from './lib/auth'
+import { shouldBlockDebugApi } from './server/safety-baseline'
 
 const PUBLIC_PATHS = new Set([
   '/login',
