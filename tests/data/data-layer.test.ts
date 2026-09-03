@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 import { getDataDir } from '../../src/server/data/config'
 import { DataCorruptionError, DataPathError } from '../../src/server/data/errors'
-import { readJsonFile, updateJsonFile, writeJsonFile } from '../../src/server/data/json-file'
+import { readJsonFile, removeJsonFile, updateJsonFile, writeJsonFile } from '../../src/server/data/json-file'
 import { withFileLock } from '../../src/server/data/lock'
 import { resolveDataPath } from '../../src/server/data/safe-path'
 
@@ -67,6 +67,15 @@ test('explicit recovery preserves corrupt input in the backup before replacing i
   )
   assert.deepEqual(next, { items: ['recovered'] })
   assert.equal(readFileSync(`${file}.bak`, 'utf8'), '{broken json')
+})
+
+test('safe deletion retains the exact previous file as a backup', () => {
+  const file = path.join(root, 'deletion', 'state.json')
+  writeJsonFile(file, { keep: 'before delete' })
+  assert.equal(removeJsonFile(file), true)
+  assert.equal(existsSync(file), false)
+  assert.deepEqual(JSON.parse(readFileSync(`${file}.bak`, 'utf8')), { keep: 'before delete' })
+  assert.equal(removeJsonFile(file), false)
 })
 
 test('locked read-modify-write updates do not leave locks behind', () => {

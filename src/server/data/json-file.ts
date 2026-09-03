@@ -67,6 +67,23 @@ export function writeJsonFile(filePath: string, value: unknown): void {
   withFileLock(filePath, () => writeJsonUnlocked(filePath, value))
 }
 
+/** Delete a JSON file only after retaining its exact previous bytes as `.bak`. */
+export function removeJsonFile(filePath: string): boolean {
+  return withFileLock(filePath, () => {
+    if (!fs.existsSync(filePath)) return false
+    const backupPath = `${filePath}.bak`
+    const temporaryBackupPath = uniqueTemporaryPath(backupPath)
+    try {
+      fs.copyFileSync(filePath, temporaryBackupPath)
+      fs.renameSync(temporaryBackupPath, backupPath)
+      fs.unlinkSync(filePath)
+      return true
+    } finally {
+      try { fs.unlinkSync(temporaryBackupPath) } catch {}
+    }
+  })
+}
+
 export function updateJsonFile<T>(
   filePath: string,
   options: JsonReadOptions<T>,
