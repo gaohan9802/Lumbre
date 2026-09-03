@@ -60,17 +60,18 @@ test('todo can be created, completed and edited using isolated data', async () =
 test('memory can be written and read using isolated data', async () => {
   const brain = await import('../../src/server/brain')
   const now = new Date().toISOString()
+  const id = 'f17e00000001'
   brain.saveBucket({
-    id: 'fixture-memory',
+    id,
     metadata: {
-      id: 'fixture-memory', name: 'fixture memory', type: 'dynamic', domain: ['test'], tags: ['stage0'],
+      id, name: 'fixture memory', type: 'dynamic', domain: ['test'], tags: ['stage0'],
       valence: 0.5, arousal: 0.5, importance: 5, resolved: false, pinned: false, digested: false,
       created: now, last_active: now, activation_count: 1,
     },
     content: 'fixture memory body', score: 0,
   })
-  assert.equal(brain.getBucket('fixture-memory')?.content, 'fixture memory body')
-  assert.equal(brain.searchBuckets('fixture memory').some(bucket => bucket.id === 'fixture-memory'), true)
+  assert.equal(brain.getBucket(id)?.content, 'fixture memory body')
+  assert.equal(brain.searchBuckets('fixture memory').some(bucket => bucket.id === id), true)
 })
 
 test('two-device chat sync merges messages and retry is idempotent', async () => {
