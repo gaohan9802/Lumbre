@@ -39,7 +39,9 @@ function isStore(value: unknown): value is ModelCredentialStore {
 }
 
 function encryptionKey(env: NodeJS.ProcessEnv = process.env): Buffer {
-  const secret = env.LUMBRE_INTERNAL_SECRET || env.LUMBRE_AUTH_SECRET || env.LUMBRE_ACCESS_PASSWORD || ''
+  // Cookie signing is the stable server identity. Rotating the optional
+  // internal-request secret must not make every stored model key unreadable.
+  const secret = env.LUMBRE_AUTH_SECRET || env.LUMBRE_INTERNAL_SECRET || env.LUMBRE_ACCESS_PASSWORD || ''
   if (secret.length < 12) throw new Error('Model credentials require a configured Lumbre server secret')
   return createHash('sha256').update(`lumbre-model-credentials:${secret}`).digest()
 }

@@ -234,7 +234,7 @@ export function loadSyncManifest(): SyncManifest {
     const raw = readChatManifest() as any
     const value = normalizeManifest(raw)
     if (JSON.stringify(raw?.config) !== JSON.stringify(value.config)) saveManifest(value)
-    manifestCache = { mtimeMs, value }
+    else manifestCache = { mtimeMs, value }
     return value
   }
   return normalizeManifest(readChatManifest() || emptyManifest())

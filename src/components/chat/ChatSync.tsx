@@ -119,10 +119,13 @@ async function pullIncremental() {
   const res = await syncFetch(`/api/sync?${params.toString()}`)
   if (!res.ok) throw new Error(`同步请求失败 (${res.status})`)
   const data = await res.json()
-  await syncModelCredentialStatus()
   const manifest: ManifestItem[] = Array.isArray(data.sessions) ? data.sessions : []
 
   applyRemote({ sessions: [], tombstones: data.tombstones || {}, config: data.config, configUpdatedAt: data.configUpdatedAt })
+  // Apply the remote config before recording credential status locally. The
+  // status update bumps configUpdatedAt; doing it first would make a newer
+  // server config look stale on the very first upgraded load.
+  await syncModelCredentialStatus()
 
   // Materialize lightweight manifest stubs so the session drawer is complete
   // without downloading every conversation body.
