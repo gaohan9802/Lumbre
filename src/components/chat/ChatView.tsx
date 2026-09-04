@@ -394,8 +394,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           session_id: activeSession?.id,
           bookmark_injections: bookmarkInjections,
           api_profile: profile ? {
-            provider: profile.provider, baseUrl: profile.baseUrl,
-            apiKey: profile.apiKey, modelId: model,
+            profileId: profile.id, modelId: model,
           } : undefined,
         }),
       })
@@ -522,7 +521,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
       const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model,
-        api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: model } : undefined,
+        api_profile: profile ? { profileId: profile.id, modelId: model } : undefined,
       }) })
       const data = await res.json()
       if (!res.ok || !data.content) throw new Error(data.error || '摘要生成失败')
@@ -548,7 +547,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
       const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
       const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
-      const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model, api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: model } : undefined }) })
+      const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined }) })
       const data = await res.json()
       if (!res.ok || !data.content) throw new Error(data.error || '摘要重新生成失败')
       updateSummary(session.id, summary.id, { eventSummary: String(data.content).trim(), needsCorrection: false, editedAt: Date.now() })
@@ -574,7 +573,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
       const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
       const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
-      const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'stage', summaries: batch.map(item => ({ content: item.eventSummary })), model, api_profile: profile ? { provider: profile.provider, baseUrl: profile.baseUrl, apiKey: profile.apiKey, modelId: model } : undefined }) })
+      const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'stage', summaries: batch.map(item => ({ content: item.eventSummary })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined }) })
       const data = await res.json()
       if (!res.ok || !data.content) throw new Error(data.error || '阶段摘要生成失败')
       const stage: StageSummary = { id: `stage-${Date.now()}`, sessionId: session.id, createdAt: Date.now(), startAt: batch[0].startAt, endAt: batch[9].endAt, sourceSummaryIds: batch.map(item => item.id), title: String(data.title || '一段共同经历').trim(), content: String(data.content).trim() }

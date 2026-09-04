@@ -9,7 +9,13 @@
  * when a conversation has hundreds or thousands of messages.
  */
 import { useEffect, useRef } from 'react'
-import { useChatStore, extractConfig, isBlankSession } from '@/lib/chatStore'
+import {
+  completeLegacyModelCredentialMigration,
+  extractConfig,
+  getPendingLegacyModelCredentials,
+  isBlankSession,
+  useChatStore,
+} from '@/lib/chatStore'
 import { useSyncStatus } from '@/lib/syncStatus'
 import { flushChatOutbox } from '@/lib/chat-outbox'
 
@@ -51,6 +57,35 @@ function applyRemote(data: any) {
   }
 }
 
+async function syncModelCredentialStatus() {
+  const pending = getPendingLegacyModelCredentials()
+  if (pending.length) {
+    const migrated = await syncFetch('/api/model-profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profiles: pending }),
+    })
+    if (!migrated.ok) throw new Error(`模型凭据迁移失败 (${migrated.status})`)
+    completeLegacyModelCredentialMigration(pending.map(profile => profile.id))
+  }
+
+  const response = await syncFetch('/api/model-profiles')
+  if (!response.ok) throw new Error(`模型渠道状态读取失败 (${response.status})`)
+  const data = await response.json()
+  const statuses = new Map((Array.isArray(data?.profiles) ? data.profiles : []).map((item: any) => [item.id, item]))
+  const state = useChatStore.getState()
+  let changed = false
+  const apiProfiles = state.settings.apiProfiles.map(profile => {
+    const status: any = statuses.get(profile.id)
+    const nextConfigured = !!status?.configured
+    const nextOrigin = typeof status?.upstreamOrigin === 'string' ? status.upstreamOrigin : undefined
+    if (profile.credentialConfigured === nextConfigured && profile.upstreamOrigin === nextOrigin) return profile
+    changed = true
+    return { ...profile, credentialConfigured: nextConfigured, upstreamOrigin: nextOrigin }
+  })
+  if (changed) state.setSettings({ apiProfiles })
+}
+
 async function fetchSessionBatch(ids: string[]) {
   if (!ids.length) return
   const params = new URLSearchParams({ mode: 'tails', ids: ids.join(','), limit: '120' })
@@ -84,6 +119,7 @@ async function pullIncremental() {
   const res = await syncFetch(`/api/sync?${params.toString()}`)
   if (!res.ok) throw new Error(`同步请求失败 (${res.status})`)
   const data = await res.json()
+  await syncModelCredentialStatus()
   const manifest: ManifestItem[] = Array.isArray(data.sessions) ? data.sessions : []
 
   applyRemote({ sessions: [], tombstones: data.tombstones || {}, config: data.config, configUpdatedAt: data.configUpdatedAt })

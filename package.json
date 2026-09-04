@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/**/*.test.ts",
     "test:smoke": "node --import tsx --test tests/smoke/**/*.test.ts",
-    "test:safety": "node --import tsx --test tests/safety/**/*.test.ts"
+    "test:safety": "node --import tsx --test tests/safety/**/*.test.ts",
+    "verify:model-gateway": "node scripts/verify-model-gateway.mjs"
   },
   "dependencies": {
     "@types/web-push": "^3.6.4",

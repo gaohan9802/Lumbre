@@ -1,7 +1,8 @@
 /**
  * Chat store — local-first chat OS.
- * Sessions, providers, model lists, bookmarks and appearance live in localStorage,
- * and sync across devices through /api/sync (config merged by configUpdatedAt).
+ * Sessions, provider metadata, model lists, bookmarks and appearance live in
+ * localStorage and sync across devices. Provider credentials never do: API
+ * keys and upstream URLs live only in the server-side model credential store.
  */
 import { create } from 'zustand'
 import type { SharedCard } from '@/lib/share'
@@ -57,11 +58,11 @@ export interface ApiProfile {
   id: string
   name: string
   provider: ApiProvider
-  baseUrl: string
-  apiKey: string
   defaultModel: string
   models: ProviderModel[]
   lastFetchedAt?: number
+  credentialConfigured?: boolean
+  upstreamOrigin?: string
 }
 
 export interface ChatSummary {
@@ -213,10 +214,9 @@ const DEFAULT_SETTINGS: ChatSettings = {
       id: DEFAULT_PROFILE_ID,
       name: 'Anthropic',
       provider: 'anthropic',
-      baseUrl: DEFAULT_ANTHROPIC_BASE,
-      apiKey: '',
       defaultModel: 'claude-sonnet-4-20250514',
       models: DEFAULT_ANTHROPIC_MODELS,
+      credentialConfigured: false,
     },
   ],
   activeSessionId: DEFAULT_SESSION_ID,
@@ -438,12 +438,39 @@ function normalizeProfile(p: any): ApiProfile {
     id: p?.id || makeId('provider'),
     name: p?.name || 'New API',
     provider,
-    baseUrl: (p?.baseUrl || (provider === 'anthropic' ? DEFAULT_ANTHROPIC_BASE : DEFAULT_OPENAI_BASE)).replace(/\/$/, ''),
-    apiKey: p?.apiKey || '',
     defaultModel,
     models,
     lastFetchedAt: p?.lastFetchedAt,
+    credentialConfigured: p?.credentialConfigured === true,
+    upstreamOrigin: typeof p?.upstreamOrigin === 'string' ? p.upstreamOrigin : undefined,
   }
+}
+
+type LegacyCredential = { id: string; provider: ApiProvider; baseUrl: string; apiKey: string }
+let pendingLegacyCredentials: LegacyCredential[] = []
+
+function captureLegacyCredentials(profiles: unknown) {
+  if (!Array.isArray(profiles)) return
+  const byId = new Map(pendingLegacyCredentials.map(profile => [profile.id, profile]))
+  for (const profile of profiles as any[]) {
+    if (!profile?.id || !profile?.apiKey) continue
+    byId.set(String(profile.id), {
+      id: String(profile.id),
+      provider: profile.provider === 'openai-compatible' ? 'openai-compatible' : 'anthropic',
+      baseUrl: String(profile.baseUrl || (profile.provider === 'openai-compatible' ? DEFAULT_OPENAI_BASE : DEFAULT_ANTHROPIC_BASE)),
+      apiKey: String(profile.apiKey),
+    })
+  }
+  pendingLegacyCredentials = Array.from(byId.values())
+}
+
+export function getPendingLegacyModelCredentials(): LegacyCredential[] {
+  return pendingLegacyCredentials.map(profile => ({ ...profile }))
+}
+
+export function completeLegacyModelCredentialMigration(ids: string[]) {
+  const done = new Set(ids)
+  pendingLegacyCredentials = pendingLegacyCredentials.filter(profile => !done.has(profile.id))
 }
 
 function normalizeSettings(settings: any): ChatSettings {
@@ -1087,14 +1114,16 @@ export const useChatStore = create<ChatStore>()(
           },
         } as any
       },
-      version: 9,
+      version: 10,
       migrate: (persisted: any) => {
-        if (!persisted?.state) return persisted
-        const raw = persisted.state.settings || {}
-        if (Array.isArray(persisted.state.messages) && !raw.sessions) raw.messages = persisted.state.messages
+        if (!persisted || typeof persisted !== 'object') return persisted
+        const state = persisted.state && typeof persisted.state === 'object' ? persisted.state : persisted
+        const raw = state.settings || {}
+        captureLegacyCredentials(raw.apiProfiles)
+        if (Array.isArray(state.messages) && !raw.sessions) raw.messages = state.messages
         const settings = normalizeSettings(raw)
-        persisted.state.settings = settings
-        persisted.state.messages = getActiveSession(settings)?.messages || []
+        state.settings = settings
+        state.messages = getActiveSession(settings)?.messages || []
         return persisted
       },
       onRehydrateStorage: () => (state) => {
@@ -1136,7 +1165,16 @@ export function extractConfig(s: ChatSettings) {
     promptCaching: s.promptCaching,
     appearance: s.appearance,
     activeProfileId: s.activeProfileId,
-    apiProfiles: s.apiProfiles,
+    apiProfiles: s.apiProfiles.map(profile => ({
+      id: profile.id,
+      name: profile.name,
+      provider: profile.provider,
+      defaultModel: profile.defaultModel,
+      models: profile.models,
+      lastFetchedAt: profile.lastFetchedAt,
+      credentialConfigured: profile.credentialConfigured === true,
+      upstreamOrigin: profile.upstreamOrigin,
+    })),
     starStatus: s.starStatus,
     bookmarks: s.bookmarks,
     summaryTurnSize: s.summaryTurnSize,

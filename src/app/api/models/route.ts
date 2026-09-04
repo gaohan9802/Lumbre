@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveChatCredential } from '@/server/chat/credentials'
+import { assertPublicHttpUrl } from '@/server/agent/tools/web-fetch'
 
 type Provider = 'anthropic' | 'openai-compatible'
 
@@ -60,8 +62,10 @@ async function tryFetch(url: string, apiKey: string): Promise<{ ok: boolean; sta
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 9000)
   try {
+    await assertPublicHttpUrl(url)
     const res = await fetch(url, {
       method: 'GET',
+      redirect: 'error',
       headers: {
         // OpenAI-style
         Authorization: `Bearer ${apiKey}`,
@@ -88,28 +92,27 @@ async function tryFetch(url: string, apiKey: string): Promise<{ ok: boolean; sta
 
 export async function POST(req: NextRequest) {
   try {
-    const { provider = 'openai-compatible', baseUrl, apiKey } = await req.json() as {
-      provider: Provider
-      baseUrl?: string
-      apiKey?: string
+    const { profileId } = await req.json() as { profileId?: string }
+    const credential = resolveChatCredential(profileId)
+
+    if (!credential) {
+      return NextResponse.json({ error: '这个模型渠道还没有在服务器配置凭据。' }, { status: 400 })
     }
 
-    if (!apiKey) {
-      return NextResponse.json({ error: '缺少 API Key，不能拉取模型列表。' }, { status: 400 })
-    }
+    const { provider, baseUrl, apiKey } = credential
 
     const urls = candidateModelUrls(baseUrl || '', provider)
-    const attempts: { url: string; status: number; note?: string }[] = []
+    const attempts: { upstreamOrigin: string; status: number }[] = []
 
     // Fire all candidates concurrently — a slow/unreachable station shouldn't
     // block the others (sequential 3×9s could stall the whole request).
     const results = await Promise.all(urls.map(async (url) => ({ url, r: await tryFetch(url, apiKey) })))
     for (const { url, r } of results) {
-      attempts.push({ url, status: r.status, note: r.ok ? undefined : (r.text || '').slice(0, 200) })
+      attempts.push({ upstreamOrigin: new URL(url).origin, status: r.status })
       if (r.ok && r.models && r.models.length > 0) {
         const models = normalizeModels(r.models)
         if (models.length > 0) {
-          return NextResponse.json({ models, _debug: { url, rawCount: r.models.length, totalParsed: models.length } })
+          return NextResponse.json({ models, _debug: { upstreamOrigin: new URL(url).origin, rawCount: r.models.length, totalParsed: models.length } })
         }
       }
     }
@@ -124,7 +127,7 @@ export async function POST(req: NextRequest) {
 
     const last = attempts[attempts.length - 1]
     return NextResponse.json({
-      error: `拉取模型失败。尝试了 ${attempts.length} 个地址都没成功。最后一次：${last?.url} → ${last?.status || 'network'} ${last?.note || ''}`.trim(),
+      error: `拉取模型失败。尝试了 ${attempts.length} 个地址都没成功。最后一次：${last?.upstreamOrigin} → ${last?.status || 'network'}`.trim(),
       _debug: { attempts },
     }, { status: 502 })
   } catch (err: any) {

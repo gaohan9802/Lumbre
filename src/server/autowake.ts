@@ -358,9 +358,7 @@ ${JSON.stringify(recentDigests)}`
       const active = profiles.find((p: any) => p.id === cfg.activeProfileId) || profiles[0]
       if (active) {
         apiProfile = {
-          provider: active.provider,
-          baseUrl: active.baseUrl,
-          apiKey: active.apiKey,
+          profileId: active.id,
           modelId: cfg.model || active.defaultModel,
         }
       }

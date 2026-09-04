@@ -40,7 +40,7 @@ async function post(path: string, body: any = {}) {
 
 // ── Chat ────────────────────────────────────────────────
 export const chat = {
-  models: (params: { provider: 'anthropic' | 'openai-compatible'; baseUrl: string; apiKey: string }) => post('/api/models', params),
+  models: (profileId: string) => post('/api/models', { profileId }),
   send: (params: {
     messages: any[]
     system?: string
@@ -48,7 +48,7 @@ export const chat = {
     thinking_budget?: number
     temperature?: number
     prompt_caching?: boolean
-    api_profile?: { provider: 'anthropic' | 'openai-compatible'; baseUrl: string; apiKey: string; modelId?: string }
+    api_profile?: { profileId: string; modelId?: string }
   }) => post('/api/chat', params),
 }
 

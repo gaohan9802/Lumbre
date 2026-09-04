@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveChatCredential } from '@/server/chat/credentials'
+import { assertPublicHttpUrl } from '@/server/agent/tools/web-fetch'
+import { fetchUpstreamWithRetry } from '@/server/chat/request'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -35,17 +38,22 @@ const STAGE_PROMPT = `你叫麻糍。下面是星星和小火连续的10张普�
 
 function trimSlash(s: string) { return (s || '').replace(/\/+$/, '') }
 
-async function callModel(profile: any, model: string, system: string, user: string) {
-  const provider = profile.provider || 'anthropic'
+async function callModel(profileId: string | undefined, model: string, system: string, user: string) {
+  const credential = resolveChatCredential(profileId)
+  if (!credential) throw new Error('摘要使用的模型渠道还没有在服务器配置凭据')
+  const { provider, baseUrl, apiKey } = credential
   if (provider === 'openai-compatible') {
-    const base = trimSlash(profile.baseUrl || 'https://api.openai.com/v1')
+    const base = trimSlash(baseUrl || 'https://api.openai.com/v1')
     const url = (base.endsWith('/v1') ? base : `${base}/v1`) + '/chat/completions'
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${profile.apiKey || process.env.OPENAI_API_KEY || ''}` }, body: JSON.stringify({ model, temperature: 0.3, max_tokens: 2400, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }) })
+    await assertPublicHttpUrl(url)
+    const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model, temperature: 0.3, max_tokens: 2400, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }) }, { provider, model })
     if (!res.ok) throw new Error(`摘要模型返回 ${res.status}: ${(await res.text()).slice(0, 200)}`)
     const data = await res.json(); return String(data.choices?.[0]?.message?.content || '').trim()
   }
-  const base = trimSlash(profile.baseUrl || 'https://api.anthropic.com')
-  const res = await fetch(`${base}/v1/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': profile.apiKey || process.env.CLAUDE_API_KEY || '', 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model, max_tokens: 2400, temperature: 0.3, system, messages: [{ role: 'user', content: user }] }) })
+  const base = trimSlash(baseUrl || 'https://api.anthropic.com')
+  const url = `${base}/v1/messages`
+  await assertPublicHttpUrl(url)
+  const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model, max_tokens: 2400, temperature: 0.3, system, messages: [{ role: 'user', content: user }] }) }, { provider, model })
   if (!res.ok) throw new Error(`摘要模型返回 ${res.status}: ${(await res.text()).slice(0, 200)}`)
   const data = await res.json(); return (data.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('').trim()
 }
@@ -53,17 +61,18 @@ async function callModel(profile: any, model: string, system: string, user: stri
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json(); const profile = body.api_profile || {}; const model = profile.modelId || body.model
+    if (profile.apiKey || profile.baseUrl) return NextResponse.json({ error: '浏览器不能提交模型密钥或上游地址' }, { status: 400 })
     if (body.kind === 'stage') {
       const summaries = Array.isArray(body.summaries) ? body.summaries : []
       if (summaries.length !== 10) return NextResponse.json({ error: '阶段摘要需要正好10张普通摘要' }, { status: 400 })
       const source = summaries.map((s: any, i: number) => `记忆${i + 1}：${String(s.content || '')}`).join('\n\n---\n\n')
-      const content = await callModel(profile, model, STAGE_PROMPT, source)
+      const content = await callModel(profile.profileId, model, STAGE_PROMPT, source)
       const lines = content.split('\n').map((x: string) => x.trim()).filter(Boolean)
       return NextResponse.json({ title: (lines.shift() || '一段共同经历').replace(/^#+\s*/, ''), content: lines.join('\n\n') })
     }
     const messages = Array.isArray(body.messages) ? body.messages : []
     if (!messages.length) return NextResponse.json({ error: '没有可整理的新对话' }, { status: 400 })
     const transcript = messages.map((m: any) => { const date = new Date(Number(m.timestamp) || Date.now()).toLocaleString('zh-CN', { timeZone: 'Europe/Madrid', hour12: false }); return `[${date}] ${m.role === 'user' ? '小火' : '星星'}：${String(m.content || '')}` }).join('\n\n')
-    return NextResponse.json({ content: await callModel(profile, model, SEGMENT_PROMPT, `下面是这段新对话：\n\n${transcript}`) })
+    return NextResponse.json({ content: await callModel(profile.profileId, model, SEGMENT_PROMPT, `下面是这段新对话：\n\n${transcript}`) })
   } catch (error: any) { return NextResponse.json({ error: error?.message || '摘要生成失败' }, { status: 500 }) }
 }
