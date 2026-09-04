@@ -1,7 +1,8 @@
 /**
  * Chat store — local-first chat OS.
- * Sessions, providers, model lists, bookmarks and appearance live in localStorage,
- * and sync across devices through /api/sync (config merged by configUpdatedAt).
+ * Sessions, provider metadata, model lists, bookmarks and appearance live in
+ * localStorage and sync across devices. Provider credentials never do: API
+ * keys and upstream URLs live only in the server-side model credential store.
  */
 import { create } from 'zustand'
 import type { SharedCard } from '@/lib/share'
@@ -57,11 +58,11 @@ export interface ApiProfile {
   id: string
   name: string
   provider: ApiProvider
-  baseUrl: string
-  apiKey: string
   defaultModel: string
   models: ProviderModel[]
   lastFetchedAt?: number
+  credentialConfigured?: boolean
+  upstreamOrigin?: string
 }
 
 export interface ChatSummary {
@@ -213,10 +214,9 @@ const DEFAULT_SETTINGS: ChatSettings = {
       id: DEFAULT_PROFILE_ID,
       name: 'Anthropic',
       provider: 'anthropic',
-      baseUrl: DEFAULT_ANTHROPIC_BASE,
-      apiKey: '',
       defaultModel: 'claude-sonnet-4-20250514',
       models: DEFAULT_ANTHROPIC_MODELS,
+      credentialConfigured: false,
     },
   ],
   activeSessionId: DEFAULT_SESSION_ID,
@@ -288,11 +288,52 @@ export function isBlankSession(s: any) {
   return (s?.messages?.length || 0) === 0 && !s?.pinned && (!s?.title || s.title === '新的对话')
 }
 
+function summaryCount(session: any) {
+  return (Array.isArray(session?.summaries) ? session.summaries.length : 0)
+    + (Array.isArray(session?.stageSummaries) ? session.stageSummaries.length : 0)
+}
+
+export function mergeSummaryLayer(existing: any, incoming: any) {
+  const existingRevision = Math.max(0, Number(existing?.summaryRevision) || 0)
+  const incomingRevision = Math.max(0, Number(incoming?.summaryRevision) || 0)
+  const source = incomingRevision > existingRevision
+    ? incoming
+    : existingRevision > incomingRevision
+      ? existing
+      : summaryCount(incoming) >= summaryCount(existing) ? incoming : existing
+
+  return {
+    summaries: Array.isArray(source?.summaries) ? source.summaries : [],
+    stageSummaries: Array.isArray(source?.stageSummaries) ? source.stageSummaries : [],
+    summaryConfig: incoming?.summaryConfig || existing?.summaryConfig,
+    summaryRevision: Math.max(existingRevision, incomingRevision),
+  }
+}
+
+function preserveMergedSummary(base: any, existing: any, incoming: any) {
+  const summaryLayer = mergeSummaryLayer(existing, incoming)
+  const baseRevision = Math.max(0, Number(base?.summaryRevision) || 0)
+  const needsRepublish = summaryLayer.summaryRevision > baseRevision
+    || (summaryLayer.summaryRevision === baseRevision && summaryCount(summaryLayer) > summaryCount(base))
+
+  return {
+    ...base,
+    ...summaryLayer,
+    // When the newest message layer did not contain the richest summary layer,
+    // mark the combined session as a new local revision. The next sync then
+    // repairs the durable server copy instead of preserving the summary only in
+    // this browser's localStorage.
+    updatedAt: needsRepublish
+      ? Math.max(Date.now(), Number(existing?.updatedAt) || 0, Number(incoming?.updatedAt) || 0) + 1
+      : base.updatedAt,
+  }
+}
+
 // When two sessions share an id, the more recent edit wins so deletions and
 // edits actually propagate (deleting a message lowers the count, so a naive
 // "more messages wins" would resurrect it). The only guard is that a blank
 // scratch session (0 msgs, default title) must never clobber a real one.
-function pickSession(a: any, b: any) {
+export function mergeChatSessionsForSync(a: any, b: any) {
   if (a?.partial && b?.partial) {
     const newer = (b.updatedAt || 0) > (a.updatedAt || 0) ? b : a
     const byId = new Map<string, ChatMessage>()
@@ -301,28 +342,29 @@ function pickSession(a: any, b: any) {
     }
     const messages = Array.from(byId.values()).sort((x, y) => (x.timestamp || 0) - (y.timestamp || 0))
     const messageCount = Math.max(Number(a.messageCount) || 0, Number(b.messageCount) || 0, messages.length)
-    return { ...a, ...newer, messages, messageCount, partial: messages.length < messageCount }
+    return preserveMergedSummary({ ...a, ...newer, messages, messageCount, partial: messages.length < messageCount }, a, b)
   }
   // A server session always beats a locally persisted tail, even when their
   // timestamps are equal. This is what lets startup paint the latest 100
   // messages immediately and hydrate the other 3900+ in the background.
   if (a?.partial && !b?.partial) {
-    if ((a.updatedAt || 0) <= (b.updatedAt || 0)) return b
+    if ((a.updatedAt || 0) <= (b.updatedAt || 0)) return preserveMergedSummary(b, a, b)
     const ids = new Set((b.messages || []).map((m: any) => m.id))
     const extras = (a.messages || []).filter((m: any) => !ids.has(m.id))
-    return { ...b, ...a, partial: false, messages: [...(b.messages || []), ...extras], messageCount: (b.messages || []).length + extras.length }
+    return preserveMergedSummary({ ...b, ...a, partial: false, messages: [...(b.messages || []), ...extras], messageCount: (b.messages || []).length + extras.length }, a, b)
   }
   if (b?.partial && !a?.partial) {
-    if ((b.updatedAt || 0) <= (a.updatedAt || 0)) return a
+    if ((b.updatedAt || 0) <= (a.updatedAt || 0)) return preserveMergedSummary(a, a, b)
     const ids = new Set((a.messages || []).map((m: any) => m.id))
     const extras = (b.messages || []).filter((m: any) => !ids.has(m.id))
-    return { ...a, ...b, partial: false, messages: [...(a.messages || []), ...extras], messageCount: (a.messages || []).length + extras.length }
+    return preserveMergedSummary({ ...a, ...b, partial: false, messages: [...(a.messages || []), ...extras], messageCount: (a.messages || []).length + extras.length }, a, b)
   }
   const aBlank = isBlankSession(a)
   const bBlank = isBlankSession(b)
   if (aBlank && !bBlank) return b
   if (bBlank && !aBlank) return a
-  return (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
+  const newer = (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
+  return preserveMergedSummary(newer, a, b)
 }
 
 const numOr = (v: any) => (typeof v === 'number' && isFinite(v) ? v : undefined)
@@ -438,12 +480,39 @@ function normalizeProfile(p: any): ApiProfile {
     id: p?.id || makeId('provider'),
     name: p?.name || 'New API',
     provider,
-    baseUrl: (p?.baseUrl || (provider === 'anthropic' ? DEFAULT_ANTHROPIC_BASE : DEFAULT_OPENAI_BASE)).replace(/\/$/, ''),
-    apiKey: p?.apiKey || '',
     defaultModel,
     models,
     lastFetchedAt: p?.lastFetchedAt,
+    credentialConfigured: p?.credentialConfigured === true,
+    upstreamOrigin: typeof p?.upstreamOrigin === 'string' ? p.upstreamOrigin : undefined,
   }
+}
+
+type LegacyCredential = { id: string; provider: ApiProvider; baseUrl: string; apiKey: string }
+let pendingLegacyCredentials: LegacyCredential[] = []
+
+function captureLegacyCredentials(profiles: unknown) {
+  if (!Array.isArray(profiles)) return
+  const byId = new Map(pendingLegacyCredentials.map(profile => [profile.id, profile]))
+  for (const profile of profiles as any[]) {
+    if (!profile?.id || !profile?.apiKey) continue
+    byId.set(String(profile.id), {
+      id: String(profile.id),
+      provider: profile.provider === 'openai-compatible' ? 'openai-compatible' : 'anthropic',
+      baseUrl: String(profile.baseUrl || (profile.provider === 'openai-compatible' ? DEFAULT_OPENAI_BASE : DEFAULT_ANTHROPIC_BASE)),
+      apiKey: String(profile.apiKey),
+    })
+  }
+  pendingLegacyCredentials = Array.from(byId.values())
+}
+
+export function getPendingLegacyModelCredentials(): LegacyCredential[] {
+  return pendingLegacyCredentials.map(profile => ({ ...profile }))
+}
+
+export function completeLegacyModelCredentialMigration(ids: string[]) {
+  const done = new Set(ids)
+  pendingLegacyCredentials = pendingLegacyCredentials.filter(profile => !done.has(profile.id))
 }
 
 function normalizeSettings(settings: any): ChatSettings {
@@ -787,7 +856,7 @@ export const useChatStore = create<ChatStore>()(
         for (const rs of remoteSessions || []) {
           if (!rs?.id) continue
           const cur = map.get(rs.id)
-          map.set(rs.id, cur ? pickSession(cur, rs) : rs)
+          map.set(rs.id, cur ? mergeChatSessionsForSync(cur, rs) : rs)
         }
         let sessions = Array.from(map.values()).filter((s) => !(tombstones[s.id] && tombstones[s.id] >= (s.updatedAt || 0)))
         // drop stale blank sessions (keep the active one so a freshly created empty chat survives)
@@ -1087,14 +1156,16 @@ export const useChatStore = create<ChatStore>()(
           },
         } as any
       },
-      version: 9,
+      version: 10,
       migrate: (persisted: any) => {
-        if (!persisted?.state) return persisted
-        const raw = persisted.state.settings || {}
-        if (Array.isArray(persisted.state.messages) && !raw.sessions) raw.messages = persisted.state.messages
+        if (!persisted || typeof persisted !== 'object') return persisted
+        const state = persisted.state && typeof persisted.state === 'object' ? persisted.state : persisted
+        const raw = state.settings || {}
+        captureLegacyCredentials(raw.apiProfiles)
+        if (Array.isArray(state.messages) && !raw.sessions) raw.messages = state.messages
         const settings = normalizeSettings(raw)
-        persisted.state.settings = settings
-        persisted.state.messages = getActiveSession(settings)?.messages || []
+        state.settings = settings
+        state.messages = getActiveSession(settings)?.messages || []
         return persisted
       },
       onRehydrateStorage: () => (state) => {
@@ -1136,7 +1207,16 @@ export function extractConfig(s: ChatSettings) {
     promptCaching: s.promptCaching,
     appearance: s.appearance,
     activeProfileId: s.activeProfileId,
-    apiProfiles: s.apiProfiles,
+    apiProfiles: s.apiProfiles.map(profile => ({
+      id: profile.id,
+      name: profile.name,
+      provider: profile.provider,
+      defaultModel: profile.defaultModel,
+      models: profile.models,
+      lastFetchedAt: profile.lastFetchedAt,
+      credentialConfigured: profile.credentialConfigured === true,
+      upstreamOrigin: profile.upstreamOrigin,
+    })),
     starStatus: s.starStatus,
     bookmarks: s.bookmarks,
     summaryTurnSize: s.summaryTurnSize,

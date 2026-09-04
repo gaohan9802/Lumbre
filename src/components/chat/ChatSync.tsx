@@ -9,13 +9,19 @@
  * when a conversation has hundreds or thousands of messages.
  */
 import { useEffect, useRef } from 'react'
-import { useChatStore, extractConfig, isBlankSession } from '@/lib/chatStore'
+import {
+  completeLegacyModelCredentialMigration,
+  extractConfig,
+  getPendingLegacyModelCredentials,
+  isBlankSession,
+  useChatStore,
+} from '@/lib/chatStore'
 import { useSyncStatus } from '@/lib/syncStatus'
 import { flushChatOutbox } from '@/lib/chat-outbox'
+import { createCoalescingRunner } from '@/lib/coalescingRunner'
 
 let applyingRemote = false
 let bootstrapped = false
-let inFlight: Promise<void> | null = null
 let pushedSnapshot: Record<string, number> = {}
 let pushedConfigAt = -1
 
@@ -49,6 +55,35 @@ function applyRemote(data: any) {
   } finally {
     applyingRemote = false
   }
+}
+
+async function syncModelCredentialStatus() {
+  const pending = getPendingLegacyModelCredentials()
+  if (pending.length) {
+    const migrated = await syncFetch('/api/model-profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profiles: pending }),
+    })
+    if (!migrated.ok) throw new Error(`模型凭据迁移失败 (${migrated.status})`)
+    completeLegacyModelCredentialMigration(pending.map(profile => profile.id))
+  }
+
+  const response = await syncFetch('/api/model-profiles')
+  if (!response.ok) throw new Error(`模型渠道状态读取失败 (${response.status})`)
+  const data = await response.json()
+  const statuses = new Map((Array.isArray(data?.profiles) ? data.profiles : []).map((item: any) => [item.id, item]))
+  const state = useChatStore.getState()
+  let changed = false
+  const apiProfiles = state.settings.apiProfiles.map(profile => {
+    const status: any = statuses.get(profile.id)
+    const nextConfigured = !!status?.configured
+    const nextOrigin = typeof status?.upstreamOrigin === 'string' ? status.upstreamOrigin : undefined
+    if (profile.credentialConfigured === nextConfigured && profile.upstreamOrigin === nextOrigin) return profile
+    changed = true
+    return { ...profile, credentialConfigured: nextConfigured, upstreamOrigin: nextOrigin }
+  })
+  if (changed) state.setSettings({ apiProfiles })
 }
 
 async function fetchSessionBatch(ids: string[]) {
@@ -87,6 +122,10 @@ async function pullIncremental() {
   const manifest: ManifestItem[] = Array.isArray(data.sessions) ? data.sessions : []
 
   applyRemote({ sessions: [], tombstones: data.tombstones || {}, config: data.config, configUpdatedAt: data.configUpdatedAt })
+  // Apply the remote config before recording credential status locally. The
+  // status update bumps configUpdatedAt; doing it first would make a newer
+  // server config look stale on the very first upgraded load.
+  await syncModelCredentialStatus()
 
   // Materialize lightweight manifest stubs so the session drawer is complete
   // without downloading every conversation body.
@@ -176,21 +215,17 @@ async function syncCycle() {
   pushedConfigAt = Number(data.configUpdatedAt) || pushedConfigAt
 }
 
-export function syncChatNow() {
-  if (inFlight) return inFlight
-  inFlight = syncCycle()
-    .then(() => {
-      if (navigator.onLine) useSyncStatus.getState().setSyncStatus({ phase: 'idle', lastSyncedAt: Date.now(), error: '' })
+export const syncChatNow = createCoalescingRunner(async () => {
+  try {
+    await syncCycle()
+    if (navigator.onLine) useSyncStatus.getState().setSyncStatus({ phase: 'idle', lastSyncedAt: Date.now(), error: '' })
+  } catch (err: any) {
+    useSyncStatus.getState().setSyncStatus({
+      phase: navigator.onLine ? 'error' : 'offline',
+      error: navigator.onLine ? (err?.name === 'AbortError' ? '同步超时' : err?.message || '同步失败') : '当前离线',
     })
-    .catch((err: any) => {
-      useSyncStatus.getState().setSyncStatus({
-        phase: navigator.onLine ? 'error' : 'offline',
-        error: navigator.onLine ? (err?.name === 'AbortError' ? '同步超时' : err?.message || '同步失败') : '当前离线',
-      })
-    })
-    .finally(() => { inFlight = null })
-  return inFlight
-}
+  }
+})
 
 export function ChatSync() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)

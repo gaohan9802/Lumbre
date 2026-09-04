@@ -21,12 +21,6 @@ interface Props {
   onClose: () => void
 }
 
-function maskKey(key: string) {
-  if (!key) return '未填写'
-  if (key.length <= 10) return '••••••'
-  return `…${key.slice(-4)}`
-}
-
 export function ModelDialog({ open, onClose }: Props) {
   const { theme } = useTheme()
   const isNight = theme === 'night'
@@ -50,6 +44,7 @@ export function ModelDialog({ open, onClose }: Props) {
   const [editPriceKey, setEditPriceKey] = useState<string | null>(null) // `${profileId}:${modelId}`
   const [expandedProfile, setExpandedProfile] = useState<string | null>(null)
   const [manualModel, setManualModel] = useState('')
+  const [credentialDrafts, setCredentialDrafts] = useState<Record<string, { baseUrl: string; apiKey: string }>>({})
 
   // add form
   const [newName, setNewName] = useState('')
@@ -76,22 +71,73 @@ export function ModelDialog({ open, onClose }: Props) {
     return isFinite(n) ? n : undefined
   }
 
-  const createApi = () => {
+  const createApi = async () => {
     const fallbackModel = newProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-4o'
     const modelId = newModel.trim() || fallbackModel
-    addApiProfile({
-      name: newName.trim() || (newProvider === 'anthropic' ? 'Anthropic' : 'New API'),
-      provider: newProvider,
-      baseUrl: (newBaseUrl.trim() || (newProvider === 'anthropic' ? DEFAULT_ANTHROPIC_BASE : DEFAULT_OPENAI_BASE)).replace(/\/$/, ''),
-      apiKey: newApiKey.trim(),
-      defaultModel: modelId,
-      models: [{
-        id: modelId, name: modelId, enabled: true,
-        inputPrice: numOrUndef(newInPrice), outputPrice: numOrUndef(newOutPrice), cachePrice: numOrUndef(newCachePrice),
-      }],
+    const id = crypto.randomUUID()
+    setFetchingId(id)
+    try {
+      const response = await fetch('/api/model-profiles', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, provider: newProvider, baseUrl: newBaseUrl, apiKey: newApiKey }),
+      })
+      const saved = await response.json()
+      if (!response.ok) throw new Error(saved.error || '保存模型渠道失败')
+      addApiProfile({
+        id,
+        name: newName.trim() || (newProvider === 'anthropic' ? 'Anthropic' : 'New API'),
+        provider: newProvider,
+        defaultModel: modelId,
+        credentialConfigured: true,
+        upstreamOrigin: new URL(newBaseUrl.trim() || (newProvider === 'anthropic' ? DEFAULT_ANTHROPIC_BASE : DEFAULT_OPENAI_BASE)).origin,
+        models: [{
+          id: modelId, name: modelId, enabled: true,
+          inputPrice: numOrUndef(newInPrice), outputPrice: numOrUndef(newOutPrice), cachePrice: numOrUndef(newCachePrice),
+        }],
+      })
+      setNewName(''); setNewApiKey(''); setNewModel(''); setNewInPrice(''); setNewOutPrice(''); setNewCachePrice('')
+      setAddOpen(false)
+    } catch (error: any) {
+      setFetchStatus(prev => ({ ...prev, new: { ok: false, text: error?.message || '保存失败' } }))
+    } finally {
+      setFetchingId(null)
+    }
+  }
+
+  const saveCredential = async (profileId: string) => {
+    const profile = settings.apiProfiles.find(item => item.id === profileId)
+    const draft = credentialDrafts[profileId]
+    if (!profile || !draft?.baseUrl.trim() || !draft?.apiKey.trim()) {
+      setFetchStatus(prev => ({ ...prev, [profileId]: { ok: false, text: '请输入新的 Base URL 和 API Key' } }))
+      return
+    }
+    setFetchingId(profileId)
+    try {
+      const response = await fetch('/api/model-profiles', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: profile.id, provider: profile.provider, baseUrl: draft.baseUrl, apiKey: draft.apiKey }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || '保存失败')
+      updateApiProfile(profile.id, { credentialConfigured: true, upstreamOrigin: new URL(draft.baseUrl).origin })
+      setCredentialDrafts(prev => ({ ...prev, [profileId]: { baseUrl: '', apiKey: '' } }))
+      setFetchStatus(prev => ({ ...prev, [profileId]: { ok: true, text: '✓ 凭据已安全保存到服务器' } }))
+    } catch (error: any) {
+      setFetchStatus(prev => ({ ...prev, [profileId]: { ok: false, text: error?.message || '保存失败' } }))
+    } finally { setFetchingId(null) }
+  }
+
+  const removeProfile = async (profileId: string) => {
+    if (!confirm(`删除 API「${settings.apiProfiles.find(item => item.id === profileId)?.name || profileId}」？`)) return
+    const response = await fetch('/api/model-profiles', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: profileId }),
     })
-    setNewName(''); setNewApiKey(''); setNewModel(''); setNewInPrice(''); setNewOutPrice(''); setNewCachePrice('')
-    setAddOpen(false)
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      setFetchStatus(prev => ({ ...prev, [profileId]: { ok: false, text: data.error || '删除失败' } }))
+      return
+    }
+    deleteApiProfile(profileId)
   }
 
   const fetchModels = async (providerId: string) => {
@@ -100,7 +146,7 @@ export function ModelDialog({ open, onClose }: Props) {
     setFetchingId(providerId)
     setFetchStatus((prev) => { const next = { ...prev }; delete next[providerId]; return next })
     try {
-      const data = await chat.models({ provider: p.provider, baseUrl: p.baseUrl, apiKey: p.apiKey })
+      const data = await chat.models(p.id)
       if (data.error) throw new Error(data.error)
       const rawModels = data.models || []
       if (rawModels.length === 0) throw new Error('API 返回了空模型列表。检查 Base URL 和 API Key 是否正确。')
@@ -148,10 +194,10 @@ export function ModelDialog({ open, onClose }: Props) {
                         <div className="text-sm font-medium truncate">
                           {p.name}{isActiveProfile && <span className="ml-2 text-xs opacity-60">· 在用</span>}
                         </div>
-                        <div className="text-xs opacity-40 truncate mt-0.5">{p.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'} · {maskKey(p.apiKey)} · {p.models.filter((m) => m.enabled).length} 模型</div>
+                        <div className="text-xs opacity-40 truncate mt-0.5">{p.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'} · {p.credentialConfigured ? `服务器已配置${p.upstreamOrigin ? ` (${p.upstreamOrigin})` : ''}` : '未配置凭据'} · {p.models.filter((m) => m.enabled).length} 模型</div>
                       </div>
                       <button
-                        onClick={() => { if (confirm(`删除 API「${p.name}」？`)) deleteApiProfile(p.id) }}
+                        onClick={() => void removeProfile(p.id)}
                         className={`text-xs px-3 py-1.5 rounded-lg border flex-shrink-0 ${isNight ? 'border-night-border hover:bg-night-surface' : 'border-gray-300 hover:bg-gray-100'}`}
                       >删除</button>
                     </div>
@@ -224,8 +270,9 @@ export function ModelDialog({ open, onClose }: Props) {
                         </div>
                         <div className="grid grid-cols-1 gap-2">
                           <input className={inputClass} value={p.name} placeholder="名称" onChange={(e) => updateApiProfile(p.id, { name: e.target.value })} />
-                          <input className={inputClass} value={p.baseUrl} placeholder="Base URL" onChange={(e) => updateApiProfile(p.id, { baseUrl: e.target.value })} />
-                          <input className={`${inputClass} font-mono`} type="password" value={p.apiKey} placeholder="API Key" onChange={(e) => updateApiProfile(p.id, { apiKey: e.target.value })} />
+                          <input className={inputClass} value={credentialDrafts[p.id]?.baseUrl || ''} placeholder={p.upstreamOrigin ? `新 Base URL（当前 ${p.upstreamOrigin}）` : 'Base URL'} onChange={(e) => setCredentialDrafts(prev => ({ ...prev, [p.id]: { baseUrl: e.target.value, apiKey: prev[p.id]?.apiKey || '' } }))} />
+                          <input className={`${inputClass} font-mono`} type="password" value={credentialDrafts[p.id]?.apiKey || ''} placeholder={p.credentialConfigured ? '输入新 API Key 以替换服务器凭据' : 'API Key'} onChange={(e) => setCredentialDrafts(prev => ({ ...prev, [p.id]: { baseUrl: prev[p.id]?.baseUrl || '', apiKey: e.target.value } }))} />
+                          <button disabled={fetchingId === p.id} onClick={() => void saveCredential(p.id)} className={`px-3 py-2 rounded-lg text-xs ${isNight ? 'bg-night-surface' : 'bg-gray-100'} disabled:opacity-50`}>保存凭据到服务器</button>
                         </div>
                         <div className="flex gap-2">
                           <input
@@ -297,14 +344,15 @@ export function ModelDialog({ open, onClose }: Props) {
                       </div>
                     </div>
                     <div className="flex gap-2 pb-2">
-                      <button onClick={createApi} className={`px-4 py-2.5 rounded-lg text-sm ${isNight ? 'bg-night-amber text-night-bg' : 'bg-day-text text-white'}`}>保存</button>
+                      <button disabled={fetchingId !== null || !newApiKey.trim()} onClick={() => void createApi()} className={`px-4 py-2.5 rounded-lg text-sm ${isNight ? 'bg-night-amber text-night-bg' : 'bg-day-text text-white'} disabled:opacity-50`}>保存</button>
                       <button onClick={() => setAddOpen(false)} className="px-4 py-2.5 rounded-lg text-sm opacity-60 hover:opacity-100">取消</button>
                     </div>
                   </div>
                 )}
               </div>
 
-              <p className="text-[10px] opacity-40 pb-2">点击 API 卡片标题可展开编辑 / 启停模型 / 拉取模型列表。配置会自动同步到所有设备。</p>
+              {fetchStatus.new && <p className="text-xs text-day-error dark:text-night-error">{fetchStatus.new.text}</p>}
+              <p className="text-[10px] opacity-40 pb-2">模型与显示配置会跨设备同步；API Key 和上游地址只保存在服务器，不会进入浏览器存储或同步数据。</p>
             </div>
           </motion.div>
         </>

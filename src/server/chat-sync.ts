@@ -11,6 +11,7 @@
  * reads and full-file rewrites for ordinary sync cycles.
  */
 import { madridDateKey } from '@/lib/madrid-time'
+import { sanitizeChatConfig } from './chat/credentials'
 import {
   archiveLegacyChatState,
   chatManifestExists,
@@ -72,7 +73,7 @@ function normalizeManifest(raw: any): SyncManifest {
         }))
       : [],
     tombstones: raw?.tombstones && typeof raw.tombstones === 'object' ? raw.tombstones : {},
-    config: raw?.config,
+    config: sanitizeChatConfig(raw?.config),
     configUpdatedAt: Number(raw?.configUpdatedAt) || 0,
   }
 }
@@ -215,7 +216,7 @@ function ensureInitialized() {
         version: 2,
         sessions: sessions.map(s => ({ id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0 })),
         tombstones,
-        config: legacy.config,
+        config: sanitizeChatConfig(legacy.config),
         configUpdatedAt: Number(legacy.configUpdatedAt) || 0,
       })
       // Keep the old archive as an untouched migration backup.
@@ -230,9 +231,10 @@ export function loadSyncManifest(): SyncManifest {
   const mtimeMs = chatManifestMtime()
   if (mtimeMs !== null) {
     if (manifestCache?.mtimeMs === mtimeMs) return manifestCache.value
-    const raw = readChatManifest()
+    const raw = readChatManifest() as any
     const value = normalizeManifest(raw)
-    manifestCache = { mtimeMs, value }
+    if (JSON.stringify(raw?.config) !== JSON.stringify(value.config)) saveManifest(value)
+    else manifestCache = { mtimeMs, value }
     return value
   }
   return normalizeManifest(readChatManifest() || emptyManifest())
@@ -350,7 +352,7 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
     version: 2,
     sessions: Array.from(meta.values()),
     tombstones,
-    config: useClientConfig ? client.config : current.config,
+    config: sanitizeChatConfig(useClientConfig ? client.config : current.config),
     configUpdatedAt: useClientConfig ? clientConfigAt : currentConfigAt,
   }
   saveManifest(manifest)
@@ -434,7 +436,7 @@ export function mergeSyncState(a: SyncState, b: SyncState): SyncState {
   for (const s of b.sessions || []) if (s?.id) map.set(s.id, map.has(s.id) ? pickSession(map.get(s.id), s) : s)
   const sessions = Array.from(map.values()).filter(s => !isBlankSession(s) && !((tombstones[s.id] || 0) >= (Number(s.updatedAt) || 0)))
   const useB = (Number(b.configUpdatedAt) || 0) > (Number(a.configUpdatedAt) || 0) && b.config
-  return { sessions, tombstones, config: useB ? b.config : a.config, configUpdatedAt: useB ? b.configUpdatedAt : a.configUpdatedAt }
+  return { sessions, tombstones, config: sanitizeChatConfig(useB ? b.config : a.config), configUpdatedAt: useB ? b.configUpdatedAt : a.configUpdatedAt }
 }
 
 export function saveSyncState(state: SyncState) {

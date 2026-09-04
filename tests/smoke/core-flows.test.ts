@@ -92,15 +92,19 @@ test('two-device chat sync merges messages and retry is idempotent', async () =>
 
 test('chat supports non-streaming and streaming response contracts without real network', async () => {
   const { NextRequest } = await import('next/server')
+  const { upsertModelCredential } = await import('../../src/server/data/repositories/model-credentials')
+  upsertModelCredential({ id: 'fixture-profile', provider: 'anthropic', apiKey: 'fixture-key', baseUrl: 'https://1.1.1.1' })
   const chat = await import('../../src/app/api/chat/route')
   const oldFetch = globalThis.fetch
   let upstreamTools: string[] = []
+  let upstreamSawImage = false
   globalThis.fetch = async (input, init) => {
     const url = String(input)
     if (url.startsWith('https://wttr.in/')) return new Response('', { status: 503 })
     if (url.includes('/v1/messages')) {
       const requestBody = JSON.parse(String(init?.body || '{}'))
       upstreamTools = (requestBody.tools || []).map((tool: any) => tool.name)
+      upstreamSawImage ||= requestBody.messages.some((message: any) => Array.isArray(message.content) && message.content.some((block: any) => block.type === 'image'))
       return new Response(JSON.stringify({
         content: [{ type: 'text', text: 'fixture reply' }],
         stop_reason: 'end_turn',
@@ -114,8 +118,8 @@ test('chat supports non-streaming and streaming response contracts without real 
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-lumbre-internal': 'stage-zero-internal-secret' },
       body: JSON.stringify({
-        messages: [{ role: 'user', content: 'fixture hello' }],
-        api_profile: { provider: 'anthropic', apiKey: 'fixture-key', baseUrl: 'https://mock.invalid' },
+        messages: [{ role: 'user', content: 'fixture hello', images: ['data:image/gif;base64,R0lGODlhAQABAAAAACw='] }],
+        api_profile: { profileId: 'fixture-profile' },
         tools_enabled: true,
         stream: false,
         _wake: true,
@@ -125,6 +129,7 @@ test('chat supports non-streaming and streaming response contracts without real 
     assert.equal(response.status, 200)
     assert.equal((await response.json()).content, 'fixture reply')
     assert.equal(upstreamTools.includes('read_diary'), true)
+    assert.equal(upstreamSawImage, true)
     for (const blocked of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'galatea']) {
       assert.equal(upstreamTools.includes(blocked), false)
     }
@@ -172,7 +177,7 @@ test('chat supports non-streaming and streaming response contracts without real 
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         messages: [{ role: 'user', content: 'fixture red tool' }],
-        api_profile: { provider: 'anthropic', apiKey: 'fixture-key', baseUrl: 'https://mock.invalid' },
+        api_profile: { profileId: 'fixture-profile' },
         tools_enabled: true,
         stream: false,
         session_id: 'fixture-confirmation-session',
@@ -202,7 +207,7 @@ test('chat supports non-streaming and streaming response contracts without real 
       headers: { 'content-type': 'application/json', 'x-lumbre-internal': 'stage-zero-internal-secret' },
       body: JSON.stringify({
         messages: [{ role: 'user', content: 'fixture hello' }],
-        api_profile: { provider: 'anthropic', apiKey: 'fixture-key', baseUrl: 'https://mock.invalid' },
+        api_profile: { profileId: 'fixture-profile' },
         tools_enabled: false,
         stream: true,
         _wake: true,
