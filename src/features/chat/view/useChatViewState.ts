@@ -31,7 +31,9 @@ export function useChatViewState() {
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
   const [summaryGenerating, setSummaryGenerating] = useState(false)
+  const [summaryError, setSummaryError] = useState('')
   const summaryGeneratingRef = useRef(false)
+  const summaryAttemptRef = useRef('')
   const [stageSummaryGenerating, setStageSummaryGenerating] = useState(false)
   const stageAttemptRef = useRef('')
   const [timelineOpen, setTimelineOpen] = useState(false)
@@ -69,7 +71,7 @@ export function useChatViewState() {
     expandedThinking, setExpandedThinking, expandedTools, setExpandedTools,
     settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
     bookmarkDialogOpen, setBookmarkDialogOpen, summaryDialogOpen, setSummaryDialogOpen,
-    summaryGenerating, setSummaryGenerating, summaryGeneratingRef,
+    summaryGenerating, setSummaryGenerating, summaryError, setSummaryError, summaryGeneratingRef, summaryAttemptRef,
     stageSummaryGenerating, setStageSummaryGenerating, stageAttemptRef,
     timelineOpen, setTimelineOpen, timelineCurrent, setTimelineCurrent, timelineNow, setTimelineNow,
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,

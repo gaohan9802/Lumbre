@@ -121,3 +121,33 @@ test('usage estimates retain provider-specific prices', async () => {
   })
   assert.equal(cost, 4.25)
 })
+
+test('a paged long-session tail can still produce manual and automatic summary work', async () => {
+  const { selectLoadedSessionSummarySegment } = await import('../../src/lib/chat-summary')
+  const messages = Array.from({ length: 6 }, (_, index) => ({
+    id: `tail-${index}`,
+    role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
+    content: `tail message ${index}`,
+    timestamp: index + 100,
+  }))
+  const session: any = {
+    id: 'long-chat', title: 'long chat', pinned: false, createdAt: 1, updatedAt: 105,
+    messages, messageCount: 500, partial: true, summaries: [],
+    summaryConfig: { autoEnabled: true, turnSize: 3, injectCount: 3, modeVersion: 2 },
+  }
+
+  assert.deepEqual(
+    selectLoadedSessionSummarySegment(session, 20, false).map(message => message.id),
+    messages.map(message => message.id),
+  )
+  assert.deepEqual(
+    selectLoadedSessionSummarySegment(session, 20, true).map(message => message.id),
+    messages.map(message => message.id),
+  )
+})
+
+test('removed coupon navigation state migrates back to chat while the popup remains independent', async () => {
+  const { migrateAppState } = await import('../../src/lib/store')
+  const persisted = { state: { activeTab: 'coupons' } }
+  assert.equal(migrateAppState(persisted).state.activeTab, 'chat')
+})

@@ -37,7 +37,6 @@ const DreamsView = dynamic(() => import('@/components/dreams/DreamsView').then(m
 
 const views = {
   chat: ChatView,
-  coupons: () => null,
   timeline: TimelineHubView,
   diary: DiaryView,
   notes: NotesView,
@@ -49,9 +48,6 @@ const views = {
 
 export default function Home() {
   const { activeTab, setActiveTab } = useApp()
-  useEffect(() => {
-    if (activeTab === 'coupons') setActiveTab('chat')
-  }, [activeTab, setActiveTab])
   useEffect(() => {
     const onNavigate = () => setActiveTab('chat')
     window.addEventListener('lumbre-navigate-chat', onNavigate)

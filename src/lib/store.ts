@@ -2,9 +2,19 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-type Tab = 'chat' | 'coupons' | 'timeline' | 'diary' | 'notes' | 'todo' | 'photos' | 'memory' | 'dreams'
+type Tab = 'chat' | 'timeline' | 'diary' | 'notes' | 'todo' | 'photos' | 'memory' | 'dreams'
 
-const VALID_TABS: Tab[] = ['chat', 'coupons', 'timeline', 'diary', 'notes', 'todo', 'photos', 'memory', 'dreams']
+const VALID_TABS: Tab[] = ['chat', 'timeline', 'diary', 'notes', 'todo', 'photos', 'memory', 'dreams']
+
+export function migrateAppState(persisted: any) {
+  if (persisted?.state?.activeTab === 'tesis') persisted.state.activeTab = 'timeline'
+  if (persisted?.state?.activeTab === 'wishlist') persisted.state.activeTab = 'dreams'
+  if (persisted?.state?.activeTab === 'coupons') persisted.state.activeTab = 'chat'
+  if (persisted?.state && !VALID_TABS.includes(persisted.state.activeTab)) {
+    persisted.state.activeTab = 'chat'
+  }
+  return persisted
+}
 
 interface AppStore {
   // Navigation
@@ -36,15 +46,8 @@ export const useApp = create<AppStore>()(
     }),
     {
       name: 'starfire-app',
-      version: 8,
-      migrate: (persisted: any) => {
-        if (persisted?.state?.activeTab === 'tesis') persisted.state.activeTab = 'timeline'
-        if (persisted?.state?.activeTab === 'wishlist') persisted.state.activeTab = 'dreams'
-        if (persisted?.state && !VALID_TABS.includes(persisted.state.activeTab)) {
-          persisted.state.activeTab = 'chat'
-        }
-        return persisted
-      },
+      version: 9,
+      migrate: migrateAppState,
     }
   )
 )

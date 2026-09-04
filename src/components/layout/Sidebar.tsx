@@ -9,7 +9,6 @@ import { madridCalendarDayDiff, madridDateKey } from '@/lib/madrid-time'
 
 const tabs = [
   { id: 'chat' as const, label: '星星', image: '/directory/chat.jpg' },
-  { id: 'coupons' as const, label: '券包', image: '/directory/todo.jpg' },
   { id: 'timeline' as const, label: 'Timeline', image: '/directory/timeline.jpg' },
   { id: 'diary' as const, label: '日记', image: '/directory/diary.jpg' },
   { id: 'notes' as const, label: '小纸条', image: '/directory/notes.jpg' },
@@ -107,8 +106,7 @@ export function Sidebar() {
                     whileHover={reduceMotion ? undefined : { y: -2, scale: 1.006 }}
                     whileTap={{ scale: 0.975, y: 1 }}
                     onClick={() => {
-                      if (tab.id === 'coupons') { setActiveTab('chat'); window.dispatchEvent(new CustomEvent('lumbre-open-coupons')) }
-                      else setActiveTab(tab.id)
+                      setActiveTab(tab.id)
                       window.setTimeout(() => setSidebarOpen(false), 90)
                     }}
                     aria-label={tab.label}

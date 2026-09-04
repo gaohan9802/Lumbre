@@ -8,8 +8,8 @@ import { ChatSession, ChatSummary, useChatStore } from '@/lib/chatStore'
 import { formatMadrid } from '@/lib/madrid-time'
 import { pendingSummaryRounds, messagesAfterSummaryAnchor } from '@/lib/chat-summary'
 
-export function SummaryDialog({ open, onClose, session, generating, stageGenerating, onGenerate, onRegenerate }: {
-  open: boolean; onClose: () => void; session?: ChatSession; generating?: boolean; stageGenerating?: boolean; onGenerate: () => void; onRegenerate: (summary: ChatSummary) => void
+export function SummaryDialog({ open, onClose, session, generating, stageGenerating, error, onGenerate, onRegenerate }: {
+  open: boolean; onClose: () => void; session?: ChatSession; generating?: boolean; stageGenerating?: boolean; error?: string; onGenerate: () => void; onRegenerate: (summary: ChatSummary) => void
 }) {
   const { theme } = useTheme(); const n = theme === 'night'
   const { settings, deleteSummary, updateSummary, updateSessionSummaryConfig } = useChatStore()
@@ -37,6 +37,7 @@ export function SummaryDialog({ open, onClose, session, generating, stageGenerat
           <div><p className="text-xs font-medium mb-2">带入对话的普通摘要：{config.injectCount}张</p><input type="range" min={3} max={10} step={1} value={config.injectCount} onChange={e=>patch({injectCount:Number(e.target.value)})} className="w-full"/><div className="flex justify-between text-[9px] opacity-40"><span>3</span><span>10</span></div></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><label className="text-[10px] opacity-60">摘要 API<select value={selectedProfile?.id||''} onChange={e=>{const p=settings.apiProfiles.find(x=>x.id===e.target.value);patch({profileId:p?.id,modelId:p?.defaultModel||p?.models[0]?.id})}} className={`mt-1 w-full rounded-xl border px-3 py-2 text-xs bg-transparent ${n?'border-night-border':'border-day-border'}`}>{settings.apiProfiles.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label className="text-[10px] opacity-60">摘要模型<select value={selectedModel} onChange={e=>patch({profileId:selectedProfile?.id,modelId:e.target.value})} className={`mt-1 w-full rounded-xl border px-3 py-2 text-xs bg-transparent ${n?'border-night-border':'border-day-border'}`}>{(selectedProfile?.models||[]).map(m=><option key={m.id} value={m.id}>{m.name||m.id}</option>)}</select></label></div>
           <div className={`rounded-xl px-3 py-2 text-[11px] ${n?'bg-night-bg/60':'bg-[#fff6f3]'}`}>尚未整理：{pending}轮 · 自动阈值{config.turnSize}轮{stageGenerating?' · 正在压缩阶段摘要…':''}</div>
+          {error && <div role="alert" className={`rounded-xl px-3 py-2 text-[11px] leading-5 ${n?'bg-red-950/30 text-red-200':'bg-red-50 text-red-600'}`}>{error}</div>}
           <button onClick={onGenerate} disabled={generating||pending<1} className={`w-full py-2.5 rounded-xl text-xs flex justify-center gap-2 disabled:opacity-40 ${n?'bg-night-amber text-night-bg':'bg-day-pink text-white'}`}>{generating?<Loader2 size={14} className="animate-spin"/>:<FileText size={14}/>}整理当前新增对话</button>
         </div>
 

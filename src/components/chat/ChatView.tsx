@@ -23,7 +23,7 @@ import { TimelineTimerModal } from '@/components/timeline/TimelineTimerModal'
 import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
-import { buildSummaryRounds, messagesAfterSummaryAnchor, selectSummarySegment } from '@/lib/chat-summary'
+import { buildSummaryRounds, selectLoadedSessionSummarySegment } from '@/lib/chat-summary'
 import { chatApi } from '@/features/chat/api/client'
 import { readChatEventStream } from '@/features/chat/api/event-stream'
 import { timeline as timelineApi } from '@/lib/api'
@@ -139,7 +139,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     expandedThinking, setExpandedThinking, expandedTools, setExpandedTools,
     settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
     bookmarkDialogOpen, setBookmarkDialogOpen, summaryDialogOpen, setSummaryDialogOpen,
-    summaryGenerating, setSummaryGenerating, summaryGeneratingRef,
+    summaryGenerating, setSummaryGenerating, summaryError, setSummaryError, summaryGeneratingRef, summaryAttemptRef,
     stageSummaryGenerating, setStageSummaryGenerating, stageAttemptRef,
     timelineOpen, setTimelineOpen, timelineCurrent, setTimelineCurrent, timelineNow, setTimelineNow,
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
@@ -431,18 +431,24 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const generateNextSummary = useCallback(async (silent = false, autoOnly = false) => {
     const state = useChatStore.getState()
     const session = state.settings.sessions.find(item => item.id === state.settings.activeSessionId)
-    if (!session || session.partial || summaryGeneratingRef.current) return false
+    if (!session || summaryGeneratingRef.current) return false
     const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
     if (autoOnly && !config.autoEnabled) return false
-    const pendingMessages = messagesAfterSummaryAnchor(session.messages, config.anchorMessageId, config.anchorTimestamp)
-    const segment = selectSummarySegment(pendingMessages, session.summaries || [], config.turnSize, autoOnly)
-    if (!segment.length) return false
+    const segment = selectLoadedSessionSummarySegment(session, state.settings.summaryTurnSize, autoOnly)
+    if (!segment.length) {
+      if (!silent) setSummaryError('暂时没有可整理的完整对话轮次。')
+      return false
+    }
     const chosen = buildSummaryRounds(segment)
+    const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
+    const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
+    const attemptKey = `${profile?.id || ''}:${model}:${segment.map(message => message.id).join(',')}`
+    if (autoOnly && summaryAttemptRef.current === attemptKey) return false
+    if (autoOnly) summaryAttemptRef.current = attemptKey
+    setSummaryError('')
     summaryGeneratingRef.current = true
     setSummaryGenerating(true)
     try {
-      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
-      const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
       const data = await chatApi.summarize({
         messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model,
         api_profile: profile ? { profileId: profile.id, modelId: model } : undefined,
@@ -453,10 +459,15 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         messageCount: segment.length, sourceMessageIds: segment.map(message => message.id), coveredUntilMessageId: segment[segment.length-1].id,
         eventSummary: String(data.content).trim() })
       void syncChatNow()
+      summaryAttemptRef.current = ''
       return true
-    } catch (err) { if (!silent) console.error('summary generation failed', err); return false }
+    } catch (err: any) {
+      setSummaryError(err?.message || '摘要生成失败，请检查摘要 API 和模型设置。')
+      if (!silent) console.error('summary generation failed', err)
+      return false
+    }
     finally { summaryGeneratingRef.current = false; setSummaryGenerating(false) }
-  }, [addSummary])
+  }, [addSummary, setSummaryError, setSummaryGenerating, summaryAttemptRef, summaryGeneratingRef])
 
   const regenerateSummary = useCallback(async (summary: ChatSummary) => {
     const state = useChatStore.getState()
@@ -465,6 +476,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     const ids = new Set(summary.sourceMessageIds || [])
     const segment = ids.size ? session.messages.filter(message => ids.has(message.id)) : session.messages.filter(message => message.timestamp >= summary.startAt && message.timestamp <= summary.endAt)
     if (!segment.length) return false
+    setSummaryError('')
     setSummaryGenerating(true)
     try {
       const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
@@ -475,14 +487,18 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       updateSummary(session.id, summary.id, { eventSummary: String(data.content).trim(), needsCorrection: false, editedAt: Date.now() })
       void syncChatNow()
       return true
-    } catch (err) { console.error('summary regeneration failed', err); return false }
+    } catch (err: any) {
+      setSummaryError(err?.message || '摘要重新生成失败。')
+      console.error('summary regeneration failed', err)
+      return false
+    }
     finally { setSummaryGenerating(false) }
-  }, [summaryGenerating, updateSummary])
+  }, [setSummaryError, setSummaryGenerating, summaryGenerating, updateSummary])
 
   const generateStageSummary = useCallback(async () => {
     const state = useChatStore.getState()
     const session = state.settings.sessions.find(item => item.id === state.settings.activeSessionId)
-    if (!session || session.partial || stageSummaryGenerating || session.summaryConfig?.autoEnabled === false) return false
+    if (!session || stageSummaryGenerating || session.summaryConfig?.autoEnabled === false) return false
     const covered = new Set((session.stageSummaries || []).flatMap(item => item.sourceSummaryIds))
     const available = [...(session.summaries || [])].sort((a, b) => a.startAt - b.startAt).filter(item => !covered.has(item.id))
     if (available.length < 10) return false
@@ -490,6 +506,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     const attemptKey = batch.map(item => item.id).join(',')
     if (stageAttemptRef.current === attemptKey) return false
     stageAttemptRef.current = attemptKey
+    setSummaryError('')
     setStageSummaryGenerating(true)
     try {
       const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
@@ -502,22 +519,26 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       void syncChatNow()
       stageAttemptRef.current = ''
       return true
-    } catch (err) { console.error('stage summary generation failed', err); return false }
+    } catch (err: any) {
+      setSummaryError(err?.message || '阶段摘要生成失败。')
+      console.error('stage summary generation failed', err)
+      return false
+    }
     finally { setStageSummaryGenerating(false) }
-  }, [stageSummaryGenerating, addStageSummary])
+  }, [addStageSummary, setStageSummaryGenerating, setSummaryError, stageSummaryGenerating])
 
   useEffect(() => {
-    if (!activeSession || activeSession.partial || stageSummaryGenerating || activeSession.summaryConfig?.autoEnabled === false) return
+    if (!activeSession || stageSummaryGenerating || activeSession.summaryConfig?.autoEnabled === false) return
     const timer = setTimeout(() => { void generateStageSummary() }, 1200)
     return () => clearTimeout(timer)
-  }, [activeSession?.id, activeSession?.summaries?.length, activeSession?.stageSummaries?.length, activeSession?.partial, activeSession?.summaryConfig?.autoEnabled, stageSummaryGenerating, generateStageSummary])
+  }, [activeSession?.id, activeSession?.summaries?.length, activeSession?.stageSummaries?.length, activeSession?.summaryConfig?.autoEnabled, stageSummaryGenerating, generateStageSummary])
 
   useEffect(() => {
     const config = activeSession?.summaryConfig
-    if (!activeSession || activeSession.partial || !config?.autoEnabled || summaryGenerating) return
+    if (!activeSession || !config?.autoEnabled || summaryGenerating) return
     const timer = setTimeout(() => { void generateNextSummary(true, true) }, 650)
     return () => clearTimeout(timer)
-  }, [activeSession?.id, activeSession?.updatedAt, activeSession?.partial, activeSession?.summaryConfig?.autoEnabled,
+  }, [activeSession?.id, activeSession?.updatedAt, activeSession?.summaryConfig?.autoEnabled,
     activeSession?.summaryConfig?.turnSize, activeSession?.summaryConfig?.anchorMessageId, summaryGenerating, generateNextSummary])
 
   const durableAppend = useCallback(async (session: any, message: ChatMessage) => {
@@ -1335,7 +1356,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           {/* settings / model / bookmark dialogs */}
           <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={async (msg, fn) => { const ok = await ask(msg); if (ok) fn() }} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
-          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} onGenerate={() => { void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} />
+          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
           <TimelineTimerModal open={timelineOpen} current={timelineCurrent} onClose={() => setTimelineOpen(false)} onChanged={() => refreshTimelineCurrent()} />
         </>,

@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSummary } from './chatStore'
+import type { ChatMessage, ChatSession, ChatSummary } from './chatStore'
 
 export interface SummaryRound {
   messages: ChatMessage[]
@@ -74,4 +74,23 @@ export function selectSummarySegment(
   if (!group.length || (autoOnly && group.length < turnSize)) return []
   const chosen = group.slice(0, Math.min(turnSize, group.length))
   return messages.slice(chosen[0].startIndex, chosen[chosen.length - 1].endIndex + 1)
+}
+
+/**
+ * Select work from the messages currently materialized in the browser. A long
+ * session may be marked `partial` because older history is paged out; that must
+ * not block summarizing complete, newly loaded rounds in its current tail.
+ */
+export function selectLoadedSessionSummarySegment(
+  session: ChatSession,
+  fallbackTurnSize: number,
+  autoOnly: boolean,
+): ChatMessage[] {
+  const config = session.summaryConfig || { turnSize: fallbackTurnSize }
+  const pendingMessages = messagesAfterSummaryAnchor(
+    session.messages,
+    session.summaryConfig?.anchorMessageId,
+    session.summaryConfig?.anchorTimestamp,
+  )
+  return selectSummarySegment(pendingMessages, session.summaries || [], config.turnSize, autoOnly)
 }
