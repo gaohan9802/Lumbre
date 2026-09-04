@@ -682,4 +682,3 @@ export const LIFE_TOOL_DEFINITIONS = [
     }
   }
 ] satisfies ToolDef[]
-

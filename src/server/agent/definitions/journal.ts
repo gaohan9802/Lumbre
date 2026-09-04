@@ -398,4 +398,3 @@ export const JOURNAL_TOOL_DEFINITIONS = [
     }
   }
 ] satisfies ToolDef[]
-

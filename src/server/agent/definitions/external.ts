@@ -182,4 +182,3 @@ export const EXTERNAL_TOOL_DEFINITIONS = [
     }
   }
 ] satisfies ToolDef[]
-
