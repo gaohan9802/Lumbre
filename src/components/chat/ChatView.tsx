@@ -351,6 +351,33 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
     const controller = new AbortController()
     abortControllerRef.current = controller
+    const resolveConfirmation = async (event: any) => {
+      let payload: any
+      try { payload = JSON.parse(event.result || '') } catch { return event }
+      if (payload?.code !== 'CONFIRMATION_REQUIRED' || !payload.confirmation?.token) return event
+      const label = payload.confirmation.label || event.name || '危险操作'
+      const target = payload.confirmation.target ? `\n目标：${payload.confirmation.target}` : ''
+      const approve = window.confirm(`星星请求执行：${label}${target}\n\n是否允许这一次操作？`)
+      try {
+        const response = await fetch('/api/tools/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: payload.confirmation.token,
+            approve,
+            session_id: activeSession?.id,
+          }),
+        })
+        const resolved = await response.json()
+        return {
+          ...event,
+          result: resolved.result || (approve ? '确认执行失败' : '用户已取消操作'),
+          error: !resolved.ok,
+        }
+      } catch {
+        return { ...event, result: approve ? '确认请求失败，操作未执行' : '用户已取消操作', error: approve }
+      }
+    }
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -364,6 +391,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           prompt_caching: settings.promptCaching,
           temperature: settings.temperature,
           stream: true,
+          session_id: activeSession?.id,
           bookmark_injections: bookmarkInjections,
           api_profile: profile ? {
             provider: profile.provider, baseUrl: profile.baseUrl,
@@ -417,8 +445,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               appendContentBlock({ type: 'thinking', content: evt.content })
               scheduleStreamPaint()
             } else if (evt.type === 'tool_call') {
-              toolCalls.push(evt)
-              appendContentBlock({ type: 'tool_call', name: evt.name, input: evt.input, result: evt.result })
+              const resolved = await resolveConfirmation(evt)
+              toolCalls.push(resolved)
+              appendContentBlock({ type: 'tool_call', name: resolved.name, input: resolved.input, result: resolved.result })
             } else if (evt.type === 'error') {
               const errorText = (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
               fullText += errorText

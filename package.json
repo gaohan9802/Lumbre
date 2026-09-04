@@ -8,9 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts",
-    "test:smoke": "tsx --test tests/smoke/**/*.test.ts",
-    "test:safety": "tsx --test tests/safety/**/*.test.ts"
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "test:smoke": "node --import tsx --test tests/smoke/**/*.test.ts",
+    "test:safety": "node --import tsx --test tests/safety/**/*.test.ts"
   },
   "dependencies": {
     "@types/web-push": "^3.6.4",

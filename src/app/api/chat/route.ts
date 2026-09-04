@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ALL_TOOLS, executeTool, ToolCallResult, ToolDef, FETCH_TOOL_NAMES } from '@/server/tools'
-import { isTrustedInternalRequest, toolsForUnattendedWake } from '@/server/safety-baseline'
+import { FETCH_TOOL_NAMES, toolsForContext, type ToolDef } from '@/server/agent/registry'
+import { executeToolBatch, type ToolCallResult } from '@/server/agent/executor'
+import { createToolContext } from '@/server/agent/context'
+import { isTrustedInternalRequest } from '@/server/safety-baseline'
 import { reportActivity } from '@/server/autowake'
 import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
@@ -25,6 +27,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【闹钟】wake_me(给自己定下一次醒来的时间)
 【世界书】read_bookmarks(查看) · add_bookmark(新增) · edit_bookmark(编辑)；你没有删除权限，删除只由小火在前端完成
 你可以主动使用这些工具。比如对话中想记住什么就 hold，想回忆就 breath，想写日记就 write_diary。不需要等人要求你用。
+删除、发信、回复邮件、修改密码等红色操作会由系统弹出确认；不要声称已经完成，只有小火明确点击允许后才会真正执行。
 当你不确定某件事时，先 breath 搜索记忆。
 想知道小火在哪、天气怎样，直接调 get_weather 或 get_location。
 小火在聊天里发的照片会作为图片直接出现在你眼前（多模态），你能直接看到；想回看照片墙先用 read_foto 浏览文字，看到想细看的再 view_foto(id) 加载那一张的画面。
@@ -35,6 +38,23 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 语气自然温柔，像真正的伴侣。不要列工具清单给用户看，直接用就好。`
 
 type Provider = 'anthropic' | 'openai-compatible'
+
+const MAX_CHAT_TOOL_CALLS = 20
+const MAX_WAKE_TOOL_CALLS = 5
+
+function requestToolLimit(requested: number | undefined, unattendedWake: boolean): number {
+  const hardLimit = unattendedWake ? MAX_WAKE_TOOL_CALLS : MAX_CHAT_TOOL_CALLS
+  if (!Number.isFinite(requested)) return hardLimit
+  return Math.max(0, Math.min(hardLimit, Math.floor(Number(requested))))
+}
+
+function requestToolContext(unattendedWake: boolean, sessionId?: string) {
+  return createToolContext({
+    actorId: unattendedWake ? 'lumbre-autowake-service' : 'lumbre-authenticated-user',
+    sessionId,
+    source: unattendedWake ? 'unattended-wake' : 'chat',
+  })
+}
 
 function errorDetails(err: any) {
   const cause = err?.cause
@@ -202,6 +222,16 @@ function localizeToolTimes(result: string): string {
 }
 
 function toolResultText(name: string, result: string): string {
+  if (result.includes('"code":"CONFIRMATION_REQUIRED"')) {
+    try {
+      const payload = JSON.parse(result)
+      if (payload?.confirmation) {
+        const { token: _token, ...safeConfirmation } = payload.confirmation
+        return JSON.stringify({ ...payload, confirmation: safeConfirmation }).slice(0, 2000)
+      }
+    } catch { /* fall through to bounded plain text */ }
+    return result.replace(/"token":"[^"]+",?/, '').slice(0, 2000)
+  }
   if (FETCH_TOOL_NAMES.has(name)) return result.slice(0, 6000)
   // Email reads are structured JSON / full message text. The generic 300-char
   // summarizer used to cut JSON mid-object and made successful Gmail calls look
@@ -421,6 +451,7 @@ export async function POST(req: NextRequest) {
       stream = false,
       bookmark_injections,
       max_tool_calls,
+      session_id,
       _wake,
     } = await req.json()
 
@@ -456,7 +487,7 @@ export async function POST(req: NextRequest) {
       messages, system, model, apiKey, baseUrl, thinking_budget,
       prompt_caching, tools_enabled, temperature,
       bookmark_injections: bookmark_injections || '',
-      max_tool_calls, origin, unattendedWake,
+      max_tool_calls, origin, unattendedWake, sessionId: typeof session_id === 'string' ? session_id : undefined,
     }
 
     if (stream) {
@@ -562,12 +593,12 @@ async function proxyAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
   tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
-  unattendedWake?: boolean;
+  unattendedWake?: boolean; sessionId?: string;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
     thinking_budget, prompt_caching, tools_enabled, temperature,
-    bookmark_injections, max_tool_calls, origin, unattendedWake,
+    bookmark_injections, max_tool_calls, origin, unattendedWake, sessionId,
   } = params
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
@@ -608,8 +639,10 @@ async function proxyAnthropic(params: {
 
     body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
     // Anthropic ignores temperature when thinking is enabled
-    const availableTools = unattendedWake ? toolsForUnattendedWake(ALL_TOOLS) : ALL_TOOLS
-    if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = availableTools
+    const context = requestToolContext(!!unattendedWake, sessionId)
+    const callLimit = requestToolLimit(max_tool_calls, !!unattendedWake)
+    const availableTools = toolsForContext(context)
+    if (tools_enabled && allToolCalls.length < callLimit) body.tools = availableTools
 
     const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, { provider: 'anthropic', model })
     if (!res.ok) {
@@ -648,13 +681,17 @@ async function proxyAnthropic(params: {
       })
     }
 
-    const toolResults = await Promise.all(
-      toolUses.map(async (tu) => {
-        const result = localizeToolTimes(await executeTool(tu.name, tu.input, { unattendedWake }))
-        allToolCalls.push({ name: tu.name, input: tu.input, result: toolResultForHistory(tu.name, result) })
-        return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result, origin) }
-      }),
+    const executions = await executeToolBatch(
+      toolUses.map(tu => ({ name: tu.name, input: tu.input })),
+      context,
+      callLimit - allToolCalls.length,
     )
+    const toolResults = executions.map((execution, index) => {
+      const tu = toolUses[index]
+      const result = localizeToolTimes(execution.result)
+      allToolCalls.push({ name: tu.name, input: tu.input, result: toolResultForHistory(tu.name, result), error: execution.error })
+      return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result, origin) }
+    })
 
     loopMessages.push({ role: 'assistant', content: data.content })
     loopMessages.push({ role: 'user', content: toolResults })
@@ -675,13 +712,13 @@ async function streamAnthropic(params: {
   messages: any[]; system?: string; model: string; apiKey: string;
   baseUrl: string; thinking_budget?: number; prompt_caching?: boolean;
   tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
-  unattendedWake?: boolean;
+  unattendedWake?: boolean; sessionId?: string;
   send: (type: string, data: any) => void;
 }) {
   const {
     messages, system, model, apiKey, baseUrl,
     thinking_budget, prompt_caching, tools_enabled, temperature,
-    bookmark_injections, send, max_tool_calls, origin, unattendedWake,
+    bookmark_injections, send, max_tool_calls, origin, unattendedWake, sessionId,
   } = params
 
   const effectiveSystem = (system && system.trim()) ? system : DEFAULT_SYSTEM_PROMPT
@@ -719,8 +756,10 @@ async function streamAnthropic(params: {
     }
 
     body.thinking = { type: 'enabled', budget_tokens: effectiveBudget }
-    const availableTools = unattendedWake ? toolsForUnattendedWake(ALL_TOOLS) : ALL_TOOLS
-    if (tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls)) body.tools = availableTools
+    const context = requestToolContext(!!unattendedWake, sessionId)
+    const callLimit = requestToolLimit(max_tool_calls, !!unattendedWake)
+    const availableTools = toolsForContext(context)
+    if (tools_enabled && allToolCalls.length < callLimit) body.tools = availableTools
 
     const res = await fetchUpstreamWithRetry(url, { method: 'POST', headers, body: JSON.stringify(body) }, { provider: 'anthropic', model })
     if (!res.ok) {
@@ -808,15 +847,19 @@ async function streamAnthropic(params: {
     if (iterText.trim()) contentBlocks.push({ type: 'text', text: iterText })
     for (const tu of toolUses) contentBlocks.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input })
 
-    const toolResults = await Promise.all(
-      toolUses.map(async (tu) => {
-        const result = localizeToolTimes(await executeTool(tu.name, tu.input, { unattendedWake }))
-        const histResult = toolResultForHistory(tu.name, result)
-        allToolCalls.push({ name: tu.name, input: tu.input, result: histResult })
-        send('tool_call', { name: tu.name, input: tu.input, result: histResult })
-        return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result, origin) }
-      }),
+    const executions = await executeToolBatch(
+      toolUses.map(tu => ({ name: tu.name, input: tu.input })),
+      context,
+      callLimit - allToolCalls.length,
     )
+    const toolResults = executions.map((execution, index) => {
+      const tu = toolUses[index]
+      const result = localizeToolTimes(execution.result)
+      const histResult = toolResultForHistory(tu.name, result)
+      allToolCalls.push({ name: tu.name, input: tu.input, result: histResult, error: execution.error })
+      send('tool_call', { name: tu.name, input: tu.input, result: histResult })
+      return { type: 'tool_result' as const, tool_use_id: tu.id, content: anthropicToolResultContent(tu.name, result, origin) }
+    })
 
     loopMessages.push({ role: 'assistant', content: contentBlocks })
     loopMessages.push({ role: 'user', content: toolResults })
@@ -838,9 +881,9 @@ async function proxyOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
   tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
-  unattendedWake?: boolean;
+  unattendedWake?: boolean; sessionId?: string;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, max_tool_calls, origin, unattendedWake } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, max_tool_calls, origin, unattendedWake, sessionId } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
@@ -861,7 +904,9 @@ async function proxyOpenAI(params: {
     }),
   ]
 
-  const openaiTools = toolsToOpenAI(unattendedWake ? toolsForUnattendedWake(ALL_TOOLS) : ALL_TOOLS)
+  const context = requestToolContext(!!unattendedWake, sessionId)
+  const callLimit = requestToolLimit(max_tool_calls, !!unattendedWake)
+  const openaiTools = toolsToOpenAI(toolsForContext(context))
   const url = `${normalizeOpenAIBase(baseUrl)}/chat/completions`
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -885,7 +930,7 @@ async function proxyOpenAI(params: {
       messages: loopMessages,
       // max_tokens must exceed reasoning budget (relay maps it to thinking.budget_tokens)
       max_tokens: Math.max(16000, effectiveBudget + 4096),
-      ...(tools_enabled && (!max_tool_calls || allToolCalls.length < max_tool_calls) ? { tools: openaiTools } : {}),
+      ...(tools_enabled && allToolCalls.length < callLimit ? { tools: openaiTools } : {}),
     }
     if (typeof temperature === 'number') body.temperature = temperature
     body.reasoning = { max_tokens: effectiveBudget }
@@ -927,18 +972,20 @@ async function proxyOpenAI(params: {
       })
     }
 
+    const parsedCalls = toolCalls.map((tc: any) => {
+      let input: Record<string, any> = {}
+      try { input = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
+      return { id: tc.id, name: tc.function?.name || '', input }
+    })
+    const executions = await executeToolBatch(parsedCalls, context, callLimit - allToolCalls.length)
     const photoPartsP: any[] = []
-    const toolResults = await Promise.all(
-      toolCalls.map(async (tc: any) => {
-        const fnName = tc.function?.name || ''
-        let fnArgs: Record<string, any> = {}
-        try { fnArgs = JSON.parse(tc.function?.arguments || '{}') } catch { /* empty */ }
-        const result = localizeToolTimes(await executeTool(fnName, fnArgs, { unattendedWake }))
-        allToolCalls.push({ name: fnName, input: fnArgs, result: toolResultForHistory(fnName, result) })
-        photoPartsP.push(...openaiPhotoFollowup(fnName, result, origin))
-        return { role: 'tool' as const, tool_call_id: tc.id, content: toolResultText(fnName, result) }
-      }),
-    )
+    const toolResults = executions.map((execution, index) => {
+      const call = parsedCalls[index]
+      const result = localizeToolTimes(execution.result)
+      allToolCalls.push({ name: call.name, input: call.input, result: toolResultForHistory(call.name, result), error: execution.error })
+      photoPartsP.push(...openaiPhotoFollowup(call.name, result, origin))
+      return { role: 'tool' as const, tool_call_id: call.id, content: toolResultText(call.name, result) }
+    })
 
     loopMessages.push(msg)
     loopMessages.push(...toolResults)
@@ -962,10 +1009,10 @@ async function streamOpenAI(params: {
   messages: any[]; system?: string; model: string;
   apiKey: string; baseUrl: string; thinking_budget?: number;
   tools_enabled?: boolean; temperature?: number; bookmark_injections?: string; max_tool_calls?: number; origin?: string;
-  unattendedWake?: boolean;
+  unattendedWake?: boolean; sessionId?: string;
   send: (type: string, data: any) => void;
 }) {
-  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, send, max_tool_calls, origin, unattendedWake } = params
+  const { messages, system, model, apiKey, baseUrl, thinking_budget, tools_enabled = true, temperature, bookmark_injections, send, max_tool_calls, origin, unattendedWake, sessionId } = params
 
   const effectiveSystem = (system?.trim()) ? system : DEFAULT_SYSTEM_PROMPT
   const fullSystem = effectiveSystem + (bookmark_injections ? '\n\n' + bookmark_injections : '')
@@ -984,7 +1031,9 @@ async function streamOpenAI(params: {
     }),
   ]
 
-  const openaiTools = toolsToOpenAI(unattendedWake ? toolsForUnattendedWake(ALL_TOOLS) : ALL_TOOLS)
+  const context = requestToolContext(!!unattendedWake, sessionId)
+  const callLimit = requestToolLimit(max_tool_calls, !!unattendedWake)
+  const openaiTools = toolsToOpenAI(toolsForContext(context))
   const url = `${normalizeOpenAIBase(baseUrl)}/chat/completions`
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -1009,7 +1058,7 @@ async function streamOpenAI(params: {
       max_tokens: Math.max(16000, effectiveStreamBudget + 4096),
       stream: true,
       stream_options: { include_usage: true },
-      ...(tools_enabled && (!max_tool_calls || toolCallCount < max_tool_calls) ? { tools: openaiTools } : {}),
+      ...(tools_enabled && toolCallCount < callLimit ? { tools: openaiTools } : {}),
     }
     if (typeof temperature === 'number') body.temperature = temperature
     body.reasoning = { max_tokens: effectiveStreamBudget }
@@ -1101,18 +1150,21 @@ async function streamOpenAI(params: {
     const assistantMsg: any = { role: 'assistant', content: iterText || null, tool_calls: toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.args } })) }
     loopMessages.push(assistantMsg)
 
+    const parsedCalls = toolCalls.map(tc => {
+      let input: Record<string, any> = {}
+      try { input = JSON.parse(tc.args || '{}') } catch { /* empty */ }
+      return { id: tc.id, name: tc.name, input }
+    })
+    const executions = await executeToolBatch(parsedCalls, context, callLimit - toolCallCount)
     const photoPartsSO: any[] = []
-    const results = await Promise.all(
-      toolCalls.map(async (tc) => {
-        let fnArgs: Record<string, any> = {}
-        try { fnArgs = JSON.parse(tc.args || '{}') } catch { /* empty */ }
-        const result = localizeToolTimes(await executeTool(tc.name, fnArgs, { unattendedWake }))
-        toolCallCount++
-        send('tool_call', { name: tc.name, input: fnArgs, result: toolResultForHistory(tc.name, result) })
-        photoPartsSO.push(...openaiPhotoFollowup(tc.name, result, origin))
-        return { role: 'tool' as const, tool_call_id: tc.id, content: toolResultText(tc.name, result) }
-      }),
-    )
+    const results = executions.map((execution, index) => {
+      const call = parsedCalls[index]
+      const result = localizeToolTimes(execution.result)
+      toolCallCount++
+      send('tool_call', { name: call.name, input: call.input, result: toolResultForHistory(call.name, result) })
+      photoPartsSO.push(...openaiPhotoFollowup(call.name, result, origin))
+      return { role: 'tool' as const, tool_call_id: call.id, content: toolResultText(call.name, result) }
+    })
     loopMessages.push(...results)
     if (photoPartsSO.length) {
       loopMessages.push({ role: 'user', content: [{ type: 'text', text: '这是照片墙上照片的画面内容：' }, ...photoPartsSO] })

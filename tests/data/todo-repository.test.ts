@@ -35,12 +35,13 @@ test('todo repository rejects unsafe and impossible client-supplied paths', () =
 
 test('a corrupt todo file does not break reads and is backed up before recovery', () => {
   const directory = path.join(root, 'todos')
-  const file = path.join(directory, '2026-09-04.json')
+  const fixtureDate = '2042-09-04'
+  const file = path.join(directory, `${fixtureDate}.json`)
   mkdirSync(directory, { recursive: true })
   writeFileSync(file, '{broken todo json', 'utf8')
 
-  assert.deepEqual(todo.getTodos('2026-09-04'), { date: '2026-09-04', items: [], rolledForwardAt: undefined })
-  todo.addTodo('recover safely', 'fire', '2026-09-04')
+  assert.deepEqual(todo.getTodos(fixtureDate), { date: fixtureDate, items: [], rolledForwardAt: undefined })
+  todo.addTodo('recover safely', 'fire', fixtureDate)
   assert.equal(readFileSync(`${file}.bak`, 'utf8'), '{broken todo json')
-  assert.equal(todo.getTodos('2026-09-04').items[0]?.text, 'recover safely')
+  assert.equal(todo.getTodos(fixtureDate).items[0]?.text, 'recover safely')
 })

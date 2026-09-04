@@ -136,11 +136,55 @@ test('chat supports non-streaming and streaming response contracts without real 
     })
     assert.equal((await chat.POST(forgedRequest)).status, 403)
 
-    const { executeTool } = await import('../../src/server/tools')
+    const { executeTool } = await import('../../src/server/agent/executor')
+    const { createToolContext } = await import('../../src/server/agent/context')
     assert.match(
-      await executeTool('send_email', { to: 'nobody@example.invalid', subject: 'fixture', body: 'fixture' }, { unattendedWake: true }),
+      await executeTool(
+        'send_email',
+        { to: 'nobody@example.invalid', subject: 'fixture', body: 'fixture' },
+        createToolContext({ source: 'unattended-wake', actorId: 'test-wake' }),
+      ),
       /Tool denied/,
     )
+
+    let redToolTurn = 0
+    let redToolRoundTrip = ''
+    globalThis.fetch = async (input, init) => {
+      const url = String(input)
+      if (url.startsWith('https://wttr.in/')) return new Response('', { status: 503 })
+      redToolTurn += 1
+      if (redToolTurn === 1) {
+        return new Response(JSON.stringify({
+          content: [{ type: 'tool_use', id: 'tool-red-1', name: 'delete_note', input: { note_id: 'missing-fixture', author: 'star' } }],
+          stop_reason: 'tool_use',
+          usage: { input_tokens: 2, output_tokens: 1 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      redToolRoundTrip = String(init?.body || '')
+      return new Response(JSON.stringify({
+        content: [{ type: 'text', text: 'waiting for confirmation' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 2, output_tokens: 3 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    const redToolRequest = new NextRequest('http://localhost/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'fixture red tool' }],
+        api_profile: { provider: 'anthropic', apiKey: 'fixture-key', baseUrl: 'https://mock.invalid' },
+        tools_enabled: true,
+        stream: false,
+        session_id: 'fixture-confirmation-session',
+      }),
+    })
+    const redToolResponse = await chat.POST(redToolRequest)
+    const redToolBody = await redToolResponse.json()
+    assert.equal(redToolResponse.status, 200)
+    assert.equal(redToolBody.content, 'waiting for confirmation')
+    assert.match(redToolBody.tool_calls[0].result, /CONFIRMATION_REQUIRED/)
+    assert.match(redToolRoundTrip, /CONFIRMATION_REQUIRED/)
+    assert.doesNotMatch(redToolRoundTrip, /\\"token\\":/)
 
     globalThis.fetch = async (input) => {
       const url = String(input)

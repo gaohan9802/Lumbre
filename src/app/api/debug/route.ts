@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ALL_TOOLS } from '@/server/tools'
+import { ALL_TOOLS } from '@/server/agent/registry'
 import { inspectLegacyChatRaw, inspectLegacyChatSessions, inspectPersistentData } from '@/server/data/diagnostics'
 
 export async function GET(req: NextRequest) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { updateUserContext } from '@/server/tools'
+import { updateUserContext } from '@/server/agent/tools/user-context'
 
 // Server-side proxy: open-meteo (weather, no key) + bigdatacloud (reverse geocode, no key)
 // Also caches the location for AI tools (get_weather, get_location)
