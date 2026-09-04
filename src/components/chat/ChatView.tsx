@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
@@ -19,13 +19,18 @@ import { ChatSettings } from './ChatSettings'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { SummaryDialog } from './SummaryDialog'
-import { TimelineTimerModal, TimelineCurrent } from '@/components/timeline/TimelineTimerModal'
+import { TimelineTimerModal } from '@/components/timeline/TimelineTimerModal'
 import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
 import { buildSummaryRounds, messagesAfterSummaryAnchor, selectSummarySegment } from '@/lib/chat-summary'
-import { loadEarlierChat, syncChatNow } from './ChatSync'
-import { flushChatOutbox, queueChatAppend } from '@/lib/chat-outbox'
+import { chatApi } from '@/features/chat/api/client'
+import { readChatEventStream } from '@/features/chat/api/event-stream'
+import { timeline as timelineApi } from '@/lib/api'
+import { loadEarlierChat, syncChatNow } from '@/features/chat/sync/ChatSync'
+import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
+import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
+import { StreamingReply } from '@/features/chat/components/StreamingReply'
 
 /* ── helpers ────────────────────────────── */
 
@@ -81,15 +86,6 @@ function compressImage(dataUrl: string, maxDim = 1568, quality = 0.85): Promise<
   })
 }
 
-/* ── confirm dialog ─────────────────────── */
-
-function useConfirm() {
-  const [state, setState] = useState<{ msg: string; resolve: (v: boolean) => void } | null>(null)
-  const ask = useCallback((msg: string) => new Promise<boolean>((resolve) => setState({ msg, resolve })), [])
-  const answer = useCallback((v: boolean) => { state?.resolve(v); setState(null) }, [state])
-  return { confirmState: state, ask, answer }
-}
-
 function hexToRgba(hex: string, alpha: number) {
   const raw = hex.replace('#', '').trim()
   if (!/^[0-9a-fA-F]{6}$/.test(raw)) return hex
@@ -137,46 +133,25 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const sessions = getSortedSessions(settings)
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
 
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [streamText, setStreamText] = useState('')
-  const [streamThinking, setStreamThinking] = useState('')
-  const [streamBlocks, setStreamBlocks] = useState<ContentBlock[]>([])
-  const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set())
-  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [modelDialogOpen, setModelDialogOpen] = useState(false)
-  const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
-  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
-  const [summaryGenerating, setSummaryGenerating] = useState(false)
-  const summaryGeneratingRef = useRef(false)
-  const [stageSummaryGenerating, setStageSummaryGenerating] = useState(false)
-  const stageAttemptRef = useRef('')
-  const [timelineOpen, setTimelineOpen] = useState(false)
-  const [timelineCurrent, setTimelineCurrent] = useState<TimelineCurrent | null>(null)
-  const [timelineNow, setTimelineNow] = useState(Date.now())
-  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
-  const [modelPickerOpen, setModelPickerOpen] = useState(false)
-  const [sessionSearch, setSessionSearch] = useState('')
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
-  const [editingTitle, setEditingTitle] = useState('')
-  const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
-  const [editingMsgText, setEditingMsgText] = useState('')
-  const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [modelFilterProvider, setModelFilterProvider] = useState<string | null>(null)
-  const [mounted, setMounted] = useState(false)
-
-  const { confirmState, ask, answer } = useConfirm()
-
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
-  const imgInputRef = useRef<HTMLInputElement>(null)
-  const [uploadingImg, setUploadingImg] = useState(false)
-  const [pendingImages, setPendingImages] = useState<string[]>([])
-  const [pendingShare, setPendingShare] = useState<SharedCard | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const stickBottomRef = useRef(true)
-  const abortControllerRef = useRef<AbortController | null>(null)
+  const {
+    input, setInput, isLoading, setIsLoading,
+    streamText, setStreamText, streamThinking, setStreamThinking, streamBlocks, setStreamBlocks,
+    expandedThinking, setExpandedThinking, expandedTools, setExpandedTools,
+    settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
+    bookmarkDialogOpen, setBookmarkDialogOpen, summaryDialogOpen, setSummaryDialogOpen,
+    summaryGenerating, setSummaryGenerating, summaryGeneratingRef,
+    stageSummaryGenerating, setStageSummaryGenerating, stageAttemptRef,
+    timelineOpen, setTimelineOpen, timelineCurrent, setTimelineCurrent, timelineNow, setTimelineNow,
+    sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
+    sessionSearch, setSessionSearch, editingSessionId, setEditingSessionId,
+    editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
+    copiedId, setCopiedId, modelFilterProvider, setModelFilterProvider, mounted, setMounted,
+    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,
+    visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
+    deleteMenuId, setDeleteMenuId,
+    messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
+    confirmState, ask, answer,
+  } = useChatViewState()
 
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => {
@@ -208,7 +183,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const refreshTimelineCurrent = useCallback(async () => {
-    try { const r = await fetch('/api/timeline', { cache: 'no-store' }); const d = await r.json(); setTimelineCurrent(d.current || null) } catch {}
+    try { const data = await timelineApi.current(); setTimelineCurrent(data.current || null) } catch {}
   }, [])
   useEffect(() => { refreshTimelineCurrent(); const t = setInterval(refreshTimelineCurrent, 30000); return () => clearInterval(t) }, [refreshTimelineCurrent])
   useEffect(() => { const t = setInterval(() => setTimelineNow(Date.now()), 1000); return () => clearInterval(t) }, [])
@@ -216,10 +191,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const timelineElapsedText = `${String(Math.floor(timelineElapsed / 3600)).padStart(2, '0')}:${String(Math.floor((timelineElapsed % 3600) / 60)).padStart(2, '0')}:${String(timelineElapsed % 60).padStart(2, '0')}`
 
   // Lazy-load: only render the most recent messages to keep the window snappy.
-  const PAGE = 50
-  const [visibleCount, setVisibleCount] = useState(PAGE)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  useEffect(() => { setVisibleCount(PAGE) }, [settings.activeSessionId])
+  useEffect(() => { setVisibleCount(CHAT_PAGE_SIZE) }, [settings.activeSessionId, setVisibleCount])
   const hiddenCount = Math.max(0, messages.length - visibleCount)
   const serverHiddenCount = activeSession?.partial
     ? Math.max(0, Number(activeSession.messageCount || 0) - messages.length)
@@ -228,7 +200,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   const handleLoadEarlier = async () => {
     if (hiddenCount > 0) {
-      setVisibleCount((count) => count + PAGE)
+      setVisibleCount((count) => count + CHAT_PAGE_SIZE)
       return
     }
     if (!activeSession?.id || !serverHiddenCount || historyLoading) return
@@ -261,8 +233,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }, [input])
-
-  const [photoPrompt, setPhotoPrompt] = useState<{ dataUrl: string } | null>(null)
 
   const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -359,16 +329,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const target = payload.confirmation.target ? `\n目标：${payload.confirmation.target}` : ''
       const approve = window.confirm(`星星请求执行：${label}${target}\n\n是否允许这一次操作？`)
       try {
-        const response = await fetch('/api/tools/confirm', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token: payload.confirmation.token,
-            approve,
-            session_id: activeSession?.id,
-          }),
+        const resolved = await chatApi.confirmTool({
+          token: payload.confirmation.token,
+          approve,
+          session_id: activeSession?.id,
         })
-        const resolved = await response.json()
         return {
           ...event,
           result: resolved.result || (approve ? '确认执行失败' : '用户已取消操作'),
@@ -379,36 +344,25 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       }
     }
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          messages: sendMessages,
-          system: systemPrompt,
-          model,
-          thinking_budget: settings.thinkingBudget,
-          prompt_caching: settings.promptCaching,
-          temperature: settings.temperature,
-          stream: true,
-          session_id: activeSession?.id,
-          bookmark_injections: bookmarkInjections,
-          api_profile: profile ? {
-            profileId: profile.id, modelId: model,
-          } : undefined,
-        }),
-      })
+      const res = await chatApi.stream({
+        messages: sendMessages,
+        system: systemPrompt,
+        model,
+        thinking_budget: settings.thinkingBudget,
+        prompt_caching: settings.promptCaching,
+        temperature: settings.temperature,
+        stream: true,
+        session_id: activeSession?.id,
+        bookmark_injections: bookmarkInjections,
+        api_profile: profile ? {
+          profileId: profile.id, modelId: model,
+        } : undefined,
+      }, controller.signal)
       if (!res.ok) {
         const errText = await res.text()
         await onDone({ content: `Error ${res.status}: ${errText.slice(0, 200)}`, error: true })
         return
       }
-      if (!res.body) throw new Error('响应没有可读取的流')
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      let streamDone = false
-
       // Keep the exact event order from the tool loop. Text/thinking chunks are
       // merged only while they are adjacent; a tool call closes the current
       // block, so the next model text stays after that tool in the saved reply.
@@ -423,56 +377,26 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         scheduleStreamPaint()
       }
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() || ''
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const raw = line.slice(6)
-          if (raw === '[DONE]') continue
-          try {
-            const evt = JSON.parse(raw)
-            if (evt.type === 'text') {
-              fullText += evt.content
-              appendContentBlock({ type: 'text', content: evt.content })
-              scheduleStreamPaint()
-            } else if (evt.type === 'thinking') {
-              fullThinking += evt.content
-              appendContentBlock({ type: 'thinking', content: evt.content })
-              scheduleStreamPaint()
-            } else if (evt.type === 'tool_call') {
-              const resolved = await resolveConfirmation(evt)
-              toolCalls.push(resolved)
-              appendContentBlock({ type: 'tool_call', name: resolved.name, input: resolved.input, result: resolved.result })
-            } else if (evt.type === 'error') {
-              const errorText = (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
-              fullText += errorText
-              appendContentBlock({ type: 'text', content: errorText })
-              scheduleStreamPaint()
-            } else if (evt.type === 'done') {
-              usage = evt
-              // The server sends `done` before the SSE terminator. Do not wait
-              // for a proxy/socket FIN: mobile Safari can keep reader.read()
-              // pending for minutes after the complete answer already arrived.
-              streamDone = true
-            }
-          } catch { /* ignore parse errors (incl. keepalive comments) */ }
+      for await (const evt of readChatEventStream(res)) {
+        if (evt.type === 'text') {
+          const chunk = String(evt.content || '')
+          fullText += chunk
+          appendContentBlock({ type: 'text', content: chunk })
+        } else if (evt.type === 'thinking') {
+          const chunk = String(evt.content || '')
+          fullThinking += chunk
+          appendContentBlock({ type: 'thinking', content: chunk })
+        } else if (evt.type === 'tool_call') {
+          const resolved = await resolveConfirmation(evt)
+          toolCalls.push(resolved)
+          appendContentBlock({ type: 'tool_call', name: resolved.name, input: resolved.input, result: resolved.result })
+        } else if (evt.type === 'error') {
+          const errorText = (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
+          fullText += errorText
+          appendContentBlock({ type: 'text', content: errorText })
+        } else if (evt.type === 'done') {
+          usage = evt
         }
-        if (streamDone) {
-          try { await reader.cancel() } catch {}
-          break
-        }
-      }
-      // A final partial line is uncommon, but proxies are allowed to split the
-      // last SSE frame. Parse it once so a completed answer is never lost.
-      if (!streamDone && buf.startsWith('data: ')) {
-        try {
-          const evt = JSON.parse(buf.slice(6))
-          if (evt.type === 'done') usage = evt
-        } catch {}
       }
       if (paintTimer) clearTimeout(paintTimer)
       paintStream()
@@ -519,12 +443,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     try {
       const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
       const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
-      const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      const data = await chatApi.summarize({
         messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model,
         api_profile: profile ? { profileId: profile.id, modelId: model } : undefined,
-      }) })
-      const data = await res.json()
-      if (!res.ok || !data.content) throw new Error(data.error || '摘要生成失败')
+      })
+      if (!data.content) throw new Error('摘要生成失败')
       addSummary(session.id, { id: `sum-${Date.now()}-${Math.random().toString(16).slice(2,6)}`, sessionId: session.id,
         startAt: segment[0].timestamp, endAt: segment[segment.length-1].timestamp, createdAt: Date.now(), turnCount: chosen.length,
         messageCount: segment.length, sourceMessageIds: segment.map(message => message.id), coveredUntilMessageId: segment[segment.length-1].id,
@@ -547,9 +470,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
       const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
       const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
-      const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined }) })
-      const data = await res.json()
-      if (!res.ok || !data.content) throw new Error(data.error || '摘要重新生成失败')
+      const data = await chatApi.summarize({ messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined })
+      if (!data.content) throw new Error('摘要重新生成失败')
       updateSummary(session.id, summary.id, { eventSummary: String(data.content).trim(), needsCorrection: false, editedAt: Date.now() })
       void syncChatNow()
       return true
@@ -573,9 +495,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
       const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
       const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
-      const res = await fetch('/api/chat/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'stage', summaries: batch.map(item => ({ content: item.eventSummary })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined }) })
-      const data = await res.json()
-      if (!res.ok || !data.content) throw new Error(data.error || '阶段摘要生成失败')
+      const data = await chatApi.summarize({ kind: 'stage', summaries: batch.map(item => ({ content: item.eventSummary })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined })
+      if (!data.content) throw new Error('阶段摘要生成失败')
       const stage: StageSummary = { id: `stage-${Date.now()}`, sessionId: session.id, createdAt: Date.now(), startAt: batch[0].startAt, endAt: batch[9].endAt, sourceSummaryIds: batch.map(item => item.id), title: String(data.title || '一段共同经历').trim(), content: String(data.content).trim() }
       addStageSummary(session.id, stage)
       void syncChatNow()
@@ -606,15 +527,10 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     } catch {
       // Very old/private Safari modes can disable both IndexedDB and
       // localStorage. In that case, confirm the server write before painting.
-      const response = await fetch('/api/sync', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'append_message', sessionId: session.id, message, sessionMeta: {
-          title: session.title, pinned: session.pinned, createdAt: session.createdAt,
-          summaryConfig: session.summaryConfig,
-        } }),
-        cache: 'no-store',
+      await chatApi.appendMessage(session.id, message, {
+        title: session.title, pinned: session.pinned, createdAt: session.createdAt,
+        summaryConfig: session.summaryConfig,
       })
-      if (!response.ok) throw new Error(`消息保存失败 (${response.status})`)
     }
     void flushChatOutbox().catch(() => {})
   }, [])
@@ -770,7 +686,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   /* ── delete message ───────────────────── */
 
   /* ── delete with options ───────────────── */
-  const [deleteMenuId, setDeleteMenuId] = useState<string | null>(null)
   const handleDeleteMsg = (id: string) => { setDeleteMenuId(deleteMenuId === id ? null : id) }
   const doDeleteVersion = (msg: ChatMessage) => {
     const versions = msg.versions || []
@@ -971,7 +886,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               <div className="flex justify-center pb-2">
                 <button onClick={() => void handleLoadEarlier()} disabled={historyLoading}
                   className={`text-[11px] px-3 py-1.5 rounded-full opacity-60 hover:opacity-100 ${n ? 'bg-night-surface' : 'bg-gray-100'}`}>
-                  {historyLoading ? '加载中…' : `加载更早的 ${Math.min(PAGE, hiddenCount || serverHiddenCount)} 条（还有 ${hiddenCount + serverHiddenCount} 条）`}
+                  {historyLoading ? '加载中…' : `加载更早的 ${Math.min(CHAT_PAGE_SIZE, hiddenCount || serverHiddenCount)} 条（还有 ${hiddenCount + serverHiddenCount} 条）`}
                 </button>
               </div>
             )}
@@ -1218,61 +1133,16 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
             {/* loading / streaming */}
             {isLoading && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                <div className="w-full space-y-1.5">
-                  {/* Render streaming blocks inline */}
-                  {streamBlocks.length > 0 ? streamBlocks.map((block, bi) => {
-                    const isLast = bi === streamBlocks.length - 1
-                    if (block.type === 'thinking' && block.content) {
-                      const bk = `stream-b${bi}`
-                      const isExp = expandedThinking.has(bk)
-                      return (
-                        <div key={bi}>
-                          <button onClick={() => toggleThinking(bk)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                            <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
-                            <span className="truncate">💭星星的小算盘{!isExp && isLast ? <span className="stream-cursor">…</span> : ''}</span>
-                          </button>
-                          {isExp && (
-                            <div className={`text-[13px] p-2 rounded-lg whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                              {block.content}{isLast ? <span className="stream-cursor">…</span> : ''}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    }
-                    if (block.type === 'tool_call' && block.name) {
-                      return (
-                        <div key={bi} className={`w-fit max-w-[87%] mr-auto rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
-                          <div className={`flex items-center gap-2 px-3 py-2 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                            <span className={`${n ? 'text-night-amber' : 'text-day-pink'}`}>🔧</span>
-                            <span>调用工具: <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{block.name}</span></span>
-                            <ChevronDown size={12} className="ml-auto -rotate-90" />
-                          </div>
-                        </div>
-                      )
-                    }
-                    if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
-                      return (
-                        <div key={bi} className={`block w-fit max-w-[87%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aColor ? aiBubbleStyle : {}}>
-                          {block.content}{isLast && <span className="stream-cursor">…</span>}
-                        </div>
-                      )
-                    }
-                    return null
-                  }) : (
-                    /* No blocks yet — show loading dots */
-                    <div className={`w-fit max-w-[87%] mr-auto px-4 py-3 rounded-2xl rounded-bl-md backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aColor ? aiBubbleStyle : {}}>
-                      <div className="flex gap-1">
-                        {[0, 1, 2].map(i => (
-                          <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                            className={`w-1.5 h-1.5 rounded-full ${n ? 'bg-night-amber' : 'bg-day-pink'}`} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
+              <StreamingReply
+                blocks={streamBlocks}
+                expandedThinking={expandedThinking}
+                onToggleThinking={toggleThinking}
+                isNight={n}
+                aiColor={aColor}
+                aiBubbleStyle={aiBubbleStyle}
+              />
             )}
+
             <div ref={messagesEndRef} />
           </div>
 

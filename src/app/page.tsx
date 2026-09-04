@@ -24,7 +24,7 @@ function ViewLoading() {
 // Each module is a separate client chunk. Previously every large view (Chat,
 // Memory, Diary, Photos...) was bundled into the initial page, so opening the
 // PWA had to parse the whole application before showing anything.
-const ChatSync = dynamic(() => import('@/components/chat/ChatSync').then(m => m.ChatSync), { ssr: false })
+const ChatSync = dynamic(() => import('@/features/chat/sync/ChatSync').then(m => m.ChatSync), { ssr: false })
 const ChatView = dynamic(() => import('@/components/chat/ChatRecoveryBoundary').then(m => m.ChatRecoveryBoundary), { loading: ViewLoading, ssr: false })
 const CouponsView = dynamic(() => import('@/components/coupons/CouponsView').then(m => m.CouponsView), { loading: ViewLoading, ssr: false })
 const TimelineHubView = dynamic(() => import('@/components/timeline/TimelineHubView').then(m => m.TimelineHubView), { loading: ViewLoading, ssr: false })

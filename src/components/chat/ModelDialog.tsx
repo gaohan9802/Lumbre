@@ -14,7 +14,7 @@ import {
   DEFAULT_ANTHROPIC_BASE,
   DEFAULT_OPENAI_BASE,
 } from '@/lib/chatStore'
-import { chat } from '@/lib/api'
+import { chatApi } from '@/features/chat/api/client'
 
 interface Props {
   open: boolean
@@ -77,12 +77,7 @@ export function ModelDialog({ open, onClose }: Props) {
     const id = crypto.randomUUID()
     setFetchingId(id)
     try {
-      const response = await fetch('/api/model-profiles', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, provider: newProvider, baseUrl: newBaseUrl, apiKey: newApiKey }),
-      })
-      const saved = await response.json()
-      if (!response.ok) throw new Error(saved.error || '保存模型渠道失败')
+      await chatApi.modelProfiles.save({ id, provider: newProvider, baseUrl: newBaseUrl, apiKey: newApiKey })
       addApiProfile({
         id,
         name: newName.trim() || (newProvider === 'anthropic' ? 'Anthropic' : 'New API'),
@@ -113,12 +108,7 @@ export function ModelDialog({ open, onClose }: Props) {
     }
     setFetchingId(profileId)
     try {
-      const response = await fetch('/api/model-profiles', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: profile.id, provider: profile.provider, baseUrl: draft.baseUrl, apiKey: draft.apiKey }),
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || '保存失败')
+      await chatApi.modelProfiles.save({ id: profile.id, provider: profile.provider, baseUrl: draft.baseUrl, apiKey: draft.apiKey })
       updateApiProfile(profile.id, { credentialConfigured: true, upstreamOrigin: new URL(draft.baseUrl).origin })
       setCredentialDrafts(prev => ({ ...prev, [profileId]: { baseUrl: '', apiKey: '' } }))
       setFetchStatus(prev => ({ ...prev, [profileId]: { ok: true, text: '✓ 凭据已安全保存到服务器' } }))
@@ -129,12 +119,10 @@ export function ModelDialog({ open, onClose }: Props) {
 
   const removeProfile = async (profileId: string) => {
     if (!confirm(`删除 API「${settings.apiProfiles.find(item => item.id === profileId)?.name || profileId}」？`)) return
-    const response = await fetch('/api/model-profiles', {
-      method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: profileId }),
-    })
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}))
-      setFetchStatus(prev => ({ ...prev, [profileId]: { ok: false, text: data.error || '删除失败' } }))
+    try {
+      await chatApi.modelProfiles.remove(profileId)
+    } catch (error: any) {
+      setFetchStatus(prev => ({ ...prev, [profileId]: { ok: false, text: error?.message || '删除失败' } }))
       return
     }
     deleteApiProfile(profileId)
@@ -146,8 +134,7 @@ export function ModelDialog({ open, onClose }: Props) {
     setFetchingId(providerId)
     setFetchStatus((prev) => { const next = { ...prev }; delete next[providerId]; return next })
     try {
-      const data = await chat.models(p.id)
-      if (data.error) throw new Error(data.error)
+      const data = await chatApi.models(p.id)
       const rawModels = data.models || []
       if (rawModels.length === 0) throw new Error('API 返回了空模型列表。检查 Base URL 和 API Key 是否正确。')
       const models = rawModels.map((m: any) => ({
