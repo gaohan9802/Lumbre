@@ -288,6 +288,28 @@ export function isBlankSession(s: any) {
   return (s?.messages?.length || 0) === 0 && !s?.pinned && (!s?.title || s.title === '新的对话')
 }
 
+function summaryCount(session: any) {
+  return (Array.isArray(session?.summaries) ? session.summaries.length : 0)
+    + (Array.isArray(session?.stageSummaries) ? session.stageSummaries.length : 0)
+}
+
+export function mergeSummaryLayer(existing: any, incoming: any) {
+  const existingRevision = Math.max(0, Number(existing?.summaryRevision) || 0)
+  const incomingRevision = Math.max(0, Number(incoming?.summaryRevision) || 0)
+  const source = incomingRevision > existingRevision
+    ? incoming
+    : existingRevision > incomingRevision
+      ? existing
+      : summaryCount(incoming) >= summaryCount(existing) ? incoming : existing
+
+  return {
+    summaries: Array.isArray(source?.summaries) ? source.summaries : [],
+    stageSummaries: Array.isArray(source?.stageSummaries) ? source.stageSummaries : [],
+    summaryConfig: incoming?.summaryConfig || existing?.summaryConfig,
+    summaryRevision: Math.max(existingRevision, incomingRevision),
+  }
+}
+
 // When two sessions share an id, the more recent edit wins so deletions and
 // edits actually propagate (deleting a message lowers the count, so a naive
 // "more messages wins" would resurrect it). The only guard is that a blank
@@ -301,28 +323,29 @@ function pickSession(a: any, b: any) {
     }
     const messages = Array.from(byId.values()).sort((x, y) => (x.timestamp || 0) - (y.timestamp || 0))
     const messageCount = Math.max(Number(a.messageCount) || 0, Number(b.messageCount) || 0, messages.length)
-    return { ...a, ...newer, messages, messageCount, partial: messages.length < messageCount }
+    return { ...a, ...newer, ...mergeSummaryLayer(a, b), messages, messageCount, partial: messages.length < messageCount }
   }
   // A server session always beats a locally persisted tail, even when their
   // timestamps are equal. This is what lets startup paint the latest 100
   // messages immediately and hydrate the other 3900+ in the background.
   if (a?.partial && !b?.partial) {
-    if ((a.updatedAt || 0) <= (b.updatedAt || 0)) return b
+    if ((a.updatedAt || 0) <= (b.updatedAt || 0)) return { ...b, ...mergeSummaryLayer(a, b) }
     const ids = new Set((b.messages || []).map((m: any) => m.id))
     const extras = (a.messages || []).filter((m: any) => !ids.has(m.id))
-    return { ...b, ...a, partial: false, messages: [...(b.messages || []), ...extras], messageCount: (b.messages || []).length + extras.length }
+    return { ...b, ...a, ...mergeSummaryLayer(a, b), partial: false, messages: [...(b.messages || []), ...extras], messageCount: (b.messages || []).length + extras.length }
   }
   if (b?.partial && !a?.partial) {
-    if ((b.updatedAt || 0) <= (a.updatedAt || 0)) return a
+    if ((b.updatedAt || 0) <= (a.updatedAt || 0)) return { ...a, ...mergeSummaryLayer(a, b) }
     const ids = new Set((a.messages || []).map((m: any) => m.id))
     const extras = (b.messages || []).filter((m: any) => !ids.has(m.id))
-    return { ...a, ...b, partial: false, messages: [...(a.messages || []), ...extras], messageCount: (a.messages || []).length + extras.length }
+    return { ...a, ...b, ...mergeSummaryLayer(a, b), partial: false, messages: [...(a.messages || []), ...extras], messageCount: (a.messages || []).length + extras.length }
   }
   const aBlank = isBlankSession(a)
   const bBlank = isBlankSession(b)
   if (aBlank && !bBlank) return b
   if (bBlank && !aBlank) return a
-  return (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
+  const newer = (b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a
+  return { ...newer, ...mergeSummaryLayer(a, b) }
 }
 
 const numOr = (v: any) => (typeof v === 'number' && isFinite(v) ? v : undefined)

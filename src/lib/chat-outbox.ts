@@ -1,6 +1,7 @@
 'use client'
 
 import type { ChatMessage, ChatSession } from '@/lib/chatStore'
+import { createCoalescingRunner } from '@/lib/coalescingRunner'
 
 type SessionMeta = Pick<ChatSession, 'title' | 'pinned' | 'createdAt' | 'summaryConfig'>
 type OutboxRecord = {
@@ -16,7 +17,6 @@ const DB_NAME = 'lumbre-chat-outbox'
 const STORE_NAME = 'messages'
 const FALLBACK_KEY = 'lumbre-chat-outbox-fallback'
 let dbPromise: Promise<IDBDatabase> | null = null
-let flushing: Promise<void> | null = null
 
 function openDb() {
   if (!dbPromise) {
@@ -125,7 +125,7 @@ async function flushOnce() {
   }
 }
 
-export function flushChatOutbox() {
-  if (!flushing) flushing = flushOnce().finally(() => { flushing = null })
-  return flushing
-}
+// A message can be queued after an active flush has already read its snapshot.
+// Coalescing guarantees that such a message triggers one follow-up pass instead
+// of waiting for a later timer, focus event, or page reload.
+export const flushChatOutbox = createCoalescingRunner(flushOnce)

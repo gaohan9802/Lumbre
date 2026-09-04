@@ -18,10 +18,10 @@ import {
 } from '@/lib/chatStore'
 import { useSyncStatus } from '@/lib/syncStatus'
 import { flushChatOutbox } from '@/lib/chat-outbox'
+import { createCoalescingRunner } from '@/lib/coalescingRunner'
 
 let applyingRemote = false
 let bootstrapped = false
-let inFlight: Promise<void> | null = null
 let pushedSnapshot: Record<string, number> = {}
 let pushedConfigAt = -1
 
@@ -215,21 +215,17 @@ async function syncCycle() {
   pushedConfigAt = Number(data.configUpdatedAt) || pushedConfigAt
 }
 
-export function syncChatNow() {
-  if (inFlight) return inFlight
-  inFlight = syncCycle()
-    .then(() => {
-      if (navigator.onLine) useSyncStatus.getState().setSyncStatus({ phase: 'idle', lastSyncedAt: Date.now(), error: '' })
+export const syncChatNow = createCoalescingRunner(async () => {
+  try {
+    await syncCycle()
+    if (navigator.onLine) useSyncStatus.getState().setSyncStatus({ phase: 'idle', lastSyncedAt: Date.now(), error: '' })
+  } catch (err: any) {
+    useSyncStatus.getState().setSyncStatus({
+      phase: navigator.onLine ? 'error' : 'offline',
+      error: navigator.onLine ? (err?.name === 'AbortError' ? '同步超时' : err?.message || '同步失败') : '当前离线',
     })
-    .catch((err: any) => {
-      useSyncStatus.getState().setSyncStatus({
-        phase: navigator.onLine ? 'error' : 'offline',
-        error: navigator.onLine ? (err?.name === 'AbortError' ? '同步超时' : err?.message || '同步失败') : '当前离线',
-      })
-    })
-    .finally(() => { inFlight = null })
-  return inFlight
-}
+  }
+})
 
 export function ChatSync() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
