@@ -17,9 +17,10 @@ interface StreamingReplyProps {
 export function StreamingReply({
   blocks, expandedThinking, onToggleThinking, isNight, aiColor, aiBubbleStyle,
 }: StreamingReplyProps) {
+  const lastTextIndex = blocks.reduce((last, block, index) => block.type === 'text' && block.content?.trim() ? index : last, -1)
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-      <div className="w-full space-y-1.5">
+      <div className="w-full space-y-1">
         {blocks.length > 0 ? blocks.map((block, index) => {
           const isLast = index === blocks.length - 1
           if (block.type === 'thinking' && block.content) {
@@ -52,9 +53,9 @@ export function StreamingReply({
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
             return (
-              <div key={index} className={`block w-fit max-w-[87%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed  ${!aiColor ? (isNight ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aiBubbleStyle}>
+              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className={`block w-fit max-w-[87%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl ${index === lastTextIndex ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${!aiColor ? (isNight ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aiBubbleStyle}>
                 {block.content}{isLast && <span className="stream-cursor">…</span>}
-              </div>
+              </motion.div>
             )
           }
           return null

@@ -16,9 +16,19 @@ test('short reply segments survive every transport boundary without exposing a d
   assert.deepEqual(splitReplyText('一句就够。'), ['一句就够。'])
 })
 
+test('short replies fall back to natural bubbles when the model omits markers', () => {
+  assert.deepEqual(splitReplyText('我在呀。今天过得怎么样？'), ['我在呀。', '今天过得怎么样？'])
+  assert.deepEqual(splitReplyText('我在呀。\n\n今天过得怎么样？'), ['我在呀。', '今天过得怎么样？'])
+  assert.deepEqual(splitReplyText('一。二。三。四。五。'), ['一。', '二。', '三。', '四。五。'])
+  assert.deepEqual(splitReplyText('看看 https://example.com/search?q=你好！可以吗？'), ['看看 https://example.com/search?q=你好！可以吗？'])
+  assert.deepEqual(splitReplyText('还在生成。', true), ['还在生成。'])
+  assert.deepEqual(splitReplyText('还在生成。下一句', true), ['还在生成。', '下一句'])
+})
+
 test('segments preserve code, links and tool/thinking order', () => {
   const code = '```html\n<!--split-->\n```\n[链接](https://example.com/a.b)'
   assert.deepEqual(splitReplyText(code), [code])
+  assert.deepEqual(splitReplyText('说明。\n```ts\nconst value = "一。二。"\n```'), ['说明。\n```ts\nconst value = "一。二。"\n```'])
   const blocks: any[] = [{ type: 'thinking', content: 'keep <!--split-->' }, { type: 'text', content: '一\n<!--split-->\n二' }, { type: 'tool_call', name: 'read', result: '<!--split-->' }, { type: 'text', content: code }]
   assert.deepEqual(segmentReplyBlocks(blocks, 'short').map(b => b.type), ['thinking', 'text', 'text', 'tool_call', 'text'])
   assert.deepEqual(segmentReplyBlocks(blocks, 'long'), blocks)
@@ -41,6 +51,7 @@ test('reply snapshots retain segment blocks and mode; budgets leave room for thi
   assert.ok(replyTokenLimit('short', 8000) > 8000)
   assert.ok(replyTokenLimit('short', 8000) < replyTokenLimit('long', 8000))
   assert.match(replyModePrompt('short'), /1–4/)
+  assert.doesNotMatch(replyModePrompt('short'), /<!--split-->/)
   assert.doesNotMatch(replyModePrompt('long'), /<!--split-->/)
 })
 

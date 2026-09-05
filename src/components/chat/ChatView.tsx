@@ -909,6 +909,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 const vIdx = msg.versionIndex ?? 0
                 const hasVersions = versions.length > 1
                 const isEditing = editingMsgId === msg.id
+                const lastTextBlock = msg.content_blocks?.reduce((last, block, index) => block.type === 'text' && block.content?.trim() ? index : last, -1) ?? -1
 
                 return (
                   <div key={msg.id} className="flex mb-4">
@@ -984,7 +985,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed  ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
+                                <div key={blockKey} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl ${bi === lastTextBlock ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
                                   style={aiBubbleStyle}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
