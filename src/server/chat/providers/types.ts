@@ -25,6 +25,7 @@ export interface GatewayEmitter {
 }
 
 export interface GatewayProviderConfig {
+  replyMode?: 'long' | 'short'
   messages: any[]
   system: string
   bookmarkInjections: string

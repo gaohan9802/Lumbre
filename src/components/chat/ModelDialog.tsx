@@ -339,7 +339,7 @@ export function ModelDialog({ open, onClose }: Props) {
               </div>
 
               {fetchStatus.new && <p className="text-xs text-day-error dark:text-night-error">{fetchStatus.new.text}</p>}
-              <p className="text-[10px] opacity-40 pb-2">模型与显示配置会跨设备同步；API Key 和上游地址只保存在服务器，不会进入浏览器存储或同步数据。</p>
+
             </div>
           </motion.div>
         </>

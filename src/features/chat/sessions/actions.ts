@@ -1,3 +1,4 @@
+import { normalizeReplyMode, type ReplyMode } from '@/lib/chat-reply-mode'
 import { DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import { getActiveSession, sortedSessions } from '@/features/chat/state/accessors'
 import { normalizeSettings } from '@/features/chat/migrations/browser-state'
@@ -8,6 +9,7 @@ type ChatState = { settings: ChatSettings; messages: ChatMessage[] }
 type SetChatState = (updater: (state: ChatState) => Partial<ChatState> | ChatState) => void
 
 export interface SessionActions {
+  setConversationMode: (id: string, mode: ReplyMode) => void
   createSession: () => string
   ensureSession: (id: string, title: string, activate?: boolean) => string
   setActiveSession: (id: string) => void
@@ -25,6 +27,14 @@ const makeId = makeChatId
 
 export function createSessionActions(set: SetChatState): SessionActions {
   return {
+    setConversationMode: (id, mode) => set(state => {
+      const sessions = state.settings.sessions.map(session => session.id === id ? {
+        ...session, conversationMode: normalizeReplyMode(mode),
+        conversationModeUpdatedAt: Math.max(Date.now(), (session.conversationModeUpdatedAt || 0) + 1),
+        updatedAt: Math.max(Date.now(), session.updatedAt + 1),
+      } : session)
+      return { settings: { ...state.settings, sessions } }
+    }),
     createSession: () => {
       const id = makeId('session')
       const now = Date.now()
@@ -89,6 +99,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
             ? summary.sourceMessageIds.every((messageId) => branchMessageIds.has(messageId))
             : branchMessageIds.has(summary.coveredUntilMessageId)).map((summary) => ({ ...summary, id: makeId('sum'), sessionId: newId })),
           stageSummaries: [],
+          conversationMode: active.conversationMode,
+          conversationModeUpdatedAt: now,
           summaryConfig: { ...(active.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount }), modeVersion: 2, anchorMessageId: active.messages[idx]?.id, anchorTimestamp: active.messages[idx]?.timestamp },
           pinned: false,
           createdAt: now,
@@ -171,6 +183,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
           messages: tail,
           summaries: (active.summaries || []).slice(-(active.summaryConfig?.injectCount || settings.summaryInjectCount)).map((summary, index, copied) => ({ ...summary, id: makeId('sum'), sessionId: id, coveredUntilMessageId: index === copied.length - 1 ? (tail[tail.length - 1]?.id || summary.coveredUntilMessageId) : summary.coveredUntilMessageId })),
           stageSummaries: [],
+          conversationMode: active.conversationMode,
+          conversationModeUpdatedAt: now,
           summaryConfig: { ...(active.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount }), modeVersion: 2, anchorMessageId: tail[tail.length - 1]?.id, anchorTimestamp: tail[tail.length - 1]?.timestamp },
           pinned: false,
           createdAt: now,

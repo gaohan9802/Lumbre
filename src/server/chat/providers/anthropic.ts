@@ -1,3 +1,4 @@
+import { replyTokenLimit } from '@/lib/chat-reply-mode'
 import { assertUpstreamOk, fetchUpstreamWithRetry } from '../request'
 import type {
   GatewayEmitter, GatewayProviderAdapter, GatewayProviderConfig,
@@ -98,7 +99,7 @@ class AnthropicSession implements GatewayProviderSession {
   async runTurn(options: { stream: boolean; tools: any[] }): Promise<GatewayTurn> {
     const body: any = {
       model: this.config.model,
-      max_tokens: Math.max(16000, this.budget + 4096),
+      max_tokens: replyTokenLimit(this.config.replyMode, this.budget),
       messages: this.messages.map(message => ({ ...message, content: sanitizeContent(message.content) })),
       system: this.system,
       thinking: { type: 'enabled', budget_tokens: this.budget },

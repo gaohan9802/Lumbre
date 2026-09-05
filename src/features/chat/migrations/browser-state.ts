@@ -1,3 +1,4 @@
+import { normalizeReplyMode } from '@/lib/chat-reply-mode'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import type {
   ApiProfile, ApiProvider, ChatMessage, ChatSettings, ChatSummary, ContentBlock,
@@ -139,6 +140,8 @@ export function normalizeSettings(settings: any): ChatSettings {
   const sessions = Array.isArray(settings?.sessions) && settings.sessions.length
     ? settings.sessions.map((session: any) => ({
         id: session.id || makeId('session'),
+        conversationMode: normalizeReplyMode(session.conversationMode),
+        conversationModeUpdatedAt: Number.isFinite(session.conversationModeUpdatedAt) ? session.conversationModeUpdatedAt : 0,
         title: session.title || '新的对话',
         messages: Array.isArray(session.messages) ? session.messages.map(normalizeMessage).filter(Boolean) as ChatMessage[] : [],
         pinned: !!session.pinned,

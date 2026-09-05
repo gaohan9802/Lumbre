@@ -1,3 +1,4 @@
+import { mergeConversationMode } from '@/lib/chat-reply-mode'
 /**
  * Durable incremental chat storage.
  *
@@ -35,6 +36,8 @@ export interface SessionManifestItem {
   title?: string
   pinned?: boolean
   createdAt?: number
+  conversationMode?: 'long' | 'short'
+  conversationModeUpdatedAt?: number
 }
 
 export interface SyncManifest {
@@ -64,6 +67,7 @@ function normalizeManifest(raw: any): SyncManifest {
     version: 2,
     sessions: Array.isArray(raw?.sessions)
       ? raw.sessions.filter((s: any) => isValidChatSessionId(s?.id)).map((s: any) => ({
+          ...mergeConversationMode(s, null),
           id: String(s.id),
           updatedAt: Number(s.updatedAt) || 0,
           messageCount: Number(s.messageCount) || 0,
@@ -102,7 +106,7 @@ function recoverMissingSummaries(session: any): any {
 }
 
 function isBlankSession(s: any) {
-  return (s?.messages?.length || 0) === 0 && !s?.pinned && (!s?.title || s.title === '新的对话')
+  return (s?.messages?.length || 0) === 0 && !(s?.conversationModeUpdatedAt > 0) && !s?.pinned && (!s?.title || s.title === '新的对话')
 }
 
 function mergeMessagesById(existing: any[], incoming: any[]) {
@@ -152,7 +156,7 @@ function preserveServerWakeMessages(existing: any, incoming: any) {
   return { ...incoming, messages }
 }
 
-function pickSession(a: any, b: any) {
+function pickSessionData(a: any, b: any) {
   const aBlank = isBlankSession(a)
   const bBlank = isBlankSession(b)
   if (aBlank && !bBlank) return b
@@ -174,6 +178,13 @@ function pickSession(a: any, b: any) {
   // durable summary layer merely because that client opened the conversation.
   const incoming = preserveServerWakeMessages(a, b)
   return { ...incoming, ...mergeSummaryLayer(a, incoming) }
+}
+
+function pickSession(a: any, b: any) {
+  const winner = pickSessionData(a, b)
+  const mode = mergeConversationMode(a, b)
+  if ((winner.conversationMode || 'long') === mode.conversationMode && (winner.conversationModeUpdatedAt || 0) === mode.conversationModeUpdatedAt) return winner
+  return { ...winner, ...mode, updatedAt: Math.max(Number(a.updatedAt) || 0, Number(b.updatedAt) || 0) + 1 }
 }
 
 function writeSession(session: any, snapshot = true) {
@@ -214,7 +225,7 @@ function ensureInitialized() {
       for (const session of sessions) writeSession(session, false)
       saveManifest({
         version: 2,
-        sessions: sessions.map(s => ({ id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0 })),
+        sessions: sessions.map(s => ({ ...mergeConversationMode(s, null), id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0 })),
         tombstones,
         config: sanitizeChatConfig(legacy.config),
         configUpdatedAt: Number(legacy.configUpdatedAt) || 0,
@@ -330,6 +341,7 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
     // Do not rewrite an unchanged long session.
     if (!existing || winner !== existing) writeSession(winner)
     meta.set(winner.id, {
+      ...mergeConversationMode(winner, null),
       id: winner.id,
       updatedAt: Number(winner.updatedAt) || 0,
       messageCount: winner.messages?.length || 0,
@@ -379,7 +391,7 @@ export function appendSyncSessionMessage(sessionId: string, message: any): { app
     const next: SyncManifest = {
       ...manifest,
       sessions: manifest.sessions.map(item => item.id === sessionId
-        ? { id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
+        ? { ...mergeConversationMode(updated, null), id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
         : item),
     }
     saveManifest(next)
@@ -405,6 +417,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       summaries: [],
       stageSummaries: [],
       summaryConfig: meta.summaryConfig,
+      ...mergeConversationMode(meta, null),
     }
     const messages = Array.isArray(base.messages) ? base.messages : []
     if (messages.some((item: any) => item?.id === message?.id)) {
@@ -413,6 +426,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
     const now = Math.max(Date.now(), (Number(base.updatedAt) || 0) + 1, Number(message?.timestamp) || 0)
     const updated = {
       ...base,
+      ...mergeConversationMode(base, meta),
       title: meta.title || base.title,
       pinned: meta.pinned !== undefined ? !!meta.pinned : !!base.pinned,
       messages: [...messages, message],
@@ -421,7 +435,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       updatedAt: now,
     }
     writeSession(updated)
-    const item = { id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
+    const item = { ...mergeConversationMode(updated, null), id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
     const next: SyncManifest = { ...manifest, sessions: oldMeta ? manifest.sessions.map(x => x.id === sessionId ? item : x) : [...manifest.sessions, item] }
     saveManifest(next)
     return { appended: true, sessionUpdatedAt: now, messageCount: updated.messages.length }

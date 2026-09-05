@@ -1,3 +1,4 @@
+import { normalizeReplyMode, replyModePrompt, type ReplyMode } from '@/lib/chat-reply-mode'
 import { NextRequest, NextResponse } from 'next/server'
 import { FETCH_TOOL_NAMES, toolsForContext } from '@/server/agent/registry'
 import { executeToolBatch, type ToolCallResult } from '@/server/agent/executor'
@@ -127,6 +128,7 @@ async function volatileContext(userMessage: string): Promise<string> {
 }
 
 type GatewayRunParams = {
+  replyMode?: ReplyMode;
   messages: any[]; system?: string; model: string; apiKey: string; baseUrl: string;
   thinkingBudget?: number; promptCaching?: boolean; toolsEnabled?: boolean;
   temperature?: number; bookmarkInjections?: string; maxToolCalls?: number;
@@ -157,7 +159,8 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
   const lastUser = params.messages.filter((message: any) => message.role === 'user').pop()?.content || ''
   const session = await adapter.createSession({
     messages: params.messages,
-    system: params.system?.trim() || DEFAULT_SYSTEM_PROMPT,
+    system: (params.system?.trim() || DEFAULT_SYSTEM_PROMPT) + (params.replyMode ? `\n\n${replyModePrompt(params.replyMode)}` : ''),
+    replyMode: params.replyMode,
     bookmarkInjections: params.bookmarkInjections || '',
     volatileContext: await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
     model: params.model,
@@ -186,7 +189,8 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
         throw new Error('上游模型返回错误（finish_reason=error），通常是当前模型渠道不支持工具调用。请在设置里换一个支持工具的模型。')
       }
       if (!turn.toolCalls.length) {
-        const done = usagePayload(usage)
+        const done = { ...usagePayload(usage), finish_reason: turn.finishReason }
+        if (['max_tokens', 'length'].includes(turn.finishReason || '')) params.send?.('text', { content: '\n\n（回复达到长度上限，可点击重新生成。）' })
         if (params.stream) { params.send?.('done', done); return }
         return NextResponse.json({ content: turn.text || '(no response from model)', thinking: thinking || undefined, tool_calls: history.length ? history : undefined, ...done })
       }
@@ -243,6 +247,7 @@ export async function handleChatRequest(req: NextRequest) {
     const host = req.headers.get('host')
     const origin = host ? `${req.headers.get('x-forwarded-proto') || 'https'}://${host}` : ''
     const params = {
+      replyMode: unattendedWake ? undefined : normalizeReplyMode(body.reply_mode),
       messages: Array.isArray(body.messages) ? body.messages : [], system: body.system, model,
       apiKey: credential.apiKey, baseUrl: credential.baseUrl,
       thinkingBudget: body.thinking_budget, promptCaching: body.prompt_caching !== false,

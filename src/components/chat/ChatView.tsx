@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
@@ -16,6 +16,8 @@ import {
 import { photos as photosApi } from '@/lib/api'
 import type { SharedCard } from '@/lib/share'
 import { ChatSettings } from './ChatSettings'
+import { normalizeReplyMode, splitReplyText, segmentReplyBlocks, type ReplyMode } from '@/lib/chat-reply-mode'
+import { bubbleAppearance } from '@/features/chat/settings/appearance'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { SummaryDialog } from './SummaryDialog'
@@ -86,28 +88,6 @@ function compressImage(dataUrl: string, maxDim = 1568, quality = 0.85): Promise<
   })
 }
 
-function hexToRgba(hex: string, alpha: number) {
-  const raw = hex.replace('#', '').trim()
-  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return hex
-  const value = parseInt(raw, 16)
-  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${Math.max(0, Math.min(1, alpha))})`
-}
-
-function bubbleTextColor(hex: string, alpha: number, night: boolean) {
-  const raw = hex.replace('#', '').trim()
-  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return night ? '#f3e7dc' : '#4a3428'
-  const bg = night ? [15, 20, 25] : [255, 249, 245]
-  const a = Math.max(0, Math.min(1, alpha))
-  const rgb = [0, 2, 4].map((i, index) => {
-    const channel = parseInt(raw.slice(i, i + 2), 16)
-    return (channel * a + bg[index] * (1 - a)) / 255
-  })
-  const linear = rgb.map((c) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4))
-  const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-  // Light bubbles use a soft deep brown instead of harsh pure black.
-  return luminance > 0.38 ? '#4a3428' : '#f3e7dc'
-}
-
 /* ── main component ─────────────────────── */
 
 export interface ChatViewProps {
@@ -120,13 +100,14 @@ export interface ChatViewProps {
 
 export function ChatView({ embedded = false, contextInjection = '', title, inputPlaceholder = '说点什么...', onTurn }: ChatViewProps = {}) {
   const { setActiveTab } = useApp()
-    const { theme } = useTheme()
+  const { theme } = useTheme()
   const n = theme === 'night'
+  const [moreOpen, setMoreOpen] = useState(false)
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
+    setConversationMode, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
@@ -267,7 +248,14 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   /* ── send ────────────────────────────── */
 
-  const doSend = async (sendMessages: { role: string; content: string; images?: string[] }[], onDone: (data: any) => void | Promise<void>) => {
+  const doSend = async (sendMessages: { role: string; content: string; images?: string[] }[], onResult: (data: any) => void | Promise<void>, requestedMode?: ReplyMode) => {
+    const mode = requestedMode || normalizeReplyMode(activeSession?.conversationMode)
+    const onDone = (data: any) => onResult({
+      ...data,
+      replyMode: mode,
+      content: mode === 'short' ? splitReplyText(String(data.content || ''), !!data.stopped).join('\n\n') : data.content,
+      content_blocks: data.content_blocks ? segmentReplyBlocks(data.content_blocks, mode, !!data.stopped) : undefined,
+    })
     const profile = getActiveProfile(settings)
     const model = settings.model
 
@@ -311,7 +299,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       if (!live) return
       setStreamText(fullText)
       setStreamThinking(fullThinking)
-      setStreamBlocks(contentBlocks.map((item) => ({ ...item })))
+      setStreamBlocks(segmentReplyBlocks(contentBlocks, mode, true))
     }
     // iOS PWA becomes unstable when Markdown and the whole message list are
     // reconciled for every token. Paint at most once per 80ms while preserving
@@ -348,6 +336,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         messages: sendMessages,
         system: systemPrompt,
         model,
+        reply_mode: mode,
         thinking_budget: settings.thinkingBudget,
         prompt_caching: settings.promptCaching,
         temperature: settings.temperature,
@@ -420,7 +409,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           stopped: true,
         })
       } else {
-        await onDone({ content: err?.message || '连接失败了…', error: true })
+        const failure = '\n\n⚠️ ' + (err?.message || '连接失败了…')
+        await onDone({ content: fullText + failure, thinking: fullThinking || undefined, content_blocks: [...contentBlocks, { type: 'text', content: failure }], tool_calls: toolCalls.length ? toolCalls : undefined, error: true, stopped: true })
       }
     } finally {
       if (paintTimer) clearTimeout(paintTimer)
@@ -551,6 +541,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       await chatApi.appendMessage(session.id, message, {
         title: session.title, pinned: session.pinned, createdAt: session.createdAt,
         summaryConfig: session.summaryConfig,
+        conversationMode: session.conversationMode,
+        conversationModeUpdatedAt: session.conversationModeUpdatedAt,
       })
     }
     void flushChatOutbox().catch(() => {})
@@ -564,6 +556,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     const userMsg: ChatMessage = {
       id: now.toString(),
       role: 'user',
+      replyMode: normalizeReplyMode(activeSession?.conversationMode),
       content: input.trim(),
       timestamp: now,
       images: pendingImages.length ? pendingImages : undefined,
@@ -573,7 +566,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
     stickBottomRef.current = true
     await durableAppend(activeSession, userMsg)
-    addMessage(userMsg)
+    addMessage(userMsg, activeSession?.id)
     onTurn?.('user', userMsg.content)
     setInput('')
     setPendingImages([])
@@ -610,17 +603,18 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         cache_creation_tokens: data.cache_creation_tokens,
         tool_calls: data.tool_calls,
         content_blocks: data.content_blocks,
+        replyMode: data.replyMode,
         providerId: profile?.id,
         modelId: model,
       }
       await durableAppend(activeSession, assistantMsg)
-      addMessage(assistantMsg)
+      addMessage(assistantMsg, activeSession?.id)
       onTurn?.('assistant', assistantContent)
       setIsLoading(false)
       setStreamText('')
       setStreamThinking('')
       setStreamBlocks([])
-    })
+    }, userMsg.replyMode)
   }
 
 
@@ -656,16 +650,17 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           cache_creation_tokens: data.cache_creation_tokens,
           tool_calls: data.tool_calls,
           content_blocks: data.content_blocks,
+          replyMode: data.replyMode,
           providerId: profile?.id,
           modelId: model,
         }
-        addMessageVersion(msg.id, newVersion)
+        addMessageVersion(msg.id, newVersion, activeSession?.id)
         void syncChatNow()
         setIsLoading(false)
         setStreamText('')
         setStreamThinking('')
         setStreamBlocks([])
-      })
+      }, normalizeReplyMode(msg.replyMode))
     } else {
       // User retry: regenerate the AI response that follows
       const idx = currentMessages.findIndex(m => m.id === msg.id)
@@ -685,22 +680,23 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           cache_creation_tokens: data.cache_creation_tokens,
           tool_calls: data.tool_calls,
           content_blocks: data.content_blocks,
+          replyMode: data.replyMode,
           providerId: profile?.id,
           modelId: model,
         }
         if (nextMsg?.role === 'assistant') {
-          addMessageVersion(nextMsg.id, reply)
+          addMessageVersion(nextMsg.id, reply, activeSession?.id)
           void syncChatNow()
         } else {
           const assistantMsg: ChatMessage = { id: `${Date.now()}-reroll`, role: 'assistant', ...reply }
-          await durableAppend(useChatStore.getState().settings.sessions.find(session => session.id === useChatStore.getState().settings.activeSessionId), assistantMsg)
-          addMessage(assistantMsg)
+          await durableAppend(activeSession, assistantMsg)
+          addMessage(assistantMsg, activeSession?.id)
         }
         setIsLoading(false)
         setStreamText('')
         setStreamThinking('')
         setStreamBlocks([])
-      })
+      }, normalizeReplyMode(msg.replyMode))
     }
   }
 
@@ -739,11 +735,13 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     if (msg && nextText && nextText !== msg.content) {
       const newVersion: MessageVersion = {
         content: nextText,
+        replyMode: msg.replyMode,
+        content_blocks: undefined,
         timestamp: Date.now(),
         providerId: msg.providerId,
         modelId: msg.modelId,
       }
-      addMessageVersion(msg.id, newVersion)
+      addMessageVersion(msg.id, newVersion, activeSession?.id)
       void syncChatNow()
       const regenerate = await ask('已保存修改。要按新内容重新生成后面的回复吗？')
       if (regenerate) await handleRetry({ ...msg, ...newVersion }, true)
@@ -779,17 +777,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   // Theme-aware bubble colors — day and night are configured independently.
   const uColor = n ? ap.userBubbleColorNight : ap.userBubbleColor
-  const uOpacity = n ? ap.userBubbleOpacityNight : ap.userBubbleOpacity
   const aColor = n ? ap.aiBubbleColorNight : ap.aiBubbleColor
-  const aOpacity = n ? ap.aiBubbleOpacityNight : ap.aiBubbleOpacity
-  const userBubbleStyle: React.CSSProperties = {
-    backgroundColor: uColor ? hexToRgba(uColor, uOpacity) : (n ? 'rgba(61,53,36,1)' : 'rgba(247,232,181,1)'),
-    color: uColor ? bubbleTextColor(uColor, uOpacity, n) : undefined,
-  }
-  const aiBubbleStyle: React.CSSProperties = {
-    backgroundColor: aColor ? hexToRgba(aColor, aOpacity) : (n ? 'rgba(36,48,64,1)' : 'rgba(255,255,255,1)'),
-    color: aColor ? bubbleTextColor(aColor, aOpacity, n) : undefined,
-  }
+  const userBubbleStyle = bubbleAppearance(ap, 'user', n)
+  const aiBubbleStyle = bubbleAppearance(ap, 'ai', n)
 
   /* ── model picker ─────────────────────── */
 
@@ -880,7 +870,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               </button>
               <h2 className="text-sm font-medium opacity-80 truncate">{title || activeSession?.title || '对话'}</h2>
             </div>
-            <div className="flex items-center gap-3"><SyncBadge /><button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl transition ${n ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
+            <div className="flex items-center gap-3"><SyncBadge /><button aria-label="打开聊天菜单" onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl transition ${n ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
               <Settings2 size={16} />
             </button></div>
           </div>}
@@ -890,7 +880,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             <button onClick={() => setSessionDrawerOpen(true)} className={`p-2 rounded-xl ${n ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
               <PanelLeft size={16} />
             </button>
-            <button onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl ${n ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
+            <button aria-label="打开聊天菜单" onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl ${n ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
               <Settings2 size={16} />
             </button>
           </div>}
@@ -994,8 +984,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
-                                  style={aColor ? aiBubbleStyle : {}}>
+                                <div key={blockKey} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed  ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
+                                  style={aiBubbleStyle}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {msg.images.map((src: string, ii: number) => (
@@ -1081,8 +1071,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                           </div>
                         </div>
                       ) : ((isUser || !msg.content_blocks || msg.content_blocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed backdrop-blur-[2px] ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[87%] rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
-                          style={isUser ? (uColor ? userBubbleStyle : {}) : (aColor ? aiBubbleStyle : {})}>
+                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed  ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[87%] rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
+                          style={isUser ? userBubbleStyle : aiBubbleStyle}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
@@ -1170,20 +1160,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
           {/* footer */}
           <div className={`p-4 border-t backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
-            {/* total layers */}
-            <div className={`text-[10px] mb-2 px-1 space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-              <div className="flex justify-between">
-                <span>共 {activeSession?.messageCount || messages.length} 层</span>
-                <div className="flex items-center gap-2">
-                  {timelineCurrent && <button onClick={() => setTimelineOpen(true)} className={`max-w-[42vw] truncate flex items-center gap-1 ${n ? 'text-night-amber' : 'text-day-pink'}`} title={`正在做：${timelineCurrent.title}`}><Clock3 size={11}/>正在 {timelineCurrent.title} ({timelineElapsedText})</button>}
-                  <button onClick={() => setSummaryDialogOpen(true)} className="opacity-60 hover:opacity-100 flex items-center gap-1" title="摘要"><FileText size={11}/> 摘要{activeSession?.summaries?.length ? ` (${activeSession.summaries.length})` : ''}</button>
-                  <button onClick={() => setBookmarkDialogOpen(true)} className="opacity-60 hover:opacity-100 flex items-center gap-1" title="书签">
-                    <BookMarked size={11} /> 书签{settings.bookmarks.length > 0 ? ` (${settings.bookmarks.length})` : ''}
-                  </button>
-                </div>
-              </div>
-            </div>
-
             {/* pending shared card */}
             {pendingShare && (
               <div className={`mx-1 mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface' : 'border-day-pink/20 bg-white'}`}>
@@ -1231,44 +1207,32 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
             {/* input area */}
             <div className={`chat-input-tray flex items-end gap-2 px-3 py-2 rounded-2xl border transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50 focus-within:shadow-[0_10px_30px_rgba(226,168,75,0.10)]' : 'bg-[#fffaf7]/95 border-day-muted/10 shadow-[0_8px_24px_rgba(93,64,55,0.10)] focus-within:border-day-pink/35 focus-within:shadow-[0_10px_30px_rgba(239,64,103,0.10)]'}`}>
-              <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
+              <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
                 placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
-                className={`no-frame flex-1 resize-none bg-transparent outline-none text-base md:text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
+                className={`no-frame flex-1 min-w-0 resize-none bg-transparent outline-none text-base md:text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
               <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
-              <button onClick={() => setTimelineOpen(true)} title={timelineCurrent ? `结束：${timelineCurrent.title}` : '开始计时'} className={`p-2 rounded-xl flex-shrink-0 ${timelineCurrent ? (n ? 'text-night-amber bg-night-amber/10' : 'text-day-pink bg-day-pinkLight') : 'opacity-60 hover:opacity-100'}`}><Clock3 size={16}/></button>
-              <button onClick={() => imgInputRef.current?.click()} disabled={uploadingImg} title="上传图片到照片墙"
-                className={`p-2 rounded-xl flex-shrink-0 opacity-60 hover:opacity-100 disabled:opacity-30 ${uploadingImg ? 'animate-pulse' : ''}`}>
-                <ImagePlus size={16} />
-              </button>
+              <button aria-label="更多功能" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)} className="p-2 rounded-xl flex-shrink-0 relative"><Plus size={18}/>{timelineCurrent && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-day-pink"/>}</button>
               {isLoading ? (
                 <button onClick={() => abortControllerRef.current?.abort()} title="停止生成"
                   className={`p-2 rounded-xl transition-all flex-shrink-0 ${n ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}>
                   <Square size={15} fill="currentColor" />
                 </button>
               ) : (
-                <button onClick={handleSend} disabled={!input.trim() && pendingImages.length === 0 && !pendingShare}
+                <button aria-label="发送消息" onClick={handleSend} disabled={!input.trim() && pendingImages.length === 0 && !pendingShare}
                   className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
                   <Send size={16} />
                 </button>
               )}
             </div>
 
-            {/* model selector chip */}
-            <div className="flex items-center justify-between mt-2 px-1">
-              <button onClick={() => setModelPickerOpen(true)}
-                className={`max-w-[60%] text-left text-[10px] leading-tight truncate opacity-60 hover:opacity-100`} title="切换模型">
-                <span className="font-medium">{activeProfile?.name || 'No API'}</span>
-                <span className="opacity-50 ml-1">· {settings.model}</span>
-              </button>
-              <div className="flex items-center gap-3">
-                <button onClick={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} className={`text-[10px] opacity-50 hover:opacity-100 flex items-center gap-1`}>
-                  🎟️ 券包
-                </button>
-                <button onClick={() => setModelDialogOpen(true)} className={`text-[10px] opacity-50 hover:opacity-100`}>
-                  模型API管理
-                </button>
+            {moreOpen && <div className="grid grid-cols-2 gap-2 pt-3" aria-label="更多功能">
+              <button disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><ImagePlus size={16}/>{uploadingImg ? '处理中…' : '上传照片'}</button>
+              <button onClick={() => setTimelineOpen(true)} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs min-w-0"><Clock3 size={16}/><span className="truncate">{timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'}</span></button>
+              <div role="group" aria-label="对话模式" className="col-span-2 flex gap-2 rounded-xl bg-black/5 p-1">
+                {(['long', 'short'] as const).map(mode => <button key={mode} aria-pressed={normalizeReplyMode(activeSession?.conversationMode) === mode} onClick={() => activeSession && setConversationMode(activeSession.id, mode)} className={`flex-1 rounded-lg py-2.5 text-xs transition ${normalizeReplyMode(activeSession?.conversationMode) === mode ? (n ? 'bg-night-amber/20 text-night-amber' : 'bg-white text-day-pink shadow-sm') : 'opacity-60'}`}>{mode === 'long' ? '长聊' : '短聊'}</button>)}
               </div>
-            </div>
+            </div>}
+
           </div>
         </div>
       </div>
@@ -1354,7 +1318,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} onConfirm={async (msg, fn) => { const ok = await ask(msg); if (ok) fn() }} />
+          <ChatSettings onSummary={() => setSummaryDialogOpen(true)} onBookmarks={() => setBookmarkDialogOpen(true)} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onModelPicker={() => setModelPickerOpen(true)} onModelManager={() => setModelDialogOpen(true)} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />

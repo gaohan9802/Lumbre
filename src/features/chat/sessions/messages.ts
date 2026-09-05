@@ -8,6 +8,8 @@ export function sessionTitleFromMessage(text: string) {
 export function snapshotOfMessage(message: ChatMessage): MessageVersion {
   return {
     content: message.content,
+    content_blocks: message.content_blocks,
+    replyMode: message.replyMode,
     thinking: message.thinking,
     timestamp: message.timestamp,
     input_tokens: message.input_tokens,

@@ -50,7 +50,7 @@ interface ChatStore {
   settings: ChatSettings
   messages: ChatMessage[]
 
-  addMessage: (m: ChatMessage) => void
+  addMessage: (m: ChatMessage, sessionId?: string) => void
   updateMessage: (id: string, patch: Partial<ChatMessage>) => void
   clearMessages: () => void
   setSettings: (patch: Partial<ChatSettings>) => void
@@ -59,10 +59,11 @@ interface ChatStore {
   createSession: () => string
   ensureSession: (id: string, title: string, activate?: boolean) => string
   setActiveSession: (id: string) => void
+  setConversationMode: (id: string, mode: 'long' | 'short') => void
   deleteMessage: (id: string) => void
   truncateFrom: (id: string) => void
   branchFromMessage: (id: string) => string
-  addMessageVersion: (id: string, v: MessageVersion) => void
+  addMessageVersion: (id: string, v: MessageVersion, sessionId?: string) => void
   switchMessageVersion: (id: string, index: number) => void
   deleteMessageVersion: (id: string, index: number) => void
   mergeRemote: (sessions: ChatSession[], tombstones: Record<string, number>) => void

@@ -1,3 +1,4 @@
+import type { ReplyMode } from '@/lib/chat-reply-mode'
 import type { SharedCard } from '@/lib/share'
 
 export interface ContentBlock {
@@ -9,6 +10,7 @@ export interface ContentBlock {
 }
 
 export interface MessageVersion {
+  replyMode?: ReplyMode
   content: string
   thinking?: string
   timestamp: number
@@ -95,6 +97,8 @@ export interface SessionSummaryConfig {
 }
 
 export interface ChatSession {
+  conversationMode?: ReplyMode
+  conversationModeUpdatedAt?: number
   id: string
   title: string
   messages: ChatMessage[]
@@ -110,6 +114,15 @@ export interface ChatSession {
 }
 
 export interface ChatAppearance {
+  userBubbleFrosted?: boolean
+  userBubbleBlur?: number
+  userBubbleFrostedNight?: boolean
+  userBubbleBlurNight?: number
+  aiBubbleFrosted?: boolean
+  aiBubbleBlur?: number
+  aiBubbleFrostedNight?: boolean
+  aiBubbleBlurNight?: number
+
   bgImage: string
   bgOpacity: number
   userBubbleColor: string

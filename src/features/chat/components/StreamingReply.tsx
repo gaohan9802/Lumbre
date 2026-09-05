@@ -52,14 +52,14 @@ export function StreamingReply({
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
             return (
-              <div key={index} className={`block w-fit max-w-[87%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed backdrop-blur-[2px] ${!aiColor ? (isNight ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aiColor ? aiBubbleStyle : {}}>
+              <div key={index} className={`block w-fit max-w-[87%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed  ${!aiColor ? (isNight ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aiBubbleStyle}>
                 {block.content}{isLast && <span className="stream-cursor">…</span>}
               </div>
             )
           }
           return null
         }) : (
-          <div className={`w-fit max-w-[87%] mr-auto px-4 py-3 rounded-2xl rounded-bl-md backdrop-blur-[2px] ${!aiColor ? (isNight ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aiColor ? aiBubbleStyle : {}}>
+          <div className={`w-fit max-w-[87%] mr-auto px-4 py-3 rounded-2xl rounded-bl-md  ${!aiColor ? (isNight ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aiBubbleStyle}>
             <div className="flex gap-1">
               {[0, 1, 2].map(index => (
                 <motion.div key={index} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.2 }}

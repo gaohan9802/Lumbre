@@ -7,22 +7,23 @@ type ChatState = { settings: ChatSettings; messages: ChatMessage[] }
 type SetChatState = (updater: (state: ChatState) => Partial<ChatState> | ChatState) => void
 
 export interface MessageActions {
-  addMessage: (message: ChatMessage) => void
+  addMessage: (message: ChatMessage, sessionId?: string) => void
   updateMessage: (id: string, patch: Partial<ChatMessage>) => void
   clearMessages: () => void
   deleteMessage: (id: string) => void
   truncateFrom: (id: string) => void
-  addMessageVersion: (id: string, version: MessageVersion) => void
+  addMessageVersion: (id: string, version: MessageVersion, sessionId?: string) => void
   switchMessageVersion: (id: string, index: number) => void
   deleteMessageVersion: (id: string, index: number) => void
 }
 
 export function createMessageActions(set: SetChatState): MessageActions {
   return {
-    addMessage: (m) => set((state) => {
+    addMessage: (m, sessionId) => set((state) => {
       const settings = normalizeSettings(state.settings)
       const sessions = settings.sessions.map((s: ChatSession) => {
-        if (s.id !== settings.activeSessionId) return s
+        if (s.id !== (sessionId || settings.activeSessionId)) return s
+        if (s.messages.some(message => message.id === m.id)) return s
         const nextMessages = [...s.messages, m]
         const shouldAutoTitle = s.title === '新的对话' && m.role === 'user' && s.messages.length === 0
         return { ...s, title: shouldAutoTitle ? sessionTitleFromMessage(m.content) : s.title, messages: nextMessages, messageCount: Math.max(s.messageCount || 0, nextMessages.length), updatedAt: Date.now() }
@@ -84,17 +85,17 @@ export function createMessageActions(set: SetChatState): MessageActions {
       return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
     }),
 
-    addMessageVersion: (id, v) => set((state) => {
+    addMessageVersion: (id, v, sessionId) => set((state) => {
       const settings = normalizeSettings(state.settings)
       const sessions = settings.sessions.map((s) => {
-        if (s.id !== settings.activeSessionId) return s
+        if (s.id !== (sessionId || settings.activeSessionId)) return s
         return {
           ...s,
           messages: s.messages.map((m) => {
             if (m.id !== id) return m
             const base = m.versions?.length ? m.versions : [snapshotOfMessage(m)]
             const versions = [...base, v]
-            return { ...m, ...v, versions, versionIndex: versions.length - 1 }
+            return { ...m, ...v, content_blocks: v.content_blocks, replyMode: v.replyMode, versions, versionIndex: versions.length - 1 }
           }),
           updatedAt: Date.now(),
         }
@@ -112,7 +113,7 @@ export function createMessageActions(set: SetChatState): MessageActions {
           messages: s.messages.map((m) => {
             if (m.id !== id || !m.versions?.length) return m
             const i = Math.max(0, Math.min(index, m.versions.length - 1))
-            return { ...m, ...m.versions[i], versionIndex: i }
+            return { ...m, ...m.versions[i], content_blocks: m.versions[i].content_blocks, replyMode: m.versions[i].replyMode, versionIndex: i }
           }),
           updatedAt: Date.now(),
         }
@@ -132,7 +133,7 @@ export function createMessageActions(set: SetChatState): MessageActions {
             const versions = m.versions.filter((_: MessageVersion, i: number) => i !== index)
             const cur = m.versionIndex ?? m.versions.length - 1
             const nextIndex = Math.max(0, Math.min(cur > index ? cur - 1 : cur, versions.length - 1))
-            return { ...m, ...versions[nextIndex], versions, versionIndex: nextIndex }
+            return { ...m, ...versions[nextIndex], content_blocks: versions[nextIndex].content_blocks, replyMode: versions[nextIndex].replyMode, versions, versionIndex: nextIndex }
           }),
           updatedAt: Date.now(),
         }

@@ -215,3 +215,35 @@ test('summary endpoint resolves its channel on the server and never needs a brow
     assert.equal(authorization, 'Bearer summary-server-key')
   } finally { globalThis.fetch = oldFetch }
 })
+
+test('both gateways receive the reply mode prompt and a reasoning-safe short budget', async () => {
+  const { NextRequest } = await import('next/server')
+  const repository = await import('../../src/server/data/repositories/model-credentials')
+  const route = await import('../../src/app/api/chat/route')
+  const oldFetch = globalThis.fetch
+  let bodies: any[] = []
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body || '{}')); bodies.push(body)
+    return new Response(JSON.stringify(body.system
+      ? { content: [{ type: 'text', text: '一\n<!--split-->\n二' }], stop_reason: 'end_turn', usage: { input_tokens: 2, output_tokens: 2 } }
+      : { choices: [{ message: { role: 'assistant', content: '一\n<!--split-->\n二' }, finish_reason: 'stop' }], usage: { prompt_tokens: 2, completion_tokens: 2 } }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  try {
+    for (const provider of ['anthropic', 'openai-compatible'] as const) {
+      const id = `reply-mode-${provider}`
+      repository.upsertModelCredential({ id, provider, baseUrl: 'https://1.1.1.1', apiKey: 'test-only-mode-key' })
+      for (const mode of ['short', 'long']) {
+        const response = await route.POST(new NextRequest('http://localhost/api/chat', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ messages: [{ role: 'user', content: '今天想你了' }], system: '保留这份人设', api_profile: { profileId: id }, model: 'fixture', thinking_budget: 8000, tools_enabled: false, stream: false, reply_mode: mode }),
+        }))
+        assert.equal(response.status, 200)
+        const body = bodies.at(-1)
+        assert.match(JSON.stringify(body.system || body.messages[0]), /保留这份人设/)
+        assert.match(JSON.stringify(body.system || body.messages[0]), mode === 'short' ? /短聊模式/ : /长聊模式/)
+        assert.equal(body.max_tokens, mode === 'short' ? 10048 : 16000)
+        assert.ok(body.max_tokens > 8000)
+      }
+    }
+  } finally { globalThis.fetch = oldFetch }
+})

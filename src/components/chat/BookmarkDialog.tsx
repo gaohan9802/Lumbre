@@ -53,9 +53,7 @@ export function BookmarkDialog({ open, onClose }: Props) {
             <div className="p-6 space-y-4">
               {!editing && (
                 <>
-                  <p className={`text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                    书签是你悄悄塞给哥哥的备忘录。<br/>当对话中出现关键词时，纸条内容会自动注入给他看。
-                  </p>
+
                   {settings.bookmarks.map((bm) => (
                     <div key={bm.id} className={`rounded-xl border p-3 cursor-pointer ${n ? 'border-night-border hover:bg-night-surface' : 'border-gray-200 hover:bg-gray-50'} ${!bm.enabled ? 'opacity-40' : ''}`} onClick={() => startEdit(bm)}>
                       <div className="flex items-center justify-between gap-2">
@@ -80,27 +78,25 @@ export function BookmarkDialog({ open, onClose }: Props) {
               {editing && (
                 <div className="space-y-4">
                   <h4 className="font-medium">{editing.id ? '编辑纸条' : '新纸条'}</h4>
-                  <p className={`text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                    小纸条是你悄悄塞给哥哥的备忘录。<br/>当对话中出现关键词时，纸条内容会自动注入给他看。
-                  </p>
+
                   <div>
                     <label className="text-xs opacity-60 block mb-1">名称</label>
-                    <p className={`text-[10px] mb-1.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>方便你自己找，哥哥看不到这个名字</p>
+
                     <input className={inputCls} value={editing.name} placeholder="比如：关于我的猫" onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
                   </div>
                   <div>
                     <label className="text-xs opacity-60 block mb-1">关键词</label>
-                    <p className={`text-[10px] mb-1.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>聊天里出现这些词时，纸条就会被激活，用逗号隔开</p>
+
                     <input className={inputCls} value={kwInput} placeholder="猫, 小猫, kitten" onChange={(e) => setKwInput(e.target.value)} />
                   </div>
                   <div>
                     <label className="text-xs opacity-60 block mb-1">内容</label>
-                    <p className={`text-[10px] mb-1.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>纸条上写的东西，激活后哥哥会看到这段话</p>
+
                     <textarea className={`${inputCls} resize-y`} rows={4} value={editing.content} placeholder="想让他知道的事情……" onChange={(e) => setEditing({ ...editing, content: e.target.value })} />
                   </div>
                   <div>
                     <label className="text-xs opacity-60 block mb-1">注入位置</label>
-                    <p className={`text-[10px] mb-1.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>放在对话记录的开头还是结尾。结尾 = 他更容易注意到</p>
+
                     <select className={inputCls} value={editing.position} onChange={(e) => setEditing({ ...editing, position: e.target.value as 'start' | 'end' })}>
                       <option value="end">对话末尾</option>
                       <option value="start">对话开头</option>
@@ -109,19 +105,19 @@ export function BookmarkDialog({ open, onClose }: Props) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs opacity-60 block mb-1">扫描深度</label>
-                      <p className={`text-[10px] mb-1.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>往回看几条消息匹配关键词</p>
+
                       <input type="number" min={1} max={50} className={inputCls} value={editing.scanDepth} onChange={(e) => setEditing({ ...editing, scanDepth: parseInt(e.target.value) || 4 })} />
                     </div>
                     <div>
                       <label className="text-xs opacity-60 block mb-1">优先级</label>
-                      <p className={`text-[10px] mb-1.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>多张纸条同时激活时，数字大的优先</p>
+
                       <input type="number" min={0} max={999} className={inputCls} value={editing.priority} onChange={(e) => setEditing({ ...editing, priority: parseInt(e.target.value) || 50 })} />
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs opacity-60">常驻</p>
-                      <p className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>不管聊什么都注入，不需要关键词</p>
+
                     </div>
                     <button onClick={() => setEditing({ ...editing, alwaysOn: !editing.alwaysOn })} className={`relative w-10 h-6 rounded-full transition flex-shrink-0 ${editing.alwaysOn ? (n ? 'bg-night-amber' : 'bg-day-pink') : 'bg-gray-300 dark:bg-night-card'}`}>
                       <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${editing.alwaysOn ? 'translate-x-4' : ''}`} />

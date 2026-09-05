@@ -1,3 +1,4 @@
+import { replyTokenLimit } from '@/lib/chat-reply-mode'
 import { assertUpstreamOk, fetchUpstreamWithRetry } from '../request'
 import type {
   GatewayEmitter, GatewayProviderAdapter, GatewayProviderConfig,
@@ -59,7 +60,7 @@ class OpenAICompatibleSession implements GatewayProviderSession {
     const body: any = {
       model: this.config.model,
       messages: this.messages,
-      max_tokens: Math.max(16000, this.budget + 4096),
+      max_tokens: replyTokenLimit(this.config.replyMode, this.budget),
       reasoning: { max_tokens: this.budget },
       ...(options.tools.length ? { tools: toTools(options.tools) } : {}),
       ...(options.stream ? { stream: true, stream_options: { include_usage: true } } : {}),

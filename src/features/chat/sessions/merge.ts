@@ -1,7 +1,9 @@
+import { mergeConversationMode } from '@/lib/chat-reply-mode'
 import type { ChatMessage } from '../state/types'
 
 export function isBlankSession(session: any) {
   return (session?.messages?.length || 0) === 0
+    && !(session?.conversationModeUpdatedAt > 0)
     && !session?.pinned
     && (!session?.title || session.title === '新的对话')
 }
@@ -31,11 +33,13 @@ export function mergeSummaryLayer(existing: any, incoming: any) {
 function preserveMergedSummary(base: any, existing: any, incoming: any) {
   const summaryLayer = mergeSummaryLayer(existing, incoming)
   const baseRevision = Math.max(0, Number(base?.summaryRevision) || 0)
-  const needsRepublish = summaryLayer.summaryRevision > baseRevision
+  const mode = mergeConversationMode(existing, incoming)
+  const needsRepublish = (base.conversationMode || 'long') !== mode.conversationMode || (base.conversationModeUpdatedAt || 0) !== mode.conversationModeUpdatedAt || summaryLayer.summaryRevision > baseRevision
     || (summaryLayer.summaryRevision === baseRevision && summaryCount(summaryLayer) > summaryCount(base))
 
   return {
     ...base,
+    ...mergeConversationMode(existing, incoming),
     ...summaryLayer,
     updatedAt: needsRepublish
       ? Math.max(Date.now(), Number(existing?.updatedAt) || 0, Number(incoming?.updatedAt) || 0) + 1
@@ -78,8 +82,8 @@ export function mergeChatSessionsForSync(existing: any, incoming: any) {
     }, existing, incoming)
   }
 
-  if (isBlankSession(existing) && !isBlankSession(incoming)) return incoming
-  if (isBlankSession(incoming) && !isBlankSession(existing)) return existing
+  if (isBlankSession(existing) && !isBlankSession(incoming)) return { ...incoming, ...mergeConversationMode(existing, incoming) }
+  if (isBlankSession(incoming) && !isBlankSession(existing)) return { ...existing, ...mergeConversationMode(existing, incoming) }
   const newer = (incoming?.updatedAt || 0) > (existing?.updatedAt || 0) ? incoming : existing
   return preserveMergedSummary(newer, existing, incoming)
 }
