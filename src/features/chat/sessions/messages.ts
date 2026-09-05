@@ -9,6 +9,7 @@ export function snapshotOfMessage(message: ChatMessage): MessageVersion {
   return {
     content: message.content,
     content_blocks: message.content_blocks,
+    bubbleLayout: message.bubbleLayout,
     replyMode: message.replyMode,
     thinking: message.thinking,
     timestamp: message.timestamp,

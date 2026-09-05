@@ -16,7 +16,8 @@ import {
 import { photos as photosApi } from '@/lib/api'
 import type { SharedCard } from '@/lib/share'
 import { ChatSettings } from './ChatSettings'
-import { normalizeReplyMode, splitReplyText, segmentReplyBlocks, type ReplyMode } from '@/lib/chat-reply-mode'
+import { normalizeReplyMode, type ReplyMode } from '@/lib/chat-reply-mode'
+import { applyBubbleLayout, cleanLegacyBubbleMarkers, cleanReplyBlocks, composeBubbleBlocks, composeBubbleLayout } from '@/lib/chat-bubble-composer'
 import { bubbleAppearance } from '@/features/chat/settings/appearance'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
@@ -250,12 +251,19 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   const doSend = async (sendMessages: { role: string; content: string; images?: string[] }[], onResult: (data: any) => void | Promise<void>, requestedMode?: ReplyMode) => {
     const mode = requestedMode || normalizeReplyMode(activeSession?.conversationMode)
-    const onDone = (data: any) => onResult({
-      ...data,
-      replyMode: mode,
-      content: mode === 'short' ? splitReplyText(String(data.content || ''), !!data.stopped).join('\n\n') : data.content,
-      content_blocks: data.content_blocks ? segmentReplyBlocks(data.content_blocks, mode, !!data.stopped) : undefined,
-    })
+    const onDone = (data: any) => {
+      const content = mode === 'short' ? cleanLegacyBubbleMarkers(String(data.content || '')) : data.content
+      const blocks: ContentBlock[] | undefined = data.content_blocks
+        ? (mode === 'short' ? cleanReplyBlocks(data.content_blocks) : data.content_blocks.map((block: ContentBlock) => ({ ...block })))
+        : (mode === 'short' && content.trim() ? [{ type: 'text', content }] : undefined)
+      return onResult({
+        ...data,
+        replyMode: mode,
+        content,
+        content_blocks: blocks,
+        bubbleLayout: mode === 'short' && blocks ? composeBubbleLayout(blocks) : undefined,
+      })
+    }
     const profile = getActiveProfile(settings)
     const model = settings.model
 
@@ -299,7 +307,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       if (!live) return
       setStreamText(fullText)
       setStreamThinking(fullThinking)
-      setStreamBlocks(segmentReplyBlocks(contentBlocks, mode, true))
+      setStreamBlocks(mode === 'short' ? composeBubbleBlocks(contentBlocks).blocks : contentBlocks.map(block => ({ ...block })))
     }
     // iOS PWA becomes unstable when Markdown and the whole message list are
     // reconciled for every token. Paint at most once per 80ms while preserving
@@ -603,6 +611,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         cache_creation_tokens: data.cache_creation_tokens,
         tool_calls: data.tool_calls,
         content_blocks: data.content_blocks,
+        bubbleLayout: data.bubbleLayout,
         replyMode: data.replyMode,
         providerId: profile?.id,
         modelId: model,
@@ -650,6 +659,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           cache_creation_tokens: data.cache_creation_tokens,
           tool_calls: data.tool_calls,
           content_blocks: data.content_blocks,
+          bubbleLayout: data.bubbleLayout,
           replyMode: data.replyMode,
           providerId: profile?.id,
           modelId: model,
@@ -680,6 +690,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           cache_creation_tokens: data.cache_creation_tokens,
           tool_calls: data.tool_calls,
           content_blocks: data.content_blocks,
+          bubbleLayout: data.bubbleLayout,
           replyMode: data.replyMode,
           providerId: profile?.id,
           modelId: model,
@@ -733,10 +744,12 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     setEditingMsgId(null)
     setEditingMsgText('')
     if (msg && nextText && nextText !== msg.content) {
+      const editedBlocks: ContentBlock[] | undefined = msg.role === 'assistant' && msg.replyMode === 'short' ? [{ type: 'text', content: nextText }] : undefined
       const newVersion: MessageVersion = {
         content: nextText,
         replyMode: msg.replyMode,
-        content_blocks: undefined,
+        content_blocks: editedBlocks,
+        bubbleLayout: editedBlocks ? composeBubbleLayout(editedBlocks) : undefined,
         timestamp: Date.now(),
         providerId: msg.providerId,
         modelId: msg.modelId,
@@ -909,6 +922,13 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 const vIdx = msg.versionIndex ?? 0
                 const hasVersions = versions.length > 1
                 const isEditing = editingMsgId === msg.id
+                const baseDisplayBlocks: ContentBlock[] | undefined = !isUser
+                  ? (msg.content_blocks?.length ? msg.content_blocks : (msg.replyMode === 'short' && msg.content.trim() ? [{ type: 'text', content: msg.content }] : undefined))
+                  : undefined
+                const displayContentBlocks = baseDisplayBlocks
+                  ? (msg.replyMode === 'short' ? applyBubbleLayout(baseDisplayBlocks, msg.bubbleLayout || composeBubbleLayout(baseDisplayBlocks)) : baseDisplayBlocks)
+                  : undefined
+                const lastTextBlock = displayContentBlocks?.reduce((last, block, index) => block.type === 'text' && block.content?.trim() ? index : last, -1) ?? -1
 
                 return (
                   <div key={msg.id} className="flex mb-4">
@@ -926,9 +946,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                       </p>
 
                       {/* Inline content blocks — interleaved thinking/tool/text */}
-                      {!isUser && msg.content_blocks && msg.content_blocks.length > 0 ? (
+                      {!isUser && displayContentBlocks && displayContentBlocks.length > 0 ? (
                         <>
-                          {msg.content_blocks.map((block: ContentBlock, bi: number) => {
+                          {displayContentBlocks.map((block: ContentBlock, bi: number) => {
                             const blockKey = `${msg.id}-b${bi}`
                             if (block.type === 'thinking' && block.content) {
                               const isExp = expandedThinking.has(blockKey)
@@ -984,7 +1004,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl rounded-bl-md text-[14px] leading-relaxed  ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
+                                <div key={blockKey} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl ${bi === lastTextBlock ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
                                   style={aiBubbleStyle}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -1070,7 +1090,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             <button onClick={finishEditMsg} className={`text-xs font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>保存</button>
                           </div>
                         </div>
-                      ) : ((isUser || !msg.content_blocks || msg.content_blocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
+                      ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
                         <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed  ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[87%] rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
                           style={isUser ? userBubbleStyle : aiBubbleStyle}>
                           {msg.sharedCard && (

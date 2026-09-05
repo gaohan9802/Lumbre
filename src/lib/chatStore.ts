@@ -36,7 +36,7 @@ import { createSessionActions } from '@/features/chat/sessions/actions'
 import { createChatPreferenceActions } from '@/features/chat/settings/preferences-actions'
 
 export type {
-  ApiProfile, ApiProvider, Bookmark, ChatAppearance, ChatMessage, ChatSession,
+  ApiProfile, ApiProvider, Bookmark, BubbleLayout, BubbleSegment, ChatAppearance, ChatMessage, ChatSession,
   ChatSettings, ChatSummary, ContentBlock, MessageVersion, ProviderModel,
   SessionSummaryConfig, StageSummary,
 } from '@/features/chat/state/types'

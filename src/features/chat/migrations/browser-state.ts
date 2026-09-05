@@ -1,7 +1,7 @@
 import { normalizeReplyMode } from '@/lib/chat-reply-mode'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import type {
-  ApiProfile, ApiProvider, ChatMessage, ChatSettings, ChatSummary, ContentBlock,
+  ApiProfile, ApiProvider, BubbleLayout, ChatMessage, ChatSettings, ChatSummary, ContentBlock,
   MessageVersion, StageSummary,
 } from '@/features/chat/state/types'
 
@@ -13,6 +13,17 @@ function safeText(value: unknown): string {
   if (value == null) return ''
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   try { return JSON.stringify(value) } catch { return '[无法显示的旧消息]' }
+}
+
+function normalizeBubbleLayout(value: any): BubbleLayout | undefined {
+  if (value?.version !== 2 || !Array.isArray(value.segments)) return undefined
+  const segments = value.segments.filter((segment: any) =>
+    Number.isInteger(segment?.blockIndex) && segment.blockIndex >= 0 &&
+    Number.isInteger(segment?.start) && segment.start >= 0 &&
+    Number.isInteger(segment?.end) && segment.end > segment.start &&
+    ['text', 'code', 'list', 'quote', 'table'].includes(segment?.kind))
+    .map((segment: any) => ({ blockIndex: segment.blockIndex, start: segment.start, end: segment.end, kind: segment.kind }))
+  return segments.length ? { version: 2, segments } : undefined
 }
 
 function normalizeContentBlock(block: any): ContentBlock | null {
@@ -41,6 +52,7 @@ function normalizeVersion(version: any): MessageVersion {
     content_blocks: Array.isArray(version?.content_blocks)
       ? version.content_blocks.map(normalizeContentBlock).filter(Boolean) as ContentBlock[]
       : undefined,
+    bubbleLayout: normalizeBubbleLayout(version?.bubbleLayout),
   }
 }
 
@@ -52,12 +64,14 @@ function normalizeMessage(message: any): ChatMessage | null {
     (block.name == null || typeof block.name === 'string') &&
     (block.result == null || typeof block.result === 'string')))
   const versionsValid = !message.versions || (Array.isArray(message.versions) && message.versions.every((version: any) =>
-    version && typeof version.content === 'string' && (version.thinking == null || typeof version.thinking === 'string')))
+    version && typeof version.content === 'string' && (version.thinking == null || typeof version.thinking === 'string') &&
+    (!version.bubbleLayout || (Array.isArray(version.bubbleLayout.segments) && normalizeBubbleLayout(version.bubbleLayout)?.segments.length === version.bubbleLayout.segments.length))))
+  const layoutValid = !message.bubbleLayout || (Array.isArray(message.bubbleLayout.segments) && normalizeBubbleLayout(message.bubbleLayout)?.segments.length === message.bubbleLayout.segments.length)
   const imagesValid = !message.images || (Array.isArray(message.images) && message.images.every((image: any) => typeof image === 'string'))
   // Keep object identity on the normal path; this runs for every store update.
   if (typeof message.id === 'string' && typeof message.content === 'string' &&
       (message.thinking == null || typeof message.thinking === 'string') &&
-      blocksValid && versionsValid && imagesValid) return message as ChatMessage
+      blocksValid && versionsValid && layoutValid && imagesValid) return message as ChatMessage
   const normalized = normalizeVersion(message)
   const versions = Array.isArray(message.versions) ? message.versions.map(normalizeVersion) : undefined
   return {

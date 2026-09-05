@@ -34,13 +34,15 @@ test('old settings keep long mode and custom appearance; stale sessions cannot e
   assert.equal(mergeConversationMode(settings.sessions[0], { conversationMode: 'long', conversationModeUpdatedAt: 51 }).conversationMode, 'long')
 })
 
-test('reply snapshots retain segment blocks and mode; budgets leave room for thinking', () => {
-  const snap = snapshotOfMessage({ id: 'm', role: 'assistant', content: '一\n\n二', timestamp: 1, replyMode: 'short', content_blocks: [{ type: 'text', content: '一' }, { type: 'text', content: '二' }] })
+test('reply snapshots retain bubble layout and mode; budgets leave room for thinking', () => {
+  const snap = snapshotOfMessage({ id: 'm', role: 'assistant', content: '一。二。', timestamp: 1, replyMode: 'short', content_blocks: [{ type: 'text', content: '一。二。' }], bubbleLayout: { version: 2, segments: [{ blockIndex: 0, start: 0, end: 2, kind: 'text' }, { blockIndex: 0, start: 2, end: 4, kind: 'text' }] } })
   assert.equal(snap.replyMode, 'short')
-  assert.equal(snap.content_blocks?.length, 2)
+  assert.equal(snap.content_blocks?.length, 1)
+  assert.equal(snap.bubbleLayout?.segments.length, 2)
   assert.ok(replyTokenLimit('short', 8000) > 8000)
   assert.ok(replyTokenLimit('short', 8000) < replyTokenLimit('long', 8000))
-  assert.match(replyModePrompt('short'), /1–4/)
+  assert.match(replyModePrompt('short'), /短聊模式/)
+  assert.doesNotMatch(replyModePrompt('short'), /<!--split-->/)
   assert.doesNotMatch(replyModePrompt('long'), /<!--split-->/)
 })
 
@@ -58,7 +60,7 @@ test('mode persists through store settings, continuation, stale sync and version
   try {
     const id = useChatStore.getState().createSession()
     useChatStore.getState().setConversationMode(id, 'short')
-    useChatStore.getState().addMessage({ id: 'seg', role: 'assistant', content: '一\n\n二', timestamp: 1, replyMode: 'short', content_blocks: [{ type: 'text', content: '一' }, { type: 'text', content: '二' }] })
+    useChatStore.getState().addMessage({ id: 'seg', role: 'assistant', content: '一。二。', timestamp: 1, replyMode: 'short', content_blocks: [{ type: 'text', content: '一。二。' }], bubbleLayout: { version: 2, segments: [{ blockIndex: 0, start: 0, end: 2, kind: 'text' }, { blockIndex: 0, start: 2, end: 4, kind: 'text' }] } })
     const current = useChatStore.getState().settings.sessions.find(s => s.id === id)!
     const normalized = normalizeSettings(useChatStore.getState().settings)
     assert.equal(normalized.sessions.find(s => s.id === id)?.conversationMode, 'short')
@@ -69,8 +71,10 @@ test('mode persists through store settings, continuation, stale sync and version
     assert.equal(useChatStore.getState().settings.sessions.find(s => s.id === id)?.conversationMode, 'short')
     useChatStore.getState().addMessageVersion('seg', { content: '长段落', timestamp: 2, replyMode: 'long' })
     assert.equal(useChatStore.getState().messages[0].content_blocks, undefined)
+    assert.equal(useChatStore.getState().messages[0].bubbleLayout, undefined)
     useChatStore.getState().switchMessageVersion('seg', 0)
-    assert.equal(useChatStore.getState().messages[0].content_blocks?.length, 2)
+    assert.equal(useChatStore.getState().messages[0].content_blocks?.length, 1)
+    assert.equal(useChatStore.getState().messages[0].bubbleLayout?.segments.length, 2)
     useChatStore.getState().switchMessageVersion('seg', 1)
     assert.equal(useChatStore.getState().messages[0].content_blocks, undefined)
     assert.equal(useChatStore.getState().messages[0].replyMode, 'long')

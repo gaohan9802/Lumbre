@@ -9,8 +9,21 @@ export interface ContentBlock {
   result?: string
 }
 
+export interface BubbleSegment {
+  blockIndex: number
+  start: number
+  end: number
+  kind: 'text' | 'code' | 'list' | 'quote' | 'table'
+}
+
+export interface BubbleLayout {
+  version: 2
+  segments: BubbleSegment[]
+}
+
 export interface MessageVersion {
   replyMode?: ReplyMode
+  bubbleLayout?: BubbleLayout
   content: string
   thinking?: string
   timestamp: number

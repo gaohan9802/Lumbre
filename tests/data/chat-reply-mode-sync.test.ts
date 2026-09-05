@@ -18,13 +18,14 @@ test('durable append, manifest, stale snapshots and old outbox preserve mode and
   session = sync.loadSyncSessions(['a'])[0]
   assert.equal(session.conversationMode, 'short')
   sync.mergeSyncDelta({ sessions: [{ ...session, updatedAt: session.updatedAt + 1, conversationMode: 'long', conversationModeUpdatedAt: 101 }], tombstones: {} })
-  const reply = { id: 'a1', role: 'assistant', timestamp: 2, content: '一\n\n二', replyMode: 'short', content_blocks: [{ type: 'text', content: '一' }, { type: 'text', content: '二' }] }
+  const reply = { id: 'a1', role: 'assistant', timestamp: 2, content: '一\n\n二', replyMode: 'short', content_blocks: [{ type: 'text', content: '一\n\n二' }], bubbleLayout: { version: 2, segments: [{ blockIndex: 0, start: 0, end: 3, kind: 'text' }, { blockIndex: 0, start: 3, end: 4, kind: 'text' }] } }
   sync.upsertSyncSessionMessage('a', reply, { conversationMode: 'short', conversationModeUpdatedAt: 100 })
   sync.upsertSyncSessionMessage('a', reply, { conversationMode: 'short', conversationModeUpdatedAt: 100 })
   session = sync.loadSyncSessions(['a'])[0]
   assert.equal(session.conversationMode, 'long')
   assert.equal(session.messages.length, 2)
-  assert.equal(session.messages[1].content_blocks.length, 2)
+  assert.equal(session.messages[1].content_blocks.length, 1)
+  assert.equal(session.messages[1].bubbleLayout.segments.length, 2)
   assert.equal(session.messages[1].replyMode, 'short')
   assert.equal(sync.loadSyncManifest().sessions[0].messageCount, 2)
 })

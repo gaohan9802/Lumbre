@@ -95,7 +95,7 @@ export function createMessageActions(set: SetChatState): MessageActions {
             if (m.id !== id) return m
             const base = m.versions?.length ? m.versions : [snapshotOfMessage(m)]
             const versions = [...base, v]
-            return { ...m, ...v, content_blocks: v.content_blocks, replyMode: v.replyMode, versions, versionIndex: versions.length - 1 }
+            return { ...m, ...v, content_blocks: v.content_blocks, bubbleLayout: v.bubbleLayout, replyMode: v.replyMode, versions, versionIndex: versions.length - 1 }
           }),
           updatedAt: Date.now(),
         }
@@ -113,7 +113,7 @@ export function createMessageActions(set: SetChatState): MessageActions {
           messages: s.messages.map((m) => {
             if (m.id !== id || !m.versions?.length) return m
             const i = Math.max(0, Math.min(index, m.versions.length - 1))
-            return { ...m, ...m.versions[i], content_blocks: m.versions[i].content_blocks, replyMode: m.versions[i].replyMode, versionIndex: i }
+            return { ...m, ...m.versions[i], content_blocks: m.versions[i].content_blocks, bubbleLayout: m.versions[i].bubbleLayout, replyMode: m.versions[i].replyMode, versionIndex: i }
           }),
           updatedAt: Date.now(),
         }
@@ -133,7 +133,7 @@ export function createMessageActions(set: SetChatState): MessageActions {
             const versions = m.versions.filter((_: MessageVersion, i: number) => i !== index)
             const cur = m.versionIndex ?? m.versions.length - 1
             const nextIndex = Math.max(0, Math.min(cur > index ? cur - 1 : cur, versions.length - 1))
-            return { ...m, ...versions[nextIndex], content_blocks: versions[nextIndex].content_blocks, replyMode: versions[nextIndex].replyMode, versions, versionIndex: nextIndex }
+            return { ...m, ...versions[nextIndex], content_blocks: versions[nextIndex].content_blocks, bubbleLayout: versions[nextIndex].bubbleLayout, replyMode: versions[nextIndex].replyMode, versions, versionIndex: nextIndex }
           }),
           updatedAt: Date.now(),
         }
