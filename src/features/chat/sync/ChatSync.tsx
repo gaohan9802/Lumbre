@@ -1,6 +1,7 @@
 'use client'
 
 import { mergeConversationMode } from '@/lib/chat-reply-mode'
+import { mergeConversationRoute } from '@/lib/chat-route'
 
 /**
  * ChatSync — incremental multi-device sync owned by the chat feature.
@@ -28,7 +29,7 @@ let bootstrapped = false
 let pushedSnapshot: Record<string, number> = {}
 let pushedConfigAt = -1
 
-type ManifestItem = { conversationMode?: 'long' | 'short'; conversationModeUpdatedAt?: number; id: string; updatedAt: number; messageCount?: number; title?: string; pinned?: boolean; createdAt?: number }
+type ManifestItem = { generationRoute?: 'api' | 'claude-code'; generationRouteUpdatedAt?: number; conversationMode?: 'long' | 'short'; conversationModeUpdatedAt?: number; id: string; updatedAt: number; messageCount?: number; title?: string; pinned?: boolean; createdAt?: number }
 
 function snapshotFromManifest(items: ManifestItem[] = []) {
   const next: Record<string, number> = {}
@@ -118,6 +119,7 @@ async function pullIncremental() {
   const knownIds = new Set(useChatStore.getState().settings.sessions.map(s => s.id))
   const stubs = manifest.filter(item => !knownIds.has(item.id)).map(item => ({
     ...mergeConversationMode(item, null),
+    ...mergeConversationRoute(item, null),
     id: item.id, title: item.title || '历史对话', messages: [], pinned: !!item.pinned,
     createdAt: Number(item.createdAt) || Number(item.updatedAt) || Date.now(),
     updatedAt: Number(item.updatedAt) || 0, messageCount: Number(item.messageCount) || 0,

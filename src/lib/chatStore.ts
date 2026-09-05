@@ -40,6 +40,7 @@ export type {
   ChatSettings, ChatSummary, ContentBlock, MessageVersion, ProviderModel,
   SessionSummaryConfig, StageSummary,
 } from '@/features/chat/state/types'
+export type { ChatRoute } from '@/lib/chat-route'
 export { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE }
 export { isBlankSession, mergeChatSessionsForSync, mergeSummaryLayer }
 export { snapshotOfMessage }
@@ -59,6 +60,7 @@ interface ChatStore {
   createSession: () => string
   ensureSession: (id: string, title: string, activate?: boolean) => string
   setActiveSession: (id: string) => void
+  setGenerationRoute: (id: string, route: 'api' | 'claude-code') => void
   setConversationMode: (id: string, mode: 'long' | 'short') => void
   deleteMessage: (id: string) => void
   truncateFrom: (id: string) => void

@@ -1,4 +1,5 @@
 import type { ReplyMode } from '@/lib/chat-reply-mode'
+import type { ChatRoute } from '@/lib/chat-route'
 import type { SharedCard } from '@/lib/share'
 
 export interface ContentBlock {
@@ -22,6 +23,7 @@ export interface BubbleLayout {
 }
 
 export interface MessageVersion {
+  route?: ChatRoute
   replyMode?: ReplyMode
   bubbleLayout?: BubbleLayout
   content: string
@@ -110,6 +112,8 @@ export interface SessionSummaryConfig {
 }
 
 export interface ChatSession {
+  generationRoute?: ChatRoute
+  generationRouteUpdatedAt?: number
   conversationMode?: ReplyMode
   conversationModeUpdatedAt?: number
   id: string

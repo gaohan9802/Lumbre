@@ -12,15 +12,17 @@ test('offline outbox deduplicates a turn and retries it after connectivity retur
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: false } })
   const originalAppend = chatApi.appendMessage
   const delivered: string[] = []
-  chatApi.appendMessage = (async (_sessionId: string, message: any) => {
+  const deliveredMeta: any[] = []
+  chatApi.appendMessage = (async (_sessionId: string, message: any, sessionMeta: any) => {
     delivered.push(message.id)
+    deliveredMeta.push(sessionMeta)
     return { ok: true }
   }) as typeof chatApi.appendMessage
 
   try {
     const { flushChatOutbox, queueChatAppend } = await import('../../src/features/chat/sync/outbox')
-    const session: any = { id: 's', title: 'S', pinned: false, createdAt: 1, updatedAt: 1, messages: [] }
-    const message: any = { id: 'm', role: 'user', content: 'offline', timestamp: 2 }
+    const session: any = { id: 's', title: 'S', pinned: false, createdAt: 1, updatedAt: 1, messages: [], generationRoute: 'claude-code', generationRouteUpdatedAt: 3 }
+    const message: any = { id: 'm', role: 'user', route: 'claude-code', content: 'offline', timestamp: 2 }
     await queueChatAppend(session, message)
     await queueChatAppend(session, message)
     await flushChatOutbox()
@@ -29,6 +31,8 @@ test('offline outbox deduplicates a turn and retries it after connectivity retur
     ;(globalThis.navigator as any).onLine = true
     await flushChatOutbox()
     assert.deepEqual(delivered, ['m'])
+    assert.equal(deliveredMeta[0].generationRoute, 'claude-code')
+    assert.equal(deliveredMeta[0].generationRouteUpdatedAt, 3)
     assert.equal(values.get('lumbre-chat-outbox-fallback'), '[]')
   } finally {
     chatApi.appendMessage = originalAppend

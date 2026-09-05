@@ -7,6 +7,7 @@ export function sessionTitleFromMessage(text: string) {
 
 export function snapshotOfMessage(message: ChatMessage): MessageVersion {
   return {
+    route: message.route,
     content: message.content,
     content_blocks: message.content_blocks,
     bubbleLayout: message.bubbleLayout,

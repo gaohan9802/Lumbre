@@ -1,9 +1,11 @@
 import { mergeConversationMode } from '@/lib/chat-reply-mode'
+import { mergeConversationRoute } from '@/lib/chat-route'
 import type { ChatMessage } from '../state/types'
 
 export function isBlankSession(session: any) {
   return (session?.messages?.length || 0) === 0
     && !(session?.conversationModeUpdatedAt > 0)
+    && !(session?.generationRouteUpdatedAt > 0)
     && !session?.pinned
     && (!session?.title || session.title === '新的对话')
 }
@@ -34,12 +36,15 @@ function preserveMergedSummary(base: any, existing: any, incoming: any) {
   const summaryLayer = mergeSummaryLayer(existing, incoming)
   const baseRevision = Math.max(0, Number(base?.summaryRevision) || 0)
   const mode = mergeConversationMode(existing, incoming)
+  const route = mergeConversationRoute(existing, incoming)
   const needsRepublish = (base.conversationMode || 'long') !== mode.conversationMode || (base.conversationModeUpdatedAt || 0) !== mode.conversationModeUpdatedAt || summaryLayer.summaryRevision > baseRevision
+    || (base.generationRoute || 'api') !== route.generationRoute || (base.generationRouteUpdatedAt || 0) !== route.generationRouteUpdatedAt
     || (summaryLayer.summaryRevision === baseRevision && summaryCount(summaryLayer) > summaryCount(base))
 
   return {
     ...base,
-    ...mergeConversationMode(existing, incoming),
+    ...mode,
+    ...route,
     ...summaryLayer,
     updatedAt: needsRepublish
       ? Math.max(Date.now(), Number(existing?.updatedAt) || 0, Number(incoming?.updatedAt) || 0) + 1
@@ -82,8 +87,8 @@ export function mergeChatSessionsForSync(existing: any, incoming: any) {
     }, existing, incoming)
   }
 
-  if (isBlankSession(existing) && !isBlankSession(incoming)) return { ...incoming, ...mergeConversationMode(existing, incoming) }
-  if (isBlankSession(incoming) && !isBlankSession(existing)) return { ...existing, ...mergeConversationMode(existing, incoming) }
+  if (isBlankSession(existing) && !isBlankSession(incoming)) return { ...incoming, ...mergeConversationMode(existing, incoming), ...mergeConversationRoute(existing, incoming) }
+  if (isBlankSession(incoming) && !isBlankSession(existing)) return { ...existing, ...mergeConversationMode(existing, incoming), ...mergeConversationRoute(existing, incoming) }
   const newer = (incoming?.updatedAt || 0) > (existing?.updatedAt || 0) ? incoming : existing
   return preserveMergedSummary(newer, existing, incoming)
 }

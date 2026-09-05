@@ -47,7 +47,6 @@ export function useChatViewState() {
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
   const [editingMsgText, setEditingMsgText] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [modelFilterProvider, setModelFilterProvider] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   const [uploadingImg, setUploadingImg] = useState(false)
   const [pendingImages, setPendingImages] = useState<string[]>([])
@@ -77,7 +76,7 @@ export function useChatViewState() {
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
     sessionSearch, setSessionSearch, editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
-    copiedId, setCopiedId, modelFilterProvider, setModelFilterProvider, mounted, setMounted,
+    copiedId, setCopiedId, mounted, setMounted,
     uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId,

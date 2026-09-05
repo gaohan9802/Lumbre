@@ -34,6 +34,8 @@ import { loadEarlierChat, syncChatNow } from '@/features/chat/sync/ChatSync'
 import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
+import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
+import { chatRouteLabel, normalizeChatRoute } from '@/lib/chat-route'
 
 /* ── helpers ────────────────────────────── */
 
@@ -108,12 +110,14 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    setConversationMode, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
+    setGenerationRoute, setConversationMode, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
+  const activeModel = activeProfile?.models.find(model => model.id === settings.model)
+  const activeRoute = normalizeChatRoute(activeSession?.generationRoute)
 
   const {
     input, setInput, isLoading, setIsLoading,
@@ -127,7 +131,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
     sessionSearch, setSessionSearch, editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
-    copiedId, setCopiedId, modelFilterProvider, setModelFilterProvider, mounted, setMounted,
+    copiedId, setCopiedId, mounted, setMounted,
     uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId,
@@ -341,6 +345,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
     try {
       const res = await chatApi.stream({
+        generation_route: 'api',
         messages: sendMessages,
         system: systemPrompt,
         model,
@@ -549,6 +554,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       await chatApi.appendMessage(session.id, message, {
         title: session.title, pinned: session.pinned, createdAt: session.createdAt,
         summaryConfig: session.summaryConfig,
+        generationRoute: session.generationRoute,
+        generationRouteUpdatedAt: session.generationRouteUpdatedAt,
         conversationMode: session.conversationMode,
         conversationModeUpdatedAt: session.conversationModeUpdatedAt,
       })
@@ -558,12 +565,18 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   const handleSend = async () => {
     if ((!input.trim() && pendingImages.length === 0 && !pendingShare) || isLoading) return
+    if (activeRoute !== 'api') {
+      window.alert('这版还没有接通 CC。请选择 API 模型后再发送。')
+      setModelPickerOpen(true)
+      return
+    }
     const profile = getActiveProfile(settings)
     const model = settings.model
     const now = Date.now()
     const userMsg: ChatMessage = {
       id: now.toString(),
       role: 'user',
+      route: activeRoute,
       replyMode: normalizeReplyMode(activeSession?.conversationMode),
       content: input.trim(),
       timestamp: now,
@@ -612,6 +625,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         tool_calls: data.tool_calls,
         content_blocks: data.content_blocks,
         bubbleLayout: data.bubbleLayout,
+        route: activeRoute,
         replyMode: data.replyMode,
         providerId: profile?.id,
         modelId: model,
@@ -631,6 +645,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   const handleRetry = async (msg: ChatMessage, skipConfirm = false) => {
     if (isLoading) return
+    const retryRoute = normalizeChatRoute(msg.route)
+    if (retryRoute !== 'api') {
+      window.alert('这条回复来自 CC；CC 接通前不会偷偷改走 API 重试。')
+      return
+    }
     if (!skipConfirm) {
       const ok = await ask(msg.role === 'assistant' ? '重新生成这条回复？' : '重新发送并生成回复？')
       if (!ok) return
@@ -650,6 +669,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
       await doSend(apiMessages, async (data) => {
         const newVersion: MessageVersion = {
+          route: retryRoute,
           content: data.content || data.error || '...',
           timestamp: Date.now(),
           thinking: data.thinking,
@@ -681,6 +701,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
       await doSend(apiMessages, async (data) => {
         const reply = {
+          route: retryRoute,
           content: data.content || data.error || '...',
           timestamp: Date.now(),
           thinking: data.thinking,
@@ -746,6 +767,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     if (msg && nextText && nextText !== msg.content) {
       const editedBlocks: ContentBlock[] | undefined = msg.role === 'assistant' && msg.replyMode === 'short' ? [{ type: 'text', content: nextText }] : undefined
       const newVersion: MessageVersion = {
+        route: normalizeChatRoute(msg.route),
         content: nextText,
         replyMode: msg.replyMode,
         content_blocks: editedBlocks,
@@ -793,15 +815,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const aColor = n ? ap.aiBubbleColorNight : ap.aiBubbleColor
   const userBubbleStyle = bubbleAppearance(ap, 'user', n)
   const aiBubbleStyle = bubbleAppearance(ap, 'ai', n)
-
-  /* ── model picker ─────────────────────── */
-
-  const providerNames = settings.apiProfiles.filter(p => p.models.some(m => m.enabled)).map(p => p.name)
-
-  const filteredModels = enabledModels.filter(({ profile, model }) => {
-    if (modelFilterProvider && profile.name !== modelFilterProvider) return false
-    return true
-  })
 
   /* ── sidebar ──────────────────────────── */
 
@@ -1115,7 +1128,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                       {/* AI model + tokens */}
                       {!isUser && (
                         <div className={`text-[10px] px-1 flex flex-wrap gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                          {msg.modelId && <span className="opacity-40">{msg.modelId}</span>}
+                          <span className="opacity-40">{chatRouteLabel(msg.route)}{msg.modelId ? ` · ${msg.modelId}` : ''}</span>
                           {(msg.input_tokens != null && msg.input_tokens > 0) && (() => {
                             const inp = msg.input_tokens || 0
                             const out = msg.output_tokens || 0
@@ -1225,6 +1238,13 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               </div>
             )}
 
+            <ChatRouteChip
+              profileName={activeProfile?.name}
+              modelName={activeModel?.name || activeModel?.id || settings.model}
+              isNight={n}
+              onClick={() => setModelPickerOpen(true)}
+            />
+
             {/* input area */}
             <div className={`chat-input-tray flex items-end gap-2 px-3 py-2 rounded-2xl border transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50 focus-within:shadow-[0_10px_30px_rgba(226,168,75,0.10)]' : 'bg-[#fffaf7]/95 border-day-muted/10 shadow-[0_8px_24px_rgba(93,64,55,0.10)] focus-within:border-day-pink/35 focus-within:shadow-[0_10px_30px_rgba(239,64,103,0.10)]'}`}>
               <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
@@ -1272,52 +1292,19 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             )}
           </AnimatePresence>
 
-          {/* model picker bottom sheet */}
-          <AnimatePresence>
-            {modelPickerOpen && (
-              <>
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setModelPickerOpen(false)} className="fixed inset-0 z-[60] bg-black/20" />
-                <motion.div
-                  initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-                  transition={{ type: 'spring', damping: 30, stiffness: 280 }}
-                  className={`fixed bottom-0 left-0 right-0 z-[61] max-h-[65dvh] rounded-t-2xl shadow-2xl flex flex-col ${n ? 'bg-night-card text-night-text' : 'bg-[#faf9f5] text-day-text'}`}
-                  style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-                  {/* drag handle */}
-                  <div className="flex justify-center pt-2 pb-1"><div className={`w-10 h-1 rounded-full ${n ? 'bg-night-border' : 'bg-gray-300'}`} /></div>
-                  <div className="px-4 pb-2 text-xs opacity-50">选择要使用的模型</div>
-                  {/* model list */}
-                  <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1">
-                    {filteredModels.map(({ profile, model }) => {
-                      const active = settings.activeProfileId === profile.id && settings.model === model.id
-                      return (
-                        <button key={`${profile.id}-${model.id}`}
-                          onClick={() => { setActiveModel(profile.id, model.id); setModelPickerOpen(false) }}
-                          className={`w-full text-left px-3 py-2.5 rounded-xl ${active ? (n ? 'bg-night-amber/15' : 'bg-day-lemon') : (n ? 'hover:bg-night-surface' : 'hover:bg-gray-50')}`}>
-                          <div className="flex items-center justify-between">
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium truncate">{profile.name} · {model.name || model.id}</div>
-                              <div className="text-[10px] opacity-40 truncate">{profile.name} · {model.id}</div>
-                            </div>
-                            {active && <Check size={16} className={`flex-shrink-0 ml-2 ${n ? 'text-night-amber' : 'text-day-pink'}`} />}
-                          </div>
-                        </button>
-                      )
-                    })}
-                    {!filteredModels.length && <div className="text-center text-xs opacity-40 py-8">没有匹配的模型</div>}
-                  </div>
-                  {/* provider tabs */}
-                  <div className={`flex gap-1 px-4 py-3 border-t overflow-x-auto pb-[max(0.75rem,env(safe-area-inset-bottom))] ${n ? 'border-night-border' : 'border-gray-200'}`}>
-                    <button onClick={() => setModelFilterProvider(null)}
-                      className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${!modelFilterProvider ? (n ? 'bg-night-amber/20 text-night-amber' : 'bg-day-lemon text-day-text font-medium') : 'opacity-60'}`}>全部</button>
-                    {providerNames.map(name => (
-                      <button key={name} onClick={() => setModelFilterProvider(modelFilterProvider === name ? null : name)}
-                        className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${modelFilterProvider === name ? (n ? 'bg-night-amber/20 text-night-amber' : 'bg-day-lemon text-day-text font-medium') : 'opacity-60'}`}>{name}</button>
-                    ))}
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
+          <ChatRoutePicker
+            open={modelPickerOpen}
+            isNight={n}
+            choices={enabledModels}
+            activeProfileId={settings.activeProfileId}
+            activeModelId={settings.model}
+            onSelectApiModel={(profileId, modelId) => {
+              if (activeSession) setGenerationRoute(activeSession.id, 'api')
+              setActiveModel(profileId, modelId)
+              setModelPickerOpen(false)
+            }}
+            onClose={() => setModelPickerOpen(false)}
+          />
 
           {/* confirm dialog */}
           <AnimatePresence>

@@ -1,4 +1,5 @@
 import type { ChatAppearance, ChatSettings, ProviderModel } from './types'
+import { DEFAULT_CHAT_ROUTE } from '@/lib/chat-route'
 
 export const DEFAULT_ANTHROPIC_BASE = 'https://api.anthropic.com'
 export const DEFAULT_OPENAI_BASE = 'https://api.openai.com/v1'
@@ -50,7 +51,16 @@ export const DEFAULT_SETTINGS: ChatSettings = {
     credentialConfigured: false,
   }],
   activeSessionId: defaultSessionId,
-  sessions: [{ id: defaultSessionId, title: '新的对话', messages: [], pinned: false, createdAt: now, updatedAt: now }],
+  sessions: [{
+    id: defaultSessionId,
+    title: '新的对话',
+    messages: [],
+    generationRoute: DEFAULT_CHAT_ROUTE,
+    generationRouteUpdatedAt: 0,
+    pinned: false,
+    createdAt: now,
+    updatedAt: now,
+  }],
   tombstones: {},
   bookmarks: [],
   summaryTurnSize: 20,

@@ -1,4 +1,5 @@
 import { normalizeReplyMode } from '@/lib/chat-reply-mode'
+import { normalizeChatRoute } from '@/lib/chat-route'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import type {
   ApiProfile, ApiProvider, BubbleLayout, ChatMessage, ChatSettings, ChatSummary, ContentBlock,
@@ -40,6 +41,7 @@ function normalizeContentBlock(block: any): ContentBlock | null {
 function normalizeVersion(version: any): MessageVersion {
   return {
     ...version,
+    route: normalizeChatRoute(version?.route),
     content: safeText(version?.content),
     thinking: version?.thinking == null ? undefined : safeText(version.thinking),
     timestamp: Number(version?.timestamp) || Date.now(),
@@ -64,14 +66,15 @@ function normalizeMessage(message: any): ChatMessage | null {
     (block.name == null || typeof block.name === 'string') &&
     (block.result == null || typeof block.result === 'string')))
   const versionsValid = !message.versions || (Array.isArray(message.versions) && message.versions.every((version: any) =>
-    version && typeof version.content === 'string' && (version.thinking == null || typeof version.thinking === 'string') &&
+    version && (version.route === 'api' || version.route === 'claude-code') && typeof version.content === 'string' && (version.thinking == null || typeof version.thinking === 'string') &&
     (!version.bubbleLayout || (Array.isArray(version.bubbleLayout.segments) && normalizeBubbleLayout(version.bubbleLayout)?.segments.length === version.bubbleLayout.segments.length))))
   const layoutValid = !message.bubbleLayout || (Array.isArray(message.bubbleLayout.segments) && normalizeBubbleLayout(message.bubbleLayout)?.segments.length === message.bubbleLayout.segments.length)
   const imagesValid = !message.images || (Array.isArray(message.images) && message.images.every((image: any) => typeof image === 'string'))
+  const routeValid = message.route === 'api' || message.route === 'claude-code'
   // Keep object identity on the normal path; this runs for every store update.
   if (typeof message.id === 'string' && typeof message.content === 'string' &&
       (message.thinking == null || typeof message.thinking === 'string') &&
-      blocksValid && versionsValid && layoutValid && imagesValid) return message as ChatMessage
+      routeValid && blocksValid && versionsValid && layoutValid && imagesValid) return message as ChatMessage
   const normalized = normalizeVersion(message)
   const versions = Array.isArray(message.versions) ? message.versions.map(normalizeVersion) : undefined
   return {
@@ -154,6 +157,8 @@ export function normalizeSettings(settings: any): ChatSettings {
   const sessions = Array.isArray(settings?.sessions) && settings.sessions.length
     ? settings.sessions.map((session: any) => ({
         id: session.id || makeId('session'),
+        generationRoute: normalizeChatRoute(session.generationRoute),
+        generationRouteUpdatedAt: Number.isFinite(session.generationRouteUpdatedAt) ? session.generationRouteUpdatedAt : 0,
         conversationMode: normalizeReplyMode(session.conversationMode),
         conversationModeUpdatedAt: Number.isFinite(session.conversationModeUpdatedAt) ? session.conversationModeUpdatedAt : 0,
         title: session.title || '新的对话',

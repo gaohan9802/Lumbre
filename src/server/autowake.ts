@@ -456,7 +456,7 @@ ${traceSummary}` : responseText)
       try {
         const result = appendSyncSessionMessage(config.sessionId, {
           id: `wake-${startedAt}-${randomUUID()}`,
-          role: 'assistant', content: storedContent, timestamp: nowTs,
+          role: 'assistant', route: 'api', content: storedContent, timestamp: nowTs,
           thinking: data.thinking, tool_calls: toolCalls, _wake: true, _wakeSilent: silent,
         })
         sessionWrite = result.appended ? 'appended' : 'duplicate'

@@ -223,6 +223,9 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
 export async function handleChatRequest(req: NextRequest) {
   try {
     const body = await req.json()
+    if (body.generation_route && body.generation_route !== 'api') {
+      return NextResponse.json({ error: '请求的生成线路尚未接通；不会自动改走 API。' }, { status: 409 })
+    }
     const unattendedWake = body._wake === true && isTrustedInternalRequest(req.headers.get('x-lumbre-internal'))
     if (body._wake === true && !unattendedWake) return NextResponse.json({ error: 'Invalid unattended wake credentials' }, { status: 403 })
     if (!unattendedWake) try { reportActivity() } catch {}

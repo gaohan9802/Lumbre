@@ -92,6 +92,17 @@ test('chat rejects legacy browser-supplied credentials before contacting upstrea
   assert.match(await response.text(), /不能再提交/)
 })
 
+test('API chat endpoint rejects an unavailable generation route instead of silently falling back', async () => {
+  const { NextRequest } = await import('next/server')
+  const route = await import('../../src/app/api/chat/route')
+  const response = await route.POST(new NextRequest('http://localhost/api/chat', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ generation_route: 'claude-code', messages: [] }),
+  }))
+  assert.equal(response.status, 409)
+  assert.match(await response.text(), /不会自动改走 API/)
+})
+
 test('registered legacy request shape uses the server copy of the credential during rollout', async () => {
   const { NextRequest } = await import('next/server')
   const repository = await import('../../src/server/data/repositories/model-credentials')
