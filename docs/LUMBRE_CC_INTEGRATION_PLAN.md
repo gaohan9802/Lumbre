@@ -1,6 +1,6 @@
 # Claude Code 住进 Lumbre：双线路施工蓝图
 
-日期：2026-09-05。2026-09-06 更新：阶段 1 已获用户分支预览确认，等待生产发布决定。当前分支：`codex/lumbre-cc-chat-shell`。
+日期：2026-09-05。2026-09-06 更新：阶段 1 已合并 main，并获用户生产主站确认；阶段 2 已在 `codex/lumbre-cc-isolated-probe` 开工。
 
 这份文档把外部施工蓝图、Lumbre 当前代码边界和本轮讨论合并为一份可执行计划。它是设计和验收依据，不是让自动化程序照单执行的指令。每次只施工一个阶段；完成检查和人工验收后，再决定是否进入下一阶段。
 
@@ -28,8 +28,8 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
    ├── API 路由 ── 现有模型网关 ── Anthropic / 兼容 API
    │
    └── CC 路由 ── 独立 CC 网关 ── 固定版本 Claude Code CLI
-                                      │
-                                      └── 受限 MCP ── Lumbre 统一工具权限层
+                                      └── 受限 MCP ── Lumbre 生活工具权限层
+                                           （无 Bash / Shell）
 ```
 
 这里需要一个后端。PWA 关掉、手机锁屏或网络闪断以后，浏览器不能可靠地替我们守着 Claude Code 进程、会话、缓存和定时唤醒；订阅登录材料也不应放进前端。因此 CC 网关必须运行在持续在线、带持久存储的服务里。它与 Next.js 可以部署在同一平台，但必须是独立进程、独立环境变量和受限文件系统，不能把整套生产密钥与 `/persistent` 直接交给 Claude Code。
@@ -42,13 +42,13 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 | --- | --- | --- |
 | 正式聊天记录与懒加载 | `src/features/chat/`、`src/server/chat-sync.ts` | 继续做唯一历史源；不把 CC session 当数据库 |
 | API 模型网关 | `src/server/chat/orchestrator.ts`、`src/server/chat/providers/` | 保持原线路，不塞入 CC CLI 特例 |
-| 统一生活工具权限 | `src/server/agent/` | CC 只能通过受限 MCP 请求这里执行工具 |
+| 统一生活工具权限 | `src/server/agent/` | CC 通过受限 MCP 请求全部现有生活工具；不获得 Bash/Shell |
 | 摘要与书签注入 | Chat feature / summary route | 两条线路共用同一份组装结果 |
 | 离线待发箱 | `src/features/chat/sync/outbox.ts` | 扩展为带线路和 attempt id 的可靠提交 |
 | 持久数据层与备份 | `src/server/data/`、`scripts/persistent-backup.mjs` | CC 新表/文件沿用同级安全与备份规则 |
 | SSE 流式展示 | `/api/chat`、chat event stream | 两条线路最终都转换成统一事件 |
 
-当前缺少的是：真正的 CC 运行环境、CLI 版本与登录验证、会话映射、任务重连、额度采集、上下文指标、缓存暖场队列以及 CC 到 Lumbre 工具层的受限桥梁。
+当前缺少的是：真正的 CC 运行环境、CLI 版本与登录验证、会话映射、任务重连、额度采集、上下文指标、缓存暖场队列，以及把现有 Lumbre 生活工具安全交给 CC 的桥梁。
 
 ## 4. 已确定的核心规则
 
@@ -82,9 +82,11 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 
 ### 4.4 工具与安全
 
-- 只有一个业务工具执行器：API 和 CC 最终都经过 Lumbre 当前的权限、确认、审计和安全检查。
-- API 保持当前工具循环；CC 使用严格 allowlist 的 MCP 去请求同一个执行器。
-- “陪伴工具”和“施工工具”分开。聊天中的 CC 默认不能读仓库、跑任意 shell、修改 Lumbre 源码或接触 Gmail 等额外秘密。
+- API 保持当前工具循环；CC 通过严格 MCP 桥请求同一套 Lumbre 生活工具，沿用现有权限、确认、审计和安全检查。
+- 现有 Lumbre 生活工具全部向 CC 开放，不另做缩水版 allowlist；红色操作仍必须确认，后台唤醒仍遵守现有 unattended 限制。
+- CC 永远不获得 Bash、Shell 或任意系统命令执行能力。Claude Code 自带的源码读写/施工工具也不直接开放；文件型生活能力必须包装成受控的 Lumbre 工具后再进入权限层。
+- CC 可以读取由 Lumbre 明确组装后发送的聊天文本，包括已经写入正式历史的旧工具结果。
+- 第二阶段隔离探针仍使用空工具、空 MCP，只验证 CLI 本体；真实生活工具从第五阶段开始接入。
 - 不默认使用 `--dangerously-skip-permissions`，不把 Claude Code 放进 Next.js 主进程，也不让前端持有 CC 登录材料。
 - CC endpoint 需要独立鉴权、限流、超时、并发限制和审计；日志不得记录订阅凭据或完整私密对话。
 
@@ -109,7 +111,7 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 | `GenerationAttempt` | 记录一轮请求的幂等 id、状态、结果、错误和取消状态 |
 | `CcMetricsSnapshot` | 记录额度、上下文、缓存与采集时间；允许 unavailable |
 | `WakeScheduler` | 合并用户任务、闹钟、心跳和暖场队列，执行优先级与去重 |
-| `CcMcpBridge` | 将允许的 CC 工具调用交给 Lumbre 权限执行器 |
+| `CcMcpBridge` | 将 CC 的生活工具调用交给 Lumbre 权限执行器；永不暴露 Bash/Shell |
 
 第一版可以继续使用当前安全 JSON 数据层，不为了 CC 顺手换数据库。若压力测试证明并发任务、锁和查询已超过它的边界，再把任务账本迁到 SQLite/Postgres；迁移必须是单独阶段。
 
@@ -121,7 +123,7 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 | 2. CC 隔离探针 | 独立服务中安装并固定 CLI；验证登录、`-p`、stream-json、resume/fork、退出码和超时 | 不接生产聊天；脱敏输入可跑；进程不能访问生产数据和额外密钥；记录准确版本与输出样本 |
 | 3. CC 网关与 attempt | 建任务账本、幂等提交、SSE/轮询重连、结果先落盘、明确取消 | 断网/刷新后找回同一任务；重复请求不重复回复；CC 失败不偷偷走 API |
 | 4. 会话与上下文桥 | bootstrap/delta/route-gap、session 映射、损坏后受控新建 | API→CC→API→CC 连续对话不丢语义；正常情况复用同 session id |
-| 5. 受限工具桥 | CC MCP → 现有权限执行器；陪伴 allowlist、确认、审计 | 未授权工具不可见/不可用；危险生活操作仍需确认；无任意 shell 和仓库权限 |
+| 5. 生活工具桥 | CC MCP → 现有权限执行器；开放全部现有 Lumbre 生活工具，但不提供 Bash/Shell | 生活工具可正常调用且保留确认/审计；任意命令执行与 Claude Code 施工工具不可见、不可用 |
 | 6. 指标卡 | 后端采集真实额度、上下文、缓存指标；侧栏卡片与刷新状态 | 有数据才显示数值；过期、失败、未支持均清楚标注；手机与桌面不挤压会话列表 |
 | 7. 心跳与缓存实验 | 统一队列、活跃跳过、暖场 fork 实验、成本日志 | 主 session 不被隐藏消息污染；只有实测 cache_read 成功才启用暖场；优先级正确 |
 | 8. 预览与生产 | 脱敏预览、故障演练、备份/回退、手机 PWA 验收 | API 回退可用；长对话与工具无回归；用户明确批准后才合并与部署 |
@@ -146,7 +148,6 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 - CC 服务部署位置和可用持久卷；
 - 首个验证模型与 effort；
 - 订阅登录的人工初始化方式；
-- CC 陪伴模式首批允许工具；
 - 额度不可读时卡片是否只显示状态，还是暂时整卡隐藏。
 
 这些选择不会阻塞阶段 1。
@@ -165,9 +166,13 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 - [x] 完成阶段 1 代码。
 - [x] 完成自动化检查与本地桌面/手机宽度检查。
 - [x] 用户确认测试分支第一阶段整体正常。
-- [ ] 完成逐项真机 PWA 与跨设备验收记录。
-- [ ] 用户批准合并 main 并触发生产发布。
-- [ ] 用户批准进入阶段 2。
+- [x] 用户批准合并 main 并触发生产发布。
+- [x] 用户确认生产主站通过。
+- [x] 用户批准进入阶段 2。
+- [x] 建立阶段 2 分支 `codex/lumbre-cc-isolated-probe`。
+- [x] 完成阶段 2 隔离探针的离线自动化验收。
+- [ ] 用户确认部署位置、模型和订阅认证方式后，执行真实 CC 探针。
+- [ ] 补做未逐项回报的真机 PWA 与跨设备检查（不阻塞隔离探针）。
 
 ## 11. 官方行为参考
 
@@ -176,5 +181,8 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 - 会话恢复与分叉：<https://code.claude.com/docs/en/sessions>
 - Prompt caching：<https://code.claude.com/docs/en/prompt-caching>
 - Status line 可用上下文字段：<https://code.claude.com/docs/en/statusline>
+- Claude 订阅用于 `-p` / Agent SDK 的当前说明：<https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan>
+
+2026-09-06 现场核对：Anthropic 已暂停原定的 Agent SDK 月度 credits 改动；目前 `claude -p`、Agent SDK 与第三方应用仍计入订阅 usage limits。若官方之后再次调整，必须先重跑额度与认证探针，再修改产品文案。
 
 外部平台与 CLI 行为会变化。实际施工时以固定版本的现场探针和官方文档为准，本文不把尚未验证的字段承诺成稳定协议。

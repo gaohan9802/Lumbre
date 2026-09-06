@@ -11,7 +11,9 @@
     "test": "node --import tsx --test tests/**/*.test.ts",
     "test:smoke": "node --import tsx --test tests/smoke/**/*.test.ts",
     "test:safety": "node --import tsx --test tests/safety/**/*.test.ts",
-    "verify:model-gateway": "node scripts/verify-model-gateway.mjs"
+    "verify:model-gateway": "node scripts/verify-model-gateway.mjs",
+    "verify:cc-probe": "docker run --rm --network none lumbre-cc-probe:2.1.236 inspect",
+    "test:cc-probe": "node --import tsx --test tests/safety/cc-isolated-probe.test.ts"
   },
   "dependencies": {
     "@types/web-push": "^3.6.4",
