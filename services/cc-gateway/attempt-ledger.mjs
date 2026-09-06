@@ -52,6 +52,8 @@ export function publicAttempt(attempt) {
     completedAt: attempt.completedAt,
     result: attempt.result,
     error: attempt.error,
+    sessionMode: attempt.sessionPlan?.mode || null,
+    sessionReason: attempt.sessionPlan?.reason || null,
     lastEventId: attempt.events.at(-1)?.id || 0,
   }
 }
@@ -119,6 +121,8 @@ export class AttemptLedger {
         idempotencyHash,
         conversationId: input.conversationId,
         prompt: input.prompt,
+        resumeSessionId: input.resumeSessionId || null,
+        sessionPlan: input.sessionPlan || null,
         model: input.model,
         status: 'queued',
         cancelRequested: false,
@@ -135,6 +139,15 @@ export class AttemptLedger {
       writeJsonAtomic(this.indexPath, index)
       return { attempt, created: true }
     })
+  }
+
+  getByIdempotencyKey(idempotencyKey) {
+    if (typeof idempotencyKey !== 'string' || !SAFE_KEY.test(idempotencyKey)) {
+      throw new AttemptValidationError('idempotency_key is invalid')
+    }
+    const index = readJson(this.indexPath, {})
+    const id = index[hashKey(idempotencyKey)]
+    return id ? this.get(id) : null
   }
 
   update(id, operation) {

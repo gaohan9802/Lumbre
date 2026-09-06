@@ -118,6 +118,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
   const activeModel = activeProfile?.models.find(model => model.id === settings.model)
   const activeRoute = normalizeChatRoute(activeSession?.generationRoute)
+  const [ccStatus, setCcStatus] = useState({ configured: false, available: false, model: null as string | null, version: null as string | null })
 
   const {
     input, setInput, isLoading, setIsLoading,
@@ -136,10 +137,17 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId,
     messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
+    activeGenerationRef, explicitStopRef, recoveredTurnsRef,
     confirmState, ask, answer,
   } = useChatViewState()
 
   useEffect(() => { setMounted(true) }, [])
+  const refreshCcStatus = useCallback(async () => {
+    try { setCcStatus(await chatApi.ccStatus()) }
+    catch { setCcStatus(current => ({ ...current, available: false })) }
+  }, [])
+  useEffect(() => { void refreshCcStatus() }, [refreshCcStatus])
+  useEffect(() => { if (modelPickerOpen) void refreshCcStatus() }, [modelPickerOpen, refreshCcStatus])
   useEffect(() => {
     const accept = (detail: SharedCard | string) => {
       if (typeof detail === 'string') setInput((v) => v ? v + '\n\n' + detail : detail)
@@ -253,8 +261,16 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   /* ── send ────────────────────────────── */
 
-  const doSend = async (sendMessages: { role: string; content: string; images?: string[] }[], onResult: (data: any) => void | Promise<void>, requestedMode?: ReplyMode) => {
+  const doSend = async (
+    sendMessages: { id: string; role: string; route?: 'api' | 'claude-code'; ccAttemptId?: string; content: string; images?: string[] }[],
+    onResult: (data: any) => void | Promise<void>,
+    requestedMode?: ReplyMode,
+    requestedRoute = activeRoute,
+    turnId = sendMessages.at(-1)?.id || '',
+    sessionAction?: 'rebase',
+  ) => {
     const mode = requestedMode || normalizeReplyMode(activeSession?.conversationMode)
+    const route = normalizeChatRoute(requestedRoute)
     const onDone = (data: any) => {
       const content = mode === 'short' ? cleanLegacyBubbleMarkers(String(data.content || '')) : data.content
       const blocks: ContentBlock[] | undefined = data.content_blocks
@@ -305,6 +321,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     let toolCalls: any[] = []
     let contentBlocks: ContentBlock[] = []
     let usage: any = {}
+    let ccAttemptId: string | undefined
+    let ccSessionMode: 'bootstrap' | 'resume' | 'rebase' | undefined
+    let ccSessionReason: string | undefined
+    let ccSessionFingerprint: string | undefined
+    let ccCompacted: boolean | undefined
     let paintTimer: ReturnType<typeof setTimeout> | null = null
     const paintStream = () => {
       paintTimer = null
@@ -321,6 +342,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
     const controller = new AbortController()
     abortControllerRef.current = controller
+    explicitStopRef.current = false
+    if (activeSession?.id && turnId) activeGenerationRef.current = { route, sessionId: activeSession.id, turnId }
     const resolveConfirmation = async (event: any) => {
       let payload: any
       try { payload = JSON.parse(event.result || '') } catch { return event }
@@ -345,7 +368,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
     try {
       const res = await chatApi.stream({
-        generation_route: 'api',
+        generation_route: route,
+        turn_id: route === 'claude-code' ? turnId : undefined,
+        cc_session_action: route === 'claude-code' ? sessionAction : undefined,
         messages: sendMessages,
         system: systemPrompt,
         model,
@@ -356,7 +381,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         stream: true,
         session_id: activeSession?.id,
         bookmark_injections: bookmarkInjections,
-        api_profile: profile ? {
+        api_profile: route === 'api' && profile ? {
           profileId: profile.id, modelId: model,
         } : undefined,
       }, controller.signal)
@@ -380,7 +405,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       }
 
       for await (const evt of readChatEventStream(res)) {
-        if (evt.type === 'text') {
+        if (evt.type === 'attempt') {
+          ccAttemptId = typeof evt.attempt_id === 'string' ? evt.attempt_id : undefined
+          ccSessionMode = ['bootstrap', 'resume', 'rebase'].includes(String(evt.session_mode)) ? evt.session_mode as any : undefined
+          ccSessionReason = typeof evt.session_reason === 'string' ? evt.session_reason : undefined
+        } else if (evt.type === 'text') {
           const chunk = String(evt.content || '')
           fullText += chunk
           appendContentBlock({ type: 'text', content: chunk })
@@ -396,8 +425,15 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           const errorText = (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
           fullText += errorText
           appendContentBlock({ type: 'text', content: errorText })
+        } else if (evt.type === 'recoverable_disconnect') {
+          throw Object.assign(new Error(evt.content || 'CC 连接暂时中断'), { name: 'AbortError' })
         } else if (evt.type === 'done') {
           usage = evt
+          ccAttemptId = typeof evt.attempt_id === 'string' ? evt.attempt_id : ccAttemptId
+          ccSessionFingerprint = typeof evt.session_fingerprint === 'string' ? evt.session_fingerprint : undefined
+          ccSessionMode = ['bootstrap', 'resume', 'rebase'].includes(String(evt.session_mode)) ? evt.session_mode as any : ccSessionMode
+          ccSessionReason = typeof evt.session_reason === 'string' ? evt.session_reason : ccSessionReason
+          ccCompacted = typeof evt.compacted === 'boolean' ? evt.compacted : ccCompacted
         }
       }
       if (paintTimer) clearTimeout(paintTimer)
@@ -411,16 +447,31 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         output_tokens: usage.output_tokens,
         cache_read_tokens: usage.cache_read_tokens,
         cache_creation_tokens: usage.cache_creation_tokens,
+        ccAttemptId,
+        ccSessionFingerprint,
+        ccSessionMode,
+        ccSessionReason,
+        ccCompacted,
       })
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        await onDone({
-          content: fullText || '已停止生成。',
-          thinking: fullThinking || undefined,
-          tool_calls: toolCalls.length ? toolCalls : undefined,
-          content_blocks: contentBlocks.length ? contentBlocks : undefined,
-          stopped: true,
-        })
+        if (explicitStopRef.current) {
+          await onDone({
+            content: fullText || '已停止生成。',
+            thinking: fullThinking || undefined,
+            tool_calls: toolCalls.length ? toolCalls : undefined,
+            content_blocks: contentBlocks.length ? contentBlocks : undefined,
+            ccAttemptId,
+            stopped: true,
+          })
+        } else {
+          // Tab close, refresh, PWA suspension and session switches are only
+          // disconnects. Leave the user turn pending so it can recover later.
+          setIsLoading(false)
+          setStreamText('')
+          setStreamThinking('')
+          setStreamBlocks([])
+        }
       } else {
         const failure = '\n\n⚠️ ' + (err?.message || '连接失败了…')
         await onDone({ content: fullText + failure, thinking: fullThinking || undefined, content_blocks: [...contentBlocks, { type: 'text', content: failure }], tool_calls: toolCalls.length ? toolCalls : undefined, error: true, stopped: true })
@@ -428,6 +479,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     } finally {
       if (paintTimer) clearTimeout(paintTimer)
       if (abortControllerRef.current === controller) abortControllerRef.current = null
+      if (activeGenerationRef.current?.turnId === turnId) activeGenerationRef.current = null
+      explicitStopRef.current = false
     }
   }
 
@@ -565,9 +618,13 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   const handleSend = async () => {
     if ((!input.trim() && pendingImages.length === 0 && !pendingShare) || isLoading) return
-    if (activeRoute !== 'api') {
-      window.alert('这版还没有接通 CC。请选择 API 模型后再发送。')
+    if (activeRoute === 'claude-code' && !ccStatus.available) {
+      window.alert('CC 网关现在没有连上；本轮不会自动改走 API。')
       setModelPickerOpen(true)
+      return
+    }
+    if (activeRoute === 'claude-code' && pendingImages.length > 0) {
+      window.alert('CC 的图片通道还没有接好，这一轮请改走 API；文字聊天已经可以使用。')
       return
     }
     const profile = getActiveProfile(settings)
@@ -582,8 +639,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       timestamp: now,
       images: pendingImages.length ? pendingImages : undefined,
       sharedCard: pendingShare || undefined,
-      providerId: profile?.id,
-      modelId: model,
+      ccGenerationState: activeRoute === 'claude-code' ? 'pending' : undefined,
+      providerId: activeRoute === 'claude-code' ? 'claude-code' : profile?.id,
+      modelId: activeRoute === 'claude-code' ? (ccStatus.model || 'sonnet') : model,
     }
     stickBottomRef.current = true
     await durableAppend(activeSession, userMsg)
@@ -607,7 +665,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         msgContent = (msgContent || '') + '\n' + summary
       }
       const cardText = m.sharedCard ? `\n\n[已分享卡片｜${m.sharedCard.kind}]\n${JSON.stringify(m.sharedCard.metadata)}\n${m.sharedCard.body || ''}` : ''
-      return { role: m.role, content: msgContent + cardText, images: m.images }
+      return { id: m.id, role: m.role, route: normalizeChatRoute(m.route), ccAttemptId: m.ccAttemptId, content: msgContent + cardText, images: m.images }
     })
 
     await doSend(apiMessages, async (data) => {
@@ -626,28 +684,35 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         content_blocks: data.content_blocks,
         bubbleLayout: data.bubbleLayout,
         route: activeRoute,
+        ccAttemptId: data.ccAttemptId,
+        ccSessionFingerprint: data.ccSessionFingerprint,
+        ccSessionMode: data.ccSessionMode,
+        ccSessionReason: data.ccSessionReason,
+        ccCompacted: data.ccCompacted,
         replyMode: data.replyMode,
-        providerId: profile?.id,
-        modelId: model,
+        providerId: activeRoute === 'claude-code' ? 'claude-code' : profile?.id,
+        modelId: activeRoute === 'claude-code' ? (ccStatus.model || 'sonnet') : model,
       }
       await durableAppend(activeSession, assistantMsg)
       addMessage(assistantMsg, activeSession?.id)
+      if (activeRoute === 'claude-code') updateMessage(userMsg.id, { ccGenerationState: 'settled' })
+      void syncChatNow()
       onTurn?.('assistant', assistantContent)
       setIsLoading(false)
       setStreamText('')
       setStreamThinking('')
       setStreamBlocks([])
-    }, userMsg.replyMode)
+    }, userMsg.replyMode, activeRoute, userMsg.id)
   }
 
 
   /* ── retry ────────────────────────────── */
 
-  const handleRetry = async (msg: ChatMessage, skipConfirm = false) => {
+  const handleRetry = async (msg: ChatMessage, skipConfirm = false, recoverPending = false) => {
     if (isLoading) return
     const retryRoute = normalizeChatRoute(msg.route)
-    if (retryRoute !== 'api') {
-      window.alert('这条回复来自 CC；CC 接通前不会偷偷改走 API 重试。')
+    if (retryRoute === 'claude-code' && !ccStatus.available) {
+      if (!recoverPending) window.alert('CC 网关现在没有连上；不会偷偷改走 API 重试。')
       return
     }
     if (!skipConfirm) {
@@ -665,7 +730,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const idx = currentMessages.findIndex(m => m.id === msg.id)
       if (idx < 0) { setIsLoading(false); return }
       const slice = stableSlice(currentMessages.slice(0, idx), settings.contextLength)
-      const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
+      const apiMessages = slice.map(m => ({ id: m.id, role: m.role, route: normalizeChatRoute(m.route), ccAttemptId: m.ccAttemptId, content: m.content, images: m.images }))
+      const retryTurnId = retryRoute === 'claude-code' ? `cc-reroll:${msg.id}:${Date.now()}` : msg.id
 
       await doSend(apiMessages, async (data) => {
         const newVersion: MessageVersion = {
@@ -680,9 +746,14 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           tool_calls: data.tool_calls,
           content_blocks: data.content_blocks,
           bubbleLayout: data.bubbleLayout,
+          ccAttemptId: data.ccAttemptId,
+          ccSessionFingerprint: data.ccSessionFingerprint,
+          ccSessionMode: data.ccSessionMode,
+          ccSessionReason: data.ccSessionReason,
+          ccCompacted: data.ccCompacted,
           replyMode: data.replyMode,
-          providerId: profile?.id,
-          modelId: model,
+          providerId: retryRoute === 'claude-code' ? 'claude-code' : profile?.id,
+          modelId: retryRoute === 'claude-code' ? (ccStatus.model || 'sonnet') : model,
         }
         addMessageVersion(msg.id, newVersion, activeSession?.id)
         void syncChatNow()
@@ -690,14 +761,17 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         setStreamText('')
         setStreamThinking('')
         setStreamBlocks([])
-      }, normalizeReplyMode(msg.replyMode))
+      }, normalizeReplyMode(msg.replyMode), retryRoute, retryTurnId, retryRoute === 'claude-code' ? 'rebase' : undefined)
     } else {
       // User retry: regenerate the AI response that follows
       const idx = currentMessages.findIndex(m => m.id === msg.id)
       if (idx < 0) { setIsLoading(false); return }
       const nextMsg = currentMessages[idx + 1]
       const slice = stableSlice(currentMessages.slice(0, idx + 1), settings.contextLength)
-      const apiMessages = slice.map(m => ({ role: m.role, content: m.content, images: m.images }))
+      const apiMessages = slice.map(m => ({ id: m.id, role: m.role, route: normalizeChatRoute(m.route), ccAttemptId: m.ccAttemptId, content: m.content, images: m.images }))
+      const retryTurnId = retryRoute === 'claude-code'
+        ? (recoverPending ? msg.id : `cc-retry:${msg.id}:${Date.now()}`)
+        : msg.id
 
       await doSend(apiMessages, async (data) => {
         const reply = {
@@ -712,9 +786,14 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           tool_calls: data.tool_calls,
           content_blocks: data.content_blocks,
           bubbleLayout: data.bubbleLayout,
+          ccAttemptId: data.ccAttemptId,
+          ccSessionFingerprint: data.ccSessionFingerprint,
+          ccSessionMode: data.ccSessionMode,
+          ccSessionReason: data.ccSessionReason,
+          ccCompacted: data.ccCompacted,
           replyMode: data.replyMode,
-          providerId: profile?.id,
-          modelId: model,
+          providerId: retryRoute === 'claude-code' ? 'claude-code' : profile?.id,
+          modelId: retryRoute === 'claude-code' ? (ccStatus.model || 'sonnet') : model,
         }
         if (nextMsg?.role === 'assistant') {
           addMessageVersion(nextMsg.id, reply, activeSession?.id)
@@ -724,13 +803,30 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           await durableAppend(activeSession, assistantMsg)
           addMessage(assistantMsg, activeSession?.id)
         }
+        if (retryRoute === 'claude-code') updateMessage(msg.id, { ccGenerationState: 'settled' })
+        void syncChatNow()
         setIsLoading(false)
         setStreamText('')
         setStreamThinking('')
         setStreamBlocks([])
-      }, normalizeReplyMode(msg.replyMode))
+      }, normalizeReplyMode(msg.replyMode), retryRoute, retryTurnId, retryRoute === 'claude-code' && !recoverPending ? 'rebase' : undefined)
     }
   }
+
+  // If a tab refreshed or iOS suspended the PWA after the user message was
+  // saved, re-submit the same turn id. The gateway's idempotency ledger either
+  // reconnects to the running attempt or replays its one completed result.
+  useEffect(() => {
+    if (!mounted || isLoading || !ccStatus.available || !activeSession?.id) return
+    const pending = [...messages].reverse().find(message => message.role === 'user' && message.route === 'claude-code' && message.ccGenerationState === 'pending')
+    if (!pending || messages.at(-1)?.id !== pending.id) return
+    const key = `${activeSession.id}:${pending.id}`
+    if (recoveredTurnsRef.current.has(key)) return
+    recoveredTurnsRef.current.add(key)
+    void handleRetry(pending, true, true)
+    // Recovery is keyed to the durable turn, not ordinary streaming renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, activeSession?.id, ccStatus.available, isLoading, messages.at(-1)?.id, messages.at(-1)?.ccGenerationState])
 
   /* ── delete message ───────────────────── */
 
@@ -790,6 +886,29 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   }
   const toggleTools = (id: string) => {
     setExpandedTools(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  }
+
+  const handleStopGeneration = async () => {
+    const current = activeGenerationRef.current
+    if (!current || current.route === 'api') {
+      explicitStopRef.current = true
+      abortControllerRef.current?.abort()
+      return
+    }
+    let cancelled: { ok: boolean; attempt?: { id: string; status: string } } | null = null
+    for (let attempt = 0; attempt < 3 && !cancelled; attempt++) {
+      try { cancelled = await chatApi.cancelCcAttempt({ session_id: current.sessionId, turn_id: current.turnId }) }
+      catch {
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)))
+      }
+    }
+    if (!cancelled) {
+      window.alert('暂时没能把取消指令送到 CC。任务可能仍在后台继续，我没有假装它已经停下。')
+      return
+    }
+    if (cancelled.attempt?.status === 'completed') return
+    explicitStopRef.current = true
+    abortControllerRef.current?.abort()
   }
 
   const filteredSessions = sessions.filter(s =>
@@ -1129,6 +1248,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                       {!isUser && (
                         <div className={`text-[10px] px-1 flex flex-wrap gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                           <span className="opacity-40">{chatRouteLabel(msg.route)}{msg.modelId ? ` · ${msg.modelId}` : ''}</span>
+                          {msg.ccSessionFingerprint && <span className="opacity-35" title={`${msg.ccSessionMode || 'session'} · ${msg.ccSessionReason || 'normal'}${msg.ccCompacted ? ' · compacted' : ''}`}>会话 {msg.ccSessionFingerprint}{msg.ccCompacted ? ' · 已整理' : ''}</span>}
                           {(msg.input_tokens != null && msg.input_tokens > 0) && (() => {
                             const inp = msg.input_tokens || 0
                             const out = msg.output_tokens || 0
@@ -1146,7 +1266,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
                       {/* action buttons */}
                       <div className={`flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start'} opacity-40 hover:opacity-100 transition-opacity relative`}>
-                        <button onClick={() => handleRetry(msg)} title="重试" className="p-1"><RotateCcw size={12} /></button>
+                        <button onClick={() => handleRetry(msg, false, msg.ccGenerationState === 'pending')} title="重试" className="p-1"><RotateCcw size={12} /></button>
                         <button onClick={() => handleDeleteMsg(msg.id)} title="删除" className="p-1"><Trash2 size={12} /></button>
                         <button onClick={() => handleCopy(msg.id, msg.content)} title="复制" className="p-1">
                           {copiedId === msg.id ? <Check size={12} /> : <Copy size={12} />}
@@ -1241,6 +1361,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             <ChatRouteChip
               profileName={activeProfile?.name}
               modelName={activeModel?.name || activeModel?.id || settings.model}
+              route={activeRoute}
+              ccStatus={ccStatus}
               isNight={n}
               onClick={() => setModelPickerOpen(true)}
             />
@@ -1253,7 +1375,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
               <button aria-label="更多功能" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)} className="p-2 rounded-xl flex-shrink-0 relative"><Plus size={18}/>{timelineCurrent && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-day-pink"/>}</button>
               {isLoading ? (
-                <button onClick={() => abortControllerRef.current?.abort()} title="停止生成"
+                <button onClick={() => { void handleStopGeneration() }} title="停止生成"
                   className={`p-2 rounded-xl transition-all flex-shrink-0 ${n ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}>
                   <Square size={15} fill="currentColor" />
                 </button>
@@ -1298,9 +1420,15 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             choices={enabledModels}
             activeProfileId={settings.activeProfileId}
             activeModelId={settings.model}
+            activeRoute={activeRoute}
+            ccStatus={ccStatus}
             onSelectApiModel={(profileId, modelId) => {
               if (activeSession) setGenerationRoute(activeSession.id, 'api')
               setActiveModel(profileId, modelId)
+              setModelPickerOpen(false)
+            }}
+            onSelectCc={() => {
+              if (activeSession && ccStatus.available) setGenerationRoute(activeSession.id, 'claude-code')
               setModelPickerOpen(false)
             }}
             onClose={() => setModelPickerOpen(false)}

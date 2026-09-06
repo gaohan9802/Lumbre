@@ -8,6 +8,12 @@ export function sessionTitleFromMessage(text: string) {
 export function snapshotOfMessage(message: ChatMessage): MessageVersion {
   return {
     route: message.route,
+    ccAttemptId: message.ccAttemptId,
+    ccSessionFingerprint: message.ccSessionFingerprint,
+    ccSessionMode: message.ccSessionMode,
+    ccSessionReason: message.ccSessionReason,
+    ccCompacted: message.ccCompacted,
+    ccGenerationState: message.ccGenerationState,
     content: message.content,
     content_blocks: message.content_blocks,
     bubbleLayout: message.bubbleLayout,

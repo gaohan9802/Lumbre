@@ -15,6 +15,7 @@ import { anthropicAdapter } from './providers/anthropic'
 import { openAICompatibleAdapter } from './providers/openai-compatible'
 import type { GatewayEmitter, GatewayProvider, GatewayProviderAdapter, GatewayUsage } from './providers/types'
 import { friendlyStreamError, logUpstreamStreamError, UpstreamHttpError } from './request'
+import { createCcChatResponse } from './cc-gateway'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -223,12 +224,28 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
 export async function handleChatRequest(req: NextRequest) {
   try {
     const body = await req.json()
-    if (body.generation_route && body.generation_route !== 'api') {
-      return NextResponse.json({ error: '请求的生成线路尚未接通；不会自动改走 API。' }, { status: 409 })
-    }
+    const generationRoute = body.generation_route === 'claude-code' ? 'claude-code' : body.generation_route === 'api' || !body.generation_route ? 'api' : null
+    if (!generationRoute) return NextResponse.json({ error: '未知生成线路；不会自动改走 API。' }, { status: 400 })
     const unattendedWake = body._wake === true && isTrustedInternalRequest(req.headers.get('x-lumbre-internal'))
     if (body._wake === true && !unattendedWake) return NextResponse.json({ error: 'Invalid unattended wake credentials' }, { status: 403 })
     if (!unattendedWake) try { reportActivity() } catch {}
+
+    if (generationRoute === 'claude-code') {
+      if (unattendedWake) return NextResponse.json({ error: 'CC 后台唤醒尚未开放；不会自动改走 API。' }, { status: 409 })
+      if (body.api_profile?.apiKey || body.api_profile?.baseUrl) {
+        return NextResponse.json({ error: 'CC 请求不能携带浏览器模型密钥或上游地址。' }, { status: 400 })
+      }
+      const replyMode = normalizeReplyMode(body.reply_mode)
+      const lastUser = Array.isArray(body.messages)
+        ? [...body.messages].reverse().find((message: any) => message?.role === 'user')?.content || ''
+        : ''
+      const system = (body.system?.trim() || DEFAULT_SYSTEM_PROMPT) + `\n\n${replyModePrompt(replyMode)}`
+      return createCcChatResponse({
+        body,
+        system,
+        volatileContext: await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
+      })
+    }
 
     const hasInlineCredential = !!(body.api_profile?.apiKey || body.api_profile?.baseUrl)
     let credential: ModelCredentialInput | null = null

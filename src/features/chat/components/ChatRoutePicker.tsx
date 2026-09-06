@@ -4,17 +4,23 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronDown } from 'lucide-react'
 import type { ApiProfile, ProviderModel } from '@/features/chat/state/types'
+import type { ChatRoute } from '@/lib/chat-route'
+import type { CcStatus } from '@/features/chat/api/client'
 
 type ModelChoice = { profile: ApiProfile; model: ProviderModel }
 
 export function ChatRouteChip({
   profileName,
   modelName,
+  route,
+  ccStatus,
   isNight,
   onClick,
 }: {
   profileName?: string
   modelName?: string
+  route: ChatRoute
+  ccStatus: CcStatus
   isNight: boolean
   onClick: () => void
 }) {
@@ -25,9 +31,11 @@ export function ChatRouteChip({
       onClick={onClick}
       className={`mb-2 ml-1 inline-flex max-w-[min(76vw,420px)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] transition ${isNight ? 'border-night-border/80 bg-night-surface/75 text-night-muted hover:border-night-amber/45' : 'border-day-muted/15 bg-white/75 text-day-muted hover:border-day-pink/30'}`}
     >
-      <span className={`font-semibold tracking-[0.12em] ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>API</span>
+      <span className={`font-semibold tracking-[0.12em] ${isNight ? 'text-night-amber' : 'text-day-pink'}`}>{route === 'claude-code' ? 'CC' : 'API'}</span>
       <span className="opacity-35">·</span>
-      <span className="truncate opacity-65">{profileName || 'API'} · {modelName || '未选择模型'}</span>
+      <span className="truncate opacity-65">{route === 'claude-code'
+        ? `Claude Code · ${ccStatus.model || '未连接'}`
+        : `${profileName || 'API'} · ${modelName || '未选择模型'}`}</span>
       <ChevronDown size={11} className="flex-shrink-0 opacity-45" />
     </button>
   )
@@ -39,7 +47,10 @@ export function ChatRoutePicker({
   choices,
   activeProfileId,
   activeModelId,
+  activeRoute,
+  ccStatus,
   onSelectApiModel,
+  onSelectCc,
   onClose,
 }: {
   open: boolean
@@ -47,7 +58,10 @@ export function ChatRoutePicker({
   choices: ModelChoice[]
   activeProfileId: string
   activeModelId: string
+  activeRoute: ChatRoute
+  ccStatus: CcStatus
   onSelectApiModel: (profileId: string, modelId: string) => void
+  onSelectCc: () => void
   onClose: () => void
 }) {
   const [providerFilter, setProviderFilter] = useState<string | null>(null)
@@ -72,12 +86,26 @@ export function ChatRoutePicker({
               <div className="text-xs font-medium">发送线路与模型</div>
               <div className="mt-1 flex items-center gap-1.5 text-[10px] opacity-50">
                 <span className={`h-1.5 w-1.5 rounded-full ${isNight ? 'bg-night-amber' : 'bg-day-pink'}`} />
-                API 已连接
+                API 已连接 · CC {ccStatus.available ? '已连接' : ccStatus.configured ? '暂时离线' : '尚未配置'}
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1">
+              <button
+                type="button"
+                disabled={!ccStatus.available}
+                onClick={onSelectCc}
+                className={`mb-3 w-full rounded-xl border px-3 py-3 text-left transition ${activeRoute === 'claude-code' ? (isNight ? 'border-night-amber/40 bg-night-amber/15' : 'border-day-pink/25 bg-day-lemon') : (isNight ? 'border-night-border hover:bg-night-surface' : 'border-gray-200 hover:bg-white')} ${ccStatus.available ? '' : 'cursor-not-allowed opacity-45'}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">Claude Code · {ccStatus.model || '订阅线路'}</div>
+                    <div className="mt-0.5 text-[10px] opacity-50">{ccStatus.available ? '文字聊天已接通 · 生活工具下一阶段开放' : ccStatus.configured ? '网关暂时无法连接' : '服务端尚未配置 CC 网关'}</div>
+                  </div>
+                  {activeRoute === 'claude-code' && <Check size={16} className={`flex-shrink-0 ${isNight ? 'text-night-amber' : 'text-day-pink'}`} />}
+                </div>
+              </button>
               {filtered.map(({ profile, model }) => {
-                const active = activeProfileId === profile.id && activeModelId === model.id
+                const active = activeRoute === 'api' && activeProfileId === profile.id && activeModelId === model.id
                 return (
                   <button key={`${profile.id}-${model.id}`}
                     onClick={() => onSelectApiModel(profile.id, model.id)}

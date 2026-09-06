@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
 import {
   DEFAULT_MAX_OUTPUT_BYTES,
   DEFAULT_TIMEOUT_MS,
@@ -17,6 +19,81 @@ export class ClaudeExecutionError extends Error {
   }
 }
 
+const TRANSCRIPT_SCAN_LIMIT_BYTES = 16 * 1024 * 1024
+
+function findTranscript(home, sessionId) {
+  if (!home || !sessionId) return null
+  const root = path.join(home, '.claude', 'projects')
+  const wanted = `${sessionId}.jsonl`
+  const pending = [root]
+  let visited = 0
+  while (pending.length && visited < 4_000) {
+    const directory = pending.pop()
+    let entries
+    try { entries = fs.readdirSync(directory, { withFileTypes: true }) }
+    catch { continue }
+    for (const entry of entries) {
+      visited++
+      const candidate = path.join(directory, entry.name)
+      if (entry.isFile() && entry.name === wanted) return candidate
+      if (entry.isDirectory()) pending.push(candidate)
+      if (visited >= 4_000) break
+    }
+  }
+  return null
+}
+
+function transcriptSnapshot(home, sessionId) {
+  const transcriptPath = findTranscript(home, sessionId)
+  if (!transcriptPath) return null
+  try { return { path: transcriptPath, size: fs.statSync(transcriptPath).size } }
+  catch { return null }
+}
+
+function isCompactBoundary(value) {
+  return value?.type === 'system' && (
+    value?.subtype === 'compact_boundary'
+    || value?.source === 'compact'
+    || value?.compactMetadata != null
+    || value?.compact_metadata != null
+  )
+}
+
+function streamDetectedCompaction(events) {
+  return events.some(value => isCompactBoundary(value) || isCompactBoundary(value?.event))
+}
+
+function transcriptDetectedCompaction(home, sessionId, before) {
+  const after = transcriptSnapshot(home, sessionId)
+  if (!after) return false
+  const sameFile = before?.path === after.path && after.size >= before.size
+  const start = sameFile ? before.size : 0
+  const available = Math.max(0, after.size - start)
+  if (!available) return false
+  const length = Math.min(available, TRANSCRIPT_SCAN_LIMIT_BYTES)
+  const offset = available > length ? after.size - length : start
+  let text
+  try {
+    const handle = fs.openSync(after.path, 'r')
+    try {
+      const buffer = Buffer.alloc(length)
+      const bytesRead = fs.readSync(handle, buffer, 0, length, offset)
+      text = buffer.subarray(0, bytesRead).toString('utf8')
+    } finally { fs.closeSync(handle) }
+  } catch { return false }
+
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue
+    try {
+      const value = JSON.parse(line)
+      if (isCompactBoundary(value) || isCompactBoundary(value?.event)) return true
+    } catch {
+      // A bounded tail can begin mid-line. Ignore only that incomplete record.
+    }
+  }
+  return false
+}
+
 export class ClaudeExecutor {
   constructor(options = {}) {
     this.binary = options.binary || 'claude'
@@ -26,9 +103,10 @@ export class ClaudeExecutor {
     this.env = buildProbeEnvironment(options.env || process.env)
   }
 
-  run({ prompt, model, signal, onText }) {
+  run({ prompt, model, resumeSessionId, signal, onText }) {
     return new Promise((resolve, reject) => {
-      const args = buildClaudeArgs({ outputFormat: 'stream-json', model })
+      const transcriptBefore = transcriptSnapshot(this.env.HOME, resumeSessionId)
+      const args = buildClaudeArgs({ outputFormat: 'stream-json', model, resumeSessionId })
       const child = spawn(this.binary, args, {
         cwd: this.workspace,
         env: this.env,
@@ -113,10 +191,16 @@ export class ClaudeExecutor {
         if (stoppedFor) return finish(new ClaudeExecutionError(stoppedFor, `Claude Code stopped: ${stoppedFor}`))
         if (code !== 0) return finish(new ClaudeExecutionError(`exit_${code ?? 'signal'}`, 'Claude Code request failed'))
         try {
+          const sessionId = findSessionId(events)
+          if (resumeSessionId && sessionId !== resumeSessionId) {
+            throw new Error('Claude Code changed the resumed session id')
+          }
           finish(null, {
             text: findResultText(events),
-            sessionId: findSessionId(events),
+            sessionId,
             usage: collectUsage(events),
+            compacted: streamDetectedCompaction(events)
+              || transcriptDetectedCompaction(this.env.HOME, sessionId, transcriptBefore),
           })
         } catch {
           finish(new ClaudeExecutionError('invalid_result', 'Claude Code returned an invalid result'))

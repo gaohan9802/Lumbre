@@ -62,6 +62,9 @@ export function useChatViewState() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickBottomRef = useRef(true)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const activeGenerationRef = useRef<{ route: 'api' | 'claude-code'; sessionId: string; turnId: string } | null>(null)
+  const explicitStopRef = useRef(false)
+  const recoveredTurnsRef = useRef<Set<string>>(new Set())
   const confirm = useConfirm()
 
   return {
@@ -81,6 +84,7 @@ export function useChatViewState() {
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId,
     messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
+    activeGenerationRef, explicitStopRef, recoveredTurnsRef,
     ...confirm,
   }
 }

@@ -17,6 +17,8 @@ ENV DISABLE_AUTOUPDATER=1 \
     DISABLE_UPDATES=1 \
     CC_GATEWAY_ISOLATED=1 \
     CC_GATEWAY_DATA_DIR=/gateway-data \
+    CC_GATEWAY_CLAUDE_HOME=/gateway-data/claude-home \
+    CC_GATEWAY_REHYDRATE_TURNS=16 \
     CC_GATEWAY_WORKSPACE=/gateway-workspace \
     PORT=8787
 

@@ -1,6 +1,7 @@
 import http from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { AttemptValidationError } from './attempt-ledger.mjs'
+import { ContextBridgeValidationError } from './context-bridge.mjs'
 import { PINNED_CLAUDE_CODE_VERSION } from '../cc-probe/contract.mjs'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
@@ -61,8 +62,16 @@ export function createGatewayServer({ runtime, secret, heartbeatMs = 15_000 }) {
           conversationId: body.conversation_id,
           prompt: body.prompt,
           model: body.model,
+          context: body.context,
+          sessionAction: body.session_action,
         })
         return json(response, result.reused ? 200 : 202, result)
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/attempts/cancel-by-key') {
+        const body = await readBody(request, 8_000)
+        const attempt = runtime.cancelByIdempotencyKey(body.idempotency_key)
+        return attempt ? json(response, 202, { attempt }) : json(response, 404, { error: 'not_found' })
       }
 
       const match = url.pathname.match(/^\/v1\/attempts\/([0-9a-f-]{36})(?:\/(events|cancel))?$/i)
@@ -122,7 +131,7 @@ export function createGatewayServer({ runtime, secret, heartbeatMs = 15_000 }) {
 
       return json(response, 404, { error: 'not_found' })
     } catch (error) {
-      if (error instanceof AttemptValidationError) return json(response, 400, { error: error.message })
+      if (error instanceof AttemptValidationError || error instanceof ContextBridgeValidationError) return json(response, 400, { error: error.message })
       return json(response, 500, { error: 'internal_error' })
     }
   })

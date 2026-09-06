@@ -150,15 +150,42 @@ process.stdin.on('end', () => {
       PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth',
       ANTHROPIC_API_KEY: 'must-not-pass', DATA_DIR: '/persistent',
     } })
-    const result: any = await executor.run({ prompt: 'hello', model: 'sonnet', signal: undefined, onText: (text: string) => deltas.push(text) })
+    const result: any = await executor.run({ prompt: 'hello', model: 'sonnet', resumeSessionId: '550e8400-e29b-41d4-a716-446655440000', signal: undefined, onText: (text: string) => deltas.push(text) })
     const observed = JSON.parse(readFileSync(path.join(root, 'observed.json'), 'utf8'))
     assert.equal(result.text, '好')
+    assert.equal(result.compacted, false)
     assert.deepEqual(deltas, ['好'])
     assert.equal(observed.args[observed.args.indexOf('--tools') + 1], '')
+    assert.equal(observed.args[observed.args.indexOf('--resume') + 1], '550e8400-e29b-41d4-a716-446655440000')
     assert.equal(observed.args.some((arg: string) => /dangerously|Bash|Shell/.test(arg)), false)
     assert.equal(observed.env.includes('CLAUDE_CODE_OAUTH_TOKEN'), true)
     assert.equal(observed.env.includes('ANTHROPIC_API_KEY'), false)
     assert.equal(observed.env.includes('DATA_DIR'), false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Claude executor records a compact boundary from its isolated session transcript', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-compact-detect-'))
+  try {
+    const binary = path.join(root, 'fake-claude')
+    writeFileSync(binary, `#!/usr/bin/env node
+const fs = require('node:fs')
+const path = require('node:path')
+const id = '550e8400-e29b-41d4-a716-446655440000'
+process.stdin.resume()
+process.stdin.on('end', () => {
+  const directory = path.join(process.env.HOME, '.claude', 'projects', 'fixture')
+  fs.mkdirSync(directory, { recursive: true })
+  fs.writeFileSync(path.join(directory, id + '.jsonl'), JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto' } }) + '\\n')
+  console.log(JSON.stringify({ type: 'result', result: 'still warm', session_id: id, usage: { output_tokens: 2 } }))
+})
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+    const executor = new ClaudeExecutor({ binary, workspace: root, env: { PATH: process.env.PATH || '', HOME: root } })
+    const result: any = await executor.run({ prompt: 'hello', model: 'sonnet', resumeSessionId: undefined, signal: undefined, onText: undefined })
+    assert.equal(result.compacted, true)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -176,7 +203,7 @@ process.on('SIGTERM', () => process.exit(0))
     chmodSync(binary, 0o700)
     const executor = new ClaudeExecutor({ binary, workspace: root, env: { PATH: process.env.PATH || '', HOME: root } })
     await assert.rejects(
-      executor.run({ prompt: 'hello', model: 'sonnet', signal: undefined, onText: () => { throw new Error('disk unavailable') } }),
+      executor.run({ prompt: 'hello', model: 'sonnet', resumeSessionId: undefined, signal: undefined, onText: () => { throw new Error('disk unavailable') } }),
       (error: any) => error?.code === 'event_persist_failed',
     )
   } finally {

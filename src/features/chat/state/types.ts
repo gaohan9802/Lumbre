@@ -24,6 +24,12 @@ export interface BubbleLayout {
 
 export interface MessageVersion {
   route?: ChatRoute
+  ccAttemptId?: string
+  ccSessionFingerprint?: string
+  ccSessionMode?: 'bootstrap' | 'resume' | 'rebase'
+  ccSessionReason?: string
+  ccCompacted?: boolean
+  ccGenerationState?: 'pending' | 'settled'
   replyMode?: ReplyMode
   bubbleLayout?: BubbleLayout
   content: string

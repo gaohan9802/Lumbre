@@ -2,9 +2,10 @@ import { EventEmitter } from 'node:events'
 import { publicAttempt } from './attempt-ledger.mjs'
 
 export class GatewayRuntime {
-  constructor({ ledger, executor, concurrency = 1 }) {
+  constructor({ ledger, executor, contextBridge = null, concurrency = 1 }) {
     this.ledger = ledger
     this.executor = executor
+    this.contextBridge = contextBridge
     this.concurrency = Math.max(1, concurrency)
     this.active = 0
     this.queue = []
@@ -19,12 +20,23 @@ export class GatewayRuntime {
   }
 
   submit(input) {
-    const { attempt, created } = this.ledger.createOrGet(input)
+    const existing = this.ledger.getByIdempotencyKey(input.idempotencyKey)
+    if (existing) return { attempt: publicAttempt(existing), reused: true }
+    const prepared = input.context
+      ? this.contextBridge?.prepare(input)
+      : { prompt: input.prompt, resumeSessionId: null, sessionPlan: null }
+    if (!prepared) throw new Error('CC context bridge is not configured')
+    const { attempt, created } = this.ledger.createOrGet({ ...input, ...prepared })
     if (created) {
       this.emitLatest(attempt)
       this.schedule(attempt.id)
     }
     return { attempt: publicAttempt(attempt), reused: !created }
+  }
+
+  cancelByIdempotencyKey(idempotencyKey) {
+    const attempt = this.ledger.getByIdempotencyKey(idempotencyKey)
+    return attempt ? this.cancel(attempt.id) : null
   }
 
   get(id) {
@@ -82,6 +94,7 @@ export class GatewayRuntime {
       const result = await this.executor.run({
         prompt: running.prompt,
         model: running.model,
+        resumeSessionId: running.resumeSessionId || undefined,
         signal: controller.signal,
         onText: content => {
           const updated = this.ledger.appendText(id, content)

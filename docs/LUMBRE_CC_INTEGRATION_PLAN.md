@@ -60,6 +60,8 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 - 后续走 CC 时优先发送 **delta**：只补自上次成功提交以来的新内容。
 - 从 API 切回 CC 时补 **route gap**：把 CC 未见过的 API 轮次补进去。
 - 优先 `resume` 原 session；确实损坏或不兼容时才新建，并记录原因，不能静默丢掉旧映射。
+- Claude Code 确认发生 compact 后，不立即制造一条隐藏对话；在下一条真实用户消息里沿用原 session，并附带 compact 前最近 10–20 个用户轮次作为“已发生的语气/关系参考”。这些内容不得被当作新消息再次回答。
+- compact 后不能假定旧的对话层缓存仍有效。系统/项目等未改变前缀可能继续命中，但补回的旧轮次按新前缀重新处理；具体轮数必须根据真实 cache read/create 与额度消耗调整。
 
 ### 4.2 每轮线路与可靠交付
 
@@ -122,7 +124,7 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 | 1. Chat 双线路外壳 | 线路类型、会话偏好、消息/版本元数据、同步/待发/续窗兼容；输入区显示真实 API 线路并复用模型选择 | 旧数据默认为 API；刷新、版本切换、续窗、跨设备合并不丢字段；没有 CC 假按钮或假额度 |
 | 2. CC 隔离探针 | 独立服务中安装并固定 CLI；验证登录、`-p`、stream-json、resume/fork、退出码和超时 | 不接生产聊天；脱敏输入可跑；进程不能访问生产数据和额外密钥；记录准确版本与输出样本 |
 | 3. CC 网关与 attempt | 建任务账本、幂等提交、SSE/轮询重连、结果先落盘、明确取消 | 断网/刷新后找回同一任务；重复请求不重复回复；CC 失败不偷偷走 API |
-| 4. 会话与上下文桥 | bootstrap/delta/route-gap、session 映射、损坏后受控新建 | API→CC→API→CC 连续对话不丢语义；正常情况复用同 session id |
+| 4. 会话与上下文桥 | bootstrap/delta/route-gap、session 映射、损坏后受控新建、compact 探测与一次性 10–20 轮保温 | API→CC→API→CC 连续对话不丢语义；正常情况复用同 session id；compact 后不重演旧消息 |
 | 5. 生活工具桥 | CC MCP → 现有权限执行器；开放全部现有 Lumbre 生活工具，但不提供 Bash/Shell | 生活工具可正常调用且保留确认/审计；任意命令执行与 Claude Code 施工工具不可见、不可用 |
 | 6. 指标卡 | 后端采集真实额度、上下文、缓存指标；侧栏卡片与刷新状态 | 有数据才显示数值；过期、失败、未支持均清楚标注；手机与桌面不挤压会话列表 |
 | 7. 心跳与缓存实验 | 统一队列、活跃跳过、暖场 fork 实验、成本日志 | 主 session 不被隐藏消息污染；只有实测 cache_read 成功才启用暖场；优先级正确 |
@@ -175,7 +177,9 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 - [x] 用户确认阶段 2 验收并批准进入阶段 3。
 - [x] 建立阶段 3 分支 `codex/lumbre-cc-gateway-attempt`。
 - [x] 完成阶段 3 网关、任务账本与断线续接的本地自动化、生产构建及容器验收；未接真实 Chat、未调用订阅、未部署线上。
-- [ ] 用户确认阶段 3 验收并批准进入阶段 4。
+- [x] 用户确认阶段 3 验收并批准进入阶段 4。
+- [x] 建立阶段 4 分支 `codex/lumbre-cc-session-context`。
+- [x] 完成阶段 4 会话/上下文桥、compact 保温与 Chat 双线路本地接线验收；记录见 `docs/LUMBRE_CC_SESSION_CONTEXT_ACCEPTANCE.md`。
 - [ ] 补做未逐项回报的真机 PWA 与跨设备检查（不阻塞隔离探针）。
 
 ## 11. 官方行为参考
@@ -184,6 +188,8 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 - 无交互调用与结构化输出：<https://code.claude.com/docs/en/headless>
 - 会话恢复与分叉：<https://code.claude.com/docs/en/sessions>
 - Prompt caching：<https://code.claude.com/docs/en/prompt-caching>
+- Context window 与 compact：<https://code.claude.com/docs/en/context-window>
+- Hooks（`SessionStart` 的 `compact` 来源用于行为参考；当前实现不授予模型 hook 命令权限）：<https://code.claude.com/docs/en/hooks>
 - Status line 可用上下文字段：<https://code.claude.com/docs/en/statusline>
 - Claude 订阅用于 `-p` / Agent SDK 的当前说明：<https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan>
 

@@ -7,6 +7,13 @@ export class ChatApiError extends Error {
   }
 }
 
+export type CcStatus = {
+  configured: boolean
+  available: boolean
+  model: string | null
+  version: string | null
+}
+
 export async function chatApiFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -54,6 +61,11 @@ export const chatApi = {
 
   confirmTool: (body: { token: string; approve: boolean; session_id?: string }) =>
     chatApiJson<{ ok: boolean; result?: string }>('/api/tools/confirm', jsonInit('POST', body), 25_000),
+
+  ccStatus: () => chatApiJson<CcStatus>('/api/chat/cc-status', {}, 6_000),
+
+  cancelCcAttempt: (body: { session_id: string; turn_id: string }) =>
+    chatApiJson<{ ok: boolean; attempt?: { id: string; status: string } }>('/api/chat/cc-attempt/cancel', jsonInit('POST', body), 8_000),
 
   appendMessage: (sessionId: string, message: ChatMessage, sessionMeta: SessionMeta) =>
     chatApiJson('/api/sync', jsonInit('POST', { action: 'append_message', sessionId, message, sessionMeta }), 25_000),

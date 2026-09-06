@@ -6,6 +6,7 @@ import { AttemptLedger } from './attempt-ledger.mjs'
 import { ClaudeExecutor } from './claude-executor.mjs'
 import { createGatewayServer } from './http-server.mjs'
 import { GatewayRuntime } from './runtime.mjs'
+import { ContextBridge } from './context-bridge.mjs'
 import { assertGatewayDataDir } from './storage.mjs'
 
 function positiveInteger(name, fallback) {
@@ -25,14 +26,22 @@ try {
 
   const dataDir = assertGatewayDataDir(process.env.CC_GATEWAY_DATA_DIR || '/gateway-data')
   const workspace = path.resolve(process.env.CC_GATEWAY_WORKSPACE || '/gateway-workspace')
+  const claudeHome = path.resolve(process.env.CC_GATEWAY_CLAUDE_HOME || path.join(dataDir, 'claude-home'))
   fs.mkdirSync(workspace, { recursive: true, mode: 0o700 })
+  fs.mkdirSync(claudeHome, { recursive: true, mode: 0o700 })
   const ledger = new AttemptLedger(dataDir)
   const executor = new ClaudeExecutor({
     workspace,
+    env: { ...process.env, HOME: claudeHome },
     timeoutMs: positiveInteger('CC_GATEWAY_TIMEOUT_MS', 180_000),
     maxOutputBytes: positiveInteger('CC_GATEWAY_MAX_OUTPUT_BYTES', 4 * 1024 * 1024),
   })
-  const runtime = new GatewayRuntime({ ledger, executor, concurrency: positiveInteger('CC_GATEWAY_CONCURRENCY', 1) })
+  const runtime = new GatewayRuntime({
+    ledger,
+    executor,
+    contextBridge: new ContextBridge(ledger, { rehydrateTurns: positiveInteger('CC_GATEWAY_REHYDRATE_TURNS', 16) }),
+    concurrency: positiveInteger('CC_GATEWAY_CONCURRENCY', 1),
+  })
   runtime.recover()
   const server = createGatewayServer({ runtime, secret })
   const port = positiveInteger('PORT', 8787)
