@@ -171,7 +171,8 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 - [x] 用户批准进入阶段 2。
 - [x] 建立阶段 2 分支 `codex/lumbre-cc-isolated-probe`。
 - [x] 完成阶段 2 隔离探针的离线自动化验收。
-- [ ] 用户确认部署位置、模型和订阅认证方式后，执行真实 CC 探针。
+- [x] 用户使用 Pro 订阅 OAuth 与 Sonnet 完成真实 fresh / resume / fork 探针；session 与 cache-read 证据通过。
+- [ ] 用户确认阶段 2 验收并批准进入阶段 3。
 - [ ] 补做未逐项回报的真机 PWA 与跨设备检查（不阻塞隔离探针）。
 
 ## 11. 官方行为参考
