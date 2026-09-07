@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authCookie, isAuthConfigured, verifySessionToken } from './lib/auth'
 import { shouldBlockDebugApi } from './server/safety-baseline'
+import { isTrustedCcToolBridgeRequest } from './server/chat/cc-tool-bridge-auth'
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -42,6 +43,12 @@ export async function middleware(request: NextRequest) {
   // Keep the bypass secret-only; never trust host/origin headers by themselves.
   const internalSecret = process.env.LUMBRE_INTERNAL_SECRET || process.env.LUMBRE_AUTH_SECRET || process.env.LUMBRE_ACCESS_PASSWORD
   if (pathname === '/api/chat' && internalSecret && request.headers.get('x-lumbre-internal') === internalSecret) {
+    return securityHeaders(NextResponse.next())
+  }
+
+  // The isolated CC gateway has no browser cookie. It can reach exactly this
+  // endpoint with a separate bridge secret; the route repeats the check.
+  if (pathname === '/api/internal/cc-tools' && isTrustedCcToolBridgeRequest(request.headers.get('authorization'))) {
     return securityHeaders(NextResponse.next())
   }
 

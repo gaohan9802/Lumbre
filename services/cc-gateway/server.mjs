@@ -17,6 +17,27 @@ function positiveInteger(name, fallback) {
   return value
 }
 
+function toolBridgeFromEnvironment() {
+  const rawUrl = String(process.env.LUMBRE_CC_TOOL_BRIDGE_URL || '').trim()
+  const secret = String(process.env.LUMBRE_CC_TOOL_BRIDGE_SECRET || '')
+  if (!rawUrl && !secret) return null
+  if (!rawUrl || secret.length < 32) throw new Error('CC tool bridge URL and 32-character secret must be configured together')
+  let url
+  try { url = new URL(rawUrl) } catch { throw new Error('LUMBRE_CC_TOOL_BRIDGE_URL is invalid') }
+  const loopback = ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('LUMBRE_CC_TOOL_BRIDGE_URL must be a clean HTTP(S) URL')
+  }
+  if (url.protocol !== 'https:' && !loopback && process.env.LUMBRE_CC_TOOL_BRIDGE_ALLOW_INSECURE_HTTP !== '1') {
+    throw new Error('LUMBRE_CC_TOOL_BRIDGE_URL must use HTTPS outside loopback')
+  }
+  return {
+    url: url.toString().replace(/\/$/, ''),
+    secret,
+    maxCalls: Math.min(20, positiveInteger('CC_GATEWAY_MAX_TOOL_CALLS', 20)),
+  }
+}
+
 try {
   if (process.env.CC_GATEWAY_ISOLATED !== '1') throw new Error('Refusing to run outside the isolated CC gateway container')
   const secret = process.env.LUMBRE_CC_GATEWAY_SECRET || ''
@@ -35,6 +56,8 @@ try {
     env: { ...process.env, HOME: claudeHome },
     timeoutMs: positiveInteger('CC_GATEWAY_TIMEOUT_MS', 180_000),
     maxOutputBytes: positiveInteger('CC_GATEWAY_MAX_OUTPUT_BYTES', 4 * 1024 * 1024),
+    toolBridge: toolBridgeFromEnvironment(),
+    toolEventsDir: path.join(dataDir, 'tool-events'),
   })
   const runtime = new GatewayRuntime({
     ledger,

@@ -20,6 +20,15 @@ export class ClaudeExecutionError extends Error {
 }
 
 const TRANSCRIPT_SCAN_LIMIT_BYTES = 16 * 1024 * 1024
+const ATTEMPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const CONVERSATION_ID = /^[A-Za-z0-9._:-]{1,160}$/
+const LUMBRE_MCP_CONFIG = JSON.stringify({ mcpServers: {
+  lumbre: {
+    type: 'stdio',
+    command: 'node',
+    args: ['/opt/lumbre/services/cc-gateway/lumbre-mcp-server.mjs'],
+  },
+} })
 
 function findTranscript(home, sessionId) {
   if (!home || !sessionId) return null
@@ -101,15 +110,60 @@ export class ClaudeExecutor {
     this.timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS
     this.maxOutputBytes = options.maxOutputBytes || DEFAULT_MAX_OUTPUT_BYTES
     this.env = buildProbeEnvironment(options.env || process.env)
+    this.toolBridge = options.toolBridge || null
+    this.toolEventsDir = options.toolEventsDir || path.join(this.env.HOME || this.workspace, 'tool-events')
+    this.toolBridgeEnabled = !!this.toolBridge
+    if (this.toolBridgeEnabled) fs.mkdirSync(this.toolEventsDir, { recursive: true, mode: 0o700 })
   }
 
-  run({ prompt, model, resumeSessionId, signal, onText }) {
+  /**
+   * @param {{
+   *   prompt: string,
+   *   model?: string,
+   *   resumeSessionId?: string,
+   *   signal?: AbortSignal,
+   *   onText?: (text: string) => void,
+   *   onToolCall?: (event: Record<string, any>) => void,
+   *   attemptId?: string,
+   *   conversationId?: string,
+   * }} options
+   */
+  run({
+    prompt,
+    model,
+    resumeSessionId,
+    signal,
+    onText,
+    onToolCall,
+    attemptId,
+    conversationId,
+  }) {
+    if (this.toolBridgeEnabled && (!ATTEMPT_ID.test(attemptId || '') || !CONVERSATION_ID.test(conversationId || ''))) {
+      return Promise.reject(new ClaudeExecutionError('invalid_tool_context', 'Claude Code tool context is invalid'))
+    }
     return new Promise((resolve, reject) => {
       const transcriptBefore = transcriptSnapshot(this.env.HOME, resumeSessionId)
-      const args = buildClaudeArgs({ outputFormat: 'stream-json', model, resumeSessionId })
+      const toolEventFile = this.toolBridgeEnabled && attemptId
+        ? path.join(this.toolEventsDir, `${attemptId}.jsonl`)
+        : null
+      if (toolEventFile) fs.writeFileSync(toolEventFile, '', { encoding: 'utf8', mode: 0o600 })
+      const args = buildClaudeArgs({
+        outputFormat: 'stream-json', model, resumeSessionId,
+        mcpConfig: this.toolBridgeEnabled ? LUMBRE_MCP_CONFIG : undefined,
+        allowedTools: this.toolBridgeEnabled ? ['mcp__lumbre__*'] : undefined,
+        maxTurns: this.toolBridgeEnabled ? 24 : undefined,
+      })
+      const childEnv = toolEventFile ? {
+        ...this.env,
+        LUMBRE_CC_TOOL_BRIDGE_URL: this.toolBridge.url,
+        LUMBRE_CC_TOOL_BRIDGE_SECRET: this.toolBridge.secret,
+        LUMBRE_CC_CONVERSATION_ID: conversationId,
+        LUMBRE_CC_TOOL_EVENT_FILE: toolEventFile,
+        LUMBRE_CC_MAX_TOOL_CALLS: String(this.toolBridge.maxCalls || 20),
+      } : this.env
       const child = spawn(this.binary, args, {
         cwd: this.workspace,
-        env: this.env,
+        env: childEnv,
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],
       })
@@ -120,14 +174,39 @@ export class ClaudeExecutor {
       let stoppedFor = null
       let forceKillTimer
       let timeout
+      let toolEventTimer
+      let toolEventOffset = 0
+      let toolEventBuffer = ''
       const events = []
+
+      const drainToolEvents = () => {
+        if (!toolEventFile) return
+        let bytes
+        try { bytes = fs.readFileSync(toolEventFile) } catch { return }
+        if (bytes.length <= toolEventOffset) return
+        toolEventBuffer += bytes.subarray(toolEventOffset).toString('utf8')
+        toolEventOffset = bytes.length
+        for (;;) {
+          const newline = toolEventBuffer.indexOf('\n')
+          if (newline < 0) break
+          const line = toolEventBuffer.slice(0, newline)
+          toolEventBuffer = toolEventBuffer.slice(newline + 1)
+          if (!line.trim()) continue
+          let event
+          try { event = JSON.parse(line) } catch { return stop('invalid_tool_event') }
+          try { onToolCall?.(event) } catch { return stop('event_persist_failed') }
+        }
+      }
 
       const finish = (error, result) => {
         if (settled) return
         settled = true
         clearTimeout(timeout)
         if (forceKillTimer) clearTimeout(forceKillTimer)
+        if (toolEventTimer) clearInterval(toolEventTimer)
         signal?.removeEventListener('abort', abort)
+        drainToolEvents()
+        if (toolEventFile) try { fs.unlinkSync(toolEventFile) } catch {}
         if (error) reject(error)
         else resolve(result)
       }
@@ -165,6 +244,10 @@ export class ClaudeExecutor {
 
       timeout = setTimeout(() => stop('timeout'), this.timeoutMs)
       timeout.unref()
+      if (toolEventFile) {
+        toolEventTimer = setInterval(drainToolEvents, 100)
+        toolEventTimer.unref()
+      }
 
       child.stdout.setEncoding('utf8')
       child.stdout.on('data', chunk => {
@@ -187,6 +270,7 @@ export class ClaudeExecutor {
       })
       child.on('error', () => finish(new ClaudeExecutionError('spawn_failed', 'Claude Code could not start')))
       child.on('close', code => {
+        drainToolEvents()
         if (stdoutBuffer.trim()) parseLine(stdoutBuffer)
         if (stoppedFor) return finish(new ClaudeExecutionError(stoppedFor, `Claude Code stopped: ${stoppedFor}`))
         if (code !== 0) return finish(new ClaudeExecutionError(`exit_${code ?? 'signal'}`, 'Claude Code request failed'))

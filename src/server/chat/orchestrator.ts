@@ -1,14 +1,14 @@
 import { normalizeReplyMode, replyModePrompt, type ReplyMode } from '@/lib/chat-reply-mode'
 import { NextRequest, NextResponse } from 'next/server'
-import { FETCH_TOOL_NAMES, toolsForContext } from '@/server/agent/registry'
+import { toolsForContext } from '@/server/agent/registry'
 import { executeToolBatch, type ToolCallResult } from '@/server/agent/executor'
 import { createToolContext } from '@/server/agent/context'
+import { localizeToolTimes, toolResultForHistory, toolResultText } from '@/server/agent/results'
 import { isTrustedInternalRequest } from '@/server/safety-baseline'
 import { reportActivity } from '@/server/autowake'
 import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
 import { couponContext } from '@/server/coupon-store'
-import { formatMadrid } from '@/lib/madrid-time'
 import { resolveChatCredential, resolveLegacyChatCredential } from './credentials'
 import { normalizeModelBaseUrl, type ModelCredentialInput } from '@/server/data/repositories/model-credentials'
 import { anthropicAdapter } from './providers/anthropic'
@@ -59,49 +59,6 @@ function toolContext(unattendedWake: boolean, sessionId?: string) {
     sessionId,
     source: unattendedWake ? 'unattended-wake' : 'chat',
   })
-}
-
-function localizeToolTimes(result: string): string {
-  return result.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})/g, iso => {
-    const date = new Date(iso)
-    return isNaN(date.getTime()) ? iso : `${formatMadrid(date)}（马德里时间）`
-  })
-}
-
-function toolResultForHistory(name: string, result: string): string {
-  if (name === 'read_foto') {
-    try {
-      const list = JSON.parse(result)
-      if (Array.isArray(list)) return JSON.stringify(list.map(({ url: _url, ...rest }: any) => rest)).slice(0, 4000)
-    } catch {}
-  }
-  if (name === 'view_foto') {
-    try {
-      const { url: _url, ...rest } = JSON.parse(result)
-      return JSON.stringify(rest).slice(0, 4000)
-    } catch {}
-  }
-  return result.slice(0, 4000)
-}
-
-function toolResultText(name: string, result: string): string {
-  if (result.includes('"code":"CONFIRMATION_REQUIRED"')) {
-    try {
-      const payload = JSON.parse(result)
-      if (payload?.confirmation) {
-        const { token: _token, ...confirmation } = payload.confirmation
-        return JSON.stringify({ ...payload, confirmation }).slice(0, 2000)
-      }
-    } catch {}
-    return result.replace(/"token":"[^"]+",?/, '').slice(0, 2000)
-  }
-  if (FETCH_TOOL_NAMES.has(name)) return result.slice(0, 6000)
-  if (name === 'read_emails' || name === 'search_emails') return result.slice(0, 8000)
-  if (name === 'read_email_detail') return result.slice(0, 14000)
-  if (name === 'gmail_status') return result.slice(0, 2000)
-  if (name === 'read_foto' || name === 'view_foto') return toolResultForHistory(name, result)
-  if (result.length <= 300) return result
-  return result.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').slice(0, 300) + '…(truncated)'
 }
 
 function currentTimestamp(): string {

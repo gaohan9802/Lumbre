@@ -189,6 +189,14 @@ export async function createCcChatResponse({
               if (event.type === 'text') {
                 textSeen = true
                 send({ type: 'text', content: String(event.content || '') })
+              } else if (event.type === 'tool_call') {
+                send({
+                  type: 'tool_call',
+                  name: String(event.name || ''),
+                  input: event.input && typeof event.input === 'object' ? event.input : {},
+                  result: String(event.result || ''),
+                  error: event.error === true,
+                })
               } else if (event.type === 'completed') {
                 const final = await readAttempt(config, submitted.id, fetchImpl)
                 if (!textSeen && final.result?.text) send({ type: 'text', content: final.result.text })

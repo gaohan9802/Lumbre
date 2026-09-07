@@ -50,7 +50,11 @@ export function createGatewayServer({ runtime, secret, heartbeatMs = 15_000 }) {
     const url = new URL(request.url || '/', 'http://cc-gateway.local')
 
     if (request.method === 'GET' && url.pathname === '/healthz') {
-      return json(response, 200, { status: 'ok', claudeCodeVersion: PINNED_CLAUDE_CODE_VERSION })
+      return json(response, 200, {
+        status: 'ok',
+        claudeCodeVersion: PINNED_CLAUDE_CODE_VERSION,
+        capabilities: runtime.capabilities?.() || { lumbreTools: false },
+      })
     }
     if (!authorized(request, secret)) return json(response, 401, { error: 'unauthorized' })
 

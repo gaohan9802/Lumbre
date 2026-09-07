@@ -136,6 +136,42 @@ test('Lumbre reconnects a prematurely closed gateway stream from its last durabl
   } finally { restore() }
 })
 
+test('Lumbre forwards durable CC tool events through the existing chat tool UI protocol', async () => {
+  const restore = configure()
+  const fakeFetch: typeof fetch = async (input) => {
+    const url = String(input)
+    if (url.endsWith('/v1/attempts')) {
+      return Response.json({ attempt: { id: ATTEMPT_ID, status: 'queued', sessionMode: 'resume', sessionReason: 'ordinary_delta' } }, { status: 202 })
+    }
+    if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}/events`)) {
+      return new Response([
+        `data: ${JSON.stringify({ id: 1, type: 'queued' })}`,
+        `data: ${JSON.stringify({ id: 2, type: 'tool_call', name: 'read_period', input: {}, result: '{"ok":true}', error: false })}`,
+        `data: ${JSON.stringify({ id: 3, type: 'text', content: '我看过啦' })}`,
+        `data: ${JSON.stringify({ id: 4, type: 'completed' })}`,
+        '',
+      ].join('\n\n'))
+    }
+    if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}`)) {
+      return Response.json({ attempt: {
+        id: ATTEMPT_ID, status: 'completed', sessionMode: 'resume', sessionReason: 'ordinary_delta',
+        result: { text: '我看过啦', sessionId: SESSION_ID, usage: { output_tokens: 4 } },
+      } })
+    }
+    throw new Error(`unexpected fetch ${url}`)
+  }
+  try {
+    const response = await createCcChatResponse({
+      body: { stream: true, session_id: 'conversation-1', turn_id: 'turn-tool', messages: [] },
+      system: 'You are Star.', volatileContext: '', fetchImpl: fakeFetch,
+    })
+    const events = []
+    for await (const event of readChatEventStream(response)) events.push(event)
+    assert.deepEqual(events.map(event => event.type), ['attempt', 'tool_call', 'text', 'done'])
+    assert.equal(events[1].name, 'read_period')
+  } finally { restore() }
+})
+
 test('CC configuration failure is explicit and never invokes an API fallback', async () => {
   const oldUrl = process.env.LUMBRE_CC_GATEWAY_URL
   const oldSecret = process.env.LUMBRE_CC_GATEWAY_SECRET

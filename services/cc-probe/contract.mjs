@@ -50,6 +50,9 @@ export function buildProbeEnvironment(source = process.env) {
  * @property {string} [model]
  * @property {string} [resumeSessionId]
  * @property {boolean} [forkSession]
+ * @property {string} [mcpConfig]
+ * @property {string[]} [allowedTools]
+ * @property {number} [maxTurns]
  */
 
 /** @param {ClaudeArgsOptions} [options] */
@@ -58,6 +61,9 @@ export function buildClaudeArgs({
   model,
   resumeSessionId,
   forkSession = false,
+  mcpConfig = '{"mcpServers":{}}',
+  allowedTools = [],
+  maxTurns = 1,
 } = {}) {
   if (!['json', 'stream-json'].includes(outputFormat)) {
     throw new Error(`Unsupported probe output format: ${outputFormat}`)
@@ -68,6 +74,12 @@ export function buildClaudeArgs({
   if (forkSession && !resumeSessionId) {
     throw new Error('A fork probe must resume an existing session')
   }
+  if (typeof mcpConfig !== 'string' || !mcpConfig.trim()) throw new Error('MCP config must be a JSON string')
+  try { JSON.parse(mcpConfig) } catch { throw new Error('MCP config must be valid JSON') }
+  if (!Number.isSafeInteger(maxTurns) || maxTurns < 1 || maxTurns > 30) throw new Error('maxTurns must be between 1 and 30')
+  if (!Array.isArray(allowedTools) || allowedTools.some(name => typeof name !== 'string' || !/^mcp__[A-Za-z0-9_-]+__(?:\*|[A-Za-z0-9_-]+)$/.test(name))) {
+    throw new Error('Only explicit MCP allowed tools are accepted')
+  }
 
   const args = [
     '-p',
@@ -75,10 +87,12 @@ export function buildClaudeArgs({
     '--permission-mode', 'dontAsk',
     '--no-chrome',
     '--strict-mcp-config',
-    '--mcp-config', '{"mcpServers":{}}',
-    '--max-turns', '1',
+    '--mcp-config', mcpConfig,
+    '--max-turns', String(maxTurns),
     '--output-format', outputFormat,
   ]
+
+  if (allowedTools.length) args.push('--allowedTools', ...allowedTools)
 
   if (outputFormat === 'stream-json') {
     args.push('--verbose', '--include-partial-messages')

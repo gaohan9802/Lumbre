@@ -196,6 +196,19 @@ export class AttemptLedger {
     })
   }
 
+  appendToolCall(id, toolCall) {
+    return this.update(id, attempt => {
+      if (attempt.status !== 'running') return attempt
+      this.appendEvent(attempt, 'tool_call', {
+        name: String(toolCall?.name || '').slice(0, 120),
+        input: toolCall?.input && typeof toolCall.input === 'object' ? toolCall.input : {},
+        result: String(toolCall?.result || '').slice(0, 16_000),
+        error: toolCall?.error === true,
+      })
+      return attempt
+    })
+  }
+
   requestCancel(id) {
     return this.update(id, attempt => {
       if (TERMINAL_STATUSES.has(attempt.status) || attempt.cancelRequested) return attempt

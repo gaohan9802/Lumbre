@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -186,6 +186,66 @@ process.stdin.on('end', () => {
     const executor = new ClaudeExecutor({ binary, workspace: root, env: { PATH: process.env.PATH || '', HOME: root } })
     const result: any = await executor.run({ prompt: 'hello', model: 'sonnet', resumeSessionId: undefined, signal: undefined, onText: undefined })
     assert.equal(result.compacted, true)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Claude executor loads only the fixed Lumbre MCP and durably forwards its tool event', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-tools-executor-'))
+  try {
+    const binary = path.join(root, 'fake-claude')
+    writeFileSync(binary, `#!/usr/bin/env node
+const fs = require('node:fs')
+fs.writeFileSync('observed-tools.json', JSON.stringify({ args: process.argv.slice(2), env: process.env }))
+fs.appendFileSync(process.env.LUMBRE_CC_TOOL_EVENT_FILE, JSON.stringify({ name: 'read_period', input: {}, result: '{"ok":true}', error: false }) + '\\n')
+const id = '550e8400-e29b-41d4-a716-446655440000'
+console.log(JSON.stringify({ type: 'result', result: '看过了', session_id: id, usage: { output_tokens: 2 } }))
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+    const toolCalls: any[] = []
+    const executor = new ClaudeExecutor({
+      binary,
+      workspace: root,
+      env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
+      toolBridge: { url: 'https://lumbre.example/api/internal/cc-tools', secret: 'tool-bridge-secret-with-32-characters', maxCalls: 20 },
+      toolEventsDir: path.join(root, 'tool-events'),
+    })
+    await executor.run({
+      prompt: 'hello', model: 'sonnet', resumeSessionId: undefined, signal: undefined,
+      attemptId: '123e4567-e89b-42d3-a456-426614174000', conversationId: 'conversation-1',
+      onText: undefined, onToolCall: (event: any) => toolCalls.push(event),
+    })
+    const observed = JSON.parse(readFileSync(path.join(root, 'observed-tools.json'), 'utf8'))
+    assert.equal(observed.args[observed.args.indexOf('--tools') + 1], '')
+    assert.equal(observed.args[observed.args.indexOf('--allowedTools') + 1], 'mcp__lumbre__*')
+    assert.equal(observed.args[observed.args.indexOf('--max-turns') + 1], '24')
+    assert.match(observed.args[observed.args.indexOf('--mcp-config') + 1], /lumbre-mcp-server\.mjs/)
+    assert.equal(observed.env.LUMBRE_CC_TOOL_BRIDGE_SECRET, 'tool-bridge-secret-with-32-characters')
+    assert.deepEqual(toolCalls.map(call => call.name), ['read_period'])
+    assert.equal(observed.args.some((arg: string) => /dangerously|Bash|Shell|Read|Write|Edit/.test(arg)), false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Claude executor rejects unsafe tool context before creating an event file', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-tools-context-'))
+  try {
+    const executor = new ClaudeExecutor({
+      binary: path.join(root, 'must-not-run'),
+      workspace: root,
+      env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
+      toolBridge: { url: 'https://lumbre.example/api/internal/cc-tools', secret: 'tool-bridge-secret-with-32-characters', maxCalls: 20 },
+      toolEventsDir: path.join(root, 'tool-events'),
+    })
+    await assert.rejects(
+      executor.run({
+        prompt: 'hello', model: 'sonnet', attemptId: '../escape', conversationId: 'conversation-1',
+      }),
+      (error: any) => error?.code === 'invalid_tool_context',
+    )
+    assert.equal(existsSync(path.join(root, 'escape.jsonl')), false)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

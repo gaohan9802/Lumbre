@@ -1,8 +1,17 @@
-# Lumbre CC Gateway（阶段 3–4）
+# Lumbre CC Gateway（阶段 3–5）
 
 这是一只独立于 Next.js 主站的任务邮局。它接收经过服务端认证的 CC 请求，先把任务落盘，再异步调用固定版本 Claude Code。浏览器或调用方断线不会取消任务；重新连接可以按 attempt id 查询状态或从最后一个 SSE event id 继续接收。
 
-本阶段没有接入正式 Chat，也没有配置 MCP。CC 仍以 `--tools ""` 运行；生活工具桥属于阶段 5，Bash/Shell 和任意系统命令永不开放。
+阶段 5 可通过一个固定的 stdio MCP 门铃请求 Lumbre 生活工具。Claude Code 仍以 `--tools ""` 移除全部内建工具，并通过 `--strict-mcp-config` 只装载这一只 MCP；Bash、Shell、源码读写和任意系统命令永不开放。
+
+启用生活工具需要同时配置 `LUMBRE_CC_TOOL_BRIDGE_URL` 与独立的 `LUMBRE_CC_TOOL_BRIDGE_SECRET`。URL 指向 Lumbre 的 `/api/internal/cc-tools`；未配置时 CC 文字聊天保持可用，但健康检查中的 `capabilities.lumbreTools` 为 `false`。每轮最多 20 次工具调用，MCP 串行转交现有权限执行器；红色操作仍返回一次性确认并由 Lumbre 前端确认。
+
+部署时在两个服务分别放置：
+
+- Lumbre 主站：`LUMBRE_CC_TOOL_BRIDGE_SECRET=<独立随机 secret>`。
+- CC 网关：`LUMBRE_CC_TOOL_BRIDGE_URL=https://<Lumbre 内部地址>/api/internal/cc-tools` 与同一份 `LUMBRE_CC_TOOL_BRIDGE_SECRET`。
+
+不要把这份 secret 写进 URL、前端设置或镜像。生产环境 URL 必须使用 HTTPS；只有容器内回环测试允许 HTTP。工具桥 secret 与原有 `LUMBRE_CC_GATEWAY_SECRET` 方向和职责不同，不应复用。
 
 ## 数据与状态
 

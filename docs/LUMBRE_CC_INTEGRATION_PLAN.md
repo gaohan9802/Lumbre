@@ -180,6 +180,8 @@ Lumbre Chat（共同日记、摘要、书签、图片、长短聊）
 - [x] 用户确认阶段 3 验收并批准进入阶段 4。
 - [x] 建立阶段 4 分支 `codex/lumbre-cc-session-context`。
 - [x] 完成阶段 4 会话/上下文桥、compact 保温与 Chat 双线路本地接线验收；记录见 `docs/LUMBRE_CC_SESSION_CONTEXT_ACCEPTANCE.md`。
+- [x] 用户批准继续接 CC，并建立阶段 5 分支 `codex/lumbre-cc-tools-bridge`。
+- [x] 完成阶段 5 受控生活工具 MCP、本地权限/确认/事件回传验收；记录见 `docs/LUMBRE_CC_TOOL_BRIDGE_ACCEPTANCE.md`。
 - [ ] 补做未逐项回报的真机 PWA 与跨设备检查（不阻塞隔离探针）。
 
 ## 11. 官方行为参考

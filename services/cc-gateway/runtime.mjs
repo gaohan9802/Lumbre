@@ -95,9 +95,15 @@ export class GatewayRuntime {
         prompt: running.prompt,
         model: running.model,
         resumeSessionId: running.resumeSessionId || undefined,
+        attemptId: running.id,
+        conversationId: running.conversationId,
         signal: controller.signal,
         onText: content => {
           const updated = this.ledger.appendText(id, content)
+          this.emitLatest(updated)
+        },
+        onToolCall: toolCall => {
+          const updated = this.ledger.appendToolCall(id, toolCall)
           this.emitLatest(updated)
         },
       })
@@ -150,5 +156,9 @@ export class GatewayRuntime {
   resolveIdle() {
     if (this.active !== 0 || this.queue.length !== 0) return
     for (const resolve of this.idleWaiters.splice(0)) resolve()
+  }
+
+  capabilities() {
+    return { lumbreTools: this.executor.toolBridgeEnabled === true }
   }
 }
