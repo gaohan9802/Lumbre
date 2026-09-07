@@ -32,6 +32,9 @@ function validateCreateInput(input) {
   if (typeof input.model !== 'string' || !SAFE_MODEL.test(input.model)) {
     throw new AttemptValidationError('model is invalid')
   }
+  if (input.unattended !== undefined && typeof input.unattended !== 'boolean') {
+    throw new AttemptValidationError('unattended must be a boolean')
+  }
 }
 
 function publicEvent(event) {
@@ -124,6 +127,7 @@ export class AttemptLedger {
         resumeSessionId: input.resumeSessionId || null,
         sessionPlan: input.sessionPlan || null,
         model: input.model,
+        unattended: input.unattended === true,
         status: 'queued',
         cancelRequested: false,
         createdAt: timestamp,

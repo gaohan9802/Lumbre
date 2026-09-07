@@ -106,6 +106,7 @@ async function submitAttempt(config: CcGatewayConfig, body: any, system: string,
         volatileContext,
         messages: Array.isArray(body.messages) ? body.messages : [],
       },
+      unattended: body._wake === true,
     }),
   }, fetchImpl)
   const data = await safeJson(response)
@@ -315,5 +316,37 @@ export async function readCcStatus(conversationId?: string, fetchImpl: FetchLike
     }
   } catch {
     return { configured: true, available: false, toolsAvailable: false, model: config.model, version: null, ...unavailableMetrics }
+  }
+}
+
+export async function isCcGatewayBusy(fetchImpl: FetchLike = fetch): Promise<boolean> {
+  const config = configFromEnvironment()
+  if (!config) return false
+  try {
+    const response = await gatewayFetch(config, '/v1/busy', {}, fetchImpl, 4_000)
+    const data = await safeJson(response)
+    return response.ok && data?.busy === true
+  } catch {
+    return false
+  }
+}
+
+export async function warmCcSession(conversationId: string, fetchImpl: FetchLike = fetch) {
+  const config = configFromEnvironment()
+  if (!config) return { status: 'unavailable' as const }
+  if (!SAFE_TURN_ID.test(conversationId)) return { status: 'invalid_conversation' as const }
+  try {
+    const response = await gatewayFetch(config, '/v1/warm-cache', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    }, fetchImpl, 180_000)
+    const data = await safeJson(response)
+    return response.ok || response.status === 409 ? data : {
+      status: 'failed' as const,
+      error: data?.error || data?.message || `CC 暖缓存失败 (${response.status})`,
+    }
+  } catch {
+    return { status: 'failed' as const, error: '无法连接 CC 网关' }
   }
 }

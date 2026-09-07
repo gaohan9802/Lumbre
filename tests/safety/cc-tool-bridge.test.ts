@@ -62,6 +62,21 @@ test('bridge reuses Lumbre policy, hides confirmation tokens from Claude and kee
   assert.equal(notes.listNotes().some(item => item.id === note.id), true)
 })
 
+test('unattended CC wakes keep the existing restricted wake tool policy', async () => {
+  const listed = await route.GET(new NextRequest('http://lumbre.test/api/internal/cc-tools?session_id=conversation-1&source=unattended-wake', { headers: authHeaders() }))
+  const tools = (await listed.json()).tools
+  assert.equal(tools.some((tool: any) => tool.name === 'wake_me'), true)
+  assert.equal(tools.some((tool: any) => tool.name === 'delete_note'), false)
+
+  const note = notes.writeNote('star', 'unattended delete fixture')
+  const denied = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
+    method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ session_id: 'conversation-1', source: 'unattended-wake', name: 'delete_note', input: { note_id: note.id, author: 'star' } }),
+  }))
+  assert.match((await denied.json()).result, /Unattended wake is not allowed|Tool denied/)
+  assert.equal(notes.listNotes().some(item => item.id === note.id), true)
+})
+
 test('stdio MCP forwards typed calls, records a redacted UI event and enforces its fixed server', async () => {
   const eventFile = path.join(root, 'mcp-events.jsonl')
   const requestsFile = path.join(root, 'mcp-requests.jsonl')
@@ -84,6 +99,7 @@ globalThis.fetch = async (url, init = {}) => {
       LUMBRE_CC_CONVERSATION_ID: 'conversation-1',
       LUMBRE_CC_TOOL_EVENT_FILE: eventFile,
       LUMBRE_CC_MAX_TOOL_CALLS: '2',
+      LUMBRE_CC_TOOL_SOURCE: 'unattended-wake',
     },
   })
   const output = readline.createInterface({ input: child.stdout })
@@ -105,6 +121,8 @@ globalThis.fetch = async (url, init = {}) => {
     assert.doesNotMatch(JSON.stringify(event), /never-store-me/)
     const requests = readFileSync(requestsFile, 'utf8').trim().split('\n').map(line => JSON.parse(line))
     assert.equal(requests[1].body.session_id, 'conversation-1')
+    assert.match(requests[0].url, /source=unattended-wake/)
+    assert.equal(requests[1].body.source, 'unattended-wake')
   } finally {
     child.stdin.end()
     child.kill('SIGTERM')

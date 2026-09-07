@@ -135,6 +135,36 @@ test('explicit cancellation aborts the running child and records cancelled', asy
   }
 })
 
+test('cache warm forks the latest session without tools and returns cache usage', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-warm-'))
+  try {
+    const calls: any[] = []
+    const ledger = new AttemptLedger(root)
+    const runtime = new GatewayRuntime({
+      ledger,
+      executor: { run: async (input: any) => {
+        calls.push(input)
+        if (input.forkSession) return {
+          text: '.', sessionId: '65b76b84-557d-4dad-a716-446655440001', transcriptRemoved: true,
+          usage: { output_tokens: 1, cache_read_input_tokens: 8_635, cache_creation_input_tokens: 103 },
+        }
+        return { text: '星星在这里。', sessionId: '550e8400-e29b-41d4-a716-446655440000' }
+      } },
+    })
+    runtime.submit(fixtureInput())
+    await runtime.waitForIdle()
+    const result = await runtime.warm('conversation-1')
+    assert.equal(result.status, 'warmed')
+    assert.equal(result.usage.cache_read_input_tokens, 8_635)
+    assert.equal(result.transcriptRemoved, true)
+    assert.equal(calls[1].resumeSessionId, '550e8400-e29b-41d4-a716-446655440000')
+    assert.equal(calls[1].forkSession, true)
+    assert.equal(calls[1].toolsEnabled, false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('restart fails an orphaned running task and keeps queued work recoverable', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-restart-'))
   try {
@@ -210,6 +240,32 @@ process.stdin.on('end', () => {
     const executor = new ClaudeExecutor({ binary, workspace: root, env: { PATH: process.env.PATH || '', HOME: root } })
     const result: any = await executor.run({ prompt: 'hello', model: 'sonnet', resumeSessionId: undefined, signal: undefined, onText: undefined })
     assert.equal(result.compacted, true)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Claude executor deletes only the disposable fork transcript after warming', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-fork-cleanup-'))
+  try {
+    const binary = path.join(root, 'fake-claude')
+    const parent = '550e8400-e29b-41d4-a716-446655440000'
+    const fork = '65b76b84-557d-4dad-a716-446655440001'
+    writeFileSync(binary, `#!/usr/bin/env node
+const fs = require('node:fs')
+const path = require('node:path')
+const directory = path.join(process.env.HOME, '.claude', 'projects', 'fixture')
+fs.mkdirSync(directory, { recursive: true })
+fs.writeFileSync(path.join(directory, '${parent}.jsonl'), 'parent\\n')
+fs.writeFileSync(path.join(directory, '${fork}.jsonl'), 'fork\\n')
+console.log(JSON.stringify({ type: 'result', result: '.', session_id: '${fork}', usage: { output_tokens: 1, cache_read_input_tokens: 5000 } }))
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+    const executor = new ClaudeExecutor({ binary, workspace: root, env: { PATH: process.env.PATH || '', HOME: root } })
+    const result: any = await executor.run({ prompt: 'warm', model: 'sonnet', resumeSessionId: parent, forkSession: true, toolsEnabled: false })
+    assert.equal(result.transcriptRemoved, true)
+    assert.equal(existsSync(path.join(root, '.claude', 'projects', 'fixture', `${parent}.jsonl`)), true)
+    assert.equal(existsSync(path.join(root, '.claude', 'projects', 'fixture', `${fork}.jsonl`)), false)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

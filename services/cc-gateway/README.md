@@ -1,4 +1,4 @@
-# Lumbre CC Gateway（阶段 3–5）
+# Lumbre CC Gateway（阶段 3–7）
 
 这是一只独立于 Next.js 主站的任务邮局。它接收经过服务端认证的 CC 请求，先把任务落盘，再异步调用固定版本 Claude Code。浏览器或调用方断线不会取消任务；重新连接可以按 attempt id 查询状态或从最后一个 SSE event id 继续接收。
 
@@ -37,6 +37,8 @@
 
 - `GET /healthz`：不含隐私的健康状态。
 - `GET /v1/metrics?conversation_id=...`：读取该对话最后一次真实 CC 回复的上下文与缓存快照；订阅额度在 headless 模式不可读时明确返回 unavailable。
+- `GET /v1/busy`：读取网关当前是否正在执行或排队，供 `wake_me` 的忙碌取消规则使用。
+- `POST /v1/warm-cache`：对该对话最后一个成功 session 执行 `resume + fork-session`；不加载工具，结束后删除临时 fork transcript，不记入正式 attempt 或 Lumbre 聊天。
 - `POST /v1/attempts`：创建或取回幂等任务。
 - `GET /v1/attempts/:id`：轮询任务状态与最终结果。
 - `GET /v1/attempts/:id/events`：SSE 回放与续接，支持 `Last-Event-ID` 或 `?after=`。
@@ -44,6 +46,8 @@
 - `POST /v1/attempts/cancel-by-key`：在页面尚未收到 attempt id 时，仍可按幂等键明确取消。
 
 除 `/healthz` 外全部要求 `Authorization: Bearer <LUMBRE_CC_GATEWAY_SECRET>`。这个 secret 只存在于 Lumbre 服务端与网关的部署 Secret 中，不能下发浏览器。OAuth token 同样只通过部署 Secret 注入。
+
+阶段 7 的普通 CC 后台唤醒会在 attempt 中标记 `unattended`，MCP 门铃因此复用 Lumbre 现有的 `unattended-wake` 限制。用户真实消息会抢占并取消正在进行的暖缓存 fork；不会反向取消用户消息。
 
 ## 构建边界
 

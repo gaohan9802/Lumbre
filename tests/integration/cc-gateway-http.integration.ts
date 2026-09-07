@@ -65,8 +65,14 @@ test('HTTP auth, disconnect, polling and event replay preserve one attempt', asy
   const ledger = new AttemptLedger(root)
   const runtime = new GatewayRuntime({
     ledger,
-    executor: { run: async ({ onText }: any) => {
+    executor: { run: async ({ onText, forkSession }: any) => {
       calls++
+      if (forkSession) return {
+        text: '.',
+        sessionId: '65b76b84-557d-4dad-a716-446655440001',
+        transcriptRemoved: true,
+        usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 8_200, cache_creation_input_tokens: 10 },
+      }
       onText('回来')
       await gate.promise
       return {
@@ -103,6 +109,9 @@ test('HTTP auth, disconnect, polling and event replay preserve one attempt', asy
     const duplicate: any = JSON.parse(duplicateResponse.body)
     assert.equal(duplicate.attempt.id, created.attempt.id)
 
+    const busy = await request(socketPath, '/v1/busy', { headers: authHeaders() })
+    assert.equal(JSON.parse(busy.body).busy, true)
+
     await connectThenDisconnect(socketPath, `/v1/attempts/${created.attempt.id}/events`, authHeaders())
     gate.resolve()
     await runtime.waitForIdle()
@@ -112,6 +121,15 @@ test('HTTP auth, disconnect, polling and event replay preserve one attempt', asy
     const final: any = JSON.parse(polled.body)
     assert.equal(final.attempt.status, 'completed')
     assert.equal(final.attempt.result.text, '回来还能找到。')
+
+    const warmed = await request(socketPath, '/v1/warm-cache', {
+      method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({ conversation_id: 'conversation-1' }),
+    })
+    assert.equal(warmed.status, 200)
+    assert.equal(JSON.parse(warmed.body).usage.cache_read_input_tokens, 8_200)
+    assert.equal(JSON.parse(warmed.body).transcriptRemoved, true)
+    assert.equal(calls, 2)
 
     const metrics = await request(socketPath, '/v1/metrics?conversation_id=conversation-1', { headers: authHeaders() })
     assert.equal(metrics.status, 200)

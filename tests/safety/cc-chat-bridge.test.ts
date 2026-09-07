@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { readChatEventStream } from '../../src/features/chat/api/event-stream'
-import { cancelCcAttempt, createCcChatResponse, readCcStatus } from '../../src/server/chat/cc-gateway'
+import { cancelCcAttempt, createCcChatResponse, isCcGatewayBusy, readCcStatus, warmCcSession } from '../../src/server/chat/cc-gateway'
 
 const SECRET = 'cc-chat-bridge-fixture-secret-000000000'
 const ATTEMPT_ID = '550e8400-e29b-41d4-a716-446655440000'
@@ -63,6 +63,7 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
     const response = await createCcChatResponse({
       body: {
         stream: true, session_id: 'conversation-1', turn_id: 'turn-1',
+        _wake: true,
         messages: [{ id: 'turn-1', role: 'user', route: 'claude-code', content: '回来吗' }],
         bookmark_injections: 'shared summary',
       },
@@ -82,6 +83,7 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
     assert.equal(submitted.idempotency_key, 'lumbre:conversation-1:turn-1')
     assert.equal(submitted.context.messages[0].id, 'turn-1')
     assert.equal(submitted.context.bookmarkInjections, 'shared summary')
+    assert.equal(submitted.unattended, true)
     assert.equal(calls.length, 3)
   } finally { restore() }
 })
@@ -206,6 +208,8 @@ test('status and explicit cancel use server-only gateway credentials', async () 
       context: { available: true, usedTokens: 8740, maxTokens: 200000, usedPercentage: 4.4, model: 'claude-sonnet-4-6', source: 'last_assistant_usage', collectedAt: '2026-09-07T12:00:00.000Z' },
     })
     if (url.endsWith('/cancel-by-key')) return Response.json({ attempt: { id: ATTEMPT_ID, status: 'running' } }, { status: 202 })
+    if (url.endsWith('/v1/busy')) return Response.json({ busy: true })
+    if (url.endsWith('/v1/warm-cache')) return Response.json({ status: 'warmed', usage: { cache_read_input_tokens: 9000 } })
     throw new Error(`unexpected fetch ${url}`)
   }
   try {
@@ -219,5 +223,8 @@ test('status and explicit cancel use server-only gateway credentials', async () 
     const cancelBody = JSON.parse(String(requests[2].init?.body))
     assert.equal(cancelBody.idempotency_key, 'lumbre:conversation-1:turn-1')
     assert.equal((requests[2].init?.headers as Record<string, string>).authorization, `Bearer ${SECRET}`)
+    assert.equal(await isCcGatewayBusy(fakeFetch), true)
+    const warmed = await warmCcSession('conversation-1', fakeFetch)
+    assert.equal(warmed.status, 'warmed')
   } finally { restore() }
 })

@@ -1,5 +1,10 @@
 import { EventEmitter } from 'node:events'
+import { createHash } from 'node:crypto'
 import { publicAttempt } from './attempt-ledger.mjs'
+
+function fingerprint(value) {
+  return value ? createHash('sha256').update(value).digest('hex').slice(0, 12) : null
+}
 
 export class GatewayRuntime {
   constructor({ ledger, executor, contextBridge = null, concurrency = 1 }) {
@@ -13,6 +18,7 @@ export class GatewayRuntime {
     this.controllers = new Map()
     this.events = new EventEmitter()
     this.idleWaiters = []
+    this.warmController = null
   }
 
   recover() {
@@ -20,6 +26,7 @@ export class GatewayRuntime {
   }
 
   submit(input) {
+    this.warmController?.abort()
     const existing = this.ledger.getByIdempotencyKey(input.idempotencyKey)
     if (existing) return { attempt: publicAttempt(existing), reused: true }
     const prepared = input.context
@@ -97,6 +104,7 @@ export class GatewayRuntime {
         resumeSessionId: running.resumeSessionId || undefined,
         attemptId: running.id,
         conversationId: running.conversationId,
+        unattended: running.unattended === true,
         signal: controller.signal,
         onText: content => {
           const updated = this.ledger.appendText(id, content)
@@ -151,6 +159,55 @@ export class GatewayRuntime {
   waitForIdle() {
     if (this.active === 0 && this.queue.length === 0) return Promise.resolve()
     return new Promise(resolve => this.idleWaiters.push(resolve))
+  }
+
+  busy() {
+    return this.active > 0 || this.queue.length > 0
+  }
+
+  async warm(conversationId) {
+    if (this.busy()) return { status: 'busy' }
+    const base = this.ledger.list()
+      .filter(attempt => attempt.conversationId === conversationId && attempt.status === 'completed' && attempt.result?.sessionId)
+      .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)))[0]
+    if (!base) return { status: 'no_session' }
+
+    this.active++
+    const controller = new AbortController()
+    this.warmController = controller
+    try {
+      const result = await this.executor.run({
+        prompt: '[LUMBRE CACHE WARM] Reply with one period only.',
+        model: base.model,
+        resumeSessionId: base.result.sessionId,
+        forkSession: true,
+        toolsEnabled: false,
+        conversationId,
+        signal: controller.signal,
+      })
+      return {
+        status: 'warmed',
+        usage: result.usage || null,
+        context: result.context || null,
+        parentSessionFingerprint: fingerprint(base.result.sessionId),
+        forkSessionFingerprint: fingerprint(result.sessionId),
+        transcriptRemoved: result.transcriptRemoved === true,
+      }
+    } catch (error) {
+      if (controller.signal.aborted || error?.code === 'cancelled') return { status: 'busy' }
+      return {
+        status: 'failed',
+        error: {
+          code: error?.code || 'warm_failed',
+          message: error?.safeMessage || 'Claude Code cache warm failed',
+        },
+      }
+    } finally {
+      if (this.warmController === controller) this.warmController = null
+      this.active--
+      this.drain()
+      this.resolveIdle()
+    }
   }
 
   metrics(conversationId) {

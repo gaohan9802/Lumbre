@@ -158,7 +158,16 @@ export class ContextBridge {
       baseAttemptId = base.id
     } else if (base) {
       baseAttemptId = base.id
-      const markerIndex = messages.findIndex(message => message.ccAttemptId === base.id)
+      let markerIndex = messages.findIndex(message => message.ccAttemptId === base.id)
+      if (markerIndex < 0 && base.unattended === true) {
+        const hasEarlierAnchor = attempts.slice(0, latestCompletedIndex).some(attempt => (
+          attempt.status === 'completed' && messages.some(message => message.ccAttemptId === attempt.id)
+        ))
+        if (hasEarlierAnchor) {
+          const known = new Map((base.sessionPlan?.contextMessageHashes || []).map(item => [item.id, item.hash]))
+          markerIndex = messages.findLastIndex(message => known.get(message.id) === messageHash(message))
+        }
+      }
       if (markerIndex < 0) {
         mode = 'rebase'
         reason = 'reply_anchor_missing'

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  loadWakeConfig, loadWakeLogs, updateWakeSettings,
-  startWakeEngine, stopWakeEngine, reportActivity,
-  nextWakeInfo, scheduleWake,
+  loadWakeLogs, updateWakeSettings,
+  startWakeEngine, reportActivity,
+  nextWakeSchedule, refreshWakeSchedule, scheduleWake,
 } from '@/server/autowake'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const config = loadWakeConfig()
+  const config = refreshWakeSchedule()
   const logs = loadWakeLogs().slice(-50).reverse()
-  const next = config.enabled && config.sessionId ? nextWakeInfo(config) : null
+  const next = nextWakeSchedule(config)
   return NextResponse.json({ config, logs, next })
 }
 
@@ -27,18 +27,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, alarm })
   }
 
-  const config = updateWakeSettings({
+  updateWakeSettings({
     ...(body.enabled !== undefined ? { enabled: !!body.enabled } : {}),
     ...(body.sessionId !== undefined ? { sessionId: body.sessionId || null } : {}),
     ...(body.customPrompt !== undefined ? { customPrompt: body.customPrompt } : {}),
     ...(body.pushEnabled !== undefined ? { pushEnabled: !!body.pushEnabled } : {}),
+    ...(body.day && typeof body.day === 'object' ? { day: body.day } : {}),
+    ...(body.night && typeof body.night === 'object' ? { night: body.night } : {}),
+    ...(body.random && typeof body.random === 'object' ? { random: body.random } : {}),
+    ...(body.inactivity && typeof body.inactivity === 'object' ? { inactivity: body.inactivity } : {}),
+    ...(body.warmCache && typeof body.warmCache === 'object' ? { warmCache: body.warmCache } : {}),
   })
 
-  if (config.enabled) {
-    startWakeEngine()
-  } else {
-    stopWakeEngine()
-  }
+  startWakeEngine()
 
-  return NextResponse.json({ ok: true, config })
+  const current = refreshWakeSchedule()
+  return NextResponse.json({ ok: true, config: current, next: nextWakeSchedule(current) })
 }

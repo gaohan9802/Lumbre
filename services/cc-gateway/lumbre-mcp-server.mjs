@@ -8,6 +8,7 @@ const bridgeSecret = String(process.env.LUMBRE_CC_TOOL_BRIDGE_SECRET || '')
 const conversationId = String(process.env.LUMBRE_CC_CONVERSATION_ID || '')
 const eventFile = String(process.env.LUMBRE_CC_TOOL_EVENT_FILE || '')
 const maxCalls = Math.max(1, Math.min(20, Number(process.env.LUMBRE_CC_MAX_TOOL_CALLS) || 20))
+const source = process.env.LUMBRE_CC_TOOL_SOURCE === 'unattended-wake' ? 'unattended-wake' : 'chat'
 let calls = 0
 
 function write(value) {
@@ -79,7 +80,7 @@ async function handle(message) {
     })
   }
   if (message.method === 'tools/list') {
-    const data = await bridge(`?session_id=${encodeURIComponent(conversationId)}`)
+    const data = await bridge(`?session_id=${encodeURIComponent(conversationId)}&source=${encodeURIComponent(source)}`)
     return write({ jsonrpc: '2.0', id: message.id, result: { tools: Array.isArray(data.tools) ? data.tools : [] } })
   }
   if (message.method === 'tools/call') {
@@ -96,7 +97,7 @@ async function handle(message) {
     const data = await bridge('', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ session_id: conversationId, name, input }),
+      body: JSON.stringify({ session_id: conversationId, source, name, input }),
     })
     recordToolEvent(data, input)
     return write({ jsonrpc: '2.0', id: message.id, result: {

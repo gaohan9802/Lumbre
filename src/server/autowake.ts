@@ -1,10 +1,8 @@
 /**
  * Auto-Wake Engine — 星星的心跳唤醒。
  *
- * Schedule:
- *  - 09:00–00:00: every 1 hour
- *  - 00:00–09:00: every 3 hours
- *  - one-off alarms (wake_me) become due at their scheduled time.
+ * Schedule: independently configurable day, night, random, inactivity and
+ * cache-warm triggers, plus one-off wake_me alarms.
  *
  * Interval wakes wait until the conversation has been quiet for 30 minutes.
  * Explicit wake_me alarms bypass that cooldown and fire at their requested time.
@@ -14,6 +12,8 @@
  */
 
 import { createHash, randomUUID } from 'crypto'
+import { addMadridDays, madridDateKey, parseMadridDateTime } from '@/lib/madrid-time'
+import { readChatEventStream } from '@/features/chat/api/event-stream'
 import { appendSyncSessionMessage, loadSyncManifest, loadSyncSessions } from './chat-sync'
 import {
   acquireWakeLeaseData,
@@ -26,12 +26,17 @@ import {
 } from './data/repositories/wake'
 import { getCurrentActivity } from './timeline-store'
 import { sendPushMessages } from './push'
+import { isApiGenerationBusy } from './chat/generation-activity'
+import { isCcGatewayBusy, readCcStatus, warmCcSession } from './chat/cc-gateway'
 
 const WAKE_LEASE_MS = 8 * 60 * 1000
 const WAKE_REQUEST_TIMEOUT_MS = 2 * 60 * 1000
 const WAKE_EMPTY_RETRIES = 3
 const WAKE_RETRY_BASE_MS = 2 * 60 * 1000
 const COOLDOWN_MS = 30 * 60 * 1000
+const HOUR_MS = 60 * 60 * 1000
+const WARM_AFTER_MS = 50 * 60 * 1000
+const WARM_EXPIRES_MS = 60 * 60 * 1000
 
 const MAX_WAKE_TOOL_CALLS = 3
 
@@ -46,7 +51,7 @@ export interface WakeLog {
   timestamp: number
   startedAt?: number
   finishedAt?: number
-  trigger?: 'interval' | 'alarm'
+  trigger?: WakeTrigger
   reason: string
   actions: WakeAction[]
   response: string
@@ -73,8 +78,39 @@ export interface WakeAlarm {
   note?: string
 }
 
-export interface WakeConfig {
+export type WakeTrigger = 'day' | 'night' | 'random' | 'inactivity' | 'alarm' | 'warm-cache'
+
+export interface PeriodicWakeSetting {
   enabled: boolean
+  intervalHours: number
+}
+
+export interface RandomWakeSetting {
+  enabled: boolean
+  timesPerDay: number
+  day: string
+  times: number[]
+}
+
+export interface InactivityWakeSetting {
+  enabled: boolean
+  afterHours: number
+  handledActivityAt: number
+}
+
+export interface WarmCacheSetting {
+  enabled: boolean
+  observedCcAt: number
+  lastAttemptAt: number
+  lastSuccessAt: number
+  status: 'idle' | 'warmed' | 'busy' | 'cold' | 'miss' | 'failed' | 'no-session'
+  cacheReadTokens?: number
+  cacheCreationTokens?: number
+  error?: string
+}
+
+export interface WakeConfig {
+  enabled: boolean             // legacy aggregate; individual switches are authoritative
   sessionId: string | null   // which session to wake into
   lastWakeAt: number
   lastActivityAt: number
@@ -83,6 +119,13 @@ export interface WakeConfig {
   pushEnabled?: boolean      // allow model-selected Web Push after waking
   consecutiveFailures?: number
   nextRetryAt?: number        // backoff after transport/upstream failures
+  day: PeriodicWakeSetting
+  night: PeriodicWakeSetting
+  random: RandomWakeSetting
+  inactivity: InactivityWakeSetting
+  warmCache: WarmCacheSetting
+  lastByTrigger: Partial<Record<'day' | 'night' | 'random', number>>
+  randomSeed: string
 }
 
 const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
@@ -104,14 +147,61 @@ const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 // ── Persistence ──────────────────────────────────────
 
 function defaultWakeConfig(): WakeConfig {
-  return { enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0, alarms: [], pushEnabled: false, consecutiveFailures: 0, nextRetryAt: 0 }
+  return {
+    enabled: false, sessionId: null, lastWakeAt: 0, lastActivityAt: 0,
+    alarms: [], pushEnabled: false, consecutiveFailures: 0, nextRetryAt: 0,
+    day: { enabled: false, intervalHours: 2 },
+    night: { enabled: false, intervalHours: 3 },
+    random: { enabled: false, timesPerDay: 2, day: '', times: [] },
+    inactivity: { enabled: false, afterHours: 4, handledActivityAt: 0 },
+    warmCache: { enabled: false, observedCcAt: 0, lastAttemptAt: 0, lastSuccessAt: 0, status: 'idle' },
+    lastByTrigger: {}, randomSeed: randomUUID(),
+  }
+}
+
+function clampInt(value: unknown, fallback: number, min: number, max: number) {
+  const number = Math.floor(Number(value))
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback
 }
 
 function normalizeWakeConfig(raw: any): WakeConfig {
+  const legacySchedule = raw?.day === undefined && raw?.night === undefined && raw?.enabled === true
+  const day = {
+    enabled: raw?.day?.enabled === undefined ? legacySchedule : !!raw.day.enabled,
+    intervalHours: clampInt(raw?.day?.intervalHours, legacySchedule ? 1 : 2, 1, 12),
+  }
+  const night = {
+    enabled: raw?.night?.enabled === undefined ? legacySchedule : !!raw.night.enabled,
+    intervalHours: clampInt(raw?.night?.intervalHours, 3, 1, 9),
+  }
+  const random = {
+    enabled: !!raw?.random?.enabled,
+    timesPerDay: clampInt(raw?.random?.timesPerDay, 2, 1, 8),
+    day: typeof raw?.random?.day === 'string' ? raw.random.day : '',
+    times: Array.isArray(raw?.random?.times) ? raw.random.times.filter((value: unknown) => Number.isFinite(Number(value))).map(Number).sort((a: number, b: number) => a - b) : [],
+  }
+  const inactivity = {
+    enabled: !!raw?.inactivity?.enabled,
+    afterHours: clampInt(raw?.inactivity?.afterHours, 4, 1, 72),
+    handledActivityAt: Math.max(0, Number(raw?.inactivity?.handledActivityAt) || 0),
+  }
+  const warmStatus = ['idle', 'warmed', 'busy', 'cold', 'miss', 'failed', 'no-session'].includes(raw?.warmCache?.status)
+    ? raw.warmCache.status : 'idle'
+  const warmCache = {
+    enabled: !!raw?.warmCache?.enabled,
+    observedCcAt: Math.max(0, Number(raw?.warmCache?.observedCcAt) || 0),
+    lastAttemptAt: Math.max(0, Number(raw?.warmCache?.lastAttemptAt) || 0),
+    lastSuccessAt: Math.max(0, Number(raw?.warmCache?.lastSuccessAt) || 0),
+    status: warmStatus as WarmCacheSetting['status'],
+    ...(Number.isFinite(Number(raw?.warmCache?.cacheReadTokens)) ? { cacheReadTokens: Math.max(0, Number(raw.warmCache.cacheReadTokens)) } : {}),
+    ...(Number.isFinite(Number(raw?.warmCache?.cacheCreationTokens)) ? { cacheCreationTokens: Math.max(0, Number(raw.warmCache.cacheCreationTokens)) } : {}),
+    ...(typeof raw?.warmCache?.error === 'string' && raw.warmCache.error ? { error: raw.warmCache.error.slice(0, 300) } : {}),
+  }
+  const lastWakeAt = Math.max(0, Number(raw?.lastWakeAt) || 0)
   return {
-    enabled: !!raw?.enabled,
+    enabled: day.enabled || night.enabled || random.enabled || inactivity.enabled,
     sessionId: typeof raw?.sessionId === 'string' && raw.sessionId ? raw.sessionId : null,
-    lastWakeAt: Math.max(0, Number(raw?.lastWakeAt) || 0),
+    lastWakeAt,
     lastActivityAt: Math.max(0, Number(raw?.lastActivityAt) || 0),
     customPrompt: typeof raw?.customPrompt === 'string' && raw.customPrompt ? raw.customPrompt : undefined,
     alarms: Array.isArray(raw?.alarms)
@@ -123,6 +213,18 @@ function normalizeWakeConfig(raw: any): WakeConfig {
     pushEnabled: !!raw?.pushEnabled,
     consecutiveFailures: Math.max(0, Number(raw?.consecutiveFailures) || 0),
     nextRetryAt: Math.max(0, Number(raw?.nextRetryAt) || 0),
+    day,
+    night,
+    random,
+    inactivity,
+    warmCache,
+    lastByTrigger: {
+      day: Math.max(0, Number(raw?.lastByTrigger?.day) || lastWakeAt || (day.enabled ? Date.now() : 0)),
+      night: Math.max(0, Number(raw?.lastByTrigger?.night) || lastWakeAt || (night.enabled ? Date.now() : 0)),
+      random: Math.max(0, Number(raw?.lastByTrigger?.random) || 0),
+    },
+    randomSeed: typeof raw?.randomSeed === 'string' && raw.randomSeed ? raw.randomSeed.slice(0, 80)
+      : createHash('sha256').update(String(raw?.sessionId || 'lumbre-wake')).digest('hex').slice(0, 24),
   }
 }
 
@@ -140,12 +242,34 @@ export function saveWakeConfig(config: WakeConfig) {
   writeWakeConfigData(normalizeWakeConfig(config))
 }
 
-export function updateWakeSettings(patch: Partial<Pick<WakeConfig, 'enabled' | 'sessionId' | 'customPrompt' | 'pushEnabled'>>): WakeConfig {
+export function updateWakeSettings(patch: Partial<Pick<WakeConfig, 'enabled' | 'sessionId' | 'customPrompt' | 'pushEnabled'>> & {
+  day?: Partial<PeriodicWakeSetting>
+  night?: Partial<PeriodicWakeSetting>
+  random?: Partial<Pick<RandomWakeSetting, 'enabled' | 'timesPerDay'>>
+  inactivity?: Partial<Pick<InactivityWakeSetting, 'enabled' | 'afterHours'>>
+  warmCache?: Partial<Pick<WarmCacheSetting, 'enabled'>>
+}): WakeConfig {
   return mutateWakeConfig(config => {
-    if (patch.enabled !== undefined) config.enabled = patch.enabled
+    if (patch.enabled !== undefined) {
+      config.day.enabled = patch.enabled
+      config.night.enabled = patch.enabled
+    }
     if (patch.sessionId !== undefined) config.sessionId = patch.sessionId
     if (patch.customPrompt !== undefined) config.customPrompt = patch.customPrompt
     if (patch.pushEnabled !== undefined) config.pushEnabled = patch.pushEnabled
+    if (patch.day) {
+      if (patch.day.enabled === true && !config.day.enabled) config.lastByTrigger.day = Date.now()
+      config.day = { ...config.day, ...patch.day }
+    }
+    if (patch.night) {
+      if (patch.night.enabled === true && !config.night.enabled) config.lastByTrigger.night = Date.now()
+      config.night = { ...config.night, ...patch.night }
+    }
+    if (patch.random) {
+      config.random = { ...config.random, ...patch.random, day: '', times: [] }
+    }
+    if (patch.inactivity) config.inactivity = { ...config.inactivity, ...patch.inactivity }
+    if (patch.warmCache) config.warmCache = { ...config.warmCache, ...patch.warmCache, status: 'idle', error: undefined }
   })
 }
 
@@ -153,7 +277,7 @@ function mutateWakeConfig(mutator: (config: WakeConfig) => void): WakeConfig {
   return updateWakeConfigData(defaultWakeConfig, raw => {
     const config = normalizeWakeConfig(raw)
     mutator(config)
-    return config
+    return normalizeWakeConfig(config)
   })
 }
 
@@ -194,12 +318,6 @@ function madridTimeStr(ts: number): string {
   return `${p.year}/${p.month}/${p.day} ${p.hour}:${p.minute}`
 }
 
-function intervalMsFor(now: number): number {
-  const hourOfDay = madridHour(now)
-  const isNightHours = hourOfDay >= 0 && hourOfDay < 9
-  return isNightHours ? 3 * 60 * 60 * 1000 : 1 * 60 * 60 * 1000
-}
-
 /** Last real user-message timestamp in the selected durable session. */
 function latestSessionUserAt(sessionId: string | null): number {
   if (!sessionId) return 0
@@ -217,32 +335,88 @@ function effectiveActivityAt(config: WakeConfig): number {
   return Math.max(Number(config.lastActivityAt) || 0, latestSessionUserAt(config.sessionId))
 }
 
-/** Estimated next interval wake, including the conversation cooldown. */
-export function computeNextWakeAt(config: WakeConfig): number {
-  const base = config.lastWakeAt || Date.now()
-  return Math.max(base + intervalMsFor(base), effectiveActivityAt(config) + COOLDOWN_MS)
-}
-
-/** Soonest interval/alarm wake. Explicit alarms intentionally bypass activity cooldown. */
-export function nextWakeInfo(config: WakeConfig): { at: number; isAlarm: boolean; note?: string } {
-  const intervalAt = Math.max(computeNextWakeAt(config), Number(config.nextRetryAt) || 0)
-  const alarms = (config.alarms || []).sort((a, b) => a.at - b.at)
-  if (alarms.length) {
-    const alarmAt = alarms[0].at
-    if (alarmAt < intervalAt) return { at: alarmAt, isAlarm: true, note: alarms[0].note }
+function randomTimesForDay(config: WakeConfig, day: string, now: number): number[] {
+  const nextMidnight = parseMadridDateTime(`${addMadridDays(day, 1)}T00:00:00`)?.getTime() || now
+  const availableSeconds = Math.max(1, Math.floor((nextMidnight - now) / 1000) - 1)
+  const times = new Set<number>()
+  for (let index = 0; times.size < Math.min(config.random.timesPerDay, availableSeconds) && index < 64; index++) {
+    const digest = createHash('sha256').update(`${config.randomSeed}:${day}:${index}`).digest()
+    times.add(now + (1 + digest.readUInt32BE(0) % availableSeconds) * 1000)
   }
-  return { at: intervalAt, isAlarm: false }
+  return Array.from(times).sort((a, b) => a - b)
 }
 
-function shouldWakeNow(config: WakeConfig): { should: boolean; reason: string; alarm?: WakeAlarm; trigger?: 'interval' | 'alarm'; activityAt: number } {
+export function refreshWakeSchedule(now = Date.now()): WakeConfig {
+  return mutateWakeConfig(config => {
+    const day = madridDateKey(now)
+    if (config.random.day !== day) {
+      config.random.day = day
+      // Enabling mid-day still schedules the requested number in today's remaining window.
+      config.random.times = randomTimesForDay(config, day, now)
+      config.lastByTrigger.random = Math.max(Number(config.lastByTrigger.random) || 0, now)
+    }
+  })
+}
+
+function periodActive(trigger: 'day' | 'night', now: number) {
+  return trigger === 'day' ? madridHour(now) >= 9 : madridHour(now) < 9
+}
+
+function nextPeriodStart(trigger: 'day' | 'night', now: number) {
+  const today = madridDateKey(now)
+  if (trigger === 'day') {
+    if (madridHour(now) < 9) return parseMadridDateTime(`${today}T09:00:00`)?.getTime() || now
+    return now
+  }
+  if (madridHour(now) < 9) return now
+  return parseMadridDateTime(`${addMadridDays(today, 1)}T00:00:00`)?.getTime() || now
+}
+
+function nextPeriodicAt(config: WakeConfig, trigger: 'day' | 'night', now: number) {
+  const setting = config[trigger]
+  if (!setting.enabled) return null
+  if (!periodActive(trigger, now)) return nextPeriodStart(trigger, now)
+  const base = Number(config.lastByTrigger[trigger]) || Number(config.lastWakeAt) || now
+  const candidate = base + setting.intervalHours * HOUR_MS
+  return periodActive(trigger, candidate) ? Math.max(now, candidate) : nextPeriodStart(trigger, candidate)
+}
+
+export function nextWakeSchedule(config: WakeConfig, now = Date.now(), ccActivityAt = 0) {
   const activityAt = effectiveActivityAt(config)
-  if (!config.enabled || !config.sessionId) return { should: false, reason: 'disabled', activityAt }
+  const alarm = (config.alarms || [])[0]
+  const day = config.sessionId ? nextPeriodicAt(config, 'day', now) : null
+  const night = config.sessionId ? nextPeriodicAt(config, 'night', now) : null
+  const random = config.sessionId && config.random.enabled
+    ? config.random.times.find(at => at > Math.max(now, Number(config.lastByTrigger.random) || 0)) || null
+    : null
+  const inactivity = config.sessionId && config.inactivity.enabled && activityAt > config.inactivity.handledActivityAt
+    ? activityAt + config.inactivity.afterHours * HOUR_MS : null
+  const warmBase = Math.max(ccActivityAt, config.warmCache.observedCcAt, config.warmCache.lastSuccessAt)
+  const warmCache = config.sessionId && config.warmCache.enabled && warmBase > 0 && now - warmBase < WARM_EXPIRES_MS
+    ? warmBase + WARM_AFTER_MS : null
+  const ordinary = [day, night, random, inactivity].filter((value): value is number => typeof value === 'number')
+  const overall = [alarm?.at, ...ordinary].filter((value): value is number => typeof value === 'number').sort((a, b) => a - b)[0] || null
+  return { alarm: alarm ? { at: alarm.at, note: alarm.note } : null, day, night, random, inactivity, warmCache, overall }
+}
 
-  const now = Date.now()
+/** Legacy summary used by older clients while the new page reads the full schedule. */
+export function nextWakeInfo(config: WakeConfig): { at: number; isAlarm: boolean; note?: string } {
+  const next = nextWakeSchedule(config)
+  const alarmWins = !!next.alarm && next.alarm.at === next.overall
+  return { at: next.overall || Date.now(), isAlarm: alarmWins, note: alarmWins ? next.alarm?.note : undefined }
+}
 
-  // wake_me is an explicit appointment made by the model. It bypasses both
-  // conversation cooldown and ordinary retry backoff; an alarm must never be
-  // silently postponed because a previous interval request failed.
+export function computeNextWakeAt(config: WakeConfig): number {
+  return nextWakeSchedule(config).overall || Date.now()
+}
+
+type WakeDecision = { should: boolean; reason: string; alarm?: WakeAlarm; trigger?: WakeTrigger; activityAt: number }
+
+export function decideWake(config: WakeConfig, now = Date.now()): WakeDecision {
+  const activityAt = effectiveActivityAt(config)
+  if (!config.sessionId) return { should: false, reason: 'no_session', activityAt }
+
+  // wake_me bypasses schedule switches, cooldown and ordinary retry backoff.
   const dueAlarm = (config.alarms || []).find(a => a.at <= now)
   if (dueAlarm) return {
     should: true,
@@ -253,10 +427,24 @@ function shouldWakeNow(config: WakeConfig): { should: boolean; reason: string; a
   }
 
   if ((Number(config.nextRetryAt) || 0) > now) return { should: false, reason: 'failure_backoff', activityAt }
+  if (config.inactivity.enabled && activityAt > config.inactivity.handledActivityAt
+      && now - activityAt >= config.inactivity.afterHours * HOUR_MS) {
+    return { should: true, reason: `小火已经 ${config.inactivity.afterHours} 小时没有说话，醒来看一眼。`, trigger: 'inactivity', activityAt }
+  }
   if (now - activityAt < COOLDOWN_MS) return { should: false, reason: 'recent_activity', activityAt }
-  if (now - config.lastWakeAt < intervalMsFor(now)) return { should: false, reason: 'too_soon', activityAt }
-  const isNightHours = madridHour(now) >= 0 && madridHour(now) < 9
-  return { should: true, reason: isNightHours ? '深夜了，世界很安静。' : '醒来看看，阳光或者雨。', trigger: 'interval', activityAt }
+
+  const randomAt = config.random.enabled
+    ? config.random.times.find(at => at <= now && at > (Number(config.lastByTrigger.random) || 0))
+    : undefined
+  if (randomAt) return { should: true, reason: '今天随机醒来看看。', trigger: 'random', activityAt }
+
+  const trigger = madridHour(now) < 9 ? 'night' : 'day'
+  const setting = config[trigger]
+  const last = Number(config.lastByTrigger[trigger]) || Number(config.lastWakeAt) || now
+  if (setting.enabled && now - last >= setting.intervalHours * HOUR_MS) {
+    return { should: true, reason: trigger === 'night' ? '深夜了，世界很安静。' : '醒来看看，阳光或者雨。', trigger, activityAt }
+  }
+  return { should: false, reason: 'not_due', activityAt }
 }
 
 function actionTarget(input: any): string {
@@ -279,7 +467,7 @@ function actionFingerprint(name: any, input: any): string {
 
 // ── Execute wake ─────────────────────────────────────
 
-async function executeWake(config: WakeConfig, reason: string, activityAt: number, trigger: 'interval' | 'alarm' = 'interval', alarm?: WakeAlarm): Promise<WakeLog> {
+async function executeWake(config: WakeConfig, reason: string, activityAt: number, trigger: Exclude<WakeTrigger, 'warm-cache'> = 'day', alarm?: WakeAlarm): Promise<WakeLog> {
   const startedAt = Date.now()
   const now = new Date(startedAt)
   const timeStr = madridTimeStr(now.getTime())
@@ -298,9 +486,12 @@ async function executeWake(config: WakeConfig, reason: string, activityAt: numbe
   try {
     wakeSession = config.sessionId ? loadSyncSessions([config.sessionId])[0] : null
     if (wakeSession?.messages) {
-      contextMessages = wakeSession.messages.slice(-50).map((m: any) => ({
+      contextMessages = wakeSession.messages.slice(-50).map((m: any, index: number) => ({
+        id: typeof m.id === 'string' && m.id ? m.id : `wake-history-${index}-${Number(m.timestamp) || 0}`,
         role: m.role,
+        route: m.route === 'claude-code' ? 'claude-code' : 'api',
         content: m.content,
+        ...(typeof m.ccAttemptId === 'string' ? { ccAttemptId: m.ccAttemptId } : {}),
       }))
     }
   } catch {}
@@ -339,16 +530,20 @@ last_msg_time=${lastMsgTime}`
 ${JSON.stringify(recentDigests)}`
     : wakePrompt
 
-  // Context came from the current sharded store above.
+  const generationRoute = wakeSession?.generationRoute === 'claude-code' ? 'claude-code' : 'api'
+  const wakeTurnId = `wake-turn-${startedAt}`
+  // Context came from the current sharded store above. The synthetic trigger
+  // stays hidden in Lumbre, but gives CC a canonical final user turn.
   const apiMessages = [
     ...contextMessages,
-    { role: 'user', content: promptWithHistory },
+    { id: wakeTurnId, role: 'user', route: generationRoute, content: promptWithHistory },
   ]
 
   // Resolve API profile + system prompt from the synced chat config.
   let apiProfile: any = undefined
   let systemPrompt: string | undefined = undefined
   let modelOverride: string | undefined = undefined
+  let bookmarkInjections = ''
   try {
     const cfg = loadSyncManifest().config
     if (cfg) {
@@ -362,6 +557,19 @@ ${JSON.stringify(recentDigests)}`
           modelId: cfg.model || active.defaultModel,
         }
       }
+      const summaryConfig = wakeSession?.summaryConfig || { injectCount: cfg.summaryInjectCount || 3 }
+      const summaries = [...(wakeSession?.summaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, summaryConfig.injectCount).reverse()
+      const stages = [...(wakeSession?.stageSummaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, 2).reverse()
+      const summaryText = [
+        ...stages.map((item: any) => `${item.title || '阶段摘要'}\n${item.content || ''}`),
+        ...summaries.map((item: any) => item.eventSummary || ''),
+      ].filter(Boolean).join('\n\n---\n\n')
+      const messageText = contextMessages.map(message => message.content).join(' ').toLowerCase()
+      const bookmarks = (Array.isArray(cfg.bookmarks) ? cfg.bookmarks : [])
+        .filter((item: any) => item?.enabled && (item.alwaysOn || (item.keywords || []).some((keyword: any) => keyword && messageText.includes(String(keyword).toLowerCase()))))
+        .sort((a: any, b: any) => Number(b.priority) - Number(a.priority))
+        .map((item: any) => item.content).filter(Boolean)
+      bookmarkInjections = [summaryText ? `[长期对话摘要｜马德里时间]\n${summaryText}` : '', ...bookmarks].filter(Boolean).join('\n\n')
     }
   } catch {}
 
@@ -391,18 +599,36 @@ ${JSON.stringify(recentDigests)}`
           },
           signal: controller.signal,
           body: JSON.stringify({
+            generation_route: generationRoute,
+            turn_id: generationRoute === 'claude-code' ? wakeTurnId : undefined,
             messages: apiMessages, system: systemPrompt, model: modelOverride,
             api_profile: apiProfile, tools_enabled: true,
-            max_tool_calls: MAX_WAKE_TOOL_CALLS, stream: false, _wake: true,
+            bookmark_injections: bookmarkInjections,
+            max_tool_calls: MAX_WAKE_TOOL_CALLS, stream: generationRoute === 'claude-code', _wake: true,
             session_id: config.sessionId || undefined,
           }),
         })
       } finally { clearTimeout(timeout) }
 
-      const rawBody = await res.text()
-      data = {}
-      try { data = rawBody ? JSON.parse(rawBody) : {} } catch {}
-      if (!res.ok) throw new Error(`wake chat HTTP ${res.status}: ${String(data.error || rawBody || res.statusText).slice(0, 500)}`)
+      if (!res.ok) {
+        const rawBody = await res.text()
+        try { data = rawBody ? JSON.parse(rawBody) : {} } catch { data = {} }
+        throw new Error(`wake chat HTTP ${res.status}: ${String(data.error || rawBody || res.statusText).slice(0, 500)}`)
+      }
+      if (generationRoute === 'claude-code') {
+        data = { content: '', tool_calls: [] }
+        for await (const event of readChatEventStream(res)) {
+          if (event.type === 'text') data.content += String(event.content || '')
+          else if (event.type === 'thinking') data.thinking = String(data.thinking || '') + String(event.content || '')
+          else if (event.type === 'tool_call') data.tool_calls.push({ name: event.name, input: event.input, result: event.result, error: event.error === true })
+          else if (event.type === 'error') throw new Error(String(event.content || 'CC 后台唤醒失败'))
+          else if (event.type === 'done') data = { ...data, ...event }
+        }
+      } else {
+        const rawBody = await res.text()
+        data = {}
+        try { data = rawBody ? JSON.parse(rawBody) : {} } catch {}
+      }
 
       // Some OpenAI-compatible relays occasionally return HTTP 200 with an
       // empty choice and usage.output_tokens=0. This is not a conscious
@@ -456,8 +682,19 @@ ${traceSummary}` : responseText)
       try {
         const result = appendSyncSessionMessage(config.sessionId, {
           id: `wake-${startedAt}-${randomUUID()}`,
-          role: 'assistant', route: 'api', content: storedContent, timestamp: nowTs,
+          role: 'assistant', route: generationRoute, content: storedContent, timestamp: nowTs,
           thinking: data.thinking, tool_calls: toolCalls, _wake: true, _wakeSilent: silent,
+          input_tokens: Number(data.input_tokens) || undefined,
+          output_tokens: Number(data.output_tokens) || undefined,
+          cache_read_tokens: Number(data.cache_read_tokens) || undefined,
+          cache_creation_tokens: Number(data.cache_creation_tokens) || undefined,
+          ...(generationRoute === 'claude-code' ? {
+            ccAttemptId: data.attempt_id,
+            ccSessionFingerprint: data.session_fingerprint,
+            ccSessionMode: data.session_mode,
+            ccSessionReason: data.session_reason,
+            ccCompacted: data.compacted === true,
+          } : {}),
         })
         sessionWrite = result.appended ? 'appended' : 'duplicate'
       } catch (err: any) {
@@ -506,10 +743,24 @@ ${traceSummary}` : responseText)
   // preventing both lost alarms and a rapid paid retry storm.
   mutateWakeConfig(fresh => {
     if (!wakeError || !responseText.startsWith('Wake error:')) {
-      fresh.lastWakeAt = Math.max(fresh.lastWakeAt, Date.now())
+      const completedAt = Date.now()
+      fresh.lastWakeAt = Math.max(fresh.lastWakeAt, completedAt)
       fresh.consecutiveFailures = 0
       fresh.nextRetryAt = 0
       if (alarm) fresh.alarms = (fresh.alarms || []).filter(a => !(a.at === alarm.at && a.note === alarm.note))
+      const activePeriod = madridHour(completedAt) < 9 ? 'night' : 'day'
+      const periodSetting = fresh[activePeriod]
+      const periodLast = Number(fresh.lastByTrigger[activePeriod]) || 0
+      if (periodSetting.enabled && completedAt - periodLast >= periodSetting.intervalHours * HOUR_MS) {
+        fresh.lastByTrigger[activePeriod] = completedAt
+      }
+      if (fresh.random.enabled && fresh.random.times.some(at => at <= completedAt && at > (Number(fresh.lastByTrigger.random) || 0))) {
+        fresh.lastByTrigger.random = completedAt
+      }
+      if (fresh.inactivity.enabled && activityAt > fresh.inactivity.handledActivityAt
+          && completedAt - activityAt >= fresh.inactivity.afterHours * HOUR_MS) {
+        fresh.inactivity.handledActivityAt = activityAt
+      }
     } else {
       const failures = Math.min(8, (Number(fresh.consecutiveFailures) || 0) + 1)
       fresh.consecutiveFailures = failures
@@ -524,6 +775,7 @@ ${traceSummary}` : responseText)
 
 let wakeInterval: ReturnType<typeof setInterval> | null = null
 let wakeInFlight = false
+let lastWarmCheckAt = 0
 
 function acquireWakeLease(): string | null {
   const token = `${process.pid}-${randomUUID()}`
@@ -534,21 +786,105 @@ function releaseWakeLease(token: string) {
   releaseWakeLeaseData(token)
 }
 
+export function cancelWakeAlarmWhileBusy(alarm: WakeAlarm, activityAt: number) {
+  const now = Date.now()
+  mutateWakeConfig(config => {
+    config.alarms = (config.alarms || []).filter(item => !(item.at === alarm.at && item.note === alarm.note))
+  })
+  appendWakeLogData({
+    id: `wake-${now}`, timestamp: now, startedAt: now, finishedAt: now,
+    trigger: 'alarm', reason: alarm.note ? `闹钟已取消：${alarm.note}` : '闹钟已取消',
+    actions: [], response: '[CANCELLED_BUSY]', silent: true, activityAt,
+    sessionWrite: 'skipped', responseKind: 'silent',
+  } satisfies WakeLog)
+}
+
+async function generationBusy() {
+  return isApiGenerationBusy() || await isCcGatewayBusy()
+}
+
+async function warmCacheTick(config: WakeConfig, now: number) {
+  if (!config.warmCache.enabled || !config.sessionId || now - lastWarmCheckAt < 60_000) return
+  lastWarmCheckAt = now
+  const status = await readCcStatus(config.sessionId)
+  if (!status.available || status.context.reason === 'gateway_unavailable') {
+    mutateWakeConfig(fresh => {
+      fresh.warmCache.status = 'failed'
+      fresh.warmCache.error = 'CC 线路暂时不可用'
+    })
+    return
+  }
+  const observed = status.context.available && status.context.collectedAt
+    ? Date.parse(status.context.collectedAt) : 0
+  const base = Math.max(observed || 0, config.warmCache.observedCcAt, config.warmCache.lastSuccessAt)
+  if (!base) {
+    mutateWakeConfig(fresh => { fresh.warmCache.status = 'no-session' })
+    return
+  }
+  mutateWakeConfig(fresh => { fresh.warmCache.observedCcAt = Math.max(fresh.warmCache.observedCcAt, base) })
+  const age = now - base
+  if (age < WARM_AFTER_MS) return
+  if (age >= WARM_EXPIRES_MS) {
+    mutateWakeConfig(fresh => { fresh.warmCache.status = 'cold'; fresh.warmCache.error = undefined })
+    return
+  }
+  if (await generationBusy()) {
+    mutateWakeConfig(fresh => { fresh.warmCache.status = 'busy' })
+    return
+  }
+
+  const lease = acquireWakeLease()
+  if (!lease) return
+  wakeInFlight = true
+  const startedAt = Date.now()
+  try {
+    const result: any = await warmCcSession(config.sessionId)
+    const read = Math.max(0, Number(result?.usage?.cache_read_input_tokens) || 0)
+    const created = Math.max(0, Number(result?.usage?.cache_creation_input_tokens) || 0)
+    const warmed = result?.status === 'warmed' && read > 0
+    mutateWakeConfig(fresh => {
+      fresh.warmCache.lastAttemptAt = Date.now()
+      fresh.warmCache.cacheReadTokens = read
+      fresh.warmCache.cacheCreationTokens = created
+      fresh.warmCache.status = warmed ? 'warmed' : result?.status === 'busy' ? 'busy' : result?.status === 'no_session' ? 'no-session' : result?.status === 'warmed' ? 'miss' : 'failed'
+      fresh.warmCache.error = result?.error?.message || result?.error || undefined
+      if (warmed) fresh.warmCache.lastSuccessAt = Date.now()
+    })
+    appendWakeLogData({
+      id: `warm-${startedAt}`, timestamp: startedAt, startedAt, finishedAt: Date.now(),
+      trigger: 'warm-cache', reason: '保持 Claude Code 一小时缓存', actions: [],
+      response: warmed ? '[WARMED]' : `[${String(result?.status || 'failed').toUpperCase()}]`,
+      silent: true, sessionWrite: 'silent', error: warmed ? undefined : (result?.error?.message || result?.error),
+      outputTokens: Number(result?.usage?.output_tokens) || 0, responseKind: warmed ? 'silent' : 'error',
+    } satisfies WakeLog)
+  } finally {
+    wakeInFlight = false
+    releaseWakeLease(lease)
+  }
+}
+
 async function wakeTick() {
-  if (wakeInFlight) return
-  const config = loadWakeConfig()
-  const decision = shouldWakeNow(config)
-  if (!decision.should) return
+  const config = refreshWakeSchedule()
+  const decision = decideWake(config)
+  if (wakeInFlight) {
+    if (decision.alarm) cancelWakeAlarmWhileBusy(decision.alarm, decision.activityAt)
+    return
+  }
+  if (!decision.should) return warmCacheTick(config, Date.now())
   const lease = acquireWakeLease()
   if (!lease) return
   wakeInFlight = true
   try {
     // Re-check after acquiring the cross-process lease; another worker may have just completed.
-    const fresh = loadWakeConfig()
-    const checked = shouldWakeNow(fresh)
+    const fresh = refreshWakeSchedule()
+    const checked = decideWake(fresh)
     if (!checked.should) return
+    if (await generationBusy()) {
+      if (checked.alarm) cancelWakeAlarmWhileBusy(checked.alarm, checked.activityAt)
+      return
+    }
     console.log(`[AutoWake] Triggering ${checked.trigger}: ${checked.reason}`)
-    await executeWake(fresh, checked.reason, checked.activityAt, checked.trigger, checked.alarm)
+    await executeWake(fresh, checked.reason, checked.activityAt, checked.trigger as Exclude<WakeTrigger, 'warm-cache'>, checked.alarm)
   } finally {
     wakeInFlight = false
     releaseWakeLease(lease)

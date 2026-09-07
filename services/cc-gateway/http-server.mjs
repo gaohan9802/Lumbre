@@ -66,6 +66,18 @@ export function createGatewayServer({ runtime, secret, heartbeatMs = 15_000 }) {
         return json(response, 200, runtime.metrics(conversationId))
       }
 
+      if (request.method === 'GET' && url.pathname === '/v1/busy') {
+        return json(response, 200, { busy: runtime.busy() })
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/warm-cache') {
+        const body = await readBody(request, 8_000)
+        const conversationId = body.conversation_id || ''
+        if (!CONVERSATION_ID.test(conversationId)) throw new AttemptValidationError('conversation_id is invalid')
+        const result = await runtime.warm(conversationId)
+        return json(response, result.status === 'busy' ? 409 : result.status === 'failed' ? 502 : 200, result)
+      }
+
       if (request.method === 'POST' && url.pathname === '/v1/attempts') {
         const body = await readBody(request)
         const result = runtime.submit({
@@ -75,6 +87,7 @@ export function createGatewayServer({ runtime, secret, heartbeatMs = 15_000 }) {
           model: body.model,
           context: body.context,
           sessionAction: body.session_action,
+          unattended: body.unattended === true,
         })
         return json(response, result.reused ? 200 : 202, result)
       }

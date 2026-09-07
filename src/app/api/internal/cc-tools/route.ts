@@ -23,11 +23,12 @@ function validSessionId(value: unknown): value is string {
   return typeof value === 'string' && SAFE_ID.test(value)
 }
 
-function context(sessionId: string) {
+function context(sessionId: string, source: unknown) {
+  const unattended = source === 'unattended-wake'
   return createToolContext({
-    actorId: 'lumbre-authenticated-user',
+    actorId: unattended ? 'lumbre-autowake-service' : 'lumbre-authenticated-user',
     sessionId,
-    source: 'chat',
+    source: unattended ? 'unattended-wake' : 'chat',
   })
 }
 
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
   if (!authorized(request)) return response({ error: 'unauthorized' }, 401)
   const sessionId = request.nextUrl.searchParams.get('session_id')
   if (!validSessionId(sessionId)) return response({ error: 'invalid_session_id' }, 400)
-  const tools = toolsForContext(context(sessionId)).map(tool => ({
+  const tools = toolsForContext(context(sessionId, request.nextUrl.searchParams.get('source'))).map(tool => ({
     name: tool.name,
     description: tool.description,
     inputSchema: tool.input_schema,
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
     const input = body.input && typeof body.input === 'object' && !Array.isArray(body.input) ? body.input : {}
     if (Buffer.byteLength(JSON.stringify(input)) > MAX_INPUT_BYTES) return response({ error: 'request_too_large' }, 413)
 
-    const raw = localizeToolTimes(await executeTool(body.name, input, context(body.session_id)))
+    const raw = localizeToolTimes(await executeTool(body.name, input, context(body.session_id, body.source)))
     const result = toolResultForHistory(body.name, raw)
     const error = raw.startsWith('Tool denied:') || raw.startsWith('Tool error')
     return response({

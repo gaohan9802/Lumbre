@@ -164,6 +164,9 @@ export class ClaudeExecutor {
    *   prompt: string,
    *   model?: string,
    *   resumeSessionId?: string,
+   *   forkSession?: boolean,
+   *   toolsEnabled?: boolean,
+   *   unattended?: boolean,
    *   signal?: AbortSignal,
    *   onText?: (text: string) => void,
    *   onToolCall?: (event: Record<string, any>) => void,
@@ -175,26 +178,31 @@ export class ClaudeExecutor {
     prompt,
     model,
     resumeSessionId,
+    forkSession = false,
+    toolsEnabled = true,
+    unattended = false,
     signal,
     onText,
     onToolCall,
     attemptId,
     conversationId,
   }) {
-    if (this.toolBridgeEnabled && (!ATTEMPT_ID.test(attemptId || '') || !CONVERSATION_ID.test(conversationId || ''))) {
+    const useToolBridge = this.toolBridgeEnabled && toolsEnabled
+    if (useToolBridge && (!ATTEMPT_ID.test(attemptId || '') || !CONVERSATION_ID.test(conversationId || ''))) {
       return Promise.reject(new ClaudeExecutionError('invalid_tool_context', 'Claude Code tool context is invalid'))
     }
     return new Promise((resolve, reject) => {
       const transcriptBefore = transcriptSnapshot(this.env.HOME, resumeSessionId)
-      const toolEventFile = this.toolBridgeEnabled && attemptId
+      const toolEventFile = useToolBridge && attemptId
         ? path.join(this.toolEventsDir, `${attemptId}.jsonl`)
         : null
       if (toolEventFile) fs.writeFileSync(toolEventFile, '', { encoding: 'utf8', mode: 0o600 })
       const args = buildClaudeArgs({
         outputFormat: 'stream-json', model, resumeSessionId,
-        mcpConfig: this.toolBridgeEnabled ? LUMBRE_MCP_CONFIG : undefined,
-        allowedTools: this.toolBridgeEnabled ? ['mcp__lumbre__*'] : undefined,
-        maxTurns: this.toolBridgeEnabled ? 24 : undefined,
+        forkSession,
+        mcpConfig: useToolBridge ? LUMBRE_MCP_CONFIG : undefined,
+        allowedTools: useToolBridge ? ['mcp__lumbre__*'] : undefined,
+        maxTurns: useToolBridge ? 24 : undefined,
       })
       const childEnv = toolEventFile ? {
         ...this.env,
@@ -203,6 +211,7 @@ export class ClaudeExecutor {
         LUMBRE_CC_CONVERSATION_ID: conversationId,
         LUMBRE_CC_TOOL_EVENT_FILE: toolEventFile,
         LUMBRE_CC_MAX_TOOL_CALLS: String(this.toolBridge.maxCalls || 20),
+        LUMBRE_CC_TOOL_SOURCE: unattended ? 'unattended-wake' : 'chat',
       } : this.env
       const child = spawn(this.binary, args, {
         cwd: this.workspace,
@@ -319,14 +328,23 @@ export class ClaudeExecutor {
         if (code !== 0) return finish(new ClaudeExecutionError(`exit_${code ?? 'signal'}`, 'Claude Code request failed'))
         try {
           const sessionId = findSessionId(events)
-          if (resumeSessionId && sessionId !== resumeSessionId) {
+          if (resumeSessionId && !forkSession && sessionId !== resumeSessionId) {
             throw new Error('Claude Code changed the resumed session id')
+          }
+          if (forkSession && sessionId === resumeSessionId) throw new Error('Claude Code did not fork the resumed session')
+          let transcriptRemoved = false
+          if (forkSession) {
+            const forkTranscript = findTranscript(this.env.HOME, sessionId)
+            if (forkTranscript) {
+              try { fs.unlinkSync(forkTranscript); transcriptRemoved = true } catch {}
+            }
           }
           finish(null, {
             text: findResultText(events),
             sessionId,
             usage: collectUsage(events),
             context: collectContextSnapshot(events, model),
+            transcriptRemoved,
             compacted: streamDetectedCompaction(events)
               || transcriptDetectedCompaction(this.env.HOME, sessionId, transcriptBefore),
           })

@@ -18,7 +18,7 @@ interface WakeLog {
   actions: { type: string; name?: string; input?: any; result?: string; timestamp: number }[]
   response: string
   silent: boolean
-  trigger?: 'interval' | 'alarm'
+  trigger?: 'day' | 'night' | 'random' | 'inactivity' | 'alarm' | 'warm-cache'
   startedAt?: number
   finishedAt?: number
   sessionWrite?: 'appended' | 'duplicate' | 'skipped' | 'failed' | 'silent'
@@ -34,6 +34,30 @@ interface WakeConfig {
   lastActivityAt: number
   customPrompt?: string
   pushEnabled?: boolean
+  day: { enabled: boolean; intervalHours: number }
+  night: { enabled: boolean; intervalHours: number }
+  random: { enabled: boolean; timesPerDay: number; day: string; times: number[] }
+  inactivity: { enabled: boolean; afterHours: number; handledActivityAt: number }
+  warmCache: {
+    enabled: boolean
+    observedCcAt: number
+    lastAttemptAt: number
+    lastSuccessAt: number
+    status: 'idle' | 'warmed' | 'busy' | 'cold' | 'miss' | 'failed' | 'no-session'
+    cacheReadTokens?: number
+    cacheCreationTokens?: number
+    error?: string
+  }
+}
+
+interface NextWakeSchedule {
+  alarm: { at: number; note?: string } | null
+  day: number | null
+  night: number | null
+  random: number | null
+  inactivity: number | null
+  warmCache: number | null
+  overall: number | null
 }
 
 const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
@@ -69,7 +93,7 @@ export function DreamsView() {
 
   const [tab, setTab] = useState<'reality' | 'dreams'>('reality')
   const [config, setConfig] = useState<WakeConfig | null>(null)
-  const [nextWake, setNextWake] = useState<{ at: number; isAlarm: boolean; note?: string } | null>(null)
+  const [nextWake, setNextWake] = useState<NextWakeSchedule | null>(null)
   const [logs, setLogs] = useState<WakeLog[]>([])
   const [loading, setLoading] = useState(false)
   const [expandedLog, setExpandedLog] = useState<string | null>(null)
@@ -95,15 +119,19 @@ export function DreamsView() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const toggleEnabled = async () => {
+  const updateRule = async (name: 'day' | 'night' | 'random' | 'inactivity' | 'warmCache', patch: Record<string, unknown>) => {
     if (!config) return
-    const next = !config.enabled
-    await fetch('/api/wake', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: next }),
-    })
-    setConfig({ ...config, enabled: next })
+    const optimistic = { ...config, [name]: { ...config[name], ...patch } }
+    setConfig(optimistic)
+    try {
+      const response = await fetch('/api/wake', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [name]: patch }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error('save failed')
+      setConfig(data.config)
+      setNextWake(data.next || null)
+    } catch { setConfig(config) }
   }
 
   const urlBase64ToUint8Array = (base64String: string) => {
@@ -232,63 +260,69 @@ export function DreamsView() {
       <div className="flex-1 overflow-y-auto">
         {tab === 'reality' ? (
           <div className="p-4 space-y-4 pb-[env(safe-area-inset-bottom)]">
-            {/* Wake config panel */}
             <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-medium">💓 心跳唤醒</h3>
-                  <p className={`text-[10px] mt-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                    {config?.enabled
-                      ? '星星会自己醒来，做她想做的事'
-                      : '唤醒已关闭'}
-                  </p>
-                </div>
-                <button
-                  onClick={toggleEnabled}
-                  className={`relative w-12 h-7 rounded-full transition flex-shrink-0 ${
-                    config?.enabled
-                      ? n ? 'bg-night-amber' : 'bg-day-pink'
-                      : n ? 'bg-night-surface' : 'bg-gray-200'
-                  }`}
-                >
-                  <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${
-                    config?.enabled ? 'translate-x-5' : ''
-                  }`} />
-                </button>
+              <div>
+                <h3 className="text-sm font-medium">💓 星星的唤醒</h3>
+                <p className={`text-[10px] mt-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>四种唤醒各自工作，撞在一起时只醒一次。</p>
               </div>
-
-              {/* Session selector */}
               <div className="space-y-1.5">
                 <label className={`text-[11px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>主对话框</label>
-                <select
-                  value={config?.sessionId || ''}
-                  onChange={(e) => setSession(e.target.value)}
-                  className={`w-full text-sm px-3 py-2 rounded-xl outline-none ${
-                    n ? 'bg-night-surface border-night-border text-night-text' : 'bg-gray-50 text-day-text'
-                  }`}
-                >
+                <select value={config?.sessionId || ''} onChange={(e) => setSession(e.target.value)} className={`w-full text-sm px-3 py-2 rounded-xl outline-none ${n ? 'bg-night-surface border-night-border text-night-text' : 'bg-gray-50 text-day-text'}`}>
                   <option value="">未选择</option>
-                  {sessions.map(s => (
-                    <option key={s.id} value={s.id}>{s.title} ({s.messages.length}条)</option>
-                  ))}
+                  {sessions.map(s => <option key={s.id} value={s.id}>{s.title} ({s.messages.length}条)</option>)}
                 </select>
               </div>
-
-              {/* Status */}
               {config && (
                 <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                  {config.enabled && nextWake && (
-                    <p className={n ? 'text-night-amber' : 'text-day-pink'}>
-                      预计下一次唤醒：{fmtTime(nextWake.at)}
-                      {nextWake.isAlarm ? ` · ⏰闹钟${nextWake.note ? '「' + nextWake.note + '」' : ''}` : ''}
-                    </p>
-                  )}
+                  {nextWake?.overall && <p className={n ? 'text-night-amber' : 'text-day-pink'}>最近一次预计唤醒：{fmtTime(nextWake.overall)}</p>}
+                  {nextWake?.alarm && <p>⏰ wake me：{fmtTime(nextWake.alarm.at)}{nextWake.alarm.note ? ` · ${nextWake.alarm.note}` : ''}</p>}
                   {config.lastWakeAt > 0 && <p>上次醒来：{fmtRelative(config.lastWakeAt)}</p>}
-                  {config.lastActivityAt > 0 && <p>上次活动：{fmtRelative(config.lastActivityAt)}</p>}
-                  <p>规则：白天(9-24点)每小时 · 深夜(0-9点)每3小时 · 普通心跳需安静30分钟 · ⏰ wake me 闹钟按设定时间响，不受冷却影响</p>
+                  <p>wake me 不受 30 分钟规则影响；如果届时正在调用，该闹钟直接取消。</p>
                 </div>
               )}
             </div>
+
+            {config && <div className="grid gap-3 md:grid-cols-2">
+              {([
+                { key: 'day' as const, title: '☀️ 日间唤醒', note: '09:00–24:00 · 最近 30 分钟有对话就跳过', value: config.day.intervalHours, label: '每', suffix: '小时', options: [1, 2, 3, 4, 6, 8, 12], next: nextWake?.day },
+                { key: 'night' as const, title: '🌙 夜间唤醒', note: '00:00–09:00 · 最近 30 分钟有对话就跳过', value: config.night.intervalHours, label: '每', suffix: '小时', options: [1, 2, 3, 4, 6, 9], next: nextWake?.night },
+                { key: 'random' as const, title: '🎲 随机唤醒', note: '每天在 24 小时里完全随机', value: config.random.timesPerDay, label: '每天', suffix: '次', options: [1, 2, 3, 4, 5, 6, 7, 8], next: nextWake?.random },
+                { key: 'inactivity' as const, title: '🍂 久未说话', note: '一段沉默期只醒一次，有话才出现', value: config.inactivity.afterHours, label: '超过', suffix: '小时', options: [1, 2, 3, 4, 6, 8, 12, 24, 48, 72], next: nextWake?.inactivity },
+              ]).map(item => {
+                const setting = config[item.key]
+                return <div key={item.key} className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div><h3 className="text-sm font-medium">{item.title}</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>{item.note}</p></div>
+                    <button aria-label={`${item.title}${setting.enabled ? '关闭' : '开启'}`} onClick={() => updateRule(item.key, { enabled: !setting.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${setting.enabled ? n ? 'bg-night-amber' : 'bg-day-pink' : n ? 'bg-night-surface' : 'bg-gray-200'}`}>
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${setting.enabled ? 'translate-x-5' : ''}`} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={n ? 'text-night-muted' : 'text-day-muted'}>{item.label}</span>
+                    <select value={item.value} disabled={!setting.enabled} onChange={event => updateRule(item.key, item.key === 'random' ? { timesPerDay: Number(event.target.value) } : item.key === 'inactivity' ? { afterHours: Number(event.target.value) } : { intervalHours: Number(event.target.value) })} className={`px-2.5 py-1.5 rounded-lg outline-none disabled:opacity-40 ${n ? 'bg-night-surface text-night-text' : 'bg-gray-50 text-day-text'}`}>
+                      {item.options.map(value => <option key={value} value={value}>{value}</option>)}
+                    </select>
+                    <span className={n ? 'text-night-muted' : 'text-day-muted'}>{item.suffix}</span>
+                  </div>
+                  {setting.enabled && <p className={`text-[10px] ${n ? 'text-night-amber' : 'text-day-pink'}`}>下一次：{item.next ? fmtTime(item.next) : '等待条件成立'}</p>}
+                </div>
+              })}
+            </div>}
+
+            {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div><h3 className="text-sm font-medium">🔥 CC 缓存保温</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>约 50 分钟时 fork 一条临时会话，回复不进聊天，不开工具。</p></div>
+                <button aria-label={`CC 缓存保温${config.warmCache.enabled ? '关闭' : '开启'}`} onClick={() => updateRule('warmCache', { enabled: !config.warmCache.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${config.warmCache.enabled ? n ? 'bg-night-amber' : 'bg-day-pink' : n ? 'bg-night-surface' : 'bg-gray-200'}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${config.warmCache.enabled ? 'translate-x-5' : ''}`} />
+                </button>
+              </div>
+              {config.warmCache.enabled && <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                <p className={n ? 'text-night-amber' : 'text-day-pink'}>状态：{{ idle: '等待下一次 CC 活动', warmed: '保温成功', busy: '星星正在回复，稍后再试', cold: '缓存已冷却，等下一条真实 CC 消息', miss: '本次没有命中缓存', failed: '保温失败', 'no-session': '这条对话还没有 CC session' }[config.warmCache.status]}</p>
+                {nextWake?.warmCache && <p>预计下次保温：{fmtTime(nextWake.warmCache)}</p>}
+                {config.warmCache.lastAttemptAt > 0 && <p>上次尝试：{fmtRelative(config.warmCache.lastAttemptAt)} · 读缓存 {Math.round((config.warmCache.cacheReadTokens || 0) / 100) / 10}K · 写缓存 {Math.round((config.warmCache.cacheCreationTokens || 0) / 100) / 10}K</p>}
+                {config.warmCache.error && <p className={n ? 'text-night-error' : 'text-red-600'}>{config.warmCache.error}</p>}
+              </div>}
+            </div>}
 
             <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
               <div className="flex items-center justify-between gap-3">
@@ -368,10 +402,10 @@ export function DreamsView() {
                       onClick={() => setExpandedLog(expanded ? null : log.id)}
                       className="w-full text-left px-4 py-3 flex items-center gap-3"
                     >
-                      <span className="text-base">{log.silent ? '🌙' : '💬'}</span>
+                      <span className="text-base">{log.trigger === 'warm-cache' ? '🔥' : log.silent ? '🌙' : '💬'}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium truncate">
-                          {log.silent ? '静默醒来' : log.response.slice(0, 60)}
+                          {log.trigger === 'warm-cache' ? '缓存保温' : log.response === '[CANCELLED_BUSY]' ? '闹钟遇到正在调用，已取消' : log.silent ? '静默醒来' : log.response.slice(0, 60)}
                           {!log.silent && log.response.length > 60 ? '…' : ''}
                         </div>
                         <div className={`text-[10px] mt-0.5 flex gap-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
@@ -398,7 +432,7 @@ export function DreamsView() {
                             </div>
 
                             <div className={`text-[10px] grid grid-cols-2 gap-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                              <span>类型：{log.trigger === 'alarm' ? '闹钟' : '定时'}</span>
+                              <span>类型：{{ day: '日间', night: '夜间', random: '随机', inactivity: '久未说话', alarm: 'wake me 闹钟', 'warm-cache': '缓存保温' }[log.trigger || 'day']}</span>
                               <span>结果：{log.sessionWrite === 'silent' ? '静默（有效）' : (log.sessionWrite || '旧记录')}</span>{log.outputTokens !== undefined && <span>输出：{log.outputTokens} tokens</span>}
                               {log.startedAt && log.finishedAt && <span>耗时：{Math.max(0, Math.round((log.finishedAt - log.startedAt) / 1000))}秒</span>}
                             </div>

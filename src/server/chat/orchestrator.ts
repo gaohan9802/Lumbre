@@ -16,6 +16,7 @@ import { openAICompatibleAdapter } from './providers/openai-compatible'
 import type { GatewayEmitter, GatewayProvider, GatewayProviderAdapter, GatewayUsage } from './providers/types'
 import { friendlyStreamError, logUpstreamStreamError, UpstreamHttpError } from './request'
 import { createCcChatResponse } from './cc-gateway'
+import { beginApiGeneration } from './generation-activity'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -136,6 +137,7 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
   const usage: GatewayUsage = { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 }
   const history: ToolCallResult[] = []
   let thinking = ''
+  const finishGeneration = beginApiGeneration()
 
   try {
     for (let iteration = 0; iteration < 15; iteration++) {
@@ -175,6 +177,8 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
     logUpstreamStreamError({ provider, model: params.model, baseUrl: params.baseUrl, iteration: 0, hadOutput: !!error?.hadGatewayOutput, toolCallCount: history.length, error })
     if (params.stream) { params.send?.('error', { content: message.slice(0, 700) }); return }
     return NextResponse.json({ error: message }, { status })
+  } finally {
+    finishGeneration()
   }
 }
 
@@ -188,15 +192,14 @@ export async function handleChatRequest(req: NextRequest) {
     if (!unattendedWake) try { reportActivity() } catch {}
 
     if (generationRoute === 'claude-code') {
-      if (unattendedWake) return NextResponse.json({ error: 'CC 后台唤醒尚未开放；不会自动改走 API。' }, { status: 409 })
       if (body.api_profile?.apiKey || body.api_profile?.baseUrl) {
         return NextResponse.json({ error: 'CC 请求不能携带浏览器模型密钥或上游地址。' }, { status: 400 })
       }
-      const replyMode = normalizeReplyMode(body.reply_mode)
+      const replyMode = unattendedWake ? undefined : normalizeReplyMode(body.reply_mode)
       const lastUser = Array.isArray(body.messages)
         ? [...body.messages].reverse().find((message: any) => message?.role === 'user')?.content || ''
         : ''
-      const system = (body.system?.trim() || DEFAULT_SYSTEM_PROMPT) + `\n\n${replyModePrompt(replyMode)}`
+      const system = (body.system?.trim() || DEFAULT_SYSTEM_PROMPT) + (replyMode ? `\n\n${replyModePrompt(replyMode)}` : '')
       return createCcChatResponse({
         body,
         system,

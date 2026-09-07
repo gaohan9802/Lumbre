@@ -104,6 +104,38 @@ test('API route gaps are sent as a delta while the same CC session is resumed', 
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
+test('a silent unattended wake keeps the same session without adding a fake chat message', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-silent-wake-'))
+  try {
+    const ledger = new AttemptLedger(root)
+    const bridge = new ContextBridge(ledger)
+    const first = complete(ledger, bridge, {
+      idempotencyKey: 'turn-1', conversationId: 'conversation-1', model: 'sonnet',
+      context: context([{ id: 'u1', role: 'user', route: 'claude-code', content: 'first' }]),
+    })
+    const visible = [
+      { id: 'u1', role: 'user', route: 'claude-code', content: 'first' },
+      { id: 'a1', role: 'assistant', route: 'claude-code', ccAttemptId: first.attempt.id, content: 'first answer' },
+      { id: 'u2', role: 'user', route: 'api', content: 'API gap before wake' },
+      { id: 'a2', role: 'assistant', route: 'api', content: 'API gap answer' },
+    ]
+    const wake = complete(ledger, bridge, {
+      idempotencyKey: 'wake-1', conversationId: 'conversation-1', model: 'sonnet', unattended: true,
+      context: context([...visible, { id: 'wake-user', role: 'user', route: 'claude-code', content: 'silent wake' }]),
+    }, first.attempt.result.sessionId)
+
+    const resumed = bridge.prepare({
+      conversationId: 'conversation-1',
+      context: context([...visible, { id: 'u3', role: 'user', route: 'claude-code', content: 'real next message' }]),
+    })
+    assert.equal(resumed.sessionPlan.mode, 'resume')
+    assert.equal(resumed.resumeSessionId, wake.attempt.result.sessionId)
+    assert.deepEqual(resumed.sessionPlan.submittedMessageIds, ['u3'])
+    assert.match(resumed.prompt, /real next message/)
+    assert.doesNotMatch(resumed.prompt, /API gap before wake/)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
 test('resume refreshes changed memory while a changed system creates a fresh recorded session', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-envelope-'))
   try {

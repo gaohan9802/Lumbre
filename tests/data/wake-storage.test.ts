@@ -22,8 +22,67 @@ test('wake configuration preserves behavior and serializes settings', () => {
   const updated = wake.updateWakeSettings({ enabled: true, sessionId: 'fixture-session', pushEnabled: true })
   assert.equal(updated.enabled, true)
   assert.equal(updated.sessionId, 'fixture-session')
+  assert.equal(updated.day.enabled, true)
+  assert.equal(updated.night.enabled, true)
   const alarm = wake.scheduleWake(Date.now() + 60_000, 'fixture alarm')
   assert.equal(wake.loadWakeConfig().alarms?.some(value => value.at === alarm.at), true)
+})
+
+test('independent wake rules clamp settings and wake_me bypasses recent activity', () => {
+  const now = Date.parse('2026-09-07T10:00:00.000Z')
+  const updated = wake.updateWakeSettings({
+    day: { enabled: true, intervalHours: 99 },
+    night: { enabled: false, intervalHours: 0 },
+    random: { enabled: true, timesPerDay: 99 },
+    inactivity: { enabled: true, afterHours: 0 },
+    warmCache: { enabled: true },
+  })
+  assert.equal(updated.day.intervalHours, 12)
+  assert.equal(updated.night.intervalHours, 1)
+  assert.equal(updated.random.timesPerDay, 8)
+  assert.equal(updated.inactivity.afterHours, 1)
+  assert.equal(updated.warmCache.enabled, true)
+
+  const alarm = { at: now - 1, note: 'forced fixture' }
+  const decision = wake.decideWake({
+    ...updated,
+    sessionId: 'fixture-session',
+    lastActivityAt: now - 5 * 60_000,
+    alarms: [alarm],
+  }, now)
+  assert.equal(decision.trigger, 'alarm')
+  assert.equal(decision.alarm, alarm)
+})
+
+test('inactivity fires once per quiet period and random times survive refreshes', () => {
+  const now = Date.parse('2026-09-07T10:00:00.000Z')
+  const config = wake.updateWakeSettings({
+    sessionId: 'fixture-session',
+    day: { enabled: false },
+    night: { enabled: false },
+    random: { enabled: true, timesPerDay: 3 },
+    inactivity: { enabled: true, afterHours: 2 },
+  })
+  const quietAt = now - 3 * 60 * 60 * 1000
+  const due = wake.decideWake({ ...config, lastActivityAt: quietAt, alarms: [], inactivity: { ...config.inactivity, handledActivityAt: 0 } }, now)
+  assert.equal(due.trigger, 'inactivity')
+  const handled = wake.decideWake({ ...config, lastActivityAt: quietAt, alarms: [], inactivity: { ...config.inactivity, handledActivityAt: quietAt } }, now)
+  assert.equal(handled.should, false)
+
+  const first = wake.refreshWakeSchedule(now)
+  const second = wake.refreshWakeSchedule(now + 30_000)
+  assert.equal(first.random.times.length, 3)
+  assert.deepEqual(second.random.times, first.random.times)
+  assert.equal(first.random.times.every(value => value > now), true)
+})
+
+test('a due wake_me alarm is consumed instead of postponed while generation is busy', () => {
+  const alarm = wake.scheduleWake(Date.now() + 60_000, 'busy alarm fixture')
+  wake.cancelWakeAlarmWhileBusy(alarm, Date.now())
+  assert.equal(wake.loadWakeConfig().alarms?.some(value => value.at === alarm.at) ?? false, false)
+  const log = wake.loadWakeLogs().at(-1)
+  assert.equal(log?.trigger, 'alarm')
+  assert.equal(log?.response, '[CANCELLED_BUSY]')
 })
 
 test('corrupt wake configuration is backed up before recovery', () => {
