@@ -22,6 +22,22 @@ type CcAttempt = {
   sessionReason?: string | null
 }
 
+type CcMetrics = {
+  quota: { available: boolean; reason?: string; source: string; collectedAt: string | null }
+  context: {
+    available: boolean
+    reason?: string
+    source: string
+    collectedAt: string | null
+    usedTokens?: number
+    maxTokens?: number | null
+    usedPercentage?: number | null
+    model?: string | null
+    cacheReadTokens?: number
+    cacheCreationTokens?: number
+  }
+}
+
 const SAFE_TURN_ID = /^[A-Za-z0-9._:-]{1,180}$/
 
 function configFromEnvironment(env = process.env): CcGatewayConfig | null {
@@ -271,21 +287,33 @@ export async function cancelCcAttempt(body: any, fetchImpl: FetchLike = fetch) {
   }
 }
 
-export async function readCcStatus(fetchImpl: FetchLike = fetch) {
+export async function readCcStatus(conversationId?: string, fetchImpl: FetchLike = fetch) {
   const config = configFromEnvironment()
-  if (!config) return { configured: false, available: false, toolsAvailable: false, model: null, version: null }
+  const unavailableMetrics: CcMetrics = {
+    quota: { available: false, reason: 'gateway_unavailable', source: 'claude_code_headless', collectedAt: null },
+    context: { available: false, reason: 'gateway_unavailable', source: 'last_assistant_usage', collectedAt: null },
+  }
+  if (!config) return { configured: false, available: false, toolsAvailable: false, model: null, version: null, ...unavailableMetrics }
   try {
     const response = await gatewayFetch(config, '/healthz', {}, fetchImpl, 4_000)
     const data = await safeJson(response)
     const available = response.ok && data?.status === 'ok'
+    let metrics: CcMetrics = unavailableMetrics
+    if (available && conversationId && SAFE_TURN_ID.test(conversationId)) {
+      try {
+        const metricsResponse = await gatewayFetch(config, `/v1/metrics?conversation_id=${encodeURIComponent(conversationId)}`, {}, fetchImpl, 4_000)
+        if (metricsResponse.ok) metrics = await safeJson(metricsResponse)
+      } catch { /* health remains useful when metrics are temporarily unavailable */ }
+    }
     return {
       configured: true,
       available,
       toolsAvailable: available && data?.capabilities?.lumbreTools === true,
       model: config.model,
       version: typeof data?.claudeCodeVersion === 'string' ? data.claudeCodeVersion : null,
+      ...metrics,
     }
   } catch {
-    return { configured: true, available: false, toolsAvailable: false, model: config.model, version: null }
+    return { configured: true, available: false, toolsAvailable: false, model: config.model, version: null, ...unavailableMetrics }
   }
 }

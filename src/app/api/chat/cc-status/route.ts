@@ -3,7 +3,7 @@ import { readCcStatus } from '@/server/chat/cc-gateway'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  return NextResponse.json(await readCcStatus(), { headers: { 'cache-control': 'no-store' } })
+export async function GET(request: Request) {
+  const conversationId = new URL(request.url).searchParams.get('conversation_id') || undefined
+  return NextResponse.json(await readCcStatus(conversationId), { headers: { 'cache-control': 'no-store' } })
 }
-

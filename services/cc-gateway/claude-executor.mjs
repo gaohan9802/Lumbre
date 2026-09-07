@@ -103,6 +103,49 @@ function transcriptDetectedCompaction(home, sessionId, before) {
   return false
 }
 
+function normalizeUsage(usage) {
+  if (!usage || typeof usage !== 'object') return null
+  const value = {
+    inputTokens: Number.isFinite(usage.input_tokens) ? usage.input_tokens : 0,
+    cacheCreationTokens: Number.isFinite(usage.cache_creation_input_tokens) ? usage.cache_creation_input_tokens : 0,
+    cacheReadTokens: Number.isFinite(usage.cache_read_input_tokens) ? usage.cache_read_input_tokens : 0,
+  }
+  return Object.values(value).some(tokens => tokens > 0) ? value : null
+}
+
+function contextWindowSize(model, requestedModel) {
+  const id = String(model || requestedModel || '').toLowerCase()
+  if (!id) return null
+  if (id.includes('[1m]') || /(?:sonnet|opus)-5\b/.test(id)) return 1_000_000
+  if (/sonnet-4-6|sonnet-4-5|opus-4-[6-9]|haiku-4-5/.test(id)) return 200_000
+  return null
+}
+
+export function collectContextSnapshot(events, requestedModel, clock = Date.now) {
+  let usage = null
+  let model = null
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]
+    if (!usage) usage = normalizeUsage(event?.message?.usage)
+    const candidate = event?.message?.model || (event?.type === 'system' && event?.subtype === 'init' ? event?.model : null)
+    if (!model && typeof candidate === 'string' && candidate.trim()) model = candidate.trim()
+    if (usage && model) break
+  }
+  if (!usage) return null
+  const maxTokens = contextWindowSize(model, requestedModel)
+  const usedTokens = usage.inputTokens + usage.cacheCreationTokens + usage.cacheReadTokens
+  return {
+    usedTokens,
+    maxTokens,
+    usedPercentage: maxTokens ? Math.min(100, Number(((usedTokens / maxTokens) * 100).toFixed(1))) : null,
+    model: model || requestedModel || null,
+    cacheReadTokens: usage.cacheReadTokens,
+    cacheCreationTokens: usage.cacheCreationTokens,
+    collectedAt: new Date(clock()).toISOString(),
+    source: 'last_assistant_usage',
+  }
+}
+
 export class ClaudeExecutor {
   constructor(options = {}) {
     this.binary = options.binary || 'claude'
@@ -283,6 +326,7 @@ export class ClaudeExecutor {
             text: findResultText(events),
             sessionId,
             usage: collectUsage(events),
+            context: collectContextSnapshot(events, model),
             compacted: streamDetectedCompaction(events)
               || transcriptDetectedCompaction(this.env.HOME, sessionId, transcriptBefore),
           })

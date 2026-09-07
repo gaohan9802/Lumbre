@@ -69,7 +69,12 @@ test('HTTP auth, disconnect, polling and event replay preserve one attempt', asy
       calls++
       onText('回来')
       await gate.promise
-      return { text: '回来还能找到。', sessionId: '550e8400-e29b-41d4-a716-446655440000', usage: { input_tokens: 8, output_tokens: 4 } }
+      return {
+        text: '回来还能找到。',
+        sessionId: '550e8400-e29b-41d4-a716-446655440000',
+        usage: { input_tokens: 8, output_tokens: 4 },
+        context: { usedTokens: 8200, maxTokens: 200000, usedPercentage: 4.1, model: 'claude-sonnet-4-6', collectedAt: '2026-09-07T12:00:00.000Z', source: 'last_assistant_usage' },
+      }
     } },
   })
   const server = createGatewayServer({ runtime, secret: SECRET, heartbeatMs: 50 })
@@ -107,6 +112,10 @@ test('HTTP auth, disconnect, polling and event replay preserve one attempt', asy
     const final: any = JSON.parse(polled.body)
     assert.equal(final.attempt.status, 'completed')
     assert.equal(final.attempt.result.text, '回来还能找到。')
+
+    const metrics = await request(socketPath, '/v1/metrics?conversation_id=conversation-1', { headers: authHeaders() })
+    assert.equal(metrics.status, 200)
+    assert.equal(JSON.parse(metrics.body).context.usedTokens, 8200)
 
     const replay = await request(socketPath, `/v1/attempts/${created.attempt.id}/events?after=1`, { headers: authHeaders() })
     assert.match(replay.body, /event: running/)

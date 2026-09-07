@@ -5,7 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 import { AttemptLedger } from '../../services/cc-gateway/attempt-ledger.mjs'
-import { ClaudeExecutor } from '../../services/cc-gateway/claude-executor.mjs'
+import { ClaudeExecutor, collectContextSnapshot } from '../../services/cc-gateway/claude-executor.mjs'
 import { GatewayRuntime } from '../../services/cc-gateway/runtime.mjs'
 import { assertGatewayDataDir } from '../../services/cc-gateway/storage.mjs'
 
@@ -25,6 +25,30 @@ function deferred<T = void>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
   return { promise, resolve, reject }
 }
+
+test('context snapshot uses the latest real assistant request instead of aggregate turn usage', () => {
+  const snapshot = collectContextSnapshot([
+    { type: 'system', subtype: 'init', model: 'claude-sonnet-5' },
+    { type: 'assistant', message: { usage: {
+      input_tokens: 2,
+      output_tokens: 24,
+      cache_creation_input_tokens: 103,
+      cache_read_input_tokens: 8635,
+    } } },
+    { type: 'result', usage: { input_tokens: 50_000, output_tokens: 5_000 } },
+  ], 'sonnet', () => Date.parse('2026-09-07T12:00:00.000Z'))
+
+  assert.deepEqual(snapshot, {
+    usedTokens: 8740,
+    maxTokens: 1_000_000,
+    usedPercentage: 0.9,
+    model: 'claude-sonnet-5',
+    cacheReadTokens: 8635,
+    cacheCreationTokens: 103,
+    collectedAt: '2026-09-07T12:00:00.000Z',
+    source: 'last_assistant_usage',
+  })
+})
 
 test('attempt ledger stores one durable task for repeated idempotency keys', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-ledger-'))

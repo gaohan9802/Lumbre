@@ -153,6 +153,23 @@ export class GatewayRuntime {
     return new Promise(resolve => this.idleWaiters.push(resolve))
   }
 
+  metrics(conversationId) {
+    const latest = this.ledger.list()
+      .filter(attempt => attempt.conversationId === conversationId && attempt.status === 'completed' && attempt.result?.context)
+      .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)))[0]
+    return {
+      quota: {
+        available: false,
+        reason: 'headless_not_exposed',
+        source: 'claude_code_headless',
+        collectedAt: null,
+      },
+      context: latest?.result?.context
+        ? { available: true, ...latest.result.context }
+        : { available: false, reason: 'no_cc_response', source: 'last_assistant_usage', collectedAt: null },
+    }
+  }
+
   resolveIdle() {
     if (this.active !== 0 || this.queue.length !== 0) return
     for (const resolve of this.idleWaiters.splice(0)) resolve()

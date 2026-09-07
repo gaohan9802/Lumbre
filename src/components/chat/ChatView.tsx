@@ -27,7 +27,7 @@ import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
 import { buildSummaryRounds, selectLoadedSessionSummarySegment } from '@/lib/chat-summary'
-import { chatApi } from '@/features/chat/api/client'
+import { chatApi, type CcStatus } from '@/features/chat/api/client'
 import { readChatEventStream } from '@/features/chat/api/event-stream'
 import { timeline as timelineApi } from '@/lib/api'
 import { loadEarlierChat, syncChatNow } from '@/features/chat/sync/ChatSync'
@@ -49,6 +49,29 @@ const fmtShortDate = (ts: number) => {
   const key = new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIME_ZONE }).format(d)
   if (key === todayKey) return d.toLocaleTimeString('en-GB', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })
   return d.toLocaleDateString('zh-CN', { timeZone: APP_TIME_ZONE, month: 'short', day: 'numeric' })
+}
+
+const EMPTY_CC_STATUS: CcStatus = {
+  configured: false,
+  available: false,
+  toolsAvailable: false,
+  model: null,
+  version: null,
+  quota: { available: false, reason: 'gateway_unavailable', source: 'claude_code_headless', collectedAt: null },
+  context: { available: false, reason: 'gateway_unavailable', source: 'last_assistant_usage', collectedAt: null },
+}
+
+const fmtTokens = (value?: number | null) => {
+  if (!Number.isFinite(value)) return '—'
+  const tokens = Number(value)
+  if (tokens >= 1_000_000) return `${Number((tokens / 1_000_000).toFixed(1))}M`
+  if (tokens >= 1_000) return `${Number((tokens / 1_000).toFixed(1))}K`
+  return String(tokens)
+}
+
+const fmtMetricTime = (value?: string | null) => {
+  if (!value) return '尚未采集'
+  return new Date(value).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 /* ── stable context window (cache-friendly) ──
@@ -118,7 +141,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
   const activeModel = activeProfile?.models.find(model => model.id === settings.model)
   const activeRoute = normalizeChatRoute(activeSession?.generationRoute)
-  const [ccStatus, setCcStatus] = useState({ configured: false, available: false, toolsAvailable: false, model: null as string | null, version: null as string | null })
+  const [ccStatus, setCcStatus] = useState<CcStatus>(EMPTY_CC_STATUS)
 
   const {
     input, setInput, isLoading, setIsLoading,
@@ -143,9 +166,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   useEffect(() => { setMounted(true) }, [])
   const refreshCcStatus = useCallback(async () => {
-    try { setCcStatus(await chatApi.ccStatus()) }
+    try { setCcStatus(await chatApi.ccStatus(activeSession?.id)) }
     catch { setCcStatus(current => ({ ...current, available: false })) }
-  }, [])
+  }, [activeSession?.id])
   useEffect(() => { void refreshCcStatus() }, [refreshCcStatus])
   useEffect(() => { if (modelPickerOpen) void refreshCcStatus() }, [modelPickerOpen, refreshCcStatus])
   useEffect(() => {
@@ -453,6 +476,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         ccSessionReason,
         ccCompacted,
       })
+      if (route === 'claude-code') void refreshCcStatus()
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         if (explicitStopRef.current) {
@@ -990,6 +1014,51 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             </div>
           )
         })}
+      </div>
+      <div className="shrink-0 border-t border-current/5 p-2 space-y-2">
+        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-day-border bg-day-tint/65'}`}>
+          <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
+            <span>CC 额度 · 订阅</span>
+            <button type="button" aria-label="刷新 CC 状态" onClick={() => void refreshCcStatus()} className="p-1 -m-1 hover:opacity-100">
+              <RotateCcw size={13} />
+            </button>
+          </div>
+          <div className="mt-1.5 flex items-end justify-between gap-2">
+            <div className="text-xl leading-none">暂不可读</div>
+            <span className={`text-[10px] ${ccStatus.available ? (n ? 'text-night-amber' : 'text-emerald-700') : 'text-red-500'}`}>
+              {ccStatus.available ? '● 线路在线' : '● 线路离线'}
+            </span>
+          </div>
+          <div className="mt-2 text-[10px] leading-relaxed opacity-45">官方暂未向安全的后台模式开放五小时/七天额度。</div>
+        </section>
+
+        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-day-border bg-day-tint/65'}`}>
+          <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
+            <span>CC CONTEXT · 当前对话</span>
+            <span className={ccStatus.context.available ? (n ? 'text-night-amber' : 'text-emerald-700') : ''}>●</span>
+          </div>
+          {ccStatus.context.available ? (
+            <>
+              <div className="mt-1.5 text-[25px] leading-none tabular-nums">{fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</div>
+              <div className="mt-2 flex justify-between text-[10px] opacity-50">
+                <span>上下文水位 · {ccStatus.context.usedPercentage ?? '—'}%</span>
+                <span>{fmtMetricTime(ccStatus.context.collectedAt)}</span>
+              </div>
+              <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
+                <div className={`h-full rounded-full ${n ? 'bg-night-amber' : 'bg-day-pink'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
+              </div>
+              <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
+                <span>读缓存 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写缓存 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
+                <span className="truncate">{ccStatus.context.model || ccStatus.model || 'CC'}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mt-1.5 text-xl leading-none">等待首条 CC 回复</div>
+              <div className="mt-2 text-[10px] opacity-45">这张卡只读取真实 session 用量，不估算。</div>
+            </>
+          )}
+        </section>
       </div>
     </div>
   )

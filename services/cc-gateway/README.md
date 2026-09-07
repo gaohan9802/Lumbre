@@ -36,6 +36,7 @@
 ## HTTP 契约
 
 - `GET /healthz`：不含隐私的健康状态。
+- `GET /v1/metrics?conversation_id=...`：读取该对话最后一次真实 CC 回复的上下文与缓存快照；订阅额度在 headless 模式不可读时明确返回 unavailable。
 - `POST /v1/attempts`：创建或取回幂等任务。
 - `GET /v1/attempts/:id`：轮询任务状态与最终结果。
 - `GET /v1/attempts/:id/events`：SSE 回放与续接，支持 `Last-Event-ID` 或 `?after=`。

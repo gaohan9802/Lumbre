@@ -13,6 +13,24 @@ export type CcStatus = {
   toolsAvailable: boolean
   model: string | null
   version: string | null
+  quota: {
+    available: boolean
+    reason?: string
+    source: string
+    collectedAt: string | null
+  }
+  context: {
+    available: boolean
+    reason?: string
+    source: string
+    collectedAt: string | null
+    usedTokens?: number
+    maxTokens?: number | null
+    usedPercentage?: number | null
+    model?: string | null
+    cacheReadTokens?: number
+    cacheCreationTokens?: number
+  }
 }
 
 export async function chatApiFetch(
@@ -63,7 +81,7 @@ export const chatApi = {
   confirmTool: (body: { token: string; approve: boolean; session_id?: string }) =>
     chatApiJson<{ ok: boolean; result?: string }>('/api/tools/confirm', jsonInit('POST', body), 25_000),
 
-  ccStatus: () => chatApiJson<CcStatus>('/api/chat/cc-status', {}, 6_000),
+  ccStatus: (conversationId?: string) => chatApiJson<CcStatus>(`/api/chat/cc-status${conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ''}`, {}, 6_000),
 
   cancelCcAttempt: (body: { session_id: string; turn_id: string }) =>
     chatApiJson<{ ok: boolean; attempt?: { id: string; status: string } }>('/api/chat/cc-attempt/cancel', jsonInit('POST', body), 8_000),

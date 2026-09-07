@@ -201,16 +201,23 @@ test('status and explicit cancel use server-only gateway credentials', async () 
     const url = String(input)
     requests.push({ url, init })
     if (url.endsWith('/healthz')) return Response.json({ status: 'ok', claudeCodeVersion: '2.1.236', capabilities: { lumbreTools: true } })
+    if (url.includes('/v1/metrics?conversation_id=conversation-1')) return Response.json({
+      quota: { available: false, reason: 'headless_not_exposed', source: 'claude_code_headless', collectedAt: null },
+      context: { available: true, usedTokens: 8740, maxTokens: 200000, usedPercentage: 4.4, model: 'claude-sonnet-4-6', source: 'last_assistant_usage', collectedAt: '2026-09-07T12:00:00.000Z' },
+    })
     if (url.endsWith('/cancel-by-key')) return Response.json({ attempt: { id: ATTEMPT_ID, status: 'running' } }, { status: 202 })
     throw new Error(`unexpected fetch ${url}`)
   }
   try {
-    assert.deepEqual(await readCcStatus(fakeFetch), { configured: true, available: true, toolsAvailable: true, model: 'sonnet', version: '2.1.236' })
+    const status = await readCcStatus('conversation-1', fakeFetch)
+    assert.equal(status.available, true)
+    assert.equal(status.context.usedTokens, 8740)
+    assert.equal(status.quota.reason, 'headless_not_exposed')
     const cancelled = await cancelCcAttempt({ session_id: 'conversation-1', turn_id: 'turn-1' }, fakeFetch)
     assert.equal(cancelled.ok, true)
     assert.equal(cancelled.attempt?.status, 'running')
-    const cancelBody = JSON.parse(String(requests[1].init?.body))
+    const cancelBody = JSON.parse(String(requests[2].init?.body))
     assert.equal(cancelBody.idempotency_key, 'lumbre:conversation-1:turn-1')
-    assert.equal((requests[1].init?.headers as Record<string, string>).authorization, `Bearer ${SECRET}`)
+    assert.equal((requests[2].init?.headers as Record<string, string>).authorization, `Bearer ${SECRET}`)
   } finally { restore() }
 })

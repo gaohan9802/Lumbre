@@ -5,6 +5,7 @@ import { ContextBridgeValidationError } from './context-bridge.mjs'
 import { PINNED_CLAUDE_CODE_VERSION } from '../cc-probe/contract.mjs'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
+const CONVERSATION_ID = /^[A-Za-z0-9._:-]{1,160}$/
 
 function json(response, status, value) {
   const body = JSON.stringify(value)
@@ -59,6 +60,12 @@ export function createGatewayServer({ runtime, secret, heartbeatMs = 15_000 }) {
     if (!authorized(request, secret)) return json(response, 401, { error: 'unauthorized' })
 
     try {
+      if (request.method === 'GET' && url.pathname === '/v1/metrics') {
+        const conversationId = url.searchParams.get('conversation_id') || ''
+        if (!CONVERSATION_ID.test(conversationId)) throw new AttemptValidationError('conversation_id is invalid')
+        return json(response, 200, runtime.metrics(conversationId))
+      }
+
       if (request.method === 'POST' && url.pathname === '/v1/attempts') {
         const body = await readBody(request)
         const result = runtime.submit({
