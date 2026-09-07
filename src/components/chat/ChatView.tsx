@@ -118,7 +118,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
   const activeModel = activeProfile?.models.find(model => model.id === settings.model)
   const activeRoute = normalizeChatRoute(activeSession?.generationRoute)
-  const [ccStatus, setCcStatus] = useState({ configured: false, available: false, model: null as string | null, version: null as string | null })
+  const [ccStatus, setCcStatus] = useState({ configured: false, available: false, toolsAvailable: false, model: null as string | null, version: null as string | null })
 
   const {
     input, setInput, isLoading, setIsLoading,

@@ -273,17 +273,19 @@ export async function cancelCcAttempt(body: any, fetchImpl: FetchLike = fetch) {
 
 export async function readCcStatus(fetchImpl: FetchLike = fetch) {
   const config = configFromEnvironment()
-  if (!config) return { configured: false, available: false, model: null, version: null }
+  if (!config) return { configured: false, available: false, toolsAvailable: false, model: null, version: null }
   try {
     const response = await gatewayFetch(config, '/healthz', {}, fetchImpl, 4_000)
     const data = await safeJson(response)
+    const available = response.ok && data?.status === 'ok'
     return {
       configured: true,
-      available: response.ok && data?.status === 'ok',
+      available,
+      toolsAvailable: available && data?.capabilities?.lumbreTools === true,
       model: config.model,
       version: typeof data?.claudeCodeVersion === 'string' ? data.claudeCodeVersion : null,
     }
   } catch {
-    return { configured: true, available: false, model: config.model, version: null }
+    return { configured: true, available: false, toolsAvailable: false, model: config.model, version: null }
   }
 }

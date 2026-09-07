@@ -99,7 +99,9 @@ export function ChatRoutePicker({
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium">Claude Code · {ccStatus.model || '订阅线路'}</div>
-                    <div className="mt-0.5 text-[10px] opacity-50">{ccStatus.available ? '文字聊天已接通 · 生活工具下一阶段开放' : ccStatus.configured ? '网关暂时无法连接' : '服务端尚未配置 CC 网关'}</div>
+                    <div className="mt-0.5 text-[10px] opacity-50">{ccStatus.available
+                      ? (ccStatus.toolsAvailable ? '文字聊天与生活工具已接通 · Bash/Shell 未开放' : '文字聊天已接通 · 生活工具尚未接通')
+                      : ccStatus.configured ? '网关暂时无法连接' : '服务端尚未配置 CC 网关'}</div>
                   </div>
                   {activeRoute === 'claude-code' && <Check size={16} className={`flex-shrink-0 ${isNight ? 'text-night-amber' : 'text-day-pink'}`} />}
                 </div>

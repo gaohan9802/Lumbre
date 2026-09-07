@@ -10,6 +10,7 @@ export class ChatApiError extends Error {
 export type CcStatus = {
   configured: boolean
   available: boolean
+  toolsAvailable: boolean
   model: string | null
   version: string | null
 }

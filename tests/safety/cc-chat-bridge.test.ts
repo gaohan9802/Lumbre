@@ -200,12 +200,12 @@ test('status and explicit cancel use server-only gateway credentials', async () 
   const fakeFetch: typeof fetch = async (input, init) => {
     const url = String(input)
     requests.push({ url, init })
-    if (url.endsWith('/healthz')) return Response.json({ status: 'ok', claudeCodeVersion: '2.1.236' })
+    if (url.endsWith('/healthz')) return Response.json({ status: 'ok', claudeCodeVersion: '2.1.236', capabilities: { lumbreTools: true } })
     if (url.endsWith('/cancel-by-key')) return Response.json({ attempt: { id: ATTEMPT_ID, status: 'running' } }, { status: 202 })
     throw new Error(`unexpected fetch ${url}`)
   }
   try {
-    assert.deepEqual(await readCcStatus(fakeFetch), { configured: true, available: true, model: 'sonnet', version: '2.1.236' })
+    assert.deepEqual(await readCcStatus(fakeFetch), { configured: true, available: true, toolsAvailable: true, model: 'sonnet', version: '2.1.236' })
     const cancelled = await cancelCcAttempt({ session_id: 'conversation-1', turn_id: 'turn-1' }, fakeFetch)
     assert.equal(cancelled.ok, true)
     assert.equal(cancelled.attempt?.status, 'running')

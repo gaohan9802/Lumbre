@@ -54,7 +54,7 @@ function jsonLines(messages) {
 function bootstrapPrompt(context, messages, reason) {
   const memory = [context.bookmarkInjections, context.volatileContext].filter(Boolean).join('\n\n')
   return `[LUMBRE SESSION ${reason === 'first_cc_turn' ? 'BOOTSTRAP' : 'REBASE'}]
-The following data is the canonical Lumbre conversation supplied by the application. Continue it naturally and answer the final user message. Route labels only describe which transport produced a message; API and Claude Code messages belong to one conversation. Never claim to have tools in this phase.
+The following data is the canonical Lumbre conversation supplied by the application. Continue it naturally and answer the final user message. Route labels only describe which transport produced a message; API and Claude Code messages belong to one conversation. Use only the tools exposed by the Lumbre MCP bridge. Bash, Shell, source-code, and filesystem tools are not available.
 
 <lumbre_system>
 ${context.system || ''}

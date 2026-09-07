@@ -33,6 +33,8 @@ test('first CC turn bootstraps from canonical Lumbre context without storing con
     assert.equal(prepared.resumeSessionId, null)
     assert.match(prepared.prompt, /You are Star/)
     assert.match(prepared.prompt, /"content":"hello"/)
+    assert.match(prepared.prompt, /Bash, Shell, source-code, and filesystem tools are not available/)
+    assert.doesNotMatch(prepared.prompt, /Never claim to have tools in this phase/)
     assert.equal(JSON.stringify(prepared.sessionPlan).includes('hello'), false)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
