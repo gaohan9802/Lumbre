@@ -29,10 +29,12 @@
 - 隔离 `DATA_DIR` 生产构建通过，`git diff --check` 通过。
 - 桌面宽度与 390px 手机宽度的夜间 UI 已检查；主对话选择、日间开关和频率修改在隔离预览中实际保存成功，测试开关随后关闭。
 
-## 待分支预览验收
+## Zeabur 分支预览验收
 
-- 推送本分支，确认 Lumbre 与 CC 网关两个预览服务的部署回执。
-- 用一条无副作用的真实 CC 消息建立热缓存，再直接调用暖场 endpoint，确认有 `cache_read_input_tokens > 0`、fork session 不同于主 session，且临时 transcript 已删除。
+- Lumbre 与 CC 网关两个预览服务均从 `codex/lumbre-cc-wake-cache` 成功构建并进入 Running；Lumbre 容器完成 39/39 个静态页面生成，CC 网关用固定的 Claude Code 版本正常启动。
+- 真实预览站的“现实”页已刷新到阶段 7：日间开关可保存，间隔由 2 小时改为 3 小时后下一次唤醒会立即重算；测试结束后已关闭开关。
+- 第一次真实暖缓存返回 `warmed`，读缓存 3,289、写缓存 22,488；紧接着再次保温读缓存 25,777、写缓存 0。
+- 两次暖缓存的主 session 指纹均为 `52c5b5bf1271`，临时 fork 指纹各不相同；`transcriptRemoved` 均为 `true`。验收后再次读取正式 attempt，主 session 指纹仍为 `52c5b5bf1271`。
 - 未经用户确认，不合并 `main`，不在生产开启任何唤醒规则。
 
 ## 明确延后
