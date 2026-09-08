@@ -2,16 +2,33 @@ import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
 import { publicAttempt } from './attempt-ledger.mjs'
 
+const QUOTA_URL = 'https://api.anthropic.com/api/oauth/usage'
+const QUOTA_TTL_MS = 5 * 60 * 1000
+
 function fingerprint(value) {
   return value ? createHash('sha256').update(value).digest('hex').slice(0, 12) : null
 }
 
+function quotaWindow(value) {
+  const usedPercentage = Number(value?.utilization)
+  if (!Number.isFinite(usedPercentage)) return null
+  const resetsAt = typeof value?.resets_at === 'string' && Number.isFinite(Date.parse(value.resets_at))
+    ? new Date(value.resets_at).toISOString() : null
+  return { usedPercentage: Math.min(100, Math.max(0, usedPercentage)), resetsAt }
+}
+
 export class GatewayRuntime {
-  constructor({ ledger, executor, contextBridge = null, concurrency = 1 }) {
+  constructor({ ledger, executor, contextBridge = null, concurrency = 1, oauthToken = '', fetchImpl = fetch, clock = Date.now }) {
     this.ledger = ledger
     this.executor = executor
     this.contextBridge = contextBridge
     this.concurrency = Math.max(1, concurrency)
+    this.oauthToken = oauthToken
+    this.fetchImpl = fetchImpl
+    this.clock = clock
+    this.quotaSnapshot = null
+    this.quotaExpiresAt = 0
+    this.quotaPending = null
     this.active = 0
     this.queue = []
     this.queuedIds = new Set()
@@ -215,17 +232,60 @@ export class GatewayRuntime {
     }
   }
 
-  metrics(conversationId) {
+  async subscriptionQuota() {
+    const now = this.clock()
+    if (this.quotaSnapshot && now < this.quotaExpiresAt) return this.quotaSnapshot
+    if (this.quotaPending) return this.quotaPending
+    const previous = this.quotaSnapshot
+    const pending = (async () => {
+      if (!this.oauthToken) return { available: false, reason: 'oauth_token_unavailable', source: 'anthropic_oauth_usage', collectedAt: null }
+      try {
+        const response = await this.fetchImpl(QUOTA_URL, {
+          headers: {
+            authorization: `Bearer ${this.oauthToken}`,
+            'anthropic-beta': 'oauth-2025-04-20',
+            'user-agent': 'claude-code/2.1.236',
+            accept: 'application/json',
+          },
+          redirect: 'error',
+          signal: AbortSignal.timeout(4_000),
+        })
+        if (!response.ok) throw new Error('quota request failed')
+        const text = await response.text()
+        if (text.length > 64_000) throw new Error('quota response too large')
+        const data = JSON.parse(text)
+        const fiveHour = quotaWindow(data?.five_hour)
+        const sevenDay = quotaWindow(data?.seven_day)
+        if (!fiveHour && !sevenDay) throw new Error('quota response missing windows')
+        return {
+          available: true,
+          source: 'anthropic_oauth_usage',
+          collectedAt: new Date(this.clock()).toISOString(),
+          fiveHour,
+          sevenDay,
+        }
+      } catch {
+        return previous?.available
+          ? { ...previous, stale: true, reason: 'refresh_failed' }
+          : { available: false, reason: 'oauth_usage_unavailable', source: 'anthropic_oauth_usage', collectedAt: null }
+      }
+    })()
+    this.quotaPending = pending
+    const result = await pending
+    if (this.quotaPending === pending) {
+      this.quotaSnapshot = result
+      this.quotaExpiresAt = this.clock() + QUOTA_TTL_MS
+      this.quotaPending = null
+    }
+    return result
+  }
+
+  async metrics(conversationId) {
     const latest = this.ledger.list()
       .filter(attempt => attempt.conversationId === conversationId && attempt.status === 'completed' && attempt.result?.context)
       .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)))[0]
     return {
-      quota: {
-        available: false,
-        reason: 'headless_not_exposed',
-        source: 'claude_code_headless',
-        collectedAt: null,
-      },
+      quota: await this.subscriptionQuota(),
       context: latest?.result?.context
         ? { available: true, ...latest.result.context }
         : { available: false, reason: 'no_cc_response', source: 'last_assistant_usage', collectedAt: null },

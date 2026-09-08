@@ -62,6 +62,7 @@ try {
   const runtime = new GatewayRuntime({
     ledger,
     executor,
+    oauthToken,
     contextBridge: new ContextBridge(ledger, { rehydrateTurns: positiveInteger('CC_GATEWAY_REHYDRATE_TURNS', 16) }),
     concurrency: positiveInteger('CC_GATEWAY_CONCURRENCY', 1),
   })

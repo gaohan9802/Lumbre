@@ -24,7 +24,15 @@ type CcAttempt = {
 }
 
 type CcMetrics = {
-  quota: { available: boolean; reason?: string; source: string; collectedAt: string | null }
+  quota: {
+    available: boolean
+    reason?: string
+    source: string
+    collectedAt: string | null
+    stale?: boolean
+    fiveHour?: { usedPercentage: number; resetsAt: string | null } | null
+    sevenDay?: { usedPercentage: number; resetsAt: string | null } | null
+  }
   context: {
     available: boolean
     reason?: string

@@ -36,7 +36,7 @@
 ## HTTP 契约
 
 - `GET /healthz`：不含隐私的健康状态。
-- `GET /v1/metrics?conversation_id=...`：读取该对话最后一次真实 CC 回复的上下文与缓存快照；订阅额度在 headless 模式不可读时明确返回 unavailable。
+- `GET /v1/metrics?conversation_id=...`：读取该对话最后一次真实 CC 回复的上下文与缓存快照，并用网关现有 OAuth secret 服务端读取五小时/七天订阅额度；额度结果缓存五分钟，token 不下发也不记录。
 - `GET /v1/busy`：读取网关当前是否正在执行或排队，供 `wake_me` 的忙碌取消规则使用。
 - `POST /v1/warm-cache`：对该对话最后一个成功 session 执行 `resume + fork-session`；不加载工具，结束后删除临时 fork transcript，不记入正式 attempt 或 Lumbre 聊天。
 - `POST /v1/attempts`：创建或取回幂等任务。

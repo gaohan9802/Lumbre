@@ -76,6 +76,11 @@ const fmtMetricTime = (value?: string | null) => {
   return new Date(value).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
+const fmtMetricReset = (value?: string | null) => {
+  if (!value) return '—'
+  return new Date(value).toLocaleString('zh-CN', { timeZone: APP_TIME_ZONE, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 /* ── stable context window (cache-friendly) ──
  * 每轮 slice(-N) 会让消息数组的头部逐条前移，导致 Anthropic/OpenAI 的
  * 前缀缓存整段失效（缓存靠字节级前缀匹配）。这里把窗口起点量化到 STEP 的
@@ -1036,18 +1041,42 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       <div className="shrink-0 border-t border-current/5 p-2 space-y-2">
         <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-day-border bg-day-tint/65'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
-            <span>CC 额度 · 订阅</span>
+            <span>CLAUDE 额度 · 订阅</span>
             <button type="button" aria-label="刷新 CC 状态" onClick={() => void refreshCcStatus()} className="p-1 -m-1 hover:opacity-100">
               <RotateCcw size={13} />
             </button>
           </div>
-          <div className="mt-1.5 flex items-end justify-between gap-2">
-            <div className="text-xl leading-none">暂不可读</div>
-            <span className={`text-[10px] ${ccStatus.available ? (n ? 'text-night-amber' : 'text-emerald-700') : 'text-red-500'}`}>
-              {ccStatus.available ? '● 线路在线' : '● 线路离线'}
-            </span>
-          </div>
-          <div className="mt-2 text-[10px] leading-relaxed opacity-45">官方暂未向安全的后台模式开放五小时/七天额度。</div>
+          {ccStatus.quota.available && ccStatus.quota.fiveHour ? (
+            <>
+              <div className="mt-1.5 flex items-end justify-between gap-2">
+                <div className="text-xl leading-none tabular-nums">余 {Math.max(0, Math.round(100 - ccStatus.quota.fiveHour.usedPercentage))}%</div>
+                <span className={`text-[10px] ${ccStatus.quota.stale ? 'opacity-45' : (n ? 'text-night-amber' : 'text-emerald-700')}`}>
+                  {ccStatus.quota.stale ? '● 上次读数' : '● 已读取'}
+                </span>
+              </div>
+              <div className="mt-2 flex justify-between text-[10px] opacity-50">
+                <span>5 小时已用 · {Math.round(ccStatus.quota.fiveHour.usedPercentage)}%</span>
+                <span>重置 {fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
+              </div>
+              <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
+                <div className={`h-full rounded-full ${n ? 'bg-night-amber' : 'bg-day-pink'}`} style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
+              </div>
+              <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
+                <span>{ccStatus.quota.sevenDay ? `7 天剩余 ${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%` : '7 天额度暂缺'}</span>
+                <span>{ccStatus.quota.sevenDay ? `重置 ${fmtMetricReset(ccStatus.quota.sevenDay.resetsAt)}` : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mt-1.5 flex items-end justify-between gap-2">
+                <div className="text-xl leading-none">暂不可读</div>
+                <span className={`text-[10px] ${ccStatus.available ? (n ? 'text-night-amber' : 'text-emerald-700') : 'text-red-500'}`}>
+                  {ccStatus.available ? '● 线路在线' : '● 线路离线'}
+                </span>
+              </div>
+              <div className="mt-2 text-[10px] leading-relaxed opacity-45">额度读取失败时不影响 CC 聊天；稍后点刷新重试。</div>
+            </>
+          )}
         </section>
 
         <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-day-border bg-day-tint/65'}`}>

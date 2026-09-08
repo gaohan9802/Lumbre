@@ -18,6 +18,9 @@ export type CcStatus = {
     reason?: string
     source: string
     collectedAt: string | null
+    stale?: boolean
+    fiveHour?: { usedPercentage: number; resetsAt: string | null } | null
+    sevenDay?: { usedPercentage: number; resetsAt: string | null } | null
   }
   context: {
     available: boolean

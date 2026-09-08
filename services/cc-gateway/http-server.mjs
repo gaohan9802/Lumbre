@@ -63,7 +63,7 @@ export function createGatewayServer({ runtime, secret, heartbeatMs = 15_000 }) {
       if (request.method === 'GET' && url.pathname === '/v1/metrics') {
         const conversationId = url.searchParams.get('conversation_id') || ''
         if (!CONVERSATION_ID.test(conversationId)) throw new AttemptValidationError('conversation_id is invalid')
-        return json(response, 200, runtime.metrics(conversationId))
+        return json(response, 200, await runtime.metrics(conversationId))
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/busy') {

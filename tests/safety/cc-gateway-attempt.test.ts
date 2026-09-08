@@ -50,6 +50,45 @@ test('context snapshot uses the latest real assistant request instead of aggrega
   })
 })
 
+test('subscription quota stays server-side, cached, and falls back to the last good reading', async () => {
+  let now = Date.parse('2026-09-08T12:00:00.000Z')
+  let calls = 0
+  let fail = false
+  let authorization = ''
+  const runtime = new GatewayRuntime({
+    ledger: { list: () => [] },
+    executor: {},
+    oauthToken: 'private-oauth-token',
+    clock: () => now,
+    fetchImpl: async (_url: string | URL | Request, init?: RequestInit) => {
+      calls++
+      authorization = String((init?.headers as Record<string, string>)?.authorization || '')
+      if (fail) return new Response('{}', { status: 429 })
+      return Response.json({
+        five_hour: { utilization: 18.4, resets_at: '2026-09-08T16:00:00.000Z' },
+        seven_day: { utilization: 7, resets_at: '2026-09-14T08:00:00.000Z' },
+      })
+    },
+  })
+
+  const first: any = await runtime.metrics('conversation-1')
+  const cached: any = await runtime.metrics('conversation-1')
+  assert.equal(calls, 1)
+  assert.equal(authorization, 'Bearer private-oauth-token')
+  assert.equal(first.quota.fiveHour.usedPercentage, 18.4)
+  assert.equal(first.quota.sevenDay.usedPercentage, 7)
+  assert.deepEqual(cached.quota, first.quota)
+  assert.doesNotMatch(JSON.stringify(first), /private-oauth-token/)
+
+  now += 5 * 60 * 1000 + 1
+  fail = true
+  const stale: any = await runtime.metrics('conversation-1')
+  assert.equal(calls, 2)
+  assert.equal(stale.quota.available, true)
+  assert.equal(stale.quota.stale, true)
+  assert.equal(stale.quota.fiveHour.usedPercentage, 18.4)
+})
+
 test('attempt ledger stores one durable task for repeated idempotency keys', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-ledger-'))
   try {
