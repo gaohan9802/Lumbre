@@ -315,22 +315,29 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
     // Build bookmark injections
     const triggered = getTriggeredBookmarks(settings.bookmarks, messages)
-    const startInjections = triggered.filter(b => b.position === 'start').map(b => b.content)
-    const endInjections = triggered.filter(b => b.position === 'end').map(b => b.content)
-
-    let systemPrompt = settings.systemPrompt || undefined
-    if (startInjections.length || endInjections.length) {
-      const prefix = startInjections.length ? '\n\n[书签提醒]\n' + startInjections.join('\n---\n') : ''
-      const suffix = endInjections.length ? '\n\n[书签提醒]\n' + endInjections.join('\n---\n') : ''
-      systemPrompt = (systemPrompt || '') + prefix + suffix
-    }
+    const persistentBookmarks = triggered.filter(bookmark => bookmark.alwaysOn)
+    const transientBookmarks = triggered.filter(bookmark => !bookmark.alwaysOn)
+    const bookmarkBlock = (items: typeof triggered) => items.length
+      ? `[书签提醒]\n${items.map(bookmark => bookmark.content).join('\n---\n')}`
+      : ''
+    const systemPrompt = settings.systemPrompt || undefined
     const readingInjection = contextInjection.trim()
     const statusInjection = timelineCurrent ? `[小火当前状态]\n正在做：${timelineCurrent.title}\n已持续：${Math.max(1, Math.floor((Date.now() - new Date(timelineCurrent.start_at).getTime()) / 60000))}分钟${timelineCurrent.tags?.length ? `\n标签：${timelineCurrent.tags.join('、')}` : ''}${timelineCurrent.note ? `\n开始备注：${timelineCurrent.note}` : ''}` : ''
     const summaryConfig = activeSession?.summaryConfig || { injectCount: settings.summaryInjectCount }
     const recentSummaries = [...(activeSession?.summaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, summaryConfig.injectCount).reverse()
     const recentStages = [...(activeSession?.stageSummaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, 2).reverse()
     const summaryInjection = recentSummaries.length || recentStages.length ? `[长期对话摘要｜马德里时间]\n${recentStages.map((item, i) => `阶段摘要${i + 1}（${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}）\n${item.title}\n${item.content}`).join('\n\n---\n\n')}${recentStages.length && recentSummaries.length ? '\n\n=== 最近细节 ===\n\n' : ''}${recentSummaries.map((item, i) => `记忆${i + 1}（${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}）\n${item.eventSummary}`).join('\n\n---\n\n')}` : ''
-    const bookmarkInjections = [summaryInjection, readingInjection, statusInjection].filter(Boolean).join('\n\n')
+    const memoryInjection = [
+      bookmarkBlock(persistentBookmarks.filter(bookmark => bookmark.position === 'start')),
+      summaryInjection,
+      bookmarkBlock(persistentBookmarks.filter(bookmark => bookmark.position === 'end')),
+    ].filter(Boolean).join('\n\n')
+    const clientVolatileContext = [
+      bookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'start')),
+      readingInjection,
+      statusInjection,
+      bookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'end')),
+    ].filter(Boolean).join('\n\n')
 
     // Always stream the transport. A non-streaming /api/chat returns zero bytes
     // until the whole tool loop finishes (30-90s), which iOS Safari / mobile
@@ -406,10 +413,10 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         temperature: settings.temperature,
         stream: true,
         session_id: activeSession?.id,
-        bookmark_injections: bookmarkInjections,
+        bookmark_injections: memoryInjection,
+        client_volatile_context: clientVolatileContext,
         request_audit_hints: {
-          summary: measureReceiptText(summaryInjection),
-          currentContext: measureReceiptText([readingInjection, statusInjection].filter(Boolean).join('\n\n')),
+          summary: measureReceiptText(memoryInjection),
         },
         api_profile: route === 'api' && profile ? {
           profileId: profile.id, modelId: model,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -123,6 +123,51 @@ globalThis.fetch = async (url, init = {}) => {
     assert.equal(requests[1].body.session_id, 'conversation-1')
     assert.match(requests[0].url, /source=unattended-wake/)
     assert.equal(requests[1].body.source, 'unattended-wake')
+  } finally {
+    child.stdin.end()
+    child.kill('SIGTERM')
+  }
+})
+
+test('silent cache warm exposes the same tool list but denies every tool call locally', async () => {
+  const eventFile = path.join(root, 'warm-mcp-events.jsonl')
+  const requestsFile = path.join(root, 'warm-mcp-requests.jsonl')
+  const fetchFixture = path.join(root, 'warm-mcp-fetch-fixture.mjs')
+  writeFileSync(fetchFixture, `import fs from 'node:fs'
+globalThis.fetch = async (url, init = {}) => {
+  fs.appendFileSync('${requestsFile}', JSON.stringify({ method: init.method || 'GET', url: String(url) }) + '\\n')
+  if (init.method === 'POST') throw new Error('cache warm must not call tools')
+  return Response.json({ tools: [{ name: 'fixture_tool', description: 'fixture', inputSchema: { type: 'object', properties: {} } }] })
+}
+`)
+  const child = spawn(process.execPath, [path.join(process.cwd(), 'services/cc-gateway/lumbre-mcp-server.mjs')], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      NODE_OPTIONS: `--import=${fetchFixture}`,
+      LUMBRE_CC_TOOL_BRIDGE_URL: 'https://lumbre.test/api/internal/cc-tools',
+      LUMBRE_CC_TOOL_BRIDGE_SECRET: secret,
+      LUMBRE_CC_CONVERSATION_ID: 'conversation-1',
+      LUMBRE_CC_TOOL_EVENT_FILE: eventFile,
+      LUMBRE_CC_CACHE_WARM: '1',
+    },
+  })
+  const output = readline.createInterface({ input: child.stdout })
+  const pending: Array<(value: any) => void> = []
+  output.on('line', line => pending.shift()?.(JSON.parse(line)))
+  const call = (message: any) => new Promise<any>(resolve => {
+    pending.push(resolve)
+    child.stdin.write(`${JSON.stringify(message)}\n`)
+  })
+  try {
+    await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } })
+    const listed = await call({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
+    assert.deepEqual(listed.result.tools.map((tool: any) => tool.name), ['fixture_tool'])
+    const denied = await call({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'fixture_tool', arguments: {} } })
+    assert.equal(denied.result.isError, true)
+    assert.match(denied.result.content[0].text, /denied during silent cache warm/)
+    assert.equal(readFileSync(requestsFile, 'utf8').trim().split('\n').length, 1)
+    assert.equal(existsSync(eventFile), false)
   } finally {
     child.stdin.end()
     child.kill('SIGTERM')

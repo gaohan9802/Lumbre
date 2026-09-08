@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
@@ -166,6 +167,7 @@ export class ClaudeExecutor {
    *   resumeSessionId?: string,
    *   forkSession?: boolean,
    *   toolsEnabled?: boolean,
+   *   cacheWarm?: boolean,
    *   unattended?: boolean,
    *   signal?: AbortSignal,
    *   onText?: (text: string) => void,
@@ -180,6 +182,7 @@ export class ClaudeExecutor {
     resumeSessionId,
     forkSession = false,
     toolsEnabled = true,
+    cacheWarm = false,
     unattended = false,
     signal,
     onText,
@@ -187,14 +190,15 @@ export class ClaudeExecutor {
     attemptId,
     conversationId,
   }) {
-    const useToolBridge = this.toolBridgeEnabled && toolsEnabled
-    if (useToolBridge && (!ATTEMPT_ID.test(attemptId || '') || !CONVERSATION_ID.test(conversationId || ''))) {
+    const useToolBridge = this.toolBridgeEnabled && (toolsEnabled || cacheWarm)
+    const toolRunId = attemptId || (cacheWarm ? randomUUID() : '')
+    if (useToolBridge && (!ATTEMPT_ID.test(toolRunId) || !CONVERSATION_ID.test(conversationId || ''))) {
       return Promise.reject(new ClaudeExecutionError('invalid_tool_context', 'Claude Code tool context is invalid'))
     }
     return new Promise((resolve, reject) => {
       const transcriptBefore = transcriptSnapshot(this.env.HOME, resumeSessionId)
-      const toolEventFile = useToolBridge && attemptId
-        ? path.join(this.toolEventsDir, `${attemptId}.jsonl`)
+      const toolEventFile = useToolBridge
+        ? path.join(this.toolEventsDir, `${toolRunId}.jsonl`)
         : null
       if (toolEventFile) fs.writeFileSync(toolEventFile, '', { encoding: 'utf8', mode: 0o600 })
       const args = buildClaudeArgs({
@@ -212,6 +216,7 @@ export class ClaudeExecutor {
         LUMBRE_CC_TOOL_EVENT_FILE: toolEventFile,
         LUMBRE_CC_MAX_TOOL_CALLS: String(this.toolBridge.maxCalls || 20),
         LUMBRE_CC_TOOL_SOURCE: unattended ? 'unattended-wake' : 'chat',
+        LUMBRE_CC_CACHE_WARM: cacheWarm ? '1' : '0',
       } : this.env
       const child = spawn(this.binary, args, {
         cwd: this.workspace,

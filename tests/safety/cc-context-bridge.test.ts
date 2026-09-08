@@ -32,7 +32,10 @@ test('first CC turn bootstraps from canonical Lumbre context without storing con
     assert.equal(prepared.sessionPlan.reason, 'first_cc_turn')
     assert.equal(prepared.resumeSessionId, null)
     assert.match(prepared.prompt, /You are Star/)
+    assert.match(prepared.prompt, /<lumbre_memory_snapshot>\s*shared memory/)
     assert.match(prepared.prompt, /"content":"hello"/)
+    assert.match(prepared.prompt, /<lumbre_current_context>\s*now/)
+    assert.ok(prepared.prompt.indexOf('</lumbre_history_jsonl>') < prepared.prompt.indexOf('<lumbre_current_context>'))
     assert.match(prepared.prompt, /Bash, Shell, source-code, and filesystem tools are not available/)
     assert.doesNotMatch(prepared.prompt, /Never claim to have tools in this phase/)
     assert.equal(JSON.stringify(prepared.sessionPlan).includes('hello'), false)
@@ -155,7 +158,23 @@ test('resume refreshes changed memory while a changed system creates a fresh rec
       context: { ...context(messages), bookmarkInjections: 'new summary' },
     })
     assert.equal(memoryRefresh.sessionPlan.mode, 'resume')
-    assert.match(memoryRefresh.prompt, /<lumbre_memory_refresh>\s*new summary/)
+    assert.equal(memoryRefresh.resumeSessionId, first.attempt.result.sessionId)
+    assert.match(memoryRefresh.prompt, /<lumbre_memory_refresh supersedes="all-prior-memory-snapshots">\s*new summary/)
+
+    const clearedMemory = bridge.prepare({
+      conversationId: 'conversation-1',
+      context: { ...context(messages), bookmarkInjections: '' },
+    })
+    assert.equal(clearedMemory.resumeSessionId, first.attempt.result.sessionId)
+    assert.match(clearedMemory.prompt, /empty — clear prior memory snapshot/)
+
+    const volatileRefresh = bridge.prepare({
+      conversationId: 'conversation-1',
+      context: { ...context(messages), volatileContext: 'updated now' },
+    })
+    assert.equal(volatileRefresh.resumeSessionId, first.attempt.result.sessionId)
+    assert.match(volatileRefresh.prompt, /<lumbre_current_context>\s*updated now/)
+    assert.doesNotMatch(volatileRefresh.prompt, /lumbre_memory_refresh/)
 
     const systemRefresh = bridge.prepare({
       conversationId: 'conversation-1',

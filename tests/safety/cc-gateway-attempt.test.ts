@@ -135,7 +135,7 @@ test('explicit cancellation aborts the running child and records cancelled', asy
   }
 })
 
-test('cache warm forks the latest session without tools and returns cache usage', async () => {
+test('cache warm forks the latest session with matching tool schema and returns cache usage', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-warm-'))
   try {
     const calls: any[] = []
@@ -160,6 +160,7 @@ test('cache warm forks the latest session without tools and returns cache usage'
     assert.equal(calls[1].resumeSessionId, '550e8400-e29b-41d4-a716-446655440000')
     assert.equal(calls[1].forkSession, true)
     assert.equal(calls[1].toolsEnabled, false)
+    assert.equal(calls[1].cacheWarm, true)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -302,8 +303,40 @@ console.log(JSON.stringify({ type: 'result', result: '看过了', session_id: id
     assert.equal(observed.args[observed.args.indexOf('--max-turns') + 1], '24')
     assert.match(observed.args[observed.args.indexOf('--mcp-config') + 1], /lumbre-mcp-server\.mjs/)
     assert.equal(observed.env.LUMBRE_CC_TOOL_BRIDGE_SECRET, 'tool-bridge-secret-with-32-characters')
+    assert.equal(observed.env.LUMBRE_CC_CACHE_WARM, '0')
     assert.deepEqual(toolCalls.map(call => call.name), ['read_period'])
     assert.equal(observed.args.some((arg: string) => /dangerously|Bash|Shell|Read|Write|Edit/.test(arg)), false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Claude executor cache warm loads the normal tool schema in deny-call mode', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-tools-warm-'))
+  try {
+    const binary = path.join(root, 'fake-claude')
+    writeFileSync(binary, `#!/usr/bin/env node
+const fs = require('node:fs')
+fs.writeFileSync('observed-warm.json', JSON.stringify({ args: process.argv.slice(2), env: process.env }))
+console.log(JSON.stringify({ type: 'result', result: '.', session_id: '65b76b84-557d-4dad-a716-446655440001', usage: { output_tokens: 1 } }))
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+    const executor = new ClaudeExecutor({
+      binary,
+      workspace: root,
+      env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
+      toolBridge: { url: 'https://lumbre.example/api/internal/cc-tools', secret: 'tool-bridge-secret-with-32-characters', maxCalls: 20 },
+      toolEventsDir: path.join(root, 'tool-events'),
+    })
+    await executor.run({
+      prompt: 'warm', model: 'sonnet', resumeSessionId: '550e8400-e29b-41d4-a716-446655440000',
+      forkSession: true, toolsEnabled: false, cacheWarm: true, conversationId: 'conversation-1',
+    })
+    const observed = JSON.parse(readFileSync(path.join(root, 'observed-warm.json'), 'utf8'))
+    assert.equal(observed.args[observed.args.indexOf('--allowedTools') + 1], 'mcp__lumbre__*')
+    assert.match(observed.args[observed.args.indexOf('--mcp-config') + 1], /lumbre-mcp-server\.mjs/)
+    assert.equal(observed.env.LUMBRE_CC_CACHE_WARM, '1')
+    assert.match(path.basename(observed.env.LUMBRE_CC_TOOL_EVENT_FILE), /^[0-9a-f-]{36}\.jsonl$/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

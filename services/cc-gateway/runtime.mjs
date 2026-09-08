@@ -182,6 +182,7 @@ export class GatewayRuntime {
         resumeSessionId: base.result.sessionId,
         forkSession: true,
         toolsEnabled: false,
+        cacheWarm: true,
         conversationId,
         signal: controller.signal,
       })

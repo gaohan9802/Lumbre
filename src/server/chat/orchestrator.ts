@@ -87,6 +87,10 @@ async function volatileContext(userMessage: string): Promise<string> {
   return parts.join('\n')
 }
 
+function clientVolatileContext(value: unknown): string {
+  return typeof value === 'string' ? value.trim().slice(0, 100_000) : ''
+}
+
 type GatewayRunParams = {
   replyMode?: ReplyMode;
   messages: any[]; system?: string; model: string; apiKey: string; baseUrl: string;
@@ -96,6 +100,7 @@ type GatewayRunParams = {
   signal?: AbortSignal;
   send?: GatewayEmitter;
   requestAuditHints?: RequestAuditHints;
+  clientVolatileContext?: string;
 }
 
 function addUsage(total: GatewayUsage, current: GatewayUsage) {
@@ -119,7 +124,10 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
   const adapter: GatewayProviderAdapter = provider === 'openai-compatible' ? openAICompatibleAdapter : anthropicAdapter
   const lastUser = params.messages.filter((message: any) => message.role === 'user').pop()?.content || ''
   const system = (params.system?.trim() || DEFAULT_SYSTEM_PROMPT) + (params.replyMode ? `\n\n${replyModePrompt(params.replyMode)}` : '')
-  const currentContext = await volatileContext(typeof lastUser === 'string' ? lastUser : '')
+  const currentContext = [
+    await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
+    params.clientVolatileContext,
+  ].filter(Boolean).join('\n\n')
   const context = toolContext(!!params.unattendedWake, params.sessionId)
   const availableTools = toolsForContext(context)
   const requestAudit = createMessageRequestAudit({
@@ -211,7 +219,10 @@ export async function handleChatRequest(req: NextRequest) {
         ? [...body.messages].reverse().find((message: any) => message?.role === 'user')?.content || ''
         : ''
       const system = (body.system?.trim() || DEFAULT_SYSTEM_PROMPT) + (replyMode ? `\n\n${replyModePrompt(replyMode)}` : '')
-      const currentContext = await volatileContext(typeof lastUser === 'string' ? lastUser : '')
+      const currentContext = [
+        await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
+        clientVolatileContext(body.client_volatile_context),
+      ].filter(Boolean).join('\n\n')
       const requestAudit = createMessageRequestAudit({
         system,
         messages: Array.isArray(body.messages) ? body.messages : [],
@@ -256,6 +267,7 @@ export async function handleChatRequest(req: NextRequest) {
       origin, unattendedWake, sessionId: typeof body.session_id === 'string' ? body.session_id : undefined,
       signal: req.signal,
       requestAuditHints: body.request_audit_hints,
+      clientVolatileContext: clientVolatileContext(body.client_volatile_context),
     }
 
     if (body.stream === true) {

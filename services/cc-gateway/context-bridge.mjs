@@ -52,7 +52,6 @@ function jsonLines(messages) {
 }
 
 function bootstrapPrompt(context, messages, reason) {
-  const memory = [context.bookmarkInjections, context.volatileContext].filter(Boolean).join('\n\n')
   return `[LUMBRE SESSION ${reason === 'first_cc_turn' ? 'BOOTSTRAP' : 'REBASE'}]
 The following data is the canonical Lumbre conversation supplied by the application. Continue it naturally and answer the final user message. Route labels only describe which transport produced a message; API and Claude Code messages belong to one conversation. Use only the tools exposed by the Lumbre MCP bridge. Bash, Shell, source-code, and filesystem tools are not available.
 
@@ -60,19 +59,19 @@ The following data is the canonical Lumbre conversation supplied by the applicat
 ${context.system || ''}
 </lumbre_system>
 
-<lumbre_memory>
-${memory}
-</lumbre_memory>
+<lumbre_memory_snapshot>
+${context.bookmarkInjections}
+</lumbre_memory_snapshot>
 
 <lumbre_history_jsonl>
 ${jsonLines(messages)}
-</lumbre_history_jsonl>`
+</lumbre_history_jsonl>${currentContextBlock(context)}`
 }
 
 function currentContextBlock(context, { includeSystem = false, includeMemory = false } = {}) {
   const blocks = []
   if (includeSystem) blocks.push(`<lumbre_system_refresh>\n${context.system}\n</lumbre_system_refresh>`)
-  if (includeMemory) blocks.push(`<lumbre_memory_refresh>\n${context.bookmarkInjections}\n</lumbre_memory_refresh>`)
+  if (includeMemory) blocks.push(`<lumbre_memory_refresh supersedes="all-prior-memory-snapshots">\n${context.bookmarkInjections || '(empty — clear prior memory snapshot)'}\n</lumbre_memory_refresh>`)
   if (context.volatileContext) blocks.push(`<lumbre_current_context>\n${context.volatileContext}\n</lumbre_current_context>`)
   return blocks.length ? `\n\n${blocks.join('\n\n')}` : ''
 }
