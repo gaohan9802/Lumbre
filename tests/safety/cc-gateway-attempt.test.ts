@@ -89,6 +89,57 @@ test('subscription quota stays server-side, cached, and falls back to the last g
   assert.equal(stale.quota.fiveHour.usedPercentage, 18.4)
 })
 
+test('subscription quota refreshes and persists the full-scope login without exposing it', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-oauth-'))
+  const credentialsPath = path.join(root, '.credentials.json')
+  const now = Date.parse('2026-09-08T12:00:00.000Z')
+  writeFileSync(credentialsPath, JSON.stringify({ claudeAiOauth: {
+    accessToken: 'expired-access-token',
+    refreshToken: 'old-refresh-token',
+    expiresAt: now - 1,
+    scopes: ['user:inference', 'user:profile'],
+  } }), { mode: 0o600 })
+
+  try {
+    const runtime = new GatewayRuntime({
+      ledger: { list: () => [] },
+      executor: {},
+      oauthToken: 'inference-only-token',
+      oauthCredentialsPath: credentialsPath,
+      clock: () => now,
+      fetchImpl: async (url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).endsWith('/v1/oauth/token')) {
+          assert.deepEqual(JSON.parse(String(init?.body)), {
+            grant_type: 'refresh_token',
+            refresh_token: 'old-refresh-token',
+            client_id: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+            scope: 'user:inference user:profile',
+          })
+          return Response.json({
+            access_token: 'fresh-access-token',
+            refresh_token: 'fresh-refresh-token',
+            expires_in: 28_800,
+            scope: 'user:inference user:profile',
+          })
+        }
+        assert.equal((init?.headers as Record<string, string>).authorization, 'Bearer fresh-access-token')
+        return Response.json({ five_hour: { utilization: 12 }, seven_day: { utilization: 3 } })
+      },
+    })
+
+    const metrics: any = await runtime.metrics('conversation-1')
+    const stored = JSON.parse(readFileSync(credentialsPath, 'utf8')).claudeAiOauth
+    assert.equal(metrics.quota.available, true)
+    assert.equal(metrics.quota.fiveHour.usedPercentage, 12)
+    assert.equal(stored.accessToken, 'fresh-access-token')
+    assert.equal(stored.refreshToken, 'fresh-refresh-token')
+    assert.equal(stored.expiresAt, now + 28_800_000)
+    assert.doesNotMatch(JSON.stringify(metrics), /access-token|refresh-token/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('attempt ledger stores one durable task for repeated idempotency keys', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-ledger-'))
   try {

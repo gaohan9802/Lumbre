@@ -63,6 +63,7 @@ try {
     ledger,
     executor,
     oauthToken,
+    oauthCredentialsPath: path.join(claudeHome, '.claude', '.credentials.json'),
     contextBridge: new ContextBridge(ledger, { rehydrateTurns: positiveInteger('CC_GATEWAY_REHYDRATE_TURNS', 16) }),
     concurrency: positiveInteger('CC_GATEWAY_CONCURRENCY', 1),
   })

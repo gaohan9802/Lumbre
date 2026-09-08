@@ -1,9 +1,13 @@
 import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
+import fs from 'node:fs'
 import { publicAttempt } from './attempt-ledger.mjs'
 
 const QUOTA_URL = 'https://api.anthropic.com/api/oauth/usage'
+const OAUTH_TOKEN_URL = 'https://platform.claude.com/v1/oauth/token'
+const OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
 const QUOTA_TTL_MS = 5 * 60 * 1000
+const OAUTH_REFRESH_MARGIN_MS = 60 * 1000
 
 function fingerprint(value) {
   return value ? createHash('sha256').update(value).digest('hex').slice(0, 12) : null
@@ -18,12 +22,13 @@ function quotaWindow(value) {
 }
 
 export class GatewayRuntime {
-  constructor({ ledger, executor, contextBridge = null, concurrency = 1, oauthToken = '', fetchImpl = fetch, clock = Date.now }) {
+  constructor({ ledger, executor, contextBridge = null, concurrency = 1, oauthToken = '', oauthCredentialsPath = '', fetchImpl = fetch, clock = Date.now }) {
     this.ledger = ledger
     this.executor = executor
     this.contextBridge = contextBridge
     this.concurrency = Math.max(1, concurrency)
     this.oauthToken = oauthToken
+    this.oauthCredentialsPath = oauthCredentialsPath
     this.fetchImpl = fetchImpl
     this.clock = clock
     this.quotaSnapshot = null
@@ -36,6 +41,65 @@ export class GatewayRuntime {
     this.events = new EventEmitter()
     this.idleWaiters = []
     this.warmController = null
+  }
+
+  async quotaOauthToken() {
+    if (!this.oauthCredentialsPath) return this.oauthToken
+    let stored
+    try { stored = JSON.parse(fs.readFileSync(this.oauthCredentialsPath, 'utf8')) }
+    catch { return this.oauthToken }
+    const credential = stored?.claudeAiOauth
+    if (!credential?.accessToken) return this.oauthToken
+    if (Number(credential.expiresAt) > this.clock() + OAUTH_REFRESH_MARGIN_MS) return credential.accessToken
+    if (!credential.refreshToken) return credential.accessToken
+
+    try {
+      const scopes = Array.isArray(credential.scopes) ? credential.scopes : []
+      const response = await this.fetchImpl(OAUTH_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'refresh_token',
+          refresh_token: credential.refreshToken,
+          client_id: OAUTH_CLIENT_ID,
+          ...(scopes.length ? { scope: scopes.join(' ') } : {}),
+        }),
+        redirect: 'error',
+        signal: AbortSignal.timeout(4_000),
+      })
+      if (!response.ok) throw new Error('oauth refresh failed')
+      const text = await response.text()
+      if (text.length > 64_000) throw new Error('oauth refresh response too large')
+      const data = JSON.parse(text)
+      const expiresIn = Number(data?.expires_in)
+      if (typeof data?.access_token !== 'string' || !data.access_token || !Number.isFinite(expiresIn) || expiresIn <= 0) {
+        throw new Error('oauth refresh response is invalid')
+      }
+      const nextScopes = Array.isArray(data.scope)
+        ? data.scope
+        : typeof data.scope === 'string' ? data.scope.split(/\s+/).filter(Boolean) : scopes
+      const refreshExpiresIn = Number(data.refresh_token_expires_in)
+      stored.claudeAiOauth = {
+        ...credential,
+        accessToken: data.access_token,
+        refreshToken: typeof data.refresh_token === 'string' && data.refresh_token ? data.refresh_token : credential.refreshToken,
+        expiresAt: this.clock() + expiresIn * 1000,
+        ...(nextScopes.length ? { scopes: nextScopes } : {}),
+        ...(Number.isFinite(refreshExpiresIn) && refreshExpiresIn > 0
+          ? { refreshTokenExpiresAt: this.clock() + refreshExpiresIn * 1000 }
+          : {}),
+      }
+      const temporaryPath = `${this.oauthCredentialsPath}.${process.pid}.${this.clock()}.tmp`
+      try {
+        fs.writeFileSync(temporaryPath, JSON.stringify(stored), { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+        fs.renameSync(temporaryPath, this.oauthCredentialsPath)
+      } finally {
+        try { fs.unlinkSync(temporaryPath) } catch {}
+      }
+      return data.access_token
+    } catch {
+      return credential.accessToken
+    }
   }
 
   recover() {
@@ -238,11 +302,12 @@ export class GatewayRuntime {
     if (this.quotaPending) return this.quotaPending
     const previous = this.quotaSnapshot
     const pending = (async () => {
-      if (!this.oauthToken) return { available: false, reason: 'oauth_token_unavailable', source: 'anthropic_oauth_usage', collectedAt: null }
+      const oauthToken = await this.quotaOauthToken()
+      if (!oauthToken) return { available: false, reason: 'oauth_token_unavailable', source: 'anthropic_oauth_usage', collectedAt: null }
       try {
         const response = await this.fetchImpl(QUOTA_URL, {
           headers: {
-            authorization: `Bearer ${this.oauthToken}`,
+            authorization: `Bearer ${oauthToken}`,
             'anthropic-beta': 'oauth-2025-04-20',
             'user-agent': 'claude-code/2.1.236',
             accept: 'application/json',
