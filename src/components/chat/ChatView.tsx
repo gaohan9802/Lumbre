@@ -461,6 +461,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           appendContentBlock({ type: 'thinking', content: chunk })
         } else if (evt.type === 'tool_call') {
           const resolved = await resolveConfirmation(evt)
+          if (resolved.name === 'view_foto' && typeof resolved.input?.message_id === 'string') continue
           toolCalls.push(resolved)
           appendContentBlock({ type: 'tool_call', name: resolved.name, input: resolved.input, result: resolved.result })
         } else if (evt.type === 'error') {
@@ -667,10 +668,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       setModelPickerOpen(true)
       return
     }
-    if (activeRoute === 'claude-code' && pendingImages.length > 0) {
-      window.alert('CC 的图片通道还没有接好，这一轮请改走 API；文字聊天已经可以使用。')
-      return
-    }
     const profile = getActiveProfile(settings)
     const model = settings.model
     const now = Date.now()
@@ -689,6 +686,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     }
     stickBottomRef.current = true
     await durableAppend(activeSession, userMsg)
+    if (activeRoute === 'claude-code' && userMsg.images?.length) await flushChatOutbox()
     addMessage(userMsg, activeSession?.id)
     onTurn?.('user', userMsg.content)
     setInput('')

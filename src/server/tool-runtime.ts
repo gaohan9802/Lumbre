@@ -36,6 +36,8 @@ import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bo
 import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
 import { executeSafeFetch } from './agent/tools/web-fetch'
 import { getUserContext as readUserContext } from './agent/tools/user-context'
+import type { ToolCallContext } from './agent/context'
+import { loadSyncSessions } from './chat-sync'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -52,6 +54,7 @@ export interface ToolCallResult {
 export async function executeRegisteredToolHandler(
   name: string,
   input: Record<string, any>,
+  context?: ToolCallContext,
 ): Promise<string> {
   try {
     // Memory → local Brain engine
@@ -230,7 +233,17 @@ export async function executeRegisteredToolHandler(
         })))
       }
       case 'view_foto': {
-        const ph = getPhoto(input.id)
+        let ph = typeof input.id === 'string' ? getPhoto(input.id) : null
+        if (!ph && context?.sessionId && typeof input.message_id === 'string') {
+          const session = loadSyncSessions([context.sessionId])[0]
+          const message = session?.messages?.find((item: any) => item?.id === input.message_id)
+          const index = Number.isInteger(input.image_index) ? input.image_index : 0
+          const ref = index >= 0 && index < 4 ? message?.images?.[index] : null
+          const storedId = typeof ref === 'string' ? /^\/api\/photos\/raw\/([A-Za-z0-9_-]{1,128})$/.exec(ref)?.[1] : null
+          ph = storedId ? getPhoto(storedId) : typeof ref === 'string' && /^data:image\/[a-z0-9.+-]+;base64,/i.test(ref)
+            ? { id: `${input.message_id}:${index}`, author: 'fire', caption: '', url: ref, comments: [], created_at: '', updated_at: null }
+            : null
+        }
         if (!ph) return JSON.stringify({ error: 'not_found', id: input.id })
         // Include url so the chat route injects the actual image (single photo →
         // bounded payload). The text history strips it.

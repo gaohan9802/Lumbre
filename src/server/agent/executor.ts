@@ -33,7 +33,7 @@ async function runAllowedTool(
   const started = Date.now()
   const risk = resolveToolRisk(tool, request.input)
   try {
-    const result = await tool.execute(request.input)
+    const result = await tool.execute(request.input, context)
     const returnedError = result.startsWith('Tool error') || result.startsWith('Unknown tool:')
     recordToolAudit({
       ...auditBase(tool, request, context, risk),

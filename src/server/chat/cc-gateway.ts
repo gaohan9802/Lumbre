@@ -113,13 +113,21 @@ async function submitAttempt(config: CcGatewayConfig, body: any, system: string,
         system,
         bookmarkInjections: typeof body.bookmark_injections === 'string' ? body.bookmark_injections : '',
         volatileContext,
-        messages: Array.isArray(body.messages) ? body.messages.map((message: any) => ({
-          id: message.id,
-          role: message.role,
-          route: message.route,
-          ccAttemptId: message.ccAttemptId,
-          content: message.content,
-        })) : [],
+        messages: Array.isArray(body.messages) ? body.messages.map((message: any) => {
+          const imageCount = Array.isArray(message.images) ? Math.min(4, message.images.length) : 0
+          const attachments = imageCount
+            ? message.id === body.turn_id
+              ? `\n\n[LUMBRE_CHAT_IMAGES]\n当前消息附有 ${imageCount} 张图片。回复前必须依次调用 view_foto；第 i 张传 message_id=${message.id}、image_index=i（从0开始）。`
+              : `\n\n[历史消息附有 ${imageCount} 张图片，画面未在本轮加载]`
+            : ''
+          return {
+            id: message.id,
+            role: message.role,
+            route: message.route,
+            ccAttemptId: message.ccAttemptId,
+            content: `${message.content || ''}${attachments}`,
+          }
+        }) : [],
       },
       unattended: body._wake === true,
     }),

@@ -322,18 +322,23 @@ export const JOURNAL_TOOL_DEFINITIONS = [
   },
   {
     "name": "view_foto",
-    "description": "看某一张照片的实际画面(会把图片加载给你，你能直接看到)。先用 read_foto 拿到 id 再看。",
+    "description": "看某一张照片的实际画面(会把图片加载给你，你能直接看到)。照片墙图片传 id；聊天附图传系统给出的 message_id 和 image_index。",
     "input_schema": {
       "type": "object",
       "properties": {
         "id": {
           "type": "string",
           "description": "照片id"
+        },
+        "message_id": {
+          "type": "string",
+          "description": "聊天消息id；仅在系统标记了聊天附图时使用"
+        },
+        "image_index": {
+          "type": "integer",
+          "description": "该消息中图片的序号，从0开始"
         }
-      },
-      "required": [
-        "id"
-      ]
+      }
     }
   },
   {

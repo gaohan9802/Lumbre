@@ -15,11 +15,13 @@ process.env.LUMBRE_CC_TOOL_BRIDGE_SECRET = secret
 let NextRequest: typeof import('next/server').NextRequest
 let route: typeof import('../../src/app/api/internal/cc-tools/route')
 let notes: typeof import('../../src/server/diary-store')
+let chatSync: typeof import('../../src/server/chat-sync')
 
 before(async () => {
   ;({ NextRequest } = await import('next/server'))
   route = await import('../../src/app/api/internal/cc-tools/route')
   notes = await import('../../src/server/diary-store')
+  chatSync = await import('../../src/server/chat-sync')
 })
 after(() => rmSync(root, { recursive: true, force: true }))
 
@@ -60,6 +62,28 @@ test('bridge reuses Lumbre policy, hides confirmation tokens from Claude and kee
   assert.equal(typeof pending.confirmation.token, 'string')
   assert.doesNotMatch(JSON.stringify(body.content), new RegExp(pending.confirmation.token))
   assert.equal(notes.listNotes().some(item => item.id === note.id), true)
+})
+
+test('view_foto can load the exact image attached to the current CC conversation', async () => {
+  const image = 'data:image/png;base64,aGVsbG8='
+  chatSync.upsertSyncSessionMessage('conversation-image', {
+    id: 'message-image', role: 'user', content: '看看这个', images: [image], timestamp: Date.now(),
+  })
+  const response = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
+    method: 'POST',
+    headers: authHeaders({ 'content-type': 'application/json' }),
+    body: JSON.stringify({
+      session_id: 'conversation-image',
+      name: 'view_foto',
+      input: { message_id: 'message-image', image_index: 0 },
+    }),
+  }))
+  const body = await response.json()
+  assert.equal(response.status, 200)
+  assert.equal(body.content.at(-1).type, 'image')
+  assert.equal(body.content.at(-1).mimeType, 'image/png')
+  assert.equal(body.content.at(-1).data, 'aGVsbG8=')
+  assert.doesNotMatch(body.result, /aGVsbG8=/)
 })
 
 test('unattended CC wakes keep the existing restricted wake tool policy', async () => {

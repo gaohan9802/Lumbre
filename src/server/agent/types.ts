@@ -40,7 +40,7 @@ export interface ToolPolicySpec {
 
 export interface RegisteredTool extends ToolPolicySpec {
   definition: ToolDef
-  execute: (input: Record<string, any>) => Promise<string>
+  execute: (input: Record<string, any>, context: ToolCallContext) => Promise<string>
 }
 
 export interface ToolExecutionRequest {

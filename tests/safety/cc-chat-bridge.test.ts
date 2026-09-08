@@ -85,6 +85,7 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
     assert.equal(submitted.idempotency_key, 'lumbre:conversation-1:turn-1')
     assert.equal(submitted.context.messages[0].id, 'turn-1')
     assert.equal(submitted.context.messages[0].images, undefined)
+    assert.match(submitted.context.messages[0].content, /view_foto[\s\S]*message_id=turn-1[\s\S]*image_index=i/)
     assert.ok(Buffer.byteLength(JSON.stringify(submitted)) < 10_000)
     assert.equal(submitted.context.bookmarkInjections, 'shared summary')
     assert.equal(submitted.unattended, true)

@@ -26,7 +26,7 @@ function buildRegistry(): Map<string, RegisteredTool> {
     registry.set(policy.name, {
       ...policy,
       definition,
-      execute: input => executeRegisteredToolHandler(policy.name, input),
+      execute: (input, context) => executeRegisteredToolHandler(policy.name, input, context),
     })
   }
 
