@@ -24,6 +24,7 @@ export function snapshotOfMessage(message: ChatMessage): MessageVersion {
     output_tokens: message.output_tokens,
     cache_read_tokens: message.cache_read_tokens,
     cache_creation_tokens: message.cache_creation_tokens,
+    request_audit: message.request_audit,
     tool_calls: message.tool_calls,
     providerId: message.providerId,
     modelId: message.modelId,

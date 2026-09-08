@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { addToolResultsToAudit, type MessageRequestAudit } from '@/lib/chat-receipt'
 
 type FetchLike = typeof fetch
 
@@ -161,11 +162,13 @@ export async function createCcChatResponse({
   body,
   system,
   volatileContext,
+  requestAudit,
   fetchImpl = fetch,
 }: {
   body: any
   system: string
   volatileContext: string
+  requestAudit?: MessageRequestAudit
   fetchImpl?: FetchLike
 }): Promise<Response> {
   const config = configFromEnvironment()
@@ -184,6 +187,7 @@ export async function createCcChatResponse({
   const stream = new ReadableStream({
     async start(controller) {
       let textSeen = false
+      const toolResults: unknown[] = []
       const send = (value: unknown) => {
         if (clientClosed) return
         try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(value)}\n\n`)) }
@@ -207,6 +211,7 @@ export async function createCcChatResponse({
                 textSeen = true
                 send({ type: 'text', content: String(event.content || '') })
               } else if (event.type === 'tool_call') {
+                toolResults.push({ name: event.name, input: event.input, result: event.result })
                 send({
                   type: 'tool_call',
                   name: String(event.name || ''),
@@ -227,6 +232,7 @@ export async function createCcChatResponse({
                   session_mode: final.sessionMode,
                   session_reason: final.sessionReason,
                   compacted: final.result?.compacted === true,
+                  request_audit: requestAudit ? addToolResultsToAudit(requestAudit, toolResults) : undefined,
                 })
                 terminal = true
               } else if (event.type === 'failed') {

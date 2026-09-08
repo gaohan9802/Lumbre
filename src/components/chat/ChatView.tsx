@@ -22,6 +22,7 @@ import { bubbleAppearance } from '@/features/chat/settings/appearance'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { SummaryDialog } from './SummaryDialog'
+import { MessageReceiptDialog } from './MessageReceiptDialog'
 import { TimelineTimerModal } from '@/components/timeline/TimelineTimerModal'
 import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
@@ -36,6 +37,7 @@ import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatVi
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, normalizeChatRoute } from '@/lib/chat-route'
+import { measureReceiptText } from '@/lib/chat-receipt'
 
 /* ── helpers ────────────────────────────── */
 
@@ -142,6 +144,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const activeModel = activeProfile?.models.find(model => model.id === settings.model)
   const activeRoute = normalizeChatRoute(activeSession?.generationRoute)
   const [ccStatus, setCcStatus] = useState<CcStatus>(EMPTY_CC_STATUS)
+  const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
 
   const {
     input, setInput, isLoading, setIsLoading,
@@ -404,6 +407,10 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         stream: true,
         session_id: activeSession?.id,
         bookmark_injections: bookmarkInjections,
+        request_audit_hints: {
+          summary: measureReceiptText(summaryInjection),
+          currentContext: measureReceiptText([readingInjection, statusInjection].filter(Boolean).join('\n\n')),
+        },
         api_profile: route === 'api' && profile ? {
           profileId: profile.id, modelId: model,
         } : undefined,
@@ -470,6 +477,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         output_tokens: usage.output_tokens,
         cache_read_tokens: usage.cache_read_tokens,
         cache_creation_tokens: usage.cache_creation_tokens,
+        request_audit: usage.request_audit,
         ccAttemptId,
         ccSessionFingerprint,
         ccSessionMode,
@@ -704,6 +712,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         output_tokens: data.output_tokens,
         cache_read_tokens: data.cache_read_tokens,
         cache_creation_tokens: data.cache_creation_tokens,
+        request_audit: data.request_audit,
         tool_calls: data.tool_calls,
         content_blocks: data.content_blocks,
         bubbleLayout: data.bubbleLayout,
@@ -767,6 +776,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           output_tokens: data.output_tokens,
           cache_read_tokens: data.cache_read_tokens,
           cache_creation_tokens: data.cache_creation_tokens,
+          request_audit: data.request_audit,
           tool_calls: data.tool_calls,
           content_blocks: data.content_blocks,
           bubbleLayout: data.bubbleLayout,
@@ -807,6 +817,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           output_tokens: data.output_tokens,
           cache_read_tokens: data.cache_read_tokens,
           cache_creation_tokens: data.cache_creation_tokens,
+          request_audit: data.request_audit,
           tool_calls: data.tool_calls,
           content_blocks: data.content_blocks,
           bubbleLayout: data.bubbleLayout,
@@ -1322,12 +1333,13 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             const inp = msg.input_tokens || 0
                             const out = msg.output_tokens || 0
                             const cr = msg.cache_read_tokens || 0
-                            const ratio = (inp + cr) > 0 ? Math.round((cr / (inp + cr)) * 100) : 0
+                            const cw = msg.cache_creation_tokens || 0
+                            const ratio = (inp + cr + cw) > 0 ? Math.round((cr / (inp + cr + cw)) * 100) : 0
                             return (
-                              <span className="opacity-60" title={`输入${inp} · 输出${out} · 缓存命中${ratio}%`}>
+                              <button type="button" onClick={() => setReceiptMessage(msg)} className="opacity-60 hover:opacity-100 underline decoration-dotted underline-offset-2" title={`查看上下文小票：输入${inp} · 输出${out} · 缓存命中${ratio}%`}>
                                 ↑{inp.toLocaleString()}・↓{out.toLocaleString()}
                                 {cr > 0 && <span className={n ? 'text-night-amber' : 'text-day-pink'}>・⚡️{ratio}%</span>}
-                              </span>
+                              </button>
                             )
                           })()}
                         </div>
@@ -1527,6 +1539,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
           <TimelineTimerModal open={timelineOpen} current={timelineCurrent} onClose={() => setTimelineOpen(false)} onChanged={() => refreshTimelineCurrent()} />
+          <MessageReceiptDialog message={receiptMessage} settings={settings} night={n} onClose={() => setReceiptMessage(null)} />
         </>,
         document.body,
       )}

@@ -1,6 +1,7 @@
 import type { ReplyMode } from '@/lib/chat-reply-mode'
 import type { ChatRoute } from '@/lib/chat-route'
 import type { SharedCard } from '@/lib/share'
+import type { MessageRequestAudit } from '@/lib/chat-receipt'
 
 export interface ContentBlock {
   type: 'thinking' | 'text' | 'tool_call'
@@ -39,6 +40,7 @@ export interface MessageVersion {
   output_tokens?: number
   cache_read_tokens?: number
   cache_creation_tokens?: number
+  request_audit?: MessageRequestAudit
   tool_calls?: { name: string; input: Record<string, any>; result: string }[]
   content_blocks?: ContentBlock[]
   sharedCard?: SharedCard

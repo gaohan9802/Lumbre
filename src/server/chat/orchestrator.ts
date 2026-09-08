@@ -17,6 +17,7 @@ import type { GatewayEmitter, GatewayProvider, GatewayProviderAdapter, GatewayUs
 import { friendlyStreamError, logUpstreamStreamError, UpstreamHttpError } from './request'
 import { createCcChatResponse } from './cc-gateway'
 import { beginApiGeneration } from './generation-activity'
+import { addToolResultsToAudit, createMessageRequestAudit, type RequestAuditHints } from '@/lib/chat-receipt'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -94,6 +95,7 @@ type GatewayRunParams = {
   origin?: string; unattendedWake?: boolean; sessionId?: string; stream: boolean;
   signal?: AbortSignal;
   send?: GatewayEmitter;
+  requestAuditHints?: RequestAuditHints;
 }
 
 function addUsage(total: GatewayUsage, current: GatewayUsage) {
@@ -116,12 +118,23 @@ function usagePayload(usage: GatewayUsage) {
 async function runGateway(provider: GatewayProvider, params: GatewayRunParams): Promise<Response | void> {
   const adapter: GatewayProviderAdapter = provider === 'openai-compatible' ? openAICompatibleAdapter : anthropicAdapter
   const lastUser = params.messages.filter((message: any) => message.role === 'user').pop()?.content || ''
+  const system = (params.system?.trim() || DEFAULT_SYSTEM_PROMPT) + (params.replyMode ? `\n\n${replyModePrompt(params.replyMode)}` : '')
+  const currentContext = await volatileContext(typeof lastUser === 'string' ? lastUser : '')
+  const context = toolContext(!!params.unattendedWake, params.sessionId)
+  const availableTools = toolsForContext(context)
+  const requestAudit = createMessageRequestAudit({
+    system,
+    messages: params.messages,
+    tools: params.toolsEnabled === false ? [] : availableTools,
+    volatileContext: currentContext,
+    hints: params.requestAuditHints,
+  })
   const session = await adapter.createSession({
     messages: params.messages,
-    system: (params.system?.trim() || DEFAULT_SYSTEM_PROMPT) + (params.replyMode ? `\n\n${replyModePrompt(params.replyMode)}` : ''),
+    system,
     replyMode: params.replyMode,
     bookmarkInjections: params.bookmarkInjections || '',
-    volatileContext: await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
+    volatileContext: currentContext,
     model: params.model,
     apiKey: params.apiKey,
     baseUrl: params.baseUrl,
@@ -131,9 +144,7 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
     origin: params.origin,
     signal: params.signal,
   }, params.send)
-  const context = toolContext(!!params.unattendedWake, params.sessionId)
   const callLimit = toolLimit(params.maxToolCalls, !!params.unattendedWake)
-  const availableTools = toolsForContext(context)
   const usage: GatewayUsage = { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 }
   const history: ToolCallResult[] = []
   let thinking = ''
@@ -149,7 +160,7 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
         throw new Error('上游模型返回错误（finish_reason=error），通常是当前模型渠道不支持工具调用。请在设置里换一个支持工具的模型。')
       }
       if (!turn.toolCalls.length) {
-        const done = { ...usagePayload(usage), finish_reason: turn.finishReason }
+        const done = { ...usagePayload(usage), finish_reason: turn.finishReason, request_audit: addToolResultsToAudit(requestAudit, history) }
         if (['max_tokens', 'length'].includes(turn.finishReason || '')) params.send?.('text', { content: '\n\n（回复达到长度上限，可点击重新生成。）' })
         if (params.stream) { params.send?.('done', done); return }
         return NextResponse.json({ content: turn.text || '(no response from model)', thinking: thinking || undefined, tool_calls: history.length ? history : undefined, ...done })
@@ -168,7 +179,7 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
       session.appendToolResults(turn, results)
     }
 
-    const done = usagePayload(usage)
+    const done = { ...usagePayload(usage), request_audit: addToolResultsToAudit(requestAudit, history) }
     if (params.stream) { params.send?.('done', done); return }
     return NextResponse.json({ content: '(tool loop reached max iterations)', thinking: thinking || undefined, tool_calls: history.length ? history : undefined, ...done })
   } catch (error: any) {
@@ -200,10 +211,19 @@ export async function handleChatRequest(req: NextRequest) {
         ? [...body.messages].reverse().find((message: any) => message?.role === 'user')?.content || ''
         : ''
       const system = (body.system?.trim() || DEFAULT_SYSTEM_PROMPT) + (replyMode ? `\n\n${replyModePrompt(replyMode)}` : '')
+      const currentContext = await volatileContext(typeof lastUser === 'string' ? lastUser : '')
+      const requestAudit = createMessageRequestAudit({
+        system,
+        messages: Array.isArray(body.messages) ? body.messages : [],
+        tools: body.tools_enabled === false ? [] : toolsForContext(toolContext(unattendedWake, body.session_id)),
+        volatileContext: currentContext,
+        hints: body.request_audit_hints,
+      })
       return createCcChatResponse({
         body,
         system,
-        volatileContext: await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
+        volatileContext: currentContext,
+        requestAudit,
       })
     }
 
@@ -235,6 +255,7 @@ export async function handleChatRequest(req: NextRequest) {
       bookmarkInjections: body.bookmark_injections || '', maxToolCalls: body.max_tool_calls,
       origin, unattendedWake, sessionId: typeof body.session_id === 'string' ? body.session_id : undefined,
       signal: req.signal,
+      requestAuditHints: body.request_audit_hints,
     }
 
     if (body.stream === true) {
