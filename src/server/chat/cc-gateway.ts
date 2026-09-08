@@ -210,6 +210,8 @@ export async function createCcChatResponse({
               if (event.type === 'text') {
                 textSeen = true
                 send({ type: 'text', content: String(event.content || '') })
+              } else if (event.type === 'thinking') {
+                send({ type: 'thinking', content: String(event.content || '') })
               } else if (event.type === 'tool_call') {
                 toolResults.push({ name: event.name, input: event.input, result: event.result })
                 send({

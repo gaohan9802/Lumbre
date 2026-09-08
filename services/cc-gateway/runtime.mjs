@@ -110,6 +110,10 @@ export class GatewayRuntime {
           const updated = this.ledger.appendText(id, content)
           this.emitLatest(updated)
         },
+        onThinking: content => {
+          const updated = this.ledger.appendThinking(id, content)
+          this.emitLatest(updated)
+        },
         onToolCall: toolCall => {
           const updated = this.ledger.appendToolCall(id, toolCall)
           this.emitLatest(updated)

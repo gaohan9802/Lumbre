@@ -78,8 +78,9 @@ test('result is durable before the completed event is published', async () => {
     const ledger = new AttemptLedger(root)
     const runtime = new GatewayRuntime({
       ledger,
-      executor: { run: async ({ onText }: any) => {
+      executor: { run: async ({ onText, onThinking }: any) => {
         calls++
+        onThinking('想')
         onText('星')
         await gate.promise
         return { text: '星星在这里。', sessionId: '550e8400-e29b-41d4-a716-446655440000', usage: { output_tokens: 5 } }
@@ -102,6 +103,7 @@ test('result is durable before the completed event is published', async () => {
     assert.equal(calls, 1)
     assert.equal(runtime.get(first.attempt!.id)?.status, 'completed')
     assert.equal(runtime.get(first.attempt!.id)?.result?.text, '星星在这里。')
+    assert.deepEqual(runtime.getEvents(first.attempt!.id)?.map((event: any) => event.type), ['queued', 'running', 'thinking', 'text', 'completed'])
     const stored = readFileSync(path.join(root, 'attempts', `${first.attempt!.id}.json`), 'utf8')
     const backup = readFileSync(path.join(root, 'attempts', `${first.attempt!.id}.json.bak`), 'utf8')
     assert.doesNotMatch(stored, /sanitized test prompt/)
@@ -195,21 +197,27 @@ process.stdin.on('data', chunk => { input += chunk })
 process.stdin.on('end', () => {
   fs.writeFileSync('observed.json', JSON.stringify({ args: process.argv.slice(2), input, env: Object.keys(process.env).sort() }))
   const id = '550e8400-e29b-41d4-a716-446655440000'
+  console.log(JSON.stringify({ type: 'stream_event', session_id: id, event: { delta: { type: 'thinking_delta', thinking: '想一想' } } }))
   console.log(JSON.stringify({ type: 'stream_event', session_id: id, event: { delta: { type: 'text_delta', text: '好' } } }))
   console.log(JSON.stringify({ type: 'result', result: '好', session_id: id, usage: { input_tokens: 2, output_tokens: 1 } }))
 })
 `, { mode: 0o700 })
     chmodSync(binary, 0o700)
     const deltas: string[] = []
+    const thoughts: string[] = []
     const executor = new ClaudeExecutor({ binary, workspace: root, env: {
       PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth',
       ANTHROPIC_API_KEY: 'must-not-pass', DATA_DIR: '/persistent',
     } })
-    const result: any = await executor.run({ prompt: 'hello', model: 'sonnet', resumeSessionId: '550e8400-e29b-41d4-a716-446655440000', signal: undefined, onText: (text: string) => deltas.push(text) })
+    const result: any = await executor.run({
+      prompt: 'hello', model: 'sonnet', resumeSessionId: '550e8400-e29b-41d4-a716-446655440000', signal: undefined,
+      onText: (text: string) => deltas.push(text), onThinking: (text: string) => thoughts.push(text),
+    })
     const observed = JSON.parse(readFileSync(path.join(root, 'observed.json'), 'utf8'))
     assert.equal(result.text, '好')
     assert.equal(result.compacted, false)
     assert.deepEqual(deltas, ['好'])
+    assert.deepEqual(thoughts, ['想一想'])
     assert.equal(observed.args[observed.args.indexOf('--tools') + 1], '')
     assert.equal(observed.args[observed.args.indexOf('--resume') + 1], '550e8400-e29b-41d4-a716-446655440000')
     assert.equal(observed.args.some((arg: string) => /dangerously|Bash|Shell/.test(arg)), false)

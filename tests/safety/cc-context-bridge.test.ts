@@ -139,7 +139,7 @@ test('a silent unattended wake keeps the same session without adding a fake chat
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
-test('resume refreshes changed memory while a changed system creates a fresh recorded session', () => {
+test('resume refreshes changed memory and system inside the same session', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-envelope-'))
   try {
     const ledger = new AttemptLedger(root)
@@ -180,9 +180,10 @@ test('resume refreshes changed memory while a changed system creates a fresh rec
       conversationId: 'conversation-1',
       context: { ...context(messages), system: 'You are a changed Star.' },
     })
-    assert.equal(systemRefresh.sessionPlan.mode, 'rebase')
-    assert.equal(systemRefresh.sessionPlan.reason, 'system_changed')
-    assert.equal(systemRefresh.resumeSessionId, null)
+    assert.equal(systemRefresh.sessionPlan.mode, 'resume')
+    assert.equal(systemRefresh.sessionPlan.reason, 'system_refresh')
+    assert.equal(systemRefresh.resumeSessionId, first.attempt.result.sessionId)
+    assert.match(systemRefresh.prompt, /<lumbre_system_refresh supersedes="all-prior-system-instructions">\s*You are a changed Star\./)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 

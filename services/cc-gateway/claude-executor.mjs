@@ -171,6 +171,7 @@ export class ClaudeExecutor {
    *   unattended?: boolean,
    *   signal?: AbortSignal,
    *   onText?: (text: string) => void,
+   *   onThinking?: (text: string) => void,
    *   onToolCall?: (event: Record<string, any>) => void,
    *   attemptId?: string,
    *   conversationId?: string,
@@ -186,6 +187,7 @@ export class ClaudeExecutor {
     unattended = false,
     signal,
     onText,
+    onThinking,
     onToolCall,
     attemptId,
     conversationId,
@@ -286,11 +288,11 @@ export class ClaudeExecutor {
           return
         }
         events.push(event)
-        const delta = event?.type === 'stream_event' && event?.event?.delta?.type === 'text_delta'
-          ? event.event.delta.text
-          : ''
-        if (delta) {
-          try { onText?.(delta) }
+        const delta = event?.type === 'stream_event' ? event?.event?.delta : null
+        const content = delta?.type === 'text_delta' ? delta.text
+          : delta?.type === 'thinking_delta' ? delta.thinking : ''
+        if (content) {
+          try { delta.type === 'thinking_delta' ? onThinking?.(content) : onText?.(content) }
           catch { stop('event_persist_failed') }
         }
       }

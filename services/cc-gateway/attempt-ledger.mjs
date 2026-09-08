@@ -200,6 +200,15 @@ export class AttemptLedger {
     })
   }
 
+  appendThinking(id, content) {
+    if (!content) return this.get(id)
+    return this.update(id, attempt => {
+      if (attempt.status !== 'running') return attempt
+      this.appendEvent(attempt, 'thinking', { content })
+      return attempt
+    })
+  }
+
   appendToolCall(id, toolCall) {
     return this.update(id, attempt => {
       if (attempt.status !== 'running') return attempt

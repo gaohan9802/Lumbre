@@ -42,8 +42,9 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
     if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}/events`)) {
       return new Response([
         `data: ${JSON.stringify({ id: 1, type: 'queued' })}`,
-        `data: ${JSON.stringify({ id: 2, type: 'text', content: '星星回来啦' })}`,
-        `data: ${JSON.stringify({ id: 3, type: 'completed' })}`,
+        `data: ${JSON.stringify({ id: 2, type: 'thinking', content: '先想一想' })}`,
+        `data: ${JSON.stringify({ id: 3, type: 'text', content: '星星回来啦' })}`,
+        `data: ${JSON.stringify({ id: 4, type: 'completed' })}`,
         '',
       ].join('\n\n'), { status: 200, headers: { 'content-type': 'text/event-stream' } })
     }
@@ -74,11 +75,12 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
     assert.equal(response.status, 200)
     const events = []
     for await (const event of readChatEventStream(response)) events.push(event)
-    assert.deepEqual(events.map(event => event.type), ['attempt', 'text', 'done'])
-    assert.equal(events[1].content, '星星回来啦')
-    assert.equal(events[2].attempt_id, ATTEMPT_ID)
-    assert.equal(events[2].session_fingerprint, '320159ebe321')
-    assert.equal(events[2].cache_read_tokens, 6)
+    assert.deepEqual(events.map(event => event.type), ['attempt', 'thinking', 'text', 'done'])
+    assert.equal(events[1].content, '先想一想')
+    assert.equal(events[2].content, '星星回来啦')
+    assert.equal(events[3].attempt_id, ATTEMPT_ID)
+    assert.equal(events[3].session_fingerprint, '320159ebe321')
+    assert.equal(events[3].cache_read_tokens, 6)
     assert.doesNotMatch(JSON.stringify(events), new RegExp(SESSION_ID))
     assert.equal(submitted.idempotency_key, 'lumbre:conversation-1:turn-1')
     assert.equal(submitted.context.messages[0].id, 'turn-1')

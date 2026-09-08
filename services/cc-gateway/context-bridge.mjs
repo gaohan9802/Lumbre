@@ -70,16 +70,16 @@ ${jsonLines(messages)}
 
 function currentContextBlock(context, { includeSystem = false, includeMemory = false } = {}) {
   const blocks = []
-  if (includeSystem) blocks.push(`<lumbre_system_refresh>\n${context.system}\n</lumbre_system_refresh>`)
+  if (includeSystem) blocks.push(`<lumbre_system_refresh supersedes="all-prior-system-instructions">\n${context.system}\n</lumbre_system_refresh>`)
   if (includeMemory) blocks.push(`<lumbre_memory_refresh supersedes="all-prior-memory-snapshots">\n${context.bookmarkInjections || '(empty — clear prior memory snapshot)'}\n</lumbre_memory_refresh>`)
   if (context.volatileContext) blocks.push(`<lumbre_current_context>\n${context.volatileContext}\n</lumbre_current_context>`)
   return blocks.length ? `\n\n${blocks.join('\n\n')}` : ''
 }
 
-function deltaPrompt(context, messages, includeMemory) {
+function deltaPrompt(context, messages, includeSystem, includeMemory) {
   return `[LUMBRE CANONICAL DELTA]
 These entries were added to the shared Lumbre conversation after your last successful reply. They may include API-generated turns. Incorporate all of them, then answer the final user message.
-${currentContextBlock(context, { includeMemory })}
+${currentContextBlock(context, { includeSystem, includeMemory })}
 
 <lumbre_delta_jsonl>
 ${jsonLines(messages)}
@@ -173,29 +173,30 @@ export class ContextBridge {
       } else if (overlapChanged(base.sessionPlan?.contextMessageHashes, messages)) {
         mode = 'rebase'
         reason = 'history_changed'
-      } else if (base.sessionPlan?.contextEnvelopeHashes?.system !== envelopeHashes.system) {
-        mode = 'rebase'
-        reason = 'system_changed'
       } else {
         delta = messages.slice(markerIndex + 1)
         if (!delta.length || delta.at(-1)?.role !== 'user') throw new ContextBridgeValidationError('resume delta must end with a new user message')
         mode = 'resume'
+        const systemChanged = base.sessionPlan?.contextEnvelopeHashes?.system !== envelopeHashes.system
+        const routeGap = delta.some(message => message.route === 'api')
         if (base.result.compacted === true) {
           rehydration = recentTurns(messages.slice(0, markerIndex + 1), this.rehydrateTurns)
-          reason = delta.some(message => message.route === 'api')
+          reason = routeGap
             ? 'post_compact_rehydration_with_route_gap'
             : 'post_compact_rehydration'
         } else {
-          reason = delta.some(message => message.route === 'api') ? 'route_gap' : 'ordinary_delta'
+          reason = systemChanged ? (routeGap ? 'route_gap_with_system_refresh' : 'system_refresh')
+            : routeGap ? 'route_gap' : 'ordinary_delta'
         }
         resumeSessionId = base.result.sessionId
       }
     }
 
     const selected = mode === 'resume' ? [...rehydration, ...delta] : messages
+    const systemChanged = base?.sessionPlan?.contextEnvelopeHashes?.system !== envelopeHashes.system
     const memoryChanged = base?.sessionPlan?.contextEnvelopeHashes?.bookmarkInjections !== envelopeHashes.bookmarkInjections
     const prompt = mode === 'resume'
-      ? (rehydration.length ? postCompactPrompt(context, rehydration, delta) : deltaPrompt(context, delta, memoryChanged))
+      ? (rehydration.length ? postCompactPrompt(context, rehydration, delta) : deltaPrompt(context, delta, systemChanged, memoryChanged))
       : bootstrapPrompt(context, selected, reason)
     return {
       prompt,
