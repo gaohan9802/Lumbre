@@ -55,6 +55,23 @@ test('switching sessions never sends a message into the previous conversation', 
   useChatStore.setState(original)
 })
 
+test('credential status refresh does not publish a phantom config change', async () => {
+  const { useChatStore } = await import('../../src/lib/chatStore')
+  const { applyLocalModelCredentialStatus } = await import('../../src/features/chat/sync/ChatSync')
+  const original = useChatStore.getState()
+  try {
+    const settings = { ...original.settings, systemPrompt: 'keep me', configUpdatedAt: 123 }
+    useChatStore.setState({ settings })
+    applyLocalModelCredentialStatus(settings.apiProfiles.map(profile => ({ ...profile, credentialConfigured: true })))
+
+    assert.equal(useChatStore.getState().settings.systemPrompt, 'keep me')
+    assert.equal(useChatStore.getState().settings.configUpdatedAt, 123)
+    assert.equal(useChatStore.getState().settings.apiProfiles[0].credentialConfigured, true)
+  } finally {
+    useChatStore.setState(original)
+  }
+})
+
 test('browser migration keeps one bounded, secret-free recovery backup', async () => {
   const values = new Map<string, string>()
   const fakeStorage = {

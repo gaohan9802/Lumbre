@@ -23,6 +23,7 @@ import { useSyncStatus } from '@/lib/syncStatus'
 import { flushChatOutbox } from '@/features/chat/sync/outbox'
 import { createCoalescingRunner } from '@/lib/coalescingRunner'
 import { chatApi, chatApiFetch } from '@/features/chat/api/client'
+import type { ApiProfile } from '@/features/chat/state/types'
 
 let applyingRemote = false
 let bootstrapped = false
@@ -51,6 +52,10 @@ function applyRemote(data: any) {
   }
 }
 
+export function applyLocalModelCredentialStatus(apiProfiles: ApiProfile[]) {
+  useChatStore.setState(state => ({ settings: { ...state.settings, apiProfiles } }))
+}
+
 async function syncModelCredentialStatus() {
   const pending = getPendingLegacyModelCredentials()
   if (pending.length) {
@@ -70,7 +75,7 @@ async function syncModelCredentialStatus() {
     changed = true
     return { ...profile, credentialConfigured: nextConfigured, upstreamOrigin: nextOrigin }
   })
-  if (changed) state.setSettings({ apiProfiles })
+  if (changed) applyLocalModelCredentialStatus(apiProfiles)
 }
 
 async function fetchSessionBatch(ids: string[]) {
@@ -109,9 +114,7 @@ async function pullIncremental() {
   const manifest: ManifestItem[] = Array.isArray(data.sessions) ? data.sessions : []
 
   applyRemote({ sessions: [], tombstones: data.tombstones || {}, config: data.config, configUpdatedAt: data.configUpdatedAt })
-  // Apply the remote config before recording credential status locally. The
-  // status update bumps configUpdatedAt; doing it first would make a newer
-  // server config look stale on the very first upgraded load.
+  // Credential availability is server-derived local status, not a config edit.
   await syncModelCredentialStatus()
 
   // Materialize lightweight manifest stubs so the session drawer is complete
