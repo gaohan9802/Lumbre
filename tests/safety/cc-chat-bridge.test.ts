@@ -65,7 +65,7 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
       body: {
         stream: true, session_id: 'conversation-1', turn_id: 'turn-1',
         _wake: true,
-        messages: [{ id: 'turn-1', role: 'user', route: 'claude-code', content: '回来吗' }],
+        messages: [{ id: 'turn-1', role: 'user', route: 'claude-code', content: '回来吗', images: [`data:image/jpeg;base64,${'x'.repeat(1_600_000)}`] }],
         bookmark_injections: 'shared summary',
       },
       system: 'You are Star.',
@@ -84,6 +84,8 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
     assert.doesNotMatch(JSON.stringify(events), new RegExp(SESSION_ID))
     assert.equal(submitted.idempotency_key, 'lumbre:conversation-1:turn-1')
     assert.equal(submitted.context.messages[0].id, 'turn-1')
+    assert.equal(submitted.context.messages[0].images, undefined)
+    assert.ok(Buffer.byteLength(JSON.stringify(submitted)) < 10_000)
     assert.equal(submitted.context.bookmarkInjections, 'shared summary')
     assert.equal(submitted.unattended, true)
     assert.equal(calls.length, 3)
