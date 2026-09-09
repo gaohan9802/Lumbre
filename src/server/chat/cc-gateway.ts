@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { addToolResultsToAudit, type MessageRequestAudit } from '@/lib/chat-receipt'
-import { chatMessageContentForModel, messageRevision } from '@/lib/chat-message-sync'
+import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { loadSyncSessions } from '@/server/chat-sync'
 
 type FetchLike = typeof fetch
@@ -108,7 +108,7 @@ function canonicalContextMessages(body: any, sessionId: string, turnId: string) 
   const storedById = new Map((durable?.messages || []).map((message: any) => [message.id, message]))
   return submitted.map((client: any) => {
     const stored: any = storedById.get(client?.id)
-    if (!stored || client.id === turnId || messageRevision(client) > messageRevision(stored)) return client
+    if (!stored || client.id === turnId) return client
     return {
       ...client,
       role: stored.role,

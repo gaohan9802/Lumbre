@@ -8,7 +8,7 @@ const dir = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-canonical-'))
 process.env.DATA_DIR = dir
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-test('CC history uses the durable message unless the browser has a newer explicit version', async () => {
+test('CC history always uses the durable message over a divergent browser copy', async () => {
   const sync = await import('../../src/server/chat-sync')
   const { createCcChatResponse } = await import('../../src/server/chat/cc-gateway')
   const conversationId = 'conversation-canonical'
@@ -34,12 +34,12 @@ test('CC history uses the durable message unless the browser has a newer explici
   }
 
   try {
-    for (const [turn, oldContent, oldTimestamp] of [['turn-1', 'stale copy', 10], ['turn-2', 'edited reply', 11]] as const) {
+    const submit = async (turn: string, content: string, timestamp: number) => {
       const response = await createCcChatResponse({
         body: {
           stream: true, session_id: conversationId, turn_id: turn,
           messages: [
-            { id: 'old-reply', role: 'assistant', route: 'api', content: oldContent, timestamp: oldTimestamp },
+            { id: 'old-reply', role: 'assistant', route: 'api', content, timestamp },
             { id: turn, role: 'user', route: 'claude-code', content: 'hello', timestamp: 20 },
           ],
         },
@@ -47,8 +47,9 @@ test('CC history uses the durable message unless the browser has a newer explici
       })
       await response.text()
     }
+
+    await submit('turn-1', 'newer divergent browser copy', 11)
     assert.equal(submitted[0].context.messages[0].content, 'durable reply')
-    assert.equal(submitted[1].context.messages[0].content, 'edited reply')
   } finally {
     if (previous.url === undefined) delete process.env.LUMBRE_CC_GATEWAY_URL
     else process.env.LUMBRE_CC_GATEWAY_URL = previous.url
