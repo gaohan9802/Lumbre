@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import { getActiveSession, sortedSessions } from '@/features/chat/state/accessors'
 import { normalizeSettings } from '@/features/chat/migrations/browser-state'
 import { isBlankSession, mergeChatSessionsForSync } from '@/features/chat/sessions/merge'
+import { mergeChatMessages, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 import type { ChatMessage, ChatSession, ChatSettings, MessageVersion } from '@/features/chat/state/types'
 
 type ChatState = { settings: ChatSettings; messages: ChatMessage[] }
@@ -151,11 +152,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
       const settings = normalizeSettings(state.settings)
       const sessions = settings.sessions.map((session) => {
         if (session.id !== sessionId) return session
-        const byId = new Map<string, ChatMessage>()
-        for (const message of [...incoming, ...session.messages]) {
-          if (message?.id) byId.set(message.id, message)
-        }
-        const messages = Array.from(byId.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+        const tombstones = normalizeMessageTombstones(session.messageTombstones)
+        const messages = mergeChatMessages(session.messages, incoming, tombstones) as ChatMessage[]
         const messageCount = Math.max(Number(total) || 0, messages.length)
         return { ...session, messages, messageCount, partial: messages.length < messageCount }
       })

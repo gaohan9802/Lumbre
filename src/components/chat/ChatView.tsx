@@ -36,7 +36,8 @@ import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
-import { chatRouteLabel, normalizeChatRoute } from '@/lib/chat-route'
+import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute } from '@/lib/chat-route'
+import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 
 /* ── helpers ────────────────────────────── */
@@ -91,6 +92,18 @@ function stableSlice<T>(arr: T[], cap: number): T[] {
   const STEP = Math.max(10, Math.floor(c / 3))
   const start = Math.floor((arr.length - c) / STEP) * STEP
   return arr.slice(start)
+}
+
+function toModelMessage(message: ChatMessage) {
+  return {
+    id: message.id,
+    role: message.role,
+    route: normalizeChatRoute(message.route),
+    ccAttemptId: message.ccAttemptId,
+    content: chatMessageContentForModel(message),
+    images: message.images,
+    timestamp: message.timestamp,
+  }
 }
 
 /* ── image compression ──────────────────────
@@ -293,7 +306,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   /* ── send ────────────────────────────── */
 
   const doSend = async (
-    sendMessages: { id: string; role: string; route?: 'api' | 'claude-code'; ccAttemptId?: string; content: string; images?: string[] }[],
+    sendMessages: { id: string; role: string; route?: 'api' | 'claude-code'; ccAttemptId?: string; content: string; images?: string[]; timestamp?: number }[],
     onResult: (data: any) => void | Promise<void>,
     requestedMode?: ReplyMode,
     requestedRoute = activeRoute,
@@ -499,8 +512,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       })
       if (route === 'claude-code') void refreshCcStatus()
     } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        if (explicitStopRef.current) {
+      if (err?.name === 'AbortError' && explicitStopRef.current) {
           await onDone({
             content: fullText || '已停止生成。',
             thinking: fullThinking || undefined,
@@ -509,14 +521,13 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             ccAttemptId,
             stopped: true,
           })
-        } else {
-          // Tab close, refresh, PWA suspension and session switches are only
-          // disconnects. Leave the user turn pending so it can recover later.
-          setIsLoading(false)
-          setStreamText('')
-          setStreamThinking('')
-          setStreamBlocks([])
-        }
+      } else if (isRecoverableChatDisconnect(route, explicitStopRef.current, err?.name)) {
+        // iOS reports a dropped CC stream as TypeError/"Load failed". The
+        // gateway attempt is durable, so keep this turn pending for replay.
+        setIsLoading(false)
+        setStreamText('')
+        setStreamThinking('')
+        setStreamBlocks([])
       } else {
         const failure = '\n\n⚠️ ' + (err?.message || '连接失败了…')
         await onDone({ content: fullText + failure, thinking: fullThinking || undefined, content_blocks: [...contentBlocks, { type: 'text', content: failure }], tool_calls: toolCalls.length ? toolCalls : undefined, error: true, stopped: true })
@@ -696,19 +707,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
     const history = [...messages, userMsg]
     const slice = stableSlice(history, settings.contextLength)
-    // Include timestamp + any attached images for AI to read
-    // Include tool call summaries in assistant messages so AI knows what it called
-    const apiMessages = slice.map((m) => {
-      let msgContent = m.content
-      if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
-        const summary = m.tool_calls.map((tc: any) =>
-          `[调用了${tc.name}(${JSON.stringify(tc.input).slice(0, 100)}) → ${(tc.result || '').slice(0, 150)}]`
-        ).join('\n')
-        msgContent = (msgContent || '') + '\n' + summary
-      }
-      const cardText = m.sharedCard ? `\n\n[已分享卡片｜${m.sharedCard.kind}]\n${JSON.stringify(m.sharedCard.metadata)}\n${m.sharedCard.body || ''}` : ''
-      return { id: m.id, role: m.role, route: normalizeChatRoute(m.route), ccAttemptId: m.ccAttemptId, content: msgContent + cardText, images: m.images }
-    })
+    const apiMessages = slice.map(toModelMessage)
 
     await doSend(apiMessages, async (data) => {
       const assistantContent = data.content || data.error || '...'
@@ -773,7 +772,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       const idx = currentMessages.findIndex(m => m.id === msg.id)
       if (idx < 0) { setIsLoading(false); return }
       const slice = stableSlice(currentMessages.slice(0, idx), settings.contextLength)
-      const apiMessages = slice.map(m => ({ id: m.id, role: m.role, route: normalizeChatRoute(m.route), ccAttemptId: m.ccAttemptId, content: m.content, images: m.images }))
+      const apiMessages = slice.map(toModelMessage)
       const retryTurnId = retryRoute === 'claude-code' ? `cc-reroll:${msg.id}:${Date.now()}` : msg.id
 
       await doSend(apiMessages, async (data) => {
@@ -812,7 +811,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       if (idx < 0) { setIsLoading(false); return }
       const nextMsg = currentMessages[idx + 1]
       const slice = stableSlice(currentMessages.slice(0, idx + 1), settings.contextLength)
-      const apiMessages = slice.map(m => ({ id: m.id, role: m.role, route: normalizeChatRoute(m.route), ccAttemptId: m.ccAttemptId, content: m.content, images: m.images }))
+      const apiMessages = slice.map(toModelMessage)
       const retryTurnId = retryRoute === 'claude-code'
         ? (recoverPending ? msg.id : `cc-retry:${msg.id}:${Date.now()}`)
         : msg.id

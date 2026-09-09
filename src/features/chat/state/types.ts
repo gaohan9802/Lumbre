@@ -127,6 +127,7 @@ export interface ChatSession {
   id: string
   title: string
   messages: ChatMessage[]
+  messageTombstones?: Record<string, number>
   pinned: boolean
   createdAt: number
   updatedAt: number

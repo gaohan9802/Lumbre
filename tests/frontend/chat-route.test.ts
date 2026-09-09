@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mergeConversationRoute, normalizeChatRoute } from '../../src/lib/chat-route'
+import { isRecoverableChatDisconnect, mergeConversationRoute, normalizeChatRoute } from '../../src/lib/chat-route'
 import { normalizeSettings } from '../../src/features/chat/migrations/browser-state'
 import { snapshotOfMessage } from '../../src/features/chat/sessions/messages'
 
@@ -29,6 +29,12 @@ test('a newer route selection wins independently from a newer message snapshot',
     mergeConversationRoute(selected, { generationRoute: 'api', generationRouteUpdatedAt: 51 }),
     { generationRoute: 'api', generationRouteUpdatedAt: 51 },
   )
+})
+
+test('an iOS Load failed keeps only CC turns recoverable', () => {
+  assert.equal(isRecoverableChatDisconnect('claude-code', false, 'TypeError'), true)
+  assert.equal(isRecoverableChatDisconnect('api', false, 'TypeError'), false)
+  assert.equal(isRecoverableChatDisconnect('claude-code', true, 'AbortError'), false)
 })
 
 test('route persists through store continuation, stale sync and message versions', async () => {

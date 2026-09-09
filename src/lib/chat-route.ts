@@ -24,3 +24,7 @@ export function mergeConversationRoute(existing: any, incoming: any) {
 export function chatRouteLabel(route: unknown) {
   return normalizeChatRoute(route) === 'claude-code' ? 'CC' : 'API'
 }
+
+export function isRecoverableChatDisconnect(route: unknown, explicitlyStopped: boolean, errorName: unknown) {
+  return !explicitlyStopped && (errorName === 'AbortError' || normalizeChatRoute(route) === 'claude-code')
+}

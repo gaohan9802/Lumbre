@@ -1,10 +1,17 @@
 import { getActiveSession } from '@/features/chat/state/accessors'
 import { normalizeSettings } from '@/features/chat/migrations/browser-state'
 import { sessionTitleFromMessage, snapshotOfMessage } from '@/features/chat/sessions/messages'
+import { ALL_MESSAGES_TOMBSTONE } from '@/lib/chat-message-sync'
 import type { ChatMessage, ChatSession, ChatSettings, MessageVersion } from '@/features/chat/state/types'
 
 type ChatState = { settings: ChatSettings; messages: ChatMessage[] }
 type SetChatState = (updater: (state: ChatState) => Partial<ChatState> | ChatState) => void
+
+function addMessageTombstones(session: ChatSession, ids: string[], deletedAt: number) {
+  const messageTombstones = { ...(session.messageTombstones || {}) }
+  for (const id of ids) messageTombstones[id] = Math.max(messageTombstones[id] || 0, deletedAt)
+  return messageTombstones
+}
 
 export interface MessageActions {
   addMessage: (message: ChatMessage, sessionId?: string) => void
@@ -43,7 +50,14 @@ export function createMessageActions(set: SetChatState): MessageActions {
 
     clearMessages: () => set((state) => {
       const settings = normalizeSettings(state.settings)
-      const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId ? { ...s, messages: [], summaries: [], stageSummaries: [], summaryRevision: (s.summaryRevision || 0) + 1, messageCount: 0, updatedAt: Date.now() } : s)
+      const now = Date.now()
+      const sessions = settings.sessions.map((s) => s.id === settings.activeSessionId ? {
+        ...s,
+        messages: [],
+        messageTombstones: addMessageTombstones(s, [ALL_MESSAGES_TOMBSTONE], now),
+        summaries: [], stageSummaries: [], summaryRevision: (s.summaryRevision || 0) + 1,
+        messageCount: 0, updatedAt: now,
+      } : s)
       return { settings: { ...settings, sessions }, messages: [] }
     }),
 
@@ -52,15 +66,24 @@ export function createMessageActions(set: SetChatState): MessageActions {
       const sessions = settings.sessions.map((s) => {
         if (s.id !== settings.activeSessionId) return s
         const deletedIndex = s.messages.findIndex((m) => m.id === id)
+        if (deletedIndex < 0) return s
+        const now = Date.now()
         const messages = s.messages.filter((m) => m.id !== id)
-        const summaries = deletedIndex < 0 ? (s.summaries || []) : (s.summaries || []).filter((summary) => {
+        const summaries = (s.summaries || []).filter((summary) => {
           if (summary.locked) return true
           if (summary.sourceMessageIds?.length) return !summary.sourceMessageIds.includes(id)
           return !(s.messages[deletedIndex].timestamp >= summary.startAt && s.messages[deletedIndex].timestamp <= summary.endAt)
         })
         const summaryIds = new Set(summaries.map(item => item.id))
         const stageSummaries = (s.stageSummaries || []).filter(stage => stage.sourceSummaryIds.every(id => summaryIds.has(id)))
-        return { ...s, messages, summaries, stageSummaries, summaryRevision: summaries.length !== (s.summaries || []).length ? (s.summaryRevision || 0) + 1 : (s.summaryRevision || 0), messageCount: messages.length, updatedAt: Date.now() }
+        return {
+          ...s, messages,
+          messageTombstones: addMessageTombstones(s, [id], now),
+          summaries, stageSummaries,
+          summaryRevision: summaries.length !== (s.summaries || []).length ? (s.summaryRevision || 0) + 1 : (s.summaryRevision || 0),
+          messageCount: Math.max(0, Number(s.messageCount ?? s.messages.length) - 1),
+          updatedAt: now,
+        }
       })
       const nextSettings = { ...settings, sessions }
       return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -72,6 +95,8 @@ export function createMessageActions(set: SetChatState): MessageActions {
         if (s.id !== settings.activeSessionId) return s
         const idx = s.messages.findIndex((m) => m.id === id)
         if (idx < 0) return s
+        const now = Date.now()
+        const removedIds = s.messages.slice(idx).map(message => message.id)
         const messages = s.messages.slice(0, idx)
         const keptIds = new Set(messages.map((m) => m.id))
         const summaries = (s.summaries || []).filter((summary) => summary.locked || (summary.sourceMessageIds?.length
@@ -79,7 +104,14 @@ export function createMessageActions(set: SetChatState): MessageActions {
           : keptIds.has(summary.coveredUntilMessageId)))
         const summaryIds = new Set(summaries.map(item => item.id))
         const stageSummaries = (s.stageSummaries || []).filter(stage => stage.sourceSummaryIds.every(id => summaryIds.has(id)))
-        return { ...s, messages, summaries, stageSummaries, summaryRevision: summaries.length !== (s.summaries || []).length ? (s.summaryRevision || 0) + 1 : (s.summaryRevision || 0), messageCount: messages.length, updatedAt: Date.now() }
+        return {
+          ...s, messages,
+          messageTombstones: addMessageTombstones(s, removedIds, now),
+          summaries, stageSummaries,
+          summaryRevision: summaries.length !== (s.summaries || []).length ? (s.summaryRevision || 0) + 1 : (s.summaryRevision || 0),
+          messageCount: Math.max(0, Number(s.messageCount ?? s.messages.length) - removedIds.length),
+          updatedAt: now,
+        }
       })
       const nextSettings = { ...settings, sessions }
       return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }

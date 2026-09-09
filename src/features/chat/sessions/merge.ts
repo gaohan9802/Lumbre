@@ -1,6 +1,6 @@
 import { mergeConversationMode } from '@/lib/chat-reply-mode'
 import { mergeConversationRoute } from '@/lib/chat-route'
-import type { ChatMessage } from '../state/types'
+import { mergeChatMessages, mergeMessageTombstones } from '@/lib/chat-message-sync'
 
 export function isBlankSession(session: any) {
   return (session?.messages?.length || 0) === 0
@@ -37,15 +37,26 @@ function preserveMergedSummary(base: any, existing: any, incoming: any) {
   const baseRevision = Math.max(0, Number(base?.summaryRevision) || 0)
   const mode = mergeConversationMode(existing, incoming)
   const route = mergeConversationRoute(existing, incoming)
+  const messageTombstones = mergeMessageTombstones(existing?.messageTombstones, incoming?.messageTombstones)
+  const incomingIsNewer = Number(incoming?.updatedAt) > Number(existing?.updatedAt)
+  const primary = incomingIsNewer ? incoming : existing
+  const secondary = incomingIsNewer ? existing : incoming
+  const messages = mergeChatMessages(primary?.messages || [], secondary?.messages || [], messageTombstones)
+  const messageLayerChanged = JSON.stringify(messages) !== JSON.stringify(base?.messages || [])
+    || JSON.stringify(messageTombstones) !== JSON.stringify(base?.messageTombstones || {})
   const needsRepublish = (base.conversationMode || 'long') !== mode.conversationMode || (base.conversationModeUpdatedAt || 0) !== mode.conversationModeUpdatedAt || summaryLayer.summaryRevision > baseRevision
     || (base.generationRoute || 'api') !== route.generationRoute || (base.generationRouteUpdatedAt || 0) !== route.generationRouteUpdatedAt
     || (summaryLayer.summaryRevision === baseRevision && summaryCount(summaryLayer) > summaryCount(base))
+    || messageLayerChanged
 
   return {
     ...base,
     ...mode,
     ...route,
     ...summaryLayer,
+    messages,
+    messageTombstones,
+    messageCount: base.partial ? Math.max(Number(base.messageCount) || 0, messages.length) : messages.length,
     updatedAt: needsRepublish
       ? Math.max(Date.now(), Number(existing?.updatedAt) || 0, Number(incoming?.updatedAt) || 0) + 1
       : base.updatedAt,
@@ -56,34 +67,20 @@ function preserveMergedSummary(base: any, existing: any, incoming: any) {
 export function mergeChatSessionsForSync(existing: any, incoming: any) {
   if (existing?.partial && incoming?.partial) {
     const newer = (incoming.updatedAt || 0) > (existing.updatedAt || 0) ? incoming : existing
-    const byId = new Map<string, ChatMessage>()
-    for (const message of [...(existing.messages || []), ...(incoming.messages || [])]) {
-      if (message?.id) byId.set(message.id, message)
-    }
-    const messages = Array.from(byId.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
-    const messageCount = Math.max(Number(existing.messageCount) || 0, Number(incoming.messageCount) || 0, messages.length)
-    return preserveMergedSummary({ ...existing, ...newer, messages, messageCount, partial: messages.length < messageCount }, existing, incoming)
+    return preserveMergedSummary({ ...existing, ...newer }, existing, incoming)
   }
 
   if (existing?.partial && !incoming?.partial) {
     if ((existing.updatedAt || 0) <= (incoming.updatedAt || 0)) return preserveMergedSummary(incoming, existing, incoming)
-    const ids = new Set((incoming.messages || []).map((message: any) => message.id))
-    const extras = (existing.messages || []).filter((message: any) => !ids.has(message.id))
     return preserveMergedSummary({
       ...incoming, ...existing, partial: false,
-      messages: [...(incoming.messages || []), ...extras],
-      messageCount: (incoming.messages || []).length + extras.length,
     }, existing, incoming)
   }
 
   if (incoming?.partial && !existing?.partial) {
     if ((incoming.updatedAt || 0) <= (existing.updatedAt || 0)) return preserveMergedSummary(existing, existing, incoming)
-    const ids = new Set((existing.messages || []).map((message: any) => message.id))
-    const extras = (incoming.messages || []).filter((message: any) => !ids.has(message.id))
     return preserveMergedSummary({
       ...existing, ...incoming, partial: false,
-      messages: [...(existing.messages || []), ...extras],
-      messageCount: (existing.messages || []).length + extras.length,
     }, existing, incoming)
   }
 

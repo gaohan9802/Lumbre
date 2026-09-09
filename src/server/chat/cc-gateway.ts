@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 import { addToolResultsToAudit, type MessageRequestAudit } from '@/lib/chat-receipt'
+import { chatMessageContentForModel, messageRevision } from '@/lib/chat-message-sync'
+import { loadSyncSessions } from '@/server/chat-sync'
 
 type FetchLike = typeof fetch
 
@@ -99,8 +101,29 @@ function validateTurn(sessionId: unknown, turnId: unknown) {
   return { sessionId, turnId }
 }
 
+function canonicalContextMessages(body: any, sessionId: string, turnId: string) {
+  const submitted = Array.isArray(body.messages) ? body.messages : []
+  let durable: any
+  try { durable = loadSyncSessions([sessionId])[0] } catch { return submitted }
+  const storedById = new Map((durable?.messages || []).map((message: any) => [message.id, message]))
+  return submitted.map((client: any) => {
+    const stored: any = storedById.get(client?.id)
+    if (!stored || client.id === turnId || messageRevision(client) > messageRevision(stored)) return client
+    return {
+      ...client,
+      role: stored.role,
+      route: stored.route,
+      ccAttemptId: stored.ccAttemptId,
+      content: chatMessageContentForModel(stored),
+      images: stored.images,
+      timestamp: stored.timestamp,
+    }
+  })
+}
+
 async function submitAttempt(config: CcGatewayConfig, body: any, system: string, volatileContext: string, fetchImpl: FetchLike) {
   const { sessionId, turnId } = validateTurn(body.session_id, body.turn_id)
+  const messages = canonicalContextMessages(body, sessionId, turnId)
   const response = await gatewayFetch(config, '/v1/attempts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -113,7 +136,7 @@ async function submitAttempt(config: CcGatewayConfig, body: any, system: string,
         system,
         bookmarkInjections: typeof body.bookmark_injections === 'string' ? body.bookmark_injections : '',
         volatileContext,
-        messages: Array.isArray(body.messages) ? body.messages.map((message: any) => {
+        messages: messages.map((message: any) => {
           const imageCount = Array.isArray(message.images) ? Math.min(4, message.images.length) : 0
           const attachments = imageCount
             ? message.id === body.turn_id
@@ -127,7 +150,7 @@ async function submitAttempt(config: CcGatewayConfig, body: any, system: string,
             ccAttemptId: message.ccAttemptId,
             content: `${message.content || ''}${attachments}`,
           }
-        }) : [],
+        }),
       },
       unattended: body._wake === true,
     }),

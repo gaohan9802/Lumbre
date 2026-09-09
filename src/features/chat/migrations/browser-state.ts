@@ -1,5 +1,6 @@
 import { normalizeReplyMode } from '@/lib/chat-reply-mode'
 import { normalizeChatRoute } from '@/lib/chat-route'
+import { mergeChatMessages, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import type {
   ApiProfile, ApiProvider, BubbleLayout, ChatMessage, ChatSettings, ChatSummary, ContentBlock,
@@ -155,19 +156,23 @@ export function normalizeSettings(settings: any): ChatSettings {
   const activeProfile = profiles.find((profile: ApiProfile) => profile.id === activeProfileId) || profiles[0]
 
   const sessions = Array.isArray(settings?.sessions) && settings.sessions.length
-    ? settings.sessions.map((session: any) => ({
+    ? settings.sessions.map((session: any) => {
+        const messageTombstones = normalizeMessageTombstones(session.messageTombstones)
+        const messages = mergeChatMessages([], Array.isArray(session.messages) ? session.messages.map(normalizeMessage).filter(Boolean) : [], messageTombstones) as ChatMessage[]
+        return {
         id: session.id || makeId('session'),
         generationRoute: normalizeChatRoute(session.generationRoute),
         generationRouteUpdatedAt: Number.isFinite(session.generationRouteUpdatedAt) ? session.generationRouteUpdatedAt : 0,
         conversationMode: normalizeReplyMode(session.conversationMode),
         conversationModeUpdatedAt: Number.isFinite(session.conversationModeUpdatedAt) ? session.conversationModeUpdatedAt : 0,
         title: session.title || '新的对话',
-        messages: Array.isArray(session.messages) ? session.messages.map(normalizeMessage).filter(Boolean) as ChatMessage[] : [],
+        messages,
+        messageTombstones,
         pinned: !!session.pinned,
         createdAt: session.createdAt || Date.now(),
         updatedAt: session.updatedAt || session.createdAt || Date.now(),
         partial: !!session.partial,
-        messageCount: Math.max(Number(session.messageCount) || 0, Array.isArray(session.messages) ? session.messages.length : 0),
+        messageCount: session.partial ? Math.max(Number(session.messageCount) || 0, messages.length) : messages.length,
         summaries: Array.isArray(session.summaries) ? session.summaries.map((item: any) => ({
           id: item.id || makeId('sum'), sessionId: session.id, startAt: item.startAt || item.createdAt || Date.now(),
           endAt: item.endAt || item.createdAt || Date.now(), createdAt: item.createdAt || Date.now(),
@@ -191,7 +196,7 @@ export function normalizeSettings(settings: any): ChatSettings {
           anchorMessageId: session.summaryConfig?.modeVersion === 2 ? session.summaryConfig?.anchorMessageId : (Array.isArray(session.messages) ? session.messages.at(-1)?.id : undefined),
           anchorTimestamp: session.summaryConfig?.modeVersion === 2 ? session.summaryConfig?.anchorTimestamp : (Array.isArray(session.messages) ? session.messages.at(-1)?.timestamp : undefined),
         },
-      }))
+      }})
     : [{ ...DEFAULT_SETTINGS.sessions[0], messages: oldMessages.map(normalizeMessage).filter(Boolean) as ChatMessage[] }]
 
   const activeSessionId = sessions.some((session: any) => session.id === settings?.activeSessionId)

@@ -1,5 +1,6 @@
 import { mergeConversationMode } from '@/lib/chat-reply-mode'
 import { mergeConversationRoute } from '@/lib/chat-route'
+import { mergeChatMessages, mergeMessageTombstones, messageDeletedAt, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 /**
  * Durable incremental chat storage.
  *
@@ -113,17 +114,6 @@ function isBlankSession(s: any) {
   return (s?.messages?.length || 0) === 0 && !(s?.conversationModeUpdatedAt > 0) && !(s?.generationRouteUpdatedAt > 0) && !s?.pinned && (!s?.title || s.title === '新的对话')
 }
 
-function mergeMessagesById(existing: any[], incoming: any[]) {
-  const map = new Map<string, any>()
-  for (const message of [...existing, ...incoming]) {
-    const id = String(message?.id || '')
-    if (!id) continue
-    const current = map.get(id)
-    map.set(id, !current || (Number(message?.timestamp) || 0) >= (Number(current?.timestamp) || 0) ? message : current)
-  }
-  return Array.from(map.values()).sort((a: any, b: any) => (Number(a?.timestamp) || 0) - (Number(b?.timestamp) || 0))
-}
-
 function mergeSummaryLayer(existing: any, incoming: any) {
   const aRevision = Math.max(0, Number(existing?.summaryRevision) || 0)
   const bRevision = Math.max(0, Number(incoming?.summaryRevision) || 0)
@@ -150,16 +140,6 @@ function mergeSummaryLayer(existing: any, incoming: any) {
   }
 }
 
-function preserveServerWakeMessages(existing: any, incoming: any) {
-  const incomingMessages = Array.isArray(incoming?.messages) ? incoming.messages : []
-  const ids = new Set(incomingMessages.map((m: any) => m?.id).filter(Boolean))
-  const missingWake = (Array.isArray(existing?.messages) ? existing.messages : [])
-    .filter((m: any) => m?._wake && m?.id && !ids.has(m.id))
-  if (!missingWake.length) return incoming
-  const messages = [...incomingMessages, ...missingWake].sort((a: any, b: any) => (Number(a?.timestamp) || 0) - (Number(b?.timestamp) || 0))
-  return { ...incoming, messages }
-}
-
 function pickSessionData(a: any, b: any) {
   const aBlank = isBlankSession(a)
   const bBlank = isBlankSession(b)
@@ -171,28 +151,35 @@ function pickSessionData(a: any, b: any) {
   // replace the complete durable file. Merge its newly-created tail by id and
   // retain server-only messages + summary metadata.
   if (b?.partial) {
-    const messages = mergeMessagesById(Array.isArray(a?.messages) ? a.messages : [], Array.isArray(b?.messages) ? b.messages : [])
-    return preserveServerWakeMessages(a, {
-      ...a, ...b, ...mergeSummaryLayer(a, b), partial: false, messages, messageCount: messages.length,
-    })
+    return { ...a, ...b, ...mergeSummaryLayer(a, b), partial: false }
   }
 
   // Old/background clients occasionally submit a newer full chat without the
   // summary fields introduced later. Empty metadata must not erase a populated
   // durable summary layer merely because that client opened the conversation.
-  const incoming = preserveServerWakeMessages(a, b)
-  return { ...incoming, ...mergeSummaryLayer(a, incoming) }
+  return { ...b, ...mergeSummaryLayer(a, b) }
 }
 
 function pickSession(a: any, b: any) {
   const winner = pickSessionData(a, b)
+  const messageTombstones = mergeMessageTombstones(a?.messageTombstones, b?.messageTombstones)
+  const messages = mergeChatMessages(a?.messages || [], b?.messages || [], messageTombstones)
+  const merged = {
+    ...winner,
+    messages,
+    messageTombstones,
+    messageCount: winner.partial ? Math.max(Number(winner.messageCount) || 0, messages.length) : messages.length,
+  }
+  const messageLayerChanged = JSON.stringify(messages) !== JSON.stringify(winner?.messages || [])
+    || JSON.stringify(messageTombstones) !== JSON.stringify(winner?.messageTombstones || {})
   const mode = mergeConversationMode(a, b)
   const route = mergeConversationRoute(a, b)
-  if ((winner.conversationMode || 'long') === mode.conversationMode &&
-      (winner.conversationModeUpdatedAt || 0) === mode.conversationModeUpdatedAt &&
-      (winner.generationRoute || 'api') === route.generationRoute &&
-      (winner.generationRouteUpdatedAt || 0) === route.generationRouteUpdatedAt) return winner
-  return { ...winner, ...mode, ...route, updatedAt: Math.max(Number(a.updatedAt) || 0, Number(b.updatedAt) || 0) + 1 }
+  if ((merged.conversationMode || 'long') === mode.conversationMode &&
+      (merged.conversationModeUpdatedAt || 0) === mode.conversationModeUpdatedAt &&
+      (merged.generationRoute || 'api') === route.generationRoute &&
+      (merged.generationRouteUpdatedAt || 0) === route.generationRouteUpdatedAt &&
+      !messageLayerChanged) return merged
+  return { ...merged, ...mode, ...route, updatedAt: Math.max(Number(a.updatedAt) || 0, Number(b.updatedAt) || 0) + 1 }
 }
 
 function writeSession(session: any, snapshot = true) {
@@ -391,6 +378,11 @@ export function appendSyncSessionMessage(sessionId: string, message: any): { app
     const session = readChatSession(sessionId) as any
     if (!session?.id) throw new Error(`wake session unreadable: ${sessionId}`)
     const messages = Array.isArray(session.messages) ? session.messages : []
+    const messageTombstones = normalizeMessageTombstones(session.messageTombstones)
+    const deletedAt = messageDeletedAt(messageTombstones, String(message?.id || ''))
+    if (deletedAt > 0 && deletedAt >= (Number(message?.timestamp) || 0)) {
+      return { appended: false, sessionUpdatedAt: Number(session.updatedAt) || 0, messageCount: messages.length }
+    }
     if (messages.some((item: any) => item?.id === message?.id)) {
       return { appended: false, sessionUpdatedAt: Number(session.updatedAt) || 0, messageCount: messages.length }
     }
@@ -430,6 +422,11 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       ...mergeConversationRoute(meta, null),
     }
     const messages = Array.isArray(base.messages) ? base.messages : []
+    const messageTombstones = normalizeMessageTombstones(base.messageTombstones)
+    const deletedAt = messageDeletedAt(messageTombstones, String(message?.id || ''))
+    if (deletedAt > 0 && deletedAt >= (Number(message?.timestamp) || 0)) {
+      return { appended: false, sessionUpdatedAt: Number(base.updatedAt) || 0, messageCount: messages.length }
+    }
     if (messages.some((item: any) => item?.id === message?.id)) {
       return { appended: false, sessionUpdatedAt: Number(base.updatedAt) || 0, messageCount: messages.length }
     }
