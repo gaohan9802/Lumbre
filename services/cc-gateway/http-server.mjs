@@ -28,11 +28,15 @@ function authorized(request, secret) {
 async function readBody(request, limit = 1_600_000) {
   const declared = Number(request.headers['content-length'] || 0)
   if (declared > limit) throw new AttemptValidationError('Request body is too large')
-  let text = ''
+  const chunks = []
+  let bytes = 0
   for await (const chunk of request) {
-    text += chunk
-    if (Buffer.byteLength(text) > limit) throw new AttemptValidationError('Request body is too large')
+    bytes += chunk.length
+    if (bytes > limit) throw new AttemptValidationError('Request body is too large')
+    chunks.push(chunk)
   }
+  // Decode once: a network chunk can end in the middle of a UTF-8 character.
+  const text = Buffer.concat(chunks, bytes).toString('utf8')
   try { return JSON.parse(text || '{}') }
   catch { throw new AttemptValidationError('Request body must be valid JSON') }
 }
