@@ -93,6 +93,39 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
   } finally { restore() }
 })
 
+test('an image message keeps identical context content after it becomes history', async () => {
+  const restore = configure()
+  const submissions: any[] = []
+  const fakeFetch: typeof fetch = async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/v1/attempts') && init?.method === 'POST') {
+      submissions.push(JSON.parse(String(init.body)))
+      return Response.json({ attempt: { id: ATTEMPT_ID, status: 'queued', sessionMode: 'resume', sessionReason: 'ordinary_delta' } }, { status: 202 })
+    }
+    if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}/events`)) {
+      return new Response(`data: ${JSON.stringify({ id: 1, type: 'completed' })}\n\n`)
+    }
+    if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}`)) {
+      return Response.json({ attempt: {
+        id: ATTEMPT_ID, status: 'completed', sessionMode: 'resume', sessionReason: 'ordinary_delta',
+        result: { text: 'ok', sessionId: SESSION_ID, usage: { output_tokens: 1 } },
+      } })
+    }
+    throw new Error(`unexpected fetch ${url}`)
+  }
+  const imageMessage = { id: 'turn-image', role: 'user', route: 'claude-code', content: '看图', images: ['data:image/png;base64,aA=='] }
+  try {
+    for (const body of [
+      { stream: true, session_id: 'conversation-image-stable', turn_id: 'turn-image', messages: [imageMessage] },
+      { stream: true, session_id: 'conversation-image-stable', turn_id: 'turn-next', messages: [imageMessage, { id: 'turn-next', role: 'user', route: 'claude-code', content: '继续' }] },
+    ]) {
+      const response = await createCcChatResponse({ body, system: 'system', volatileContext: '', fetchImpl: fakeFetch })
+      for await (const _event of readChatEventStream(response)) { /* drain */ }
+    }
+    assert.equal(submissions[0].context.messages[0].content, submissions[1].context.messages[0].content)
+  } finally { restore() }
+})
+
 test('Lumbre reconnects a prematurely closed gateway stream from its last durable event', async () => {
   const restore = configure()
   const eventUrls: string[] = []

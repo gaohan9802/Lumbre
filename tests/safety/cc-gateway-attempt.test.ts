@@ -409,6 +409,39 @@ console.log(JSON.stringify({ type: 'result', result: '看过了', session_id: id
   }
 })
 
+test('Claude executor preserves UTF-8 tool events split between polling reads', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-tool-utf8-'))
+  try {
+    const binary = path.join(root, 'fake-claude')
+    writeFileSync(binary, `#!/usr/bin/env node
+const fs = require('node:fs')
+const event = Buffer.from(JSON.stringify({ name: 'read_period', input: {}, result: '中文🙂', error: false }) + '\\n')
+const split = event.indexOf(Buffer.from('中')) + 1
+fs.appendFileSync(process.env.LUMBRE_CC_TOOL_EVENT_FILE, event.subarray(0, split))
+setTimeout(() => {
+  fs.appendFileSync(process.env.LUMBRE_CC_TOOL_EVENT_FILE, event.subarray(split))
+  console.log(JSON.stringify({ type: 'result', result: 'ok', session_id: '550e8400-e29b-41d4-a716-446655440000', usage: { output_tokens: 1 } }))
+}, 250)
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+    const toolCalls: any[] = []
+    const executor = new ClaudeExecutor({
+      binary,
+      workspace: root,
+      env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
+      toolBridge: { url: 'https://lumbre.example/api/internal/cc-tools', secret: 'tool-bridge-secret-with-32-characters', maxCalls: 20 },
+      toolEventsDir: path.join(root, 'tool-events'),
+    })
+    await executor.run({
+      prompt: 'hello', model: 'sonnet', attemptId: '123e4567-e89b-42d3-a456-426614174000',
+      conversationId: 'conversation-1', onToolCall: (event: any) => toolCalls.push(event),
+    })
+    assert.equal(toolCalls[0].result, '中文🙂')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('Claude executor cache warm loads the normal tool schema in deny-call mode', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-tools-warm-'))
   try {

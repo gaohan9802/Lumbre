@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import {
   DEFAULT_MAX_OUTPUT_BYTES,
   DEFAULT_TIMEOUT_MS,
@@ -236,15 +237,18 @@ export class ClaudeExecutor {
       let toolEventTimer
       let toolEventOffset = 0
       let toolEventBuffer = ''
+      const toolEventDecoder = toolEventFile ? new StringDecoder('utf8') : null
       const events = []
 
-      const drainToolEvents = () => {
+      const drainToolEvents = (final = false) => {
         if (!toolEventFile) return
         let bytes
         try { bytes = fs.readFileSync(toolEventFile) } catch { return }
-        if (bytes.length <= toolEventOffset) return
-        toolEventBuffer += bytes.subarray(toolEventOffset).toString('utf8')
-        toolEventOffset = bytes.length
+        if (bytes.length > toolEventOffset) {
+          toolEventBuffer += toolEventDecoder.write(bytes.subarray(toolEventOffset))
+          toolEventOffset = bytes.length
+        }
+        if (final) toolEventBuffer += toolEventDecoder.end()
         for (;;) {
           const newline = toolEventBuffer.indexOf('\n')
           if (newline < 0) break
@@ -264,7 +268,7 @@ export class ClaudeExecutor {
         if (forceKillTimer) clearTimeout(forceKillTimer)
         if (toolEventTimer) clearInterval(toolEventTimer)
         signal?.removeEventListener('abort', abort)
-        drainToolEvents()
+        drainToolEvents(true)
         if (toolEventFile) try { fs.unlinkSync(toolEventFile) } catch {}
         if (error) reject(error)
         else resolve(result)

@@ -36,7 +36,7 @@ import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
-import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute } from '@/lib/chat-route'
+import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 
@@ -190,6 +190,21 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     try { setCcStatus(await chatApi.ccStatus(activeSession?.id)) }
     catch { setCcStatus(current => ({ ...current, available: false })) }
   }, [activeSession?.id])
+  const ensureCcAvailable = useCallback(async (route: ChatRoute, notify = true) => {
+    if (route !== 'claude-code') return true
+    try {
+      const status = await chatApi.ccStatus()
+      setCcStatus(current => ({ ...status, quota: current.quota, context: current.context }))
+      if (status.available) return true
+    } catch {
+      setCcStatus(current => ({ ...current, available: false }))
+    }
+    if (notify) {
+      window.alert('CC 网关现在没有连上；本轮不会自动改走 API。')
+      setModelPickerOpen(true)
+    }
+    return false
+  }, [activeSession?.id, setModelPickerOpen])
   useEffect(() => { void refreshCcStatus() }, [refreshCcStatus])
   useEffect(() => { if (modelPickerOpen) void refreshCcStatus() }, [modelPickerOpen, refreshCcStatus])
   useEffect(() => {
@@ -674,11 +689,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   const handleSend = async () => {
     if ((!input.trim() && pendingImages.length === 0 && !pendingShare) || isLoading) return
-    if (activeRoute === 'claude-code' && !ccStatus.available) {
-      window.alert('CC 网关现在没有连上；本轮不会自动改走 API。')
-      setModelPickerOpen(true)
-      return
-    }
+    if (!await ensureCcAvailable(activeRoute)) return
     const profile = getActiveProfile(settings)
     const model = settings.model
     const now = Date.now()
@@ -753,13 +764,13 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const handleRetry = async (msg: ChatMessage, skipConfirm = false, recoverPending = false) => {
     if (isLoading) return
     const retryRoute = normalizeChatRoute(msg.route)
-    if (retryRoute === 'claude-code' && !ccStatus.available) {
-      if (!recoverPending) window.alert('CC 网关现在没有连上；不会偷偷改走 API 重试。')
-      return
-    }
     if (!skipConfirm) {
       const ok = await ask(msg.role === 'assistant' ? '重新生成这条回复？' : '重新发送并生成回复？')
       if (!ok) return
+    }
+    if (!await ensureCcAvailable(retryRoute, !recoverPending)) {
+      if (recoverPending && activeSession?.id) recoveredTurnsRef.current.delete(`${activeSession.id}:${msg.id}`)
+      return
     }
 
     const profile = getActiveProfile(settings)

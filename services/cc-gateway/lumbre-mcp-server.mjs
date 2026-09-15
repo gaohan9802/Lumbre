@@ -81,7 +81,9 @@ async function handle(message) {
     })
   }
   if (message.method === 'tools/list') {
-    const data = await bridge(`?session_id=${encodeURIComponent(conversationId)}&source=${encodeURIComponent(source)}`)
+    // Keep the Claude tool schema stable across chat, cache warm, and wakes.
+    // Calls still carry their real source and are denied by unattended policy.
+    const data = await bridge(`?session_id=${encodeURIComponent(conversationId)}&source=chat`)
     return write({ jsonrpc: '2.0', id: message.id, result: { tools: Array.isArray(data.tools) ? data.tools : [] } })
   }
   if (message.method === 'tools/call') {

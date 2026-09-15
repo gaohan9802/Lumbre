@@ -101,7 +101,7 @@ test('unattended CC wakes keep the existing restricted wake tool policy', async 
   assert.equal(notes.listNotes().some(item => item.id === note.id), true)
 })
 
-test('stdio MCP forwards typed calls, records a redacted UI event and enforces its fixed server', async () => {
+test('stdio MCP keeps the chat tool schema during wakes while enforcing wake policy on calls', async () => {
   const eventFile = path.join(root, 'mcp-events.jsonl')
   const requestsFile = path.join(root, 'mcp-requests.jsonl')
   const fetchFixture = path.join(root, 'mcp-fetch-fixture.mjs')
@@ -145,7 +145,7 @@ globalThis.fetch = async (url, init = {}) => {
     assert.doesNotMatch(JSON.stringify(event), /never-store-me/)
     const requests = readFileSync(requestsFile, 'utf8').trim().split('\n').map(line => JSON.parse(line))
     assert.equal(requests[1].body.session_id, 'conversation-1')
-    assert.match(requests[0].url, /source=unattended-wake/)
+    assert.match(requests[0].url, /source=chat/)
     assert.equal(requests[1].body.source, 'unattended-wake')
   } finally {
     child.stdin.end()
