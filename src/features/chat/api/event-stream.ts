@@ -31,6 +31,7 @@ export async function* readChatEventStream(response: Response): AsyncGenerator<C
   const decoder = new TextDecoder()
   let buffer = ''
   let finished = false
+  let terminal = false
 
   try {
     while (!finished) {
@@ -46,6 +47,7 @@ export async function* readChatEventStream(response: Response): AsyncGenerator<C
         const event = parseDataLine(line)
         if (!event) continue
         yield event
+        if (event.type === 'done' || event.type === 'error' || event.type === 'recoverable_disconnect') terminal = true
         if (event.type === 'done') {
           finished = true
           break
@@ -55,8 +57,12 @@ export async function* readChatEventStream(response: Response): AsyncGenerator<C
 
     if (!finished && buffer) {
       const event = parseDataLine(buffer)
-      if (event) yield event
+      if (event) {
+        yield event
+        if (event.type === 'done' || event.type === 'error' || event.type === 'recoverable_disconnect') terminal = true
+      }
     }
+    if (!terminal) throw new TypeError('Chat stream ended before a terminal event')
   } finally {
     if (finished) {
       try { await reader.cancel() } catch { /* the response may already be closed */ }

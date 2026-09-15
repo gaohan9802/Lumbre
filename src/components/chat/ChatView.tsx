@@ -457,6 +457,9 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
       }, controller.signal)
       if (!res.ok) {
         const errText = await res.text()
+        if (route === 'claude-code' && [502, 503, 504].includes(res.status)) {
+          throw new Error(`CC 网关暂时中断 (${res.status})`)
+        }
         await onDone({ content: `Error ${res.status}: ${errText.slice(0, 200)}`, error: true })
         return
       }

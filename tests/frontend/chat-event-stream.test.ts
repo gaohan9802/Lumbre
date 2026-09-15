@@ -39,3 +39,16 @@ test('chat stream parses a final frame even without a trailing newline', async (
   for await (const event of readChatEventStream(response)) events.push(event)
   assert.equal(events[0]?.output_tokens, 7)
 })
+
+test('chat stream rejects a clean close before any terminal event', async () => {
+  const encoder = new TextEncoder()
+  const response = new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"type":"text","content":"半截回复"}\n\n'))
+      controller.close()
+    },
+  }))
+  await assert.rejects(async () => {
+    for await (const _event of readChatEventStream(response)) { /* drain */ }
+  }, /before a terminal event/)
+})
