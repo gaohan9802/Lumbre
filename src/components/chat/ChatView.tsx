@@ -7,7 +7,7 @@ import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft,
-  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus, Clock3, FileText, Square,
+  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus, Clock3, FileText, Square, Dices,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -39,6 +39,7 @@ import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatR
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
+import { IntimacyWheelModal } from './IntimacyWheelModal'
 
 /* ── helpers ────────────────────────────── */
 
@@ -149,6 +150,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   const { theme } = useTheme()
   const n = theme === 'night'
   const [moreOpen, setMoreOpen] = useState(false)
+  const [wheelOpen, setWheelOpen] = useState(false)
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
@@ -1518,6 +1520,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             {moreOpen && <div className="grid grid-cols-2 gap-2 pt-3" aria-label="更多功能">
               <button disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><ImagePlus size={16}/>{uploadingImg ? '处理中…' : '上传照片'}</button>
               <button onClick={() => setTimelineOpen(true)} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs min-w-0"><Clock3 size={16}/><span className="truncate">{timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'}</span></button>
+              <button onClick={() => { setWheelOpen(true); setMoreOpen(false) }} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[#9d5361]/10 p-3 text-xs text-[#9d5361]"><Dices size={16}/>今天怎么操</button>
               <div role="group" aria-label="对话模式" className="col-span-2 flex gap-2 rounded-xl bg-black/5 p-1">
                 {(['long', 'short'] as const).map(mode => <button key={mode} aria-pressed={normalizeReplyMode(activeSession?.conversationMode) === mode} onClick={() => activeSession && setConversationMode(activeSession.id, mode)} className={`flex-1 rounded-lg py-2.5 text-xs transition ${normalizeReplyMode(activeSession?.conversationMode) === mode ? (n ? 'bg-night-amber/20 text-night-amber' : 'bg-white text-day-pink shadow-sm') : 'opacity-60'}`}>{mode === 'long' ? '长聊' : '短聊'}</button>)}
               </div>
@@ -1587,6 +1590,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
           <TimelineTimerModal open={timelineOpen} current={timelineCurrent} onClose={() => setTimelineOpen(false)} onChanged={() => refreshTimelineCurrent()} />
           <MessageReceiptDialog message={receiptMessage} settings={settings} night={n} onClose={() => setReceiptMessage(null)} />
+          <IntimacyWheelModal open={wheelOpen} night={n} onClose={() => setWheelOpen(false)} />
         </>,
         document.body,
       )}

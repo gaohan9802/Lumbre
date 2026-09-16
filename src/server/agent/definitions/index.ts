@@ -2,12 +2,14 @@ import { EXTERNAL_TOOL_DEFINITIONS } from './external'
 import { JOURNAL_TOOL_DEFINITIONS } from './journal'
 import { LIFE_TOOL_DEFINITIONS } from './life'
 import { MEMORY_TOOL_DEFINITIONS } from './memory'
+import { CREATIVE_TOOL_DEFINITIONS } from './creative'
 
 const DEFINITIONS = [
   ...MEMORY_TOOL_DEFINITIONS,
   ...JOURNAL_TOOL_DEFINITIONS,
   ...LIFE_TOOL_DEFINITIONS,
   ...EXTERNAL_TOOL_DEFINITIONS,
+  ...CREATIVE_TOOL_DEFINITIONS,
 ]
 
 // Keep the pre-refactor order stable because tool schema order participates in
@@ -28,6 +30,7 @@ const TOOL_ORDER = [
   'gmail_status', 'send_email', 'read_emails', 'search_emails', 'read_email_detail', 'reply_email',
   'read_bookmarks', 'add_bookmark', 'edit_bookmark',
   'read_coupons', 'create_coupon', 'sign_coupon', 'edit_coupon', 'use_coupon', 'void_coupon', 'confirm_void_coupon',
+  'read_poems', 'write_poem', 'read_intimacy_wheel', 'update_intimacy_wheel',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

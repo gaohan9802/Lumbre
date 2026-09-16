@@ -34,9 +34,11 @@ const TodoView = dynamic(() => import('@/components/todo/TodoView').then(m => m.
 const PhotosView = dynamic(() => import('@/components/photos/PhotosView').then(m => m.PhotosView), { loading: ViewLoading, ssr: false })
 const MemoryView = dynamic(() => import('@/components/memory/MemoryView').then(m => m.MemoryView), { loading: ViewLoading, ssr: false })
 const DreamsView = dynamic(() => import('@/components/dreams/DreamsView').then(m => m.DreamsView), { loading: ViewLoading, ssr: false })
+const PoemsView = dynamic(() => import('@/components/poems/PoemsView').then(m => m.PoemsView), { loading: ViewLoading, ssr: false })
 
 const views = {
   chat: ChatView,
+  poems: PoemsView,
   timeline: TimelineHubView,
   diary: DiaryView,
   notes: NotesView,

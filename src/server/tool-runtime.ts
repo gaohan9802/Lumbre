@@ -1,5 +1,5 @@
 /**
- * Compatibility runtime for the existing 66 tool handlers and schemas.
+ * Compatibility runtime for the existing tool handlers and schemas.
  * New callers must use server/agent/registry + server/agent/executor so policy,
  * confirmation and audit checks cannot be skipped accidentally.
  */
@@ -38,6 +38,8 @@ import { executeSafeFetch } from './agent/tools/web-fetch'
 import { getUserContext as readUserContext } from './agent/tools/user-context'
 import type { ToolCallContext } from './agent/context'
 import { loadSyncSessions } from './chat-sync'
+import { appendPoemLine, createPoem, deletePoem, deletePoemLine, editPoemLine, getPoem, listPoems, updatePoem } from './poem-store'
+import { addWheelOption, deleteWheelOption, editWheelOption, readWheel, spinWheel } from './intimacy-wheel-store'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -416,6 +418,27 @@ export async function executeRegisteredToolHandler(
       case 'comment_wish': {
         const r = commentWish(input.id, input.author || 'star', input.content)
         return r === 'ok' ? '💬 已评论' : r
+      }
+
+      case 'read_poems': return JSON.stringify(input.id ? getPoem(input.id) : listPoems(!!input.include_archived))
+      case 'write_poem': {
+        if (input.action === 'create') return JSON.stringify({ ok: true, poem: createPoem(input.title) })
+        if (input.action === 'append') return JSON.stringify({ ok: true, poem: appendPoemLine(input.id, 'star', input.text) })
+        if (input.action === 'edit_line') return JSON.stringify({ ok: true, poem: editPoemLine(input.id, input.line_id, 'star', input.text) })
+        if (input.action === 'rename') return JSON.stringify({ ok: true, poem: updatePoem(input.id, { title: input.title }) })
+        if (input.action === 'archive') return JSON.stringify({ ok: true, poem: updatePoem(input.id, { archived: input.archived !== false }) })
+        if (input.action === 'delete_line') return JSON.stringify({ ok: true, poem: deletePoemLine(input.id, input.line_id, 'star') })
+        if (input.action === 'delete') return JSON.stringify({ ok: deletePoem(input.id) })
+        throw new Error('未知共诗操作')
+      }
+      case 'read_intimacy_wheel': return JSON.stringify(readWheel())
+      case 'update_intimacy_wheel': {
+        if (input.action === 'spin') return JSON.stringify({ ok: true, spin: spinWheel('star', input.pool_ids) })
+        if (input.action === 'add') return JSON.stringify({ ok: true, option: addWheelOption(input.pool_id, input.text, 'star') })
+        if (input.action === 'edit') return JSON.stringify({ ok: true, option: editWheelOption(input.pool_id, input.option_id, { text: input.text }) })
+        if (input.action === 'toggle') return JSON.stringify({ ok: true, option: editWheelOption(input.pool_id, input.option_id, { enabled: input.enabled }) })
+        if (input.action === 'delete') return JSON.stringify({ ok: deleteWheelOption(input.pool_id, input.option_id) })
+        throw new Error('未知转盘操作')
       }
 
       // Wake alarm

@@ -18,6 +18,8 @@ export type ToolDomain =
   | 'web'
   | 'bookmarks'
   | 'coupons'
+  | 'poems'
+  | 'intimacy-wheel'
 
 export interface ToolDef {
   name: string

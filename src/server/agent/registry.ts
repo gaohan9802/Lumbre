@@ -4,6 +4,7 @@ import { EXTERNAL_TOOL_POLICIES } from './tools/external'
 import { JOURNAL_TOOL_POLICIES } from './tools/journal'
 import { LIFE_TOOL_POLICIES } from './tools/life'
 import { MEMORY_TOOL_POLICIES } from './tools/memory'
+import { CREATIVE_TOOL_POLICIES } from './tools/creative'
 import type { RegisteredTool, ToolDef, ToolPolicySpec } from './types'
 import type { ToolCallContext } from './context'
 import { evaluateToolPolicy } from './policy'
@@ -13,6 +14,7 @@ const POLICIES: ToolPolicySpec[] = [
   ...JOURNAL_TOOL_POLICIES,
   ...LIFE_TOOL_POLICIES,
   ...EXTERNAL_TOOL_POLICIES,
+  ...CREATIVE_TOOL_POLICIES,
 ]
 
 function buildRegistry(): Map<string, RegisteredTool> {

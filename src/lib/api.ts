@@ -177,3 +177,14 @@ export const coupons = {
   void: (id: string, actor: string) => post('/api/coupons', { action: 'void', id, actor }),
   confirmVoid: (id: string, actor: string) => post('/api/coupons', { action: 'confirm_void', id, actor }),
 }
+
+export const poems = {
+  list: (includeArchived = false) => get(`/api/poems${includeArchived ? '?archived=1' : ''}`),
+  get: (id: string) => get(`/api/poems?id=${encodeURIComponent(id)}`),
+  act: (action: string, data: Record<string, unknown> = {}) => post('/api/poems', { action, ...data }),
+}
+
+export const intimacyWheel = {
+  get: () => get('/api/intimacy-wheel'),
+  act: (action: string, data: Record<string, unknown> = {}) => post('/api/intimacy-wheel', { action, ...data }),
+}
