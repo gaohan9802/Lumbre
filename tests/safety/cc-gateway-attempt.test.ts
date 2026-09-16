@@ -442,6 +442,37 @@ setTimeout(() => {
   }
 })
 
+test('Claude executor times out only after inactivity, not total generation time', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-idle-timeout-'))
+  try {
+    const binary = path.join(root, 'fake-claude')
+    writeFileSync(binary, `#!/usr/bin/env node
+let chunks = 1
+console.log(JSON.stringify({ type: 'stream_event', event: { delta: { type: 'text_delta', text: '1' } } }))
+const timer = setInterval(() => {
+  chunks++
+  console.log(JSON.stringify({ type: 'stream_event', event: { delta: { type: 'text_delta', text: String(chunks) } } }))
+  if (chunks === 3) {
+    clearInterval(timer)
+    console.log(JSON.stringify({ type: 'result', result: '123', session_id: '550e8400-e29b-41d4-a716-446655440000', usage: { output_tokens: 3 } }))
+  }
+}, 180)
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+    const executor = new ClaudeExecutor({
+      binary, workspace: root, timeoutMs: 300,
+      env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
+    })
+    const result: any = await executor.run({
+      prompt: 'hello', model: 'sonnet', resumeSessionId: '550e8400-e29b-41d4-a716-446655440000',
+    })
+    assert.equal(result.text, '123')
+    assert.equal(result.sessionId, '550e8400-e29b-41d4-a716-446655440000')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('Claude executor cache warm loads the normal tool schema in deny-call mode', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-tools-warm-'))
   try {

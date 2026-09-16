@@ -245,6 +245,7 @@ export class ClaudeExecutor {
         let bytes
         try { bytes = fs.readFileSync(toolEventFile) } catch { return }
         if (bytes.length > toolEventOffset) {
+          refreshTimeout()
           toolEventBuffer += toolEventDecoder.write(bytes.subarray(toolEventOffset))
           toolEventOffset = bytes.length
         }
@@ -283,6 +284,13 @@ export class ClaudeExecutor {
         }
       }
 
+      const refreshTimeout = () => {
+        if (settled || stoppedFor) return
+        clearTimeout(timeout)
+        timeout = setTimeout(() => stop('timeout'), this.timeoutMs)
+        timeout.unref()
+      }
+
       const parseLine = line => {
         if (!line.trim()) return
         let event
@@ -305,8 +313,7 @@ export class ClaudeExecutor {
       if (signal?.aborted) abort()
       else signal?.addEventListener('abort', abort, { once: true })
 
-      timeout = setTimeout(() => stop('timeout'), this.timeoutMs)
-      timeout.unref()
+      refreshTimeout()
       if (toolEventFile) {
         toolEventTimer = setInterval(drainToolEvents, 100)
         toolEventTimer.unref()
@@ -314,6 +321,7 @@ export class ClaudeExecutor {
 
       child.stdout.setEncoding('utf8')
       child.stdout.on('data', chunk => {
+        refreshTimeout()
         totalBytes += Buffer.byteLength(chunk)
         if (totalBytes > this.maxOutputBytes) return stop('output_limit')
         stdoutBuffer += chunk
