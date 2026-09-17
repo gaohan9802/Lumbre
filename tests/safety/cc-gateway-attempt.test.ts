@@ -212,7 +212,9 @@ test('explicit cancellation aborts the running child and records cancelled', asy
       ledger,
       executor: { run: ({ signal }: any) => new Promise((_resolve, reject) => {
         started.resolve()
-        signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { code: 'cancelled' })), { once: true })
+        signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), {
+          code: 'cancelled', resumeSafe: true,
+        })), { once: true })
       }) },
     })
     const submitted = runtime.submit(fixtureInput())
@@ -221,6 +223,7 @@ test('explicit cancellation aborts the running child and records cancelled', asy
     assert.equal(requested?.cancelRequested, true)
     await runtime.waitForIdle()
     assert.equal(runtime.get(submitted.attempt!.id)?.status, 'cancelled')
+    assert.equal(ledger.get(submitted.attempt!.id)?.resumeSafe, true)
     assert.equal(runtime.getEvents(submitted.attempt!.id)?.at(-1)?.type, 'cancelled')
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -281,18 +284,34 @@ test('cache warm forks the latest session with matching tool schema and returns 
   }
 })
 
-test('restart fails an orphaned running task and keeps queued work recoverable', () => {
+test('restart restores an interrupted transcript and keeps queued work recoverable', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-restart-'))
   try {
     const first = new AttemptLedger(root)
-    const running = first.createOrGet(fixtureInput()).attempt
-    first.markRunning(running.id)
+    const sessionId = '550e8400-e29b-41d4-a716-446655440000'
+    const checkpoint = { path: '/fixture/transcript.jsonl', size: 42, offset: 0, tailHash: 'fixture' }
+    const running = first.createOrGet(fixtureInput({ resumeSessionId: sessionId })).attempt
+    first.markRunning(running.id, checkpoint)
     const queued = first.createOrGet(fixtureInput({ idempotencyKey: 'turn:conversation-1:message-2' })).attempt
 
     const afterRestart = new AttemptLedger(root)
-    assert.deepEqual(afterRestart.recoverInterrupted(), [queued.id])
+    const runtime = new GatewayRuntime({
+      ledger: afterRestart,
+      executor: {
+        restoreSession: (actualSessionId: string, actualCheckpoint: unknown) => {
+          assert.equal(actualSessionId, sessionId)
+          assert.deepEqual(actualCheckpoint, checkpoint)
+          return true
+        },
+        run: async () => ({ text: 'recovered queue', sessionId }),
+      },
+    })
+    runtime.recover()
+    await runtime.waitForIdle()
     assert.equal(afterRestart.get(running.id)?.status, 'failed')
     assert.equal(afterRestart.get(running.id)?.error?.code, 'gateway_restarted')
+    assert.equal(afterRestart.get(running.id)?.error?.resumeSafe, true)
+    assert.equal(afterRestart.get(queued.id)?.status, 'completed')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

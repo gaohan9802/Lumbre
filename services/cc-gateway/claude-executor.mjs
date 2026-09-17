@@ -193,6 +193,14 @@ export class ClaudeExecutor {
     if (this.toolBridgeEnabled) fs.mkdirSync(this.toolEventsDir, { recursive: true, mode: 0o700 })
   }
 
+  checkpointSession(sessionId) {
+    return transcriptSnapshot(this.env.HOME, sessionId)
+  }
+
+  restoreSession(sessionId, checkpoint) {
+    return restoreTranscript(this.env.HOME, sessionId, checkpoint)
+  }
+
   /**
    * @param {{
    *   prompt: string,

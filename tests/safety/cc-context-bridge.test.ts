@@ -270,6 +270,22 @@ test('a failed attempt resumes the same session after its transcript was restore
     assert.equal(next.sessionPlan.mode, 'resume')
     assert.equal(next.sessionPlan.reason, 'ordinary_delta')
     assert.equal(next.resumeSessionId, sessionId)
+
+    const cancelled = ledger.createOrGet({
+      idempotencyKey: 'turn-3', conversationId: 'conversation-1', model: 'sonnet', ...next,
+    }).attempt
+    ledger.markRunning(cancelled.id)
+    ledger.markCancelled(cancelled.id, { resumeSafe: true })
+    const afterCancel = bridge.prepare({
+      conversationId: 'conversation-1',
+      context: context([
+        { id: 'u1', role: 'user', route: 'claude-code', content: 'original' },
+        { id: 'a1', role: 'assistant', route: 'claude-code', ccAttemptId: first.attempt.id, content: 'first answer' },
+        { id: 'u4', role: 'user', route: 'claude-code', content: 'continue after stop' },
+      ]),
+    })
+    assert.equal(afterCancel.sessionPlan.mode, 'resume')
+    assert.equal(afterCancel.resumeSessionId, sessionId)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 

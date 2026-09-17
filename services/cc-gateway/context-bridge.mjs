@@ -139,7 +139,7 @@ export class ContextBridge {
     const base = latestCompletedIndex >= 0 ? attempts[latestCompletedIndex] : null
     const laterUnsafeAttempt = latestCompletedIndex >= 0
       ? attempts.slice(latestCompletedIndex + 1).some(attempt => (
-        attempt.status === 'cancelled'
+        (attempt.status === 'cancelled' && attempt.resumeSafe !== true)
         || (attempt.status === 'failed' && attempt.error?.resumeSafe !== true)
       ))
       : false

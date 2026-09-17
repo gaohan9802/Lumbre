@@ -180,12 +180,13 @@ export class AttemptLedger {
     return event
   }
 
-  markRunning(id) {
+  markRunning(id, transcriptCheckpoint = /** @type {Record<string, any> | null} */ (null)) {
     return this.update(id, attempt => {
       if (attempt.status !== 'queued') throw new Error('Only queued attempts can start')
       attempt.status = 'running'
       attempt.startedAt = nowIso(this.clock)
       attempt.error = null
+      attempt.transcriptCheckpoint = transcriptCheckpoint
       this.appendEvent(attempt, 'running')
       return attempt
     })
@@ -240,6 +241,7 @@ export class AttemptLedger {
       attempt.prompt = null
       attempt.result = result
       attempt.error = null
+      attempt.transcriptCheckpoint = null
       this.appendEvent(attempt, 'completed', { usage: result.usage || null })
       return attempt
     })
@@ -252,6 +254,7 @@ export class AttemptLedger {
       attempt.completedAt = nowIso(this.clock)
       attempt.prompt = null
       attempt.result = null
+      attempt.transcriptCheckpoint = null
       attempt.error = {
         code: error.code || 'cc_failed',
         message: error.message || 'Claude Code request failed',
@@ -262,7 +265,7 @@ export class AttemptLedger {
     })
   }
 
-  markCancelled(id) {
+  markCancelled(id, { resumeSafe = false } = {}) {
     return this.update(id, attempt => {
       if (TERMINAL_STATUSES.has(attempt.status)) return attempt
       attempt.status = 'cancelled'
@@ -271,6 +274,8 @@ export class AttemptLedger {
       attempt.prompt = null
       attempt.result = null
       attempt.error = null
+      attempt.resumeSafe = resumeSafe === true
+      attempt.transcriptCheckpoint = null
       this.appendEvent(attempt, 'cancelled')
       return attempt
     })
@@ -282,11 +287,18 @@ export class AttemptLedger {
     return attempt.events.filter(event => event.id > after).map(publicEvent)
   }
 
-  recoverInterrupted() {
+  recoverInterrupted(restoreSession = null) {
     const queued = []
     for (const attempt of this.list()) {
       if (attempt.status === 'running') {
-        this.markFailed(attempt.id, { code: 'gateway_restarted', message: 'CC gateway restarted before completion' })
+        let resumeSafe = false
+        try { resumeSafe = restoreSession?.(attempt) === true }
+        catch {}
+        this.markFailed(attempt.id, {
+          code: 'gateway_restarted',
+          message: 'CC gateway restarted before completion',
+          resumeSafe,
+        })
       } else if (attempt.status === 'queued') queued.push(attempt.id)
     }
     return queued

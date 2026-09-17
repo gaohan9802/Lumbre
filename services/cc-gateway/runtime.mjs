@@ -103,7 +103,11 @@ export class GatewayRuntime {
   }
 
   recover() {
-    for (const id of this.ledger.recoverInterrupted()) this.schedule(id)
+    const queued = this.ledger.recoverInterrupted(attempt => (
+      !!attempt.resumeSessionId
+      && this.executor.restoreSession?.(attempt.resumeSessionId, attempt.transcriptCheckpoint) === true
+    ))
+    for (const id of queued) this.schedule(id)
   }
 
   submit(input) {
@@ -173,7 +177,11 @@ export class GatewayRuntime {
   }
 
   async runAttempt(id) {
-    const running = this.ledger.markRunning(id)
+    const queued = this.ledger.get(id)
+    const checkpoint = queued?.resumeSessionId
+      ? this.executor.checkpointSession?.(queued.resumeSessionId) || null
+      : null
+    const running = this.ledger.markRunning(id, checkpoint)
     this.emitLatest(running)
     const controller = new AbortController()
     this.controllers.set(id, controller)
@@ -211,7 +219,7 @@ export class GatewayRuntime {
     } catch (error) {
       const latest = this.ledger.get(id)
       if (controller.signal.aborted || latest?.cancelRequested || error?.code === 'cancelled') {
-        const cancelled = this.ledger.markCancelled(id)
+        const cancelled = this.ledger.markCancelled(id, { resumeSafe: error?.resumeSafe === true })
         this.emitLatest(cancelled)
       } else {
         const failed = this.ledger.markFailed(id, {
@@ -234,7 +242,7 @@ export class GatewayRuntime {
     const requested = this.ledger.requestCancel(id)
     this.emitLatest(requested)
     if (requested.status === 'queued') {
-      const cancelled = this.ledger.markCancelled(id)
+      const cancelled = this.ledger.markCancelled(id, { resumeSafe: true })
       this.emitLatest(cancelled)
       return publicAttempt(cancelled)
     }
