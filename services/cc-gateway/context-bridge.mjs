@@ -138,7 +138,10 @@ export class ContextBridge {
     const latestCompletedIndex = attempts.findLastIndex(attempt => attempt.status === 'completed' && attempt.result?.sessionId)
     const base = latestCompletedIndex >= 0 ? attempts[latestCompletedIndex] : null
     const laterUnsafeAttempt = latestCompletedIndex >= 0
-      ? attempts.slice(latestCompletedIndex + 1).some(attempt => ['failed', 'cancelled'].includes(attempt.status))
+      ? attempts.slice(latestCompletedIndex + 1).some(attempt => (
+        attempt.status === 'cancelled'
+        || (attempt.status === 'failed' && attempt.error?.resumeSafe !== true)
+      ))
       : false
 
     let mode = 'bootstrap'

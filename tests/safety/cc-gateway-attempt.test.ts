@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -222,6 +222,29 @@ test('explicit cancellation aborts the running child and records cancelled', asy
     await runtime.waitForIdle()
     assert.equal(runtime.get(submitted.attempt!.id)?.status, 'cancelled')
     assert.equal(runtime.getEvents(submitted.attempt!.id)?.at(-1)?.type, 'cancelled')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('runtime records whether a failed attempt can safely resume', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-safe-failure-'))
+  try {
+    const ledger = new AttemptLedger(root)
+    const runtime = new GatewayRuntime({
+      ledger,
+      executor: { run: async () => {
+        throw Object.assign(new Error('private failure'), {
+          code: 'exit_1', safeMessage: 'Claude Code request failed', resumeSafe: true,
+        })
+      } },
+    })
+    const submitted = runtime.submit(fixtureInput())
+    await runtime.waitForIdle()
+    assert.equal(runtime.get(submitted.attempt!.id)?.status, 'failed')
+    assert.deepEqual(runtime.get(submitted.attempt!.id)?.error, {
+      code: 'exit_1', message: 'Claude Code request failed', resumeSafe: true,
+    })
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -468,6 +491,37 @@ const timer = setInterval(() => {
     })
     assert.equal(result.text, '123')
     assert.equal(result.sessionId, '550e8400-e29b-41d4-a716-446655440000')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Claude executor rolls back a failed resumed turn so the session remains reusable', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-failed-resume-'))
+  try {
+    const sessionId = '550e8400-e29b-41d4-a716-446655440000'
+    const transcriptDir = path.join(root, '.claude', 'projects', 'fixture')
+    const transcript = path.join(transcriptDir, `${sessionId}.jsonl`)
+    const original = '{"type":"assistant","message":"kept"}\n'
+    mkdirSync(transcriptDir, { recursive: true })
+    writeFileSync(transcript, original)
+    const binary = path.join(root, 'fake-claude')
+    writeFileSync(binary, `#!/usr/bin/env node
+const fs = require('node:fs')
+fs.appendFileSync(${JSON.stringify(transcript)}, '{"type":"user","message":"failed turn"}\\n')
+console.log(JSON.stringify({ type: 'stream_event', event: { delta: { type: 'text_delta', text: 'partial' } } }))
+process.exit(1)
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+    const executor = new ClaudeExecutor({
+      binary, workspace: root,
+      env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
+    })
+    await assert.rejects(
+      executor.run({ prompt: 'hello', model: 'sonnet', resumeSessionId: sessionId }),
+      (error: any) => error?.code === 'exit_1' && error?.resumeSafe === true,
+    )
+    assert.equal(readFileSync(transcript, 'utf8'), original)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

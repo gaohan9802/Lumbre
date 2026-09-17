@@ -252,7 +252,11 @@ export class AttemptLedger {
       attempt.completedAt = nowIso(this.clock)
       attempt.prompt = null
       attempt.result = null
-      attempt.error = { code: error.code || 'cc_failed', message: error.message || 'Claude Code request failed' }
+      attempt.error = {
+        code: error.code || 'cc_failed',
+        message: error.message || 'Claude Code request failed',
+        resumeSafe: error.resumeSafe === true,
+      }
       this.appendEvent(attempt, 'failed', { error: attempt.error })
       return attempt
     })

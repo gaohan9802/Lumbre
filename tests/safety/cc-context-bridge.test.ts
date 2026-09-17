@@ -234,6 +234,45 @@ test('edited overlap or an incomplete resume creates a recorded fresh generation
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
+test('a failed attempt resumes the same session after its transcript was restored', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-safe-failure-'))
+  try {
+    const ledger = new AttemptLedger(root)
+    const bridge = new ContextBridge(ledger)
+    const sessionId = '550e8400-e29b-41d4-a716-446655440000'
+    const first = complete(ledger, bridge, {
+      idempotencyKey: 'turn-1', conversationId: 'conversation-1', model: 'sonnet',
+      context: context([{ id: 'u1', role: 'user', route: 'claude-code', content: 'original' }]),
+    }, sessionId)
+    const failedPrepared = bridge.prepare({
+      conversationId: 'conversation-1',
+      context: context([
+        { id: 'u1', role: 'user', route: 'claude-code', content: 'original' },
+        { id: 'a1', role: 'assistant', route: 'claude-code', ccAttemptId: first.attempt.id, content: 'first answer' },
+        { id: 'u2', role: 'user', route: 'claude-code', content: 'failed turn' },
+      ]),
+    })
+    const failed = ledger.createOrGet({
+      idempotencyKey: 'turn-2', conversationId: 'conversation-1', model: 'sonnet', ...failedPrepared,
+    }).attempt
+    ledger.markRunning(failed.id)
+    ledger.markFailed(failed.id, { code: 'exit_1', message: 'request failed', resumeSafe: true })
+
+    const next = bridge.prepare({
+      conversationId: 'conversation-1',
+      context: context([
+        { id: 'u1', role: 'user', route: 'claude-code', content: 'original' },
+        { id: 'a1', role: 'assistant', route: 'claude-code', ccAttemptId: first.attempt.id, content: 'first answer' },
+        { id: 'u2', role: 'user', route: 'claude-code', content: 'failed turn' },
+        { id: 'u3', role: 'user', route: 'claude-code', content: 'continue safely' },
+      ]),
+    })
+    assert.equal(next.sessionPlan.mode, 'resume')
+    assert.equal(next.sessionPlan.reason, 'ordinary_delta')
+    assert.equal(next.resumeSessionId, sessionId)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
 test('resume refuses duplicate ids and contexts that do not end in a user turn', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-invalid-'))
   try {

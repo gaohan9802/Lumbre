@@ -217,6 +217,7 @@ export class GatewayRuntime {
         const failed = this.ledger.markFailed(id, {
           code: error?.code || 'cc_failed',
           message: error?.safeMessage || 'Claude Code request failed',
+          resumeSafe: error?.resumeSafe === true,
         })
         this.emitLatest(failed)
       }

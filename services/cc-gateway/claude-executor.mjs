@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
@@ -22,6 +22,7 @@ export class ClaudeExecutionError extends Error {
 }
 
 const TRANSCRIPT_SCAN_LIMIT_BYTES = 16 * 1024 * 1024
+const TRANSCRIPT_ROLLBACK_CHECK_BYTES = 64 * 1024
 const ATTEMPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CONVERSATION_ID = /^[A-Za-z0-9._:-]{1,160}$/
 const LUMBRE_MCP_CONFIG = JSON.stringify({ mcpServers: {
@@ -57,8 +58,39 @@ function findTranscript(home, sessionId) {
 function transcriptSnapshot(home, sessionId) {
   const transcriptPath = findTranscript(home, sessionId)
   if (!transcriptPath) return null
-  try { return { path: transcriptPath, size: fs.statSync(transcriptPath).size } }
+  try {
+    const size = fs.statSync(transcriptPath).size
+    const offset = Math.max(0, size - TRANSCRIPT_ROLLBACK_CHECK_BYTES)
+    const length = size - offset
+    const buffer = Buffer.alloc(length)
+    const handle = fs.openSync(transcriptPath, 'r')
+    try {
+      if (fs.readSync(handle, buffer, 0, length, offset) !== length) throw new Error('short transcript read')
+    }
+    finally { fs.closeSync(handle) }
+    return { path: transcriptPath, size, offset, tailHash: createHash('sha256').update(buffer).digest('hex') }
+  }
   catch { return null }
+}
+
+function restoreTranscript(home, sessionId, before) {
+  if (!before) return false
+  const transcriptPath = findTranscript(home, sessionId)
+  if (transcriptPath !== before.path) return false
+  try {
+    const size = fs.statSync(transcriptPath).size
+    if (size < before.size) return false
+    const length = before.size - before.offset
+    const buffer = Buffer.alloc(length)
+    const handle = fs.openSync(transcriptPath, 'r')
+    try {
+      if (fs.readSync(handle, buffer, 0, length, before.offset) !== length) throw new Error('short transcript read')
+    }
+    finally { fs.closeSync(handle) }
+    if (createHash('sha256').update(buffer).digest('hex') !== before.tailHash) return false
+    if (size > before.size) fs.truncateSync(transcriptPath, before.size)
+    return true
+  } catch { return false }
 }
 
 function isCompactBoundary(value) {
@@ -271,7 +303,11 @@ export class ClaudeExecutor {
         signal?.removeEventListener('abort', abort)
         drainToolEvents(true)
         if (toolEventFile) try { fs.unlinkSync(toolEventFile) } catch {}
-        if (error) reject(error)
+        if (error) {
+          error.resumeSafe = !!resumeSessionId && !forkSession
+            && restoreTranscript(this.env.HOME, resumeSessionId, transcriptBefore)
+          reject(error)
+        }
         else resolve(result)
       }
 
