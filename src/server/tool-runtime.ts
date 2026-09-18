@@ -34,12 +34,14 @@ import { scheduleWake } from './autowake'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
 import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
-import { executeSafeFetch } from './agent/tools/web-fetch'
+import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
 import { getUserContext as readUserContext } from './agent/tools/user-context'
 import type { ToolCallContext } from './agent/context'
 import { loadSyncSessions } from './chat-sync'
 import { appendPoemLine, createPoem, deletePoem, deletePoemLine, editPoemLine, getPoem, listPoems, updatePoem } from './poem-store'
 import { addWheelOption, deleteWheelOption, editWheelOption, readWheel, spinWheel } from './intimacy-wheel-store'
+import { appendStorySection, createStory, deleteStory, getStory, listStories, updateStory, updateStorySection } from './story-store'
+import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -431,6 +433,76 @@ export async function executeRegisteredToolHandler(
         if (input.action === 'delete') return JSON.stringify({ ok: deletePoem(input.id) })
         throw new Error('未知共诗操作')
       }
+
+      case 'read_stories': {
+        if (!input.id) {
+          const stories = listStories().filter(story => (!input.shelf || story.shelf === input.shelf) && (!input.status || story.status === input.status))
+          return JSON.stringify(stories)
+        }
+        const story = getStory(input.id)
+        if (input.section_id) {
+          const section = story.sections.find(item => item.id === input.section_id)
+          if (!section) throw new Error('故事段落不存在')
+          return JSON.stringify({ story_id: story.id, title: story.title, section })
+        }
+        return JSON.stringify({
+          id: story.id, title: story.title, shelf: story.shelf, status: story.status, created_at: story.created_at, updated_at: story.updated_at,
+          sections: story.sections.map(section => ({ id: section.id, chars: section.text.length, preview: section.text.slice(0, 160), updated_at: section.updated_at })),
+        })
+      }
+      case 'write_story': {
+        if (input.action === 'create') {
+          if (!input.story_key) throw new Error('create 需要稳定的 story_key')
+          const story = createStory(input.title, input.shelf, input.story_key)
+          return JSON.stringify({ ok: true, id: story.id, title: story.title, shelf: story.shelf, status: story.status })
+        }
+        if (input.action === 'append') {
+          if (!input.chunk_key) throw new Error('append 需要稳定的 chunk_key')
+          const { story, section, deduplicated } = appendStorySection(input.id, input.text, input.chunk_key)
+          return JSON.stringify({ ok: true, id: story.id, section_id: section.id, saved_chars: section.text.length, section_count: story.sections.length, status: story.status, deduplicated })
+        }
+        if (input.action === 'replace_section') {
+          const story = updateStorySection(input.id, input.section_id, input.text)
+          return JSON.stringify({ ok: true, id: story.id, section_id: input.section_id, status: story.status })
+        }
+        if (input.action === 'rename') {
+          const story = updateStory(input.id, { title: input.title })
+          return JSON.stringify({ ok: true, id: story.id, title: story.title })
+        }
+        if (input.action === 'move') {
+          const story = updateStory(input.id, { shelf: input.shelf })
+          return JSON.stringify({ ok: true, id: story.id, shelf: story.shelf })
+        }
+        if (input.action === 'finish') {
+          const story = updateStory(input.id, { status: 'complete' })
+          return JSON.stringify({ ok: true, id: story.id, status: story.status, section_count: story.sections.length })
+        }
+        if (input.action === 'delete') return JSON.stringify({ ok: deleteStory(input.id) })
+        throw new Error('未知故事操作')
+      }
+
+      case 'read_research': return JSON.stringify(input.topic_id
+        ? readResearchTopic(input.topic_id, input.offset, input.limit)
+        : researchOverview())
+      case 'write_research': {
+        const entity = input.entity as ResearchEntity
+        if (!['field', 'tag', 'topic', 'entry'].includes(entity)) throw new Error('未知研究条目类型')
+        if (input.action === 'create') {
+          if (!input.operation_key) throw new Error('create 需要稳定的 operation_key')
+          const item = createResearch(entity, input)
+          return JSON.stringify({ ok: true, entity, id: item.id, updated_at: item.updated_at })
+        }
+        if (!input.id) throw new Error('缺少研究条目 id')
+        if (input.action === 'update') {
+          const item = updateResearch(entity, input.id, input)
+          return JSON.stringify({ ok: true, entity, id: item.id, updated_at: item.updated_at })
+        }
+        if (input.action === 'archive' || input.action === 'restore') {
+          const item = setResearchArchived(entity, input.id, input.action === 'archive')
+          return JSON.stringify({ ok: true, entity, id: item.id, archived: item.archived })
+        }
+        throw new Error('未知研究操作')
+      }
       case 'read_intimacy_wheel': return JSON.stringify(readWheel())
       case 'update_intimacy_wheel': {
         if (input.action === 'spin') return JSON.stringify({ ok: true, spin: spinWheel('star', input.pool_ids) })
@@ -456,6 +528,8 @@ export async function executeRegisteredToolHandler(
       }
 
       // Web fetch
+      case 'search_web':
+        return await executeWebSearch(input.query, input.limit)
       case 'fetch_txt':
       case 'fetch_markdown':
       case 'fetch_html':

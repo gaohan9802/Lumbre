@@ -10,6 +10,8 @@ import { madridCalendarDayDiff, madridDateKey } from '@/lib/madrid-time'
 const tabs = [
   { id: 'chat' as const, label: '星星', image: '/directory/chat.jpg' },
   { id: 'poems' as const, label: '共诗', image: '/directory/poems.svg' },
+  { id: 'stories' as const, label: '枕边集', image: '/directory/stories.svg' },
+  { id: 'research' as const, label: '星野手记', image: '/directory/research.svg' },
   { id: 'timeline' as const, label: 'Timeline', image: '/directory/timeline.jpg' },
   { id: 'diary' as const, label: '日记', image: '/directory/diary.jpg' },
   { id: 'notes' as const, label: '小纸条', image: '/directory/notes.jpg' },

@@ -36,7 +36,8 @@ export function toolResultText(name: string, result: string): string {
     } catch {}
     return result.replace(REDACTED_CONFIRMATION_TOKEN, '').slice(0, 2000)
   }
-  if (['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'].includes(name)) return result.slice(0, 6000)
+  if (['search_web', 'fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'].includes(name)) return result.slice(0, 6000)
+  if (name === 'read_stories' || name === 'read_research') return result.slice(0, 14000)
   if (name === 'read_emails' || name === 'search_emails') return result.slice(0, 8000)
   if (name === 'read_email_detail') return result.slice(0, 14000)
   if (name === 'gmail_status') return result.slice(0, 2000)

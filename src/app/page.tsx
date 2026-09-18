@@ -35,10 +35,14 @@ const PhotosView = dynamic(() => import('@/components/photos/PhotosView').then(m
 const MemoryView = dynamic(() => import('@/components/memory/MemoryView').then(m => m.MemoryView), { loading: ViewLoading, ssr: false })
 const DreamsView = dynamic(() => import('@/components/dreams/DreamsView').then(m => m.DreamsView), { loading: ViewLoading, ssr: false })
 const PoemsView = dynamic(() => import('@/components/poems/PoemsView').then(m => m.PoemsView), { loading: ViewLoading, ssr: false })
+const StoriesView = dynamic(() => import('@/components/stories/StoriesView').then(m => m.StoriesView), { loading: ViewLoading, ssr: false })
+const ResearchView = dynamic(() => import('@/components/research/ResearchView').then(m => m.ResearchView), { loading: ViewLoading, ssr: false })
 
 const views = {
   chat: ChatView,
   poems: PoemsView,
+  stories: StoriesView,
+  research: ResearchView,
   timeline: TimelineHubView,
   diary: DiaryView,
   notes: NotesView,

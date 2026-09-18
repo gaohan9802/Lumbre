@@ -184,6 +184,17 @@ export const poems = {
   act: (action: string, data: Record<string, unknown> = {}) => post('/api/poems', { action, ...data }),
 }
 
+export const stories = {
+  list: () => get('/api/stories'),
+  get: (id: string) => get(`/api/stories?id=${encodeURIComponent(id)}`),
+  act: (action: string, data: Record<string, unknown> = {}) => post('/api/stories', { action, ...data }),
+}
+
+export const research = {
+  overview: () => get('/api/research'),
+  topic: (id: string, offset = 0) => get(`/api/research?topic_id=${encodeURIComponent(id)}&offset=${offset}`),
+}
+
 export const intimacyWheel = {
   get: () => get('/api/intimacy-wheel'),
   act: (action: string, data: Record<string, unknown> = {}) => post('/api/intimacy-wheel', { action, ...data }),

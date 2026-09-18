@@ -12,4 +12,11 @@ export const CREATIVE_TOOL_POLICIES: ToolPolicySpec[] = [
     name: 'update_intimacy_wheel', domain: 'intimacy-wheel', level: 'yellow', allowedSources: CHAT_SOURCES,
     resolveLevel: input => input.action === 'delete' ? 'red' : 'yellow',
   },
+  { name: 'read_stories', domain: 'stories', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  {
+    name: 'write_story', domain: 'stories', level: 'yellow', allowedSources: CHAT_SOURCES,
+    resolveLevel: input => input.action === 'delete' ? 'red' : 'yellow',
+  },
+  { name: 'read_research', domain: 'research', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'write_research', domain: 'research', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
 ]

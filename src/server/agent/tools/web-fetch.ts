@@ -80,6 +80,13 @@ function safeHeaders(headers?: Record<string, string>): Record<string, string> {
   return result
 }
 
+function decodeEntities(value: string): string {
+  return value
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+}
+
 async function readBoundedBody(response: Response): Promise<string> {
   const length = Number(response.headers.get('content-length') || 0)
   if (length > MAX_RESPONSE_BYTES) throw new Error('响应体超过 512KB 限制')
@@ -124,8 +131,7 @@ function htmlToMarkdown(html: string): string {
   return htmlToText(value)
 }
 
-export async function executeSafeFetch(tool: string, rawUrl: string, headers?: Record<string, string>): Promise<string> {
-  if (!rawUrl) return '请提供合法的 http(s) URL'
+async function fetchPublic(rawUrl: string, headers?: Record<string, string>) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {
@@ -141,18 +147,56 @@ export async function executeSafeFetch(tool: string, rawUrl: string, headers?: R
       url = await assertPublicHttpUrl(new URL(location, url).toString())
     }
     if (!response) throw new Error('没有收到响应')
-    const raw = await readBoundedBody(response)
+    return { status: response.status, url, raw: await readBoundedBody(response) }
+  } finally { clearTimeout(timer) }
+}
+
+export async function executeSafeFetch(tool: string, rawUrl: string, headers?: Record<string, string>): Promise<string> {
+  if (!rawUrl) return '请提供合法的 http(s) URL'
+  try {
+    const { status, url, raw } = await fetchPublic(rawUrl, headers)
     let output: string
     if (tool === 'fetch_json') {
-      try { output = JSON.stringify(JSON.parse(raw)) } catch { return `HTTP ${response.status}: 返回的不是合法 JSON` }
+      try { output = JSON.stringify(JSON.parse(raw)) } catch { return `HTTP ${status}: 返回的不是合法 JSON` }
     } else if (tool === 'fetch_txt') output = htmlToText(raw)
     else if (tool === 'fetch_markdown') output = htmlToMarkdown(raw)
     else output = raw
-    const result = `HTTP ${response.status} · ${url.toString()}\n\n${output}`
+    const result = `HTTP ${status} · ${url.toString()}\n\n${output}`
     return result.length > OUTPUT_CAP ? `${result.slice(0, OUTPUT_CAP)}\n…(truncated)` : result
   } catch (error: any) {
     return `Fetch error: ${error?.name === 'AbortError' ? '请求超时' : error?.message || String(error)}`
-  } finally {
-    clearTimeout(timer)
+  }
+}
+
+export function parseSearchResults(raw: string, limit: number) {
+  const matches = Array.from(raw.matchAll(/<a[^>]*class=["'][^"']*\bresult__a\b[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi))
+  return matches.slice(0, limit).flatMap((match, index) => {
+      try {
+        const rawHref = decodeEntities(match[1])
+        const redirect = new URL(rawHref, 'https://duckduckgo.com')
+        const target = redirect.hostname.endsWith('duckduckgo.com') && redirect.pathname === '/l/'
+          ? redirect.searchParams.get('uddg') || '' : redirect.toString()
+        const url = new URL(target)
+        if (!['http:', 'https:'].includes(url.protocol)) return []
+        const end = matches[index + 1]?.index || Math.min(raw.length, (match.index || 0) + 5000)
+        const block = raw.slice((match.index || 0) + match[0].length, end)
+        const snippetMatch = block.match(/class=["'][^"']*\bresult__snippet\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div)>/i)
+        return [{ title: htmlToText(decodeEntities(match[2])), url: url.toString(), snippet: snippetMatch ? htmlToText(decodeEntities(snippetMatch[1])) : '' }]
+      } catch { return [] }
+  })
+}
+
+export async function executeWebSearch(queryValue: unknown, limitValue: unknown = 6): Promise<string> {
+  const query = String(queryValue || '').trim().slice(0, 500)
+  if (!query) return JSON.stringify({ error: '请提供搜索关键词' })
+  const limit = Math.max(1, Math.min(10, Math.floor(Number(limitValue) || 6)))
+  try {
+    const { status, raw } = await fetchPublic(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=wt-wt&kp=-1`, {
+      Accept: 'text/html', 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.7',
+    })
+    if (status < 200 || status >= 300) return JSON.stringify({ error: `搜索服务返回 HTTP ${status}` })
+    return JSON.stringify({ engine: 'duckduckgo', query, results: parseSearchResults(raw, limit) })
+  } catch (error: any) {
+    return JSON.stringify({ error: error?.name === 'AbortError' ? '搜索超时' : error?.message || String(error) })
   }
 }

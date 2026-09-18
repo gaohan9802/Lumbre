@@ -20,6 +20,8 @@ export type ToolDomain =
   | 'coupons'
   | 'poems'
   | 'intimacy-wheel'
+  | 'stories'
+  | 'research'
 
 export interface ToolDef {
   name: string

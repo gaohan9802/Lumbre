@@ -9,6 +9,7 @@ export const EXTERNAL_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'read_email_detail', domain: 'mail', level: 'green', allowedSources: CHAT_SOURCES },
   { name: 'reply_email', domain: 'mail', level: 'red', allowedSources: CHAT_SOURCES, confirmationLabel: '回复邮件' },
 
+  { name: 'search_web', domain: 'web', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'fetch_txt', domain: 'web', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'fetch_markdown', domain: 'web', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'fetch_html', domain: 'web', level: 'green', allowedSources: ALL_SAFE_SOURCES },

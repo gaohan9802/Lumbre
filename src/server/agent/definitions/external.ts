@@ -106,6 +106,18 @@ export const EXTERNAL_TOOL_DEFINITIONS = [
     }
   },
   {
+    "name": "search_web",
+    "description": "搜索互联网并返回标题、链接和摘要。先用它查找资料，再用 fetch_txt 或 fetch_markdown 打开需要细读的结果。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string", "description": "搜索关键词，支持 site:、引号等 DuckDuckGo 搜索语法" },
+        "limit": { "type": "integer", "description": "结果数，默认6，最多10" }
+      },
+      "required": ["query"]
+    }
+  },
+  {
     "name": "fetch_txt",
     "description": "抓取一个网页并返回纯文本(去除HTML)。用于上网查资料。",
     "input_schema": {

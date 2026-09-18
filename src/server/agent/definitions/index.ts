@@ -24,13 +24,14 @@ const TOOL_ORDER = [
   'read_thesis', 'comment_thesis',
   'view_wish', 'write_wish', 'edit_wish', 'delete_wish', 'like_wish', 'comment_wish',
   'wake_me',
-  'fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json',
+  'search_web', 'fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json',
   'get_weather', 'get_location',
   'update_period', 'read_period',
   'gmail_status', 'send_email', 'read_emails', 'search_emails', 'read_email_detail', 'reply_email',
   'read_bookmarks', 'add_bookmark', 'edit_bookmark',
   'read_coupons', 'create_coupon', 'sign_coupon', 'edit_coupon', 'use_coupon', 'void_coupon', 'confirm_void_coupon',
   'read_poems', 'write_poem', 'read_intimacy_wheel', 'update_intimacy_wheel',
+  'read_stories', 'write_story', 'read_research', 'write_research',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

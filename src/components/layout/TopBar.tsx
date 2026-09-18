@@ -14,6 +14,9 @@ export function TopBar() {
 
   const titles: Record<string, string> = {
     chat: '🐆 星星',
+    poems: '🪶 共诗',
+    stories: '🌙 枕边集',
+    research: '🔭 星野手记',
     timeline: '⏱️ Timeline',
     diary: '📔 日记',
     notes: '📌 小纸条',

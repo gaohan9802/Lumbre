@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1036 275">
+  <defs><linearGradient id="field" x1="0" x2="1"><stop stop-color="#24464a"/><stop offset=".58" stop-color="#4c6f6a"/><stop offset="1" stop-color="#9b9974"/></linearGradient></defs>
+  <rect width="1036" height="275" fill="url(#field)"/><g fill="#fff8d5"><circle cx="792" cy="61" r="5"/><circle cx="886" cy="42" r="4"/><circle cx="956" cy="82" r="6"/><circle cx="838" cy="117" r="3"/></g>
+  <path d="M790 225c20-78 70-116 149-122M855 224c-2-55 27-91 76-113M810 166l-34-27m80 20l36-33m-18 66l49-25" fill="none" stroke="#f4e8bd" stroke-width="4" stroke-linecap="round" opacity=".8"/>
+  <text x="70" y="148" fill="#fffced" font-family="serif" font-size="56" letter-spacing="12">星野手记</text><text x="73" y="190" fill="#fffced" opacity=".72" font-family="serif" font-size="20" letter-spacing="5">兴趣生长的田野</text>
+</svg>

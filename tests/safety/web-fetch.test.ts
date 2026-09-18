@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { assertPublicHttpUrl, executeSafeFetch, isPrivateAddress } from '../../src/server/agent/tools/web-fetch'
+import { assertPublicHttpUrl, executeSafeFetch, isPrivateAddress, parseSearchResults } from '../../src/server/agent/tools/web-fetch'
 
 test('web fetch rejects local, private, link-local, reserved and non-http targets', async () => {
   for (const address of ['127.0.0.1', '10.0.0.1', '169.254.169.254', '192.168.1.2', '::1', 'fd00::1', 'fe80::1', '::ffff:7f00:1', '2001:db8::1']) {
@@ -55,4 +55,12 @@ test('web fetch caps response bytes and strips sensitive caller-supplied headers
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('web search parses usable DuckDuckGo links without requiring Google', () => {
+  const results = parseSearchResults(`
+    <div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fstars&amp;x=1">A &amp; B</a>
+    <a class="result__snippet">A quiet result about stars.</a></div>
+  `, 3)
+  assert.deepEqual(results, [{ title: 'A & B', url: 'https://example.com/stars', snippet: 'A quiet result about stars.' }])
 })

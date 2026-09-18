@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1036 275">
+  <defs><linearGradient id="night" x1="0" x2="1"><stop stop-color="#302938"/><stop offset=".55" stop-color="#675064"/><stop offset="1" stop-color="#b27b78"/></linearGradient></defs>
+  <rect width="1036" height="275" fill="url(#night)"/><circle cx="875" cy="67" r="54" fill="#fff2cf" opacity=".9"/><circle cx="897" cy="49" r="55" fill="#665064"/>
+  <path d="M765 220q105-55 205 0" fill="none" stroke="#f6dfc1" stroke-width="4" opacity=".7"/><path d="M790 218v-72q50-22 83 4v70m0-70q33-26 75-5v73" fill="none" stroke="#f6dfc1" stroke-width="5" stroke-linejoin="round" opacity=".9"/>
+  <text x="70" y="148" fill="#fff8ed" font-family="serif" font-size="56" letter-spacing="12">枕边集</text><text x="73" y="190" fill="#fff8ed" opacity=".7" font-family="serif" font-size="20" letter-spacing="5">月灯 · 暗潮</text>
+</svg>

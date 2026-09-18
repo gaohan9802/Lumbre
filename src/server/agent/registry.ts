@@ -45,7 +45,7 @@ const ORDERED_REGISTRY = TOOL_DEFINITIONS.map(definition => {
 })
 
 export const ALL_TOOLS: ToolDef[] = ORDERED_REGISTRY.map(tool => tool.definition)
-export const FETCH_TOOL_NAMES = new Set(['fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
+export const FETCH_TOOL_NAMES = new Set(['search_web', 'fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'])
 
 export function getRegisteredTool(name: string): RegisteredTool | undefined {
   return REGISTRY.get(name)
