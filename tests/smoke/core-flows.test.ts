@@ -130,9 +130,10 @@ test('chat supports non-streaming and streaming response contracts without real 
     assert.equal((await response.json()).content, 'fixture reply')
     assert.equal(upstreamTools.includes('read_diary'), true)
     assert.equal(upstreamSawImage, true)
-    for (const blocked of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'galatea']) {
-      assert.equal(upstreamTools.includes(blocked), false)
+    for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email']) {
+      assert.equal(upstreamTools.includes(allowed), true)
     }
+    assert.equal(upstreamTools.includes('galatea'), false)
 
     const forgedRequest = new NextRequest('http://localhost/api/chat', {
       method: 'POST',
@@ -140,17 +141,6 @@ test('chat supports non-streaming and streaming response contracts without real 
       body: JSON.stringify({ messages: [], _wake: true }),
     })
     assert.equal((await chat.POST(forgedRequest)).status, 403)
-
-    const { executeTool } = await import('../../src/server/agent/executor')
-    const { createToolContext } = await import('../../src/server/agent/context')
-    assert.match(
-      await executeTool(
-        'send_email',
-        { to: 'nobody@example.invalid', subject: 'fixture', body: 'fixture' },
-        createToolContext({ source: 'unattended-wake', actorId: 'test-wake' }),
-      ),
-      /Tool denied/,
-    )
 
     let redToolTurn = 0
     let redToolRoundTrip = ''

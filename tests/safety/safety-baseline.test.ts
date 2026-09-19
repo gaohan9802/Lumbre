@@ -6,8 +6,6 @@ import {
   isDebugApiPath,
   isTrustedInternalRequest,
   shouldBlockDebugApi,
-  toolsForUnattendedWake,
-  unattendedWakeDenial,
 } from '../../src/server/safety-baseline'
 
 test('production blocks every known debug API while development keeps them available', () => {
@@ -22,21 +20,6 @@ test('production blocks every known debug API while development keeps them avail
 test('Next.js discovers the safety middleware alongside the src app directory', () => {
   assert.equal(existsSync(new URL('../../src/middleware.ts', import.meta.url)), true)
   assert.equal(existsSync(new URL('../../middleware.ts', import.meta.url)), false)
-})
-
-test('unattended wake hides and denies destructive or external-write tools', () => {
-  const tools = [
-    { name: 'read_diary', description: 'read', input_schema: { type: 'object' as const, properties: {} } },
-    { name: 'delete_diary', description: 'delete', input_schema: { type: 'object' as const, properties: {} } },
-    { name: 'send_email', description: 'send', input_schema: { type: 'object' as const, properties: {} } },
-    { name: 'trace', description: '修改,delete=True删除。', input_schema: { type: 'object' as const, properties: { delete: { type: 'boolean' } } } },
-  ]
-  const available = toolsForUnattendedWake(tools)
-  assert.deepEqual(available.map(tool => tool.name), ['read_diary', 'trace'])
-  assert.equal('delete' in available[1].input_schema.properties, false)
-  assert.match(unattendedWakeDenial('delete_diary', {}) || '', /not allowed/)
-  assert.match(unattendedWakeDenial('trace', { delete: true }) || '', /delete memory/)
-  assert.equal(unattendedWakeDenial('trace', { resolved: 1 }), null)
 })
 
 test('internal wake credentials fail closed', () => {

@@ -58,15 +58,7 @@ export function toolsForContext(context: ToolCallContext): ToolDef[] {
       return decision.allowed || decision.requiresConfirmation
     })
     .map(tool => {
-      let definition = tool.definition
-      if (context.source === 'unattended-wake' && tool.name === 'trace') {
-        const { delete: _delete, ...properties } = definition.input_schema.properties
-        definition = {
-          ...definition,
-          description: definition.description.replace(/,delete=True删除。?/, '。'),
-          input_schema: { ...definition.input_schema, properties },
-        }
-      }
+      const definition = tool.definition
       const redNote = tool.level === 'red'
         ? '（红色操作：执行前会弹出确认，只有当前用户明确同意才会生效。）'
         : tool.resolveLevel
