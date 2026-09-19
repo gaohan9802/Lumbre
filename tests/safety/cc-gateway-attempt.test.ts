@@ -498,11 +498,11 @@ const timer = setInterval(() => {
     clearInterval(timer)
     console.log(JSON.stringify({ type: 'result', result: '123', session_id: '550e8400-e29b-41d4-a716-446655440000', usage: { output_tokens: 3 } }))
   }
-}, 180)
+}, 600)
 `, { mode: 0o700 })
     chmodSync(binary, 0o700)
     const executor = new ClaudeExecutor({
-      binary, workspace: root, timeoutMs: 300,
+      binary, workspace: root, timeoutMs: 1000,
       env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
     })
     const result: any = await executor.run({
