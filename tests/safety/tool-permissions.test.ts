@@ -46,31 +46,21 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.deepEqual(policy.evaluateToolPolicy(write, {}, chat), { allowed: true, level: 'yellow' })
   assert.deepEqual(policy.evaluateToolPolicy(update, {}, wake), { allowed: true, level: 'yellow' })
   assert.equal(policy.evaluateToolPolicy(remove, {}, chat).requiresConfirmation, true)
-  assert.deepEqual(policy.evaluateToolPolicy(remove, {}, wake), {
-    allowed: false,
-    level: 'black',
-    reason: 'delete_diary is not allowed from unattended-wake',
-  })
+  assert.deepEqual(policy.evaluateToolPolicy(remove, {}, wake), { allowed: true, level: 'red' })
   assert.equal(policy.resolveToolRisk(trace, { resolved: 1 }), 'yellow')
   assert.equal(policy.resolveToolRisk(trace, { delete: true }), 'red')
-  assert.deepEqual(policy.evaluateToolPolicy(story, { action: 'delete' }, wake), {
-    allowed: false,
-    level: 'black',
-    reason: 'Unattended wake cannot perform red-level operations',
-  })
+  assert.deepEqual(policy.evaluateToolPolicy(story, { action: 'delete' }, wake), { allowed: true, level: 'red' })
 })
 
-test('unattended wake receives only its explicit whitelist and cannot see trace deletion', () => {
+test('unattended wake receives every registered Lumbre tool including destructive actions', () => {
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake' })
   const names = registry.toolsForContext(wake).map(tool => tool.name)
-  for (const allowed of ['update_diary', 'edit_foto', 'add_todo', 'edit_wish', 'add_bookmark', 'write_poem', 'write_story']) {
+  assert.equal(names.length, registry.registeredToolCount())
+  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'set_password', 'confirm_void_coupon']) {
     assert.equal(names.includes(allowed), true, allowed)
   }
-  for (const blocked of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'set_password']) {
-    assert.equal(names.includes(blocked), false, blocked)
-  }
   const trace = registry.toolsForContext(wake).find(tool => tool.name === 'trace')!
-  assert.equal('delete' in trace.input_schema.properties, false)
+  assert.equal('delete' in trace.input_schema.properties, true)
 })
 
 test('red tools issue single-use, actor-and-session-bound confirmations', async () => {

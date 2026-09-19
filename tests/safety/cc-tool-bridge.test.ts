@@ -86,12 +86,13 @@ test('view_foto can load the exact image attached to the current CC conversation
   assert.doesNotMatch(body.result, /aGVsbG8=/)
 })
 
-test('unattended CC wakes keep the existing restricted wake tool policy', async () => {
+test('unattended CC wakes can execute the full registered Lumbre tool set', async () => {
   const listed = await route.GET(new NextRequest('http://lumbre.test/api/internal/cc-tools?session_id=conversation-1&source=unattended-wake', { headers: authHeaders() }))
   const tools = (await listed.json()).tools
   assert.equal(tools.some((tool: any) => tool.name === 'wake_me'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'update_diary'), true)
-  assert.equal(tools.some((tool: any) => tool.name === 'delete_note'), false)
+  assert.equal(tools.some((tool: any) => tool.name === 'delete_note'), true)
+  assert.equal(tools.some((tool: any) => tool.name === 'send_email'), true)
 
   const diary = notes.writeDiary({
     date: '2026-09-19', author: 'star', title: 'wake fixture', content: 'before', visibility: 'public',
@@ -107,12 +108,12 @@ test('unattended CC wakes keep the existing restricted wake tool policy', async 
   assert.match(notes.readDiaries('star', { target_date: diary.date })[0].content, /after wake/)
 
   const note = notes.writeNote('star', 'unattended delete fixture')
-  const denied = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
+  const deleted = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
     method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify({ session_id: 'conversation-1', source: 'unattended-wake', name: 'delete_note', input: { note_id: note.id, author: 'star' } }),
   }))
-  assert.match((await denied.json()).result, /Unattended wake is not allowed|Tool denied/)
-  assert.equal(notes.listNotes().some(item => item.id === note.id), true)
+  assert.match((await deleted.json()).result, /已删除/)
+  assert.equal(notes.listNotes().some(item => item.id === note.id), false)
 })
 
 test('stdio MCP keeps the chat tool schema during wakes while enforcing wake policy on calls', async () => {
