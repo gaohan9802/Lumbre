@@ -20,7 +20,7 @@ export function TopBar() {
     timeline: '⏱️ Timeline',
     diary: '📔 日记',
     notes: '📌 小纸条',
-    todo: '🧾 代办',
+    todo: '🧾 待办',
     photos: '📷 照片',
     memory: '✨ 记忆',
     dreams: '🌙 现实与梦境',
