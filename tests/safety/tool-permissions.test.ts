@@ -37,11 +37,14 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake', sessionId: 'session-a' })
   const read = registry.getRegisteredTool('read_diary')!
   const write = registry.getRegisteredTool('write_diary')!
+  const update = registry.getRegisteredTool('update_diary')!
   const remove = registry.getRegisteredTool('delete_diary')!
+  const story = registry.getRegisteredTool('write_story')!
   const trace = registry.getRegisteredTool('trace')!
 
   assert.deepEqual(policy.evaluateToolPolicy(read, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(write, {}, chat), { allowed: true, level: 'yellow' })
+  assert.deepEqual(policy.evaluateToolPolicy(update, {}, wake), { allowed: true, level: 'yellow' })
   assert.equal(policy.evaluateToolPolicy(remove, {}, chat).requiresConfirmation, true)
   assert.deepEqual(policy.evaluateToolPolicy(remove, {}, wake), {
     allowed: false,
@@ -50,11 +53,19 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   })
   assert.equal(policy.resolveToolRisk(trace, { resolved: 1 }), 'yellow')
   assert.equal(policy.resolveToolRisk(trace, { delete: true }), 'red')
+  assert.deepEqual(policy.evaluateToolPolicy(story, { action: 'delete' }, wake), {
+    allowed: false,
+    level: 'black',
+    reason: 'Unattended wake cannot perform red-level operations',
+  })
 })
 
 test('unattended wake receives only its explicit whitelist and cannot see trace deletion', () => {
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake' })
   const names = registry.toolsForContext(wake).map(tool => tool.name)
+  for (const allowed of ['update_diary', 'edit_foto', 'add_todo', 'edit_wish', 'add_bookmark', 'write_poem', 'write_story']) {
+    assert.equal(names.includes(allowed), true, allowed)
+  }
   for (const blocked of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'set_password']) {
     assert.equal(names.includes(blocked), false, blocked)
   }

@@ -90,7 +90,21 @@ test('unattended CC wakes keep the existing restricted wake tool policy', async 
   const listed = await route.GET(new NextRequest('http://lumbre.test/api/internal/cc-tools?session_id=conversation-1&source=unattended-wake', { headers: authHeaders() }))
   const tools = (await listed.json()).tools
   assert.equal(tools.some((tool: any) => tool.name === 'wake_me'), true)
+  assert.equal(tools.some((tool: any) => tool.name === 'update_diary'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'delete_note'), false)
+
+  const diary = notes.writeDiary({
+    date: '2026-09-19', author: 'star', title: 'wake fixture', content: 'before', visibility: 'public',
+  })
+  const updated = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
+    method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
+    body: JSON.stringify({
+      session_id: 'conversation-1', source: 'unattended-wake', name: 'update_diary',
+      input: { target_date: diary.date, author: 'star', time_id: diary.time_id, new_content: 'after wake' },
+    }),
+  }))
+  assert.match((await updated.json()).result, /追加成功/)
+  assert.match(notes.readDiaries('star', { target_date: diary.date })[0].content, /after wake/)
 
   const note = notes.writeNote('star', 'unattended delete fixture')
   const denied = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
