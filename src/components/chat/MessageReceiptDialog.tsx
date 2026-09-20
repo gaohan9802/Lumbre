@@ -130,7 +130,7 @@ export function MessageReceiptDialog({
                 <summary className="cursor-pointer select-none">逐项明细 · 展开</summary>
                 <div className="mt-2 space-y-1 opacity-55">
                   <p>线路：{message.route === 'claude-code' ? 'Claude Code' : 'API'}</p>
-                  {message.ccSessionFingerprint && <p>CC session：{message.ccSessionFingerprint} · {message.ccSessionMode || 'resume'}</p>}
+                  {message.ccSessionFingerprint && <p>CC session：{message.ccSessionFingerprint} · {message.ccSessionMode || 'resume'}{message.ccSessionReason ? ` · ${message.ccSessionReason}` : ''}</p>}
                   <p>命中率 = 缓存读取 ÷（普通输入 + 缓存读取 + 缓存写入）</p>
                 </div>
               </details>

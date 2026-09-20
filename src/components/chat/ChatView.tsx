@@ -893,7 +893,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           addMessageVersion(nextMsg.id, reply, activeSession?.id)
           void syncChatNow()
         } else {
-          const assistantMsg: ChatMessage = { id: `${Date.now()}-reroll`, role: 'assistant', ...reply }
+          const assistantMsg: ChatMessage = { id: (Date.now() + 1).toString(), role: 'assistant', ...reply }
           await durableAppend(activeSession, assistantMsg)
           addMessage(assistantMsg, activeSession?.id)
         }
