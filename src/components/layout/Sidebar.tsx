@@ -7,16 +7,16 @@ import { X } from 'lucide-react'
 import { useApp } from '@/lib/store'
 
 const entrances = [
-  { id: 'research', label: '星野手记', left: '47%', top: '13%', width: '24%', height: '14%' },
-  { id: 'poems', label: '共诗', left: '18%', top: '22%', width: '32%', height: '12%' },
-  { id: 'timeline', label: 'Timeline', left: '70%', top: '25%', width: '20%', height: '12%' },
-  { id: 'stories', label: '枕边集', left: '3%', top: '30%', width: '25%', height: '12%' },
-  { id: 'diary', label: '日记', left: '78%', top: '37%', width: '22%', height: '13%' },
-  { id: 'photos', label: '照片', left: '2%', top: '59%', width: '23%', height: '12%' },
-  { id: 'notes', label: '小纸条', left: '77%', top: '59%', width: '23%', height: '12%' },
-  { id: 'todo', label: '待办', left: '26%', top: '68%', width: '21%', height: '12%' },
-  { id: 'memory', label: '记忆', left: '64%', top: '68%', width: '22%', height: '13%' },
-  { id: 'dreams', label: '现实与梦境', left: '42%', top: '73%', width: '24%', height: '14%' },
+  { id: 'research', label: '星野手记', left: '47%', top: '12%', width: '25%', height: '12%' },
+  { id: 'poems', label: '共诗', left: '18%', top: '19%', width: '29%', height: '10%' },
+  { id: 'timeline', label: 'Timeline', left: '73%', top: '23%', width: '23%', height: '11%' },
+  { id: 'stories', label: '枕边集', left: '2%', top: '29%', width: '27%', height: '11%' },
+  { id: 'diary', label: '日记', left: '79%', top: '36%', width: '21%', height: '12%' },
+  { id: 'photos', label: '照片', left: '2%', top: '58%', width: '23%', height: '13%' },
+  { id: 'notes', label: '小纸条', left: '80%', top: '58%', width: '20%', height: '13%' },
+  { id: 'todo', label: '待办', left: '20%', top: '70%', width: '22%', height: '13%' },
+  { id: 'memory', label: '记忆', left: '67%', top: '70%', width: '23%', height: '13%' },
+  { id: 'dreams', label: '现实与梦境', left: '39%', top: '77%', width: '27%', height: '13%' },
 ] as const
 
 export function Sidebar() {
@@ -53,7 +53,7 @@ export function Sidebar() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: reduceMotion ? 0 : 0.2 }}
-          className="fixed inset-0 z-[100] grid place-items-center overflow-hidden bg-[#F1E9DF]"
+          className="fixed inset-0 z-[100] grid place-items-center overflow-hidden bg-[#F7F5F1]"
         >
           <div
             className="relative aspect-[426/923] max-h-dvh overflow-hidden"
