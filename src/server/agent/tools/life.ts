@@ -41,4 +41,5 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'use_coupon', domain: 'coupons', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'void_coupon', domain: 'coupons', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'confirm_void_coupon', domain: 'coupons', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '作废券' },
+  { name: 'bite_otter_nape', domain: 'wake', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
 ]

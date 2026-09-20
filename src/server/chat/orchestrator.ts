@@ -1,4 +1,3 @@
-import { normalizeReplyMode, replyModePrompt, type ReplyMode } from '@/lib/chat-reply-mode'
 import { NextRequest, NextResponse } from 'next/server'
 import { toolsForContext } from '@/server/agent/registry'
 import { executeToolBatch, type ToolCallResult } from '@/server/agent/executor'
@@ -9,6 +8,7 @@ import { reportActivity } from '@/server/autowake'
 import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
 import { couponContext } from '@/server/coupon-store'
+import { dailyCompanionContext } from '@/server/nose-pokes'
 import { resolveChatCredential, resolveLegacyChatCredential } from './credentials'
 import { normalizeModelBaseUrl, type ModelCredentialInput } from '@/server/data/repositories/model-credentials'
 import { anthropicAdapter } from './providers/anthropic'
@@ -97,7 +97,6 @@ function clientVolatileContext(value: unknown): string {
 }
 
 type GatewayRunParams = {
-  replyMode?: ReplyMode;
   messages: any[]; system?: string; model: string; apiKey: string; baseUrl: string;
   thinkingBudget?: number; promptCaching?: boolean; toolsEnabled?: boolean;
   temperature?: number; bookmarkInjections?: string; maxToolCalls?: number;
@@ -128,10 +127,11 @@ function usagePayload(usage: GatewayUsage) {
 async function runGateway(provider: GatewayProvider, params: GatewayRunParams): Promise<Response | void> {
   const adapter: GatewayProviderAdapter = provider === 'openai-compatible' ? openAICompatibleAdapter : anthropicAdapter
   const lastUser = params.messages.filter((message: any) => message.role === 'user').pop()?.content || ''
-  const system = (params.system?.trim() || DEFAULT_SYSTEM_PROMPT) + (params.replyMode ? `\n\n${replyModePrompt(params.replyMode)}` : '')
+  const system = params.system?.trim() || DEFAULT_SYSTEM_PROMPT
   const currentContext = [
     await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
     params.clientVolatileContext,
+    dailyCompanionContext(),
   ].filter(Boolean).join('\n\n')
   const context = toolContext(!!params.unattendedWake, params.sessionId)
   const availableTools = toolsForContext(context)
@@ -145,7 +145,7 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
   const session = await adapter.createSession({
     messages: params.messages,
     system,
-    replyMode: params.replyMode,
+    replyMode: undefined,
     bookmarkInjections: params.bookmarkInjections || '',
     volatileContext: currentContext,
     model: params.model,
@@ -219,14 +219,14 @@ export async function handleChatRequest(req: NextRequest) {
       if (body.api_profile?.apiKey || body.api_profile?.baseUrl) {
         return NextResponse.json({ error: 'CC 请求不能携带浏览器模型密钥或上游地址。' }, { status: 400 })
       }
-      const replyMode = unattendedWake ? undefined : normalizeReplyMode(body.reply_mode)
       const lastUser = Array.isArray(body.messages)
         ? [...body.messages].reverse().find((message: any) => message?.role === 'user')?.content || ''
         : ''
-      const system = (body.system?.trim() || DEFAULT_SYSTEM_PROMPT) + (replyMode ? `\n\n${replyModePrompt(replyMode)}` : '')
+      const system = body.system?.trim() || DEFAULT_SYSTEM_PROMPT
       const currentContext = [
         await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
         clientVolatileContext(body.client_volatile_context),
+        dailyCompanionContext(),
       ].filter(Boolean).join('\n\n')
       const requestAudit = createMessageRequestAudit({
         system,
@@ -263,7 +263,6 @@ export async function handleChatRequest(req: NextRequest) {
     const host = req.headers.get('host')
     const origin = host ? `${req.headers.get('x-forwarded-proto') || 'https'}://${host}` : ''
     const params = {
-      replyMode: unattendedWake ? undefined : normalizeReplyMode(body.reply_mode),
       messages: Array.isArray(body.messages) ? body.messages : [], system: body.system, model,
       apiKey: credential.apiKey, baseUrl: credential.baseUrl,
       thinkingBudget: body.thinking_budget, promptCaching: body.prompt_caching !== false,

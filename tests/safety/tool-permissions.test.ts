@@ -24,12 +24,13 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 75)
-  assert.equal(registry.ALL_TOOLS.length, 75)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 75)
+  assert.equal(registry.registeredToolCount(), 76)
+  assert.equal(registry.ALL_TOOLS.length, 76)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 76)
   assert.deepEqual(registry.ALL_TOOLS.slice(0, 6).map(tool => tool.name), ['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
+  assert.equal(registry.ALL_TOOLS.at(-1)?.name, 'bite_otter_nape')
 })
 
 test('green, yellow, red, and black policy decisions fail closed', () => {
@@ -56,7 +57,7 @@ test('unattended wake receives every registered Lumbre tool including destructiv
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake' })
   const names = registry.toolsForContext(wake).map(tool => tool.name)
   assert.equal(names.length, registry.registeredToolCount())
-  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'set_password', 'confirm_void_coupon']) {
+  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'set_password', 'confirm_void_coupon', 'bite_otter_nape']) {
     assert.equal(names.includes(allowed), true, allowed)
   }
   const trace = registry.toolsForContext(wake).find(tool => tool.name === 'trace')!

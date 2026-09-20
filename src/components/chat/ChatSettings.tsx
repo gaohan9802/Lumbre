@@ -71,7 +71,7 @@ export function ChatSettings(props: Props) {
   const profile = settings.apiProfiles.find(p => p.id === settings.activeProfileId)
   const titles = { menu: '聊天', star: '星星', settings: '设置', appearance: '气泡', models: '模型' }
   const navigate = (action?: () => void) => { onClose(); action?.() }
-  const row = (label: string, action: () => void, detail?: string) => <button key={label} onClick={action} className={`w-full flex items-center gap-3 px-2 py-4 text-left ${night ? 'rounded-2xl bg-night-card' : 'border-b border-[#a73a32]/35'}`}><span className="flex-1 min-w-0"><span className="block text-sm">{label}</span>{detail && <span className="block text-xs opacity-50 truncate mt-1">{detail}</span>}</span><ChevronRight size={16}/></button>
+  const row = (label: string, action: () => void, detail?: string) => <button key={label} onClick={action} className={`w-full flex items-center gap-3 px-2 py-5 text-left ${night ? 'rounded-2xl bg-night-card' : 'border-b border-[#a73a32]/35'}`}><span className="flex-1 min-w-0"><span className="block text-lg">{label}</span>{detail && <span className="block text-sm opacity-55 truncate mt-1">{detail}</span>}</span><ChevronRight size={20} className="opacity-65"/></button>
   const slider = (label: string, value: number, change: (v: number) => void, min = 0, max = 1, step = .05, display?: string) => <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>{label}</span><span className="opacity-60">{display || `${Math.round(value * 100)}%`}</span></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))} className="w-full"/></label>
   const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? (night ? 'bg-night-amber' : 'bg-[#a73a32]') : 'bg-gray-400/40'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
   const bubbleControls = (who: 'user' | 'ai', label: string) => {
@@ -91,10 +91,10 @@ export function ChatSettings(props: Props) {
   }
   return <>
     <div className="fixed inset-0 z-[70] bg-black/30" onClick={close}/>
-    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`fixed ${panel === 'star' ? 'inset-x-4 mx-auto top-[8dvh] h-[84dvh] max-w-[640px] rounded-2xl' : 'right-0 top-0 bottom-0 w-[86vw] max-w-[420px]'} z-[71] flex flex-col outline-none ${night ? 'bg-night-surface text-night-text shadow-2xl' : 'chat-paper border-l border-[#a73a32] text-[#3f2c29]'}`}>
-      <div className={`flex items-center gap-3 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b ${night ? 'border-current/10' : 'border-[#a73a32]/45'}`}>
+    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`fixed ${panel === 'star' ? 'inset-x-4 mx-auto top-[8dvh] h-[84dvh] max-w-[640px] rounded-2xl' : 'right-0 top-0 bottom-0 w-[80vw] max-w-[440px]'} z-[71] flex flex-col outline-none ${night ? 'bg-night-surface text-night-text shadow-2xl' : 'chat-paper border-l border-[#a73a32] text-[#3f2c29]'}`}>
+      <div className={`flex items-center gap-3 px-6 pb-5 pt-[max(1.5rem,env(safe-area-inset-top))] border-b ${night ? 'border-current/10' : 'border-[#a73a32]/45'}`}>
         {panel !== 'menu' && <button aria-label="返回菜单" onClick={() => confirm(() => setPanel('menu'))} className="p-2"><ChevronLeft size={20}/></button>}
-        <h2 id="chat-menu-title" className="flex-1 font-medium">{titles[panel]}</h2><button aria-label="关闭菜单" onClick={close} className="p-2"><X size={20}/></button>
+        <h2 id="chat-menu-title" className={`flex-1 ${panel === 'menu' ? 'text-3xl' : 'text-xl'} font-normal`}>{titles[panel]}</h2><button aria-label="关闭菜单" onClick={close} className="p-2"><X size={24}/></button>
       </div>
       <div className={`flex-1 min-h-0 overflow-y-auto p-5 ${panel === 'menu' ? 'space-y-0' : 'space-y-4'}`}>
         {panel === 'menu' && <>
@@ -105,7 +105,7 @@ export function ChatSettings(props: Props) {
           {row('模型', () => setPanel('models'), `${profile?.name || '未配置'} · ${settings.model}`)}
           {row('设置', () => setPanel('settings'))}
           {row('气泡', () => setPanel('appearance'))}
-          <p className="text-xs opacity-40 px-2">共 {activeSession?.messageCount || activeSession?.messages.length || 0} 层</p>
+          <p className="px-2 pt-8 text-center text-sm tracking-[0.18em] opacity-50">—— 共 {activeSession?.messageCount || activeSession?.messages.length || 0} 层 ——</p>
         </>}
         {panel === 'star' && <>
           <div className="flex items-center justify-between gap-2"><span className="text-sm">System Prompt / 人设</span>{!editing && <button className={button} onClick={() => { setOriginal(settings.systemPrompt); setDraft(settings.systemPrompt); setEditing(true); setError('') }}>编辑</button>}</div>

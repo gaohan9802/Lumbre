@@ -89,3 +89,12 @@ export function madridCalendarDayDiff(laterDay: string, earlierDay: string): num
   const [ey, em, ed] = earlierDay.split('-').map(Number)
   return Math.round((Date.UTC(ly, lm - 1, ld) - Date.UTC(ey, em - 1, ed)) / 86400000)
 }
+
+/** The small anniversary counter used on Lumbre's home and in volatile chat context. */
+export function lumbreTogetherDays(value: Date | number | string = new Date()): number {
+  const today = madridDateKey(value)
+  const year = Number(today.slice(0, 4))
+  let start = `${year}-04-27`
+  if (today < start) start = `${year - 1}-04-27`
+  return madridCalendarDayDiff(today, start)
+}

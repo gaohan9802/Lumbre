@@ -680,5 +680,13 @@ export const LIFE_TOOL_DEFINITIONS = [
         "id"
       ]
     }
+  },
+  {
+    "name": "bite_otter_nape",
+    "description": "咬一口小火的水獭后颈。每次调用都会立即给小火的手机发送一条“被咬了一口”推送，所以只在你真的想咬她时使用。",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
+    }
   }
 ] satisfies ToolDef[]

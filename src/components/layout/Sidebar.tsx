@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { useApp } from '@/lib/store'
+import { lumbreTogetherDays } from '@/lib/madrid-time'
 
 const entrances = [
   { id: 'research', label: '星野手记', left: '47%', top: '12%', width: '25%', height: '12%' },
@@ -22,6 +23,7 @@ const entrances = [
 export function Sidebar() {
   const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen } = useApp()
   const reduceMotion = useReducedMotion()
+  const togetherDays = lumbreTogetherDays()
 
   useEffect(() => {
     if (!sidebarOpen) return
@@ -90,6 +92,10 @@ export function Sidebar() {
                 style={{ left: entrance.left, top: entrance.top, width: entrance.width, height: entrance.height }}
               />
             ))}
+
+            <p className="absolute inset-x-0 top-[89%] text-center font-serif text-[11px] tracking-[0.24em] text-[#9f302b]/70">
+              <span className="mr-2 text-[#d99118]">·</span>在一起 · 第 {togetherDays} 天<span className="ml-2 text-[#718b97]">·</span>
+            </p>
 
             <button
               type="button"

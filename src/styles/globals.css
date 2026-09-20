@@ -85,6 +85,17 @@
   .chat-footer:focus-within {
     padding-bottom: 0.25rem;
   }
+
+  html:not(.dark) .chat-ai-bubble::before {
+    content: '✦';
+    position: absolute;
+    left: 0.45rem;
+    top: -0.62rem;
+    color: #d99118;
+    font-size: 0.8rem;
+    line-height: 1;
+    text-shadow: 0 0 0.35rem rgba(217, 145, 24, 0.22);
+  }
 }
 
 ::-webkit-scrollbar {

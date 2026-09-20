@@ -6,7 +6,7 @@ import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Home, MoreHorizontal,
+  Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, MoreHorizontal,
   Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices,
 } from 'lucide-react'
 import {
@@ -16,8 +16,7 @@ import {
 import { photos as photosApi } from '@/lib/api'
 import type { SharedCard } from '@/lib/share'
 import { ChatSettings } from './ChatSettings'
-import { normalizeReplyMode, type ReplyMode } from '@/lib/chat-reply-mode'
-import { applyBubbleLayout, cleanLegacyBubbleMarkers, cleanReplyBlocks, composeBubbleBlocks, composeBubbleLayout } from '@/lib/chat-bubble-composer'
+import { applyBubbleLayout, composeBubbleLayout } from '@/lib/chat-bubble-composer'
 import { bubbleAppearance } from '@/features/chat/settings/appearance'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
@@ -25,7 +24,7 @@ import { SummaryDialog } from './SummaryDialog'
 import { MessageReceiptDialog } from './MessageReceiptDialog'
 import { TimelineTimerModal } from '@/components/timeline/TimelineTimerModal'
 import { MarkdownText } from './MarkdownText'
-import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
+import { APP_TIME_ZONE, formatMadrid, madridDateKey, madridDayBounds } from '@/lib/madrid-time'
 import { buildSummaryRounds, selectLoadedSessionSummarySegment } from '@/lib/chat-summary'
 import { chatApi, type CcStatus } from '@/features/chat/api/client'
 import { readChatEventStream } from '@/features/chat/api/event-stream'
@@ -151,11 +150,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [moreOpen, setMoreOpen] = useState(false)
   const [wheelOpen, setWheelOpen] = useState(false)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
+  const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number }[]>([])
+  const [nosePokeBusy, setNosePokeBusy] = useState(false)
+  const [nosePokePulse, setNosePokePulse] = useState(0)
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    setGenerationRoute, setConversationMode, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
+    setGenerationRoute, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
   } = useChatStore()
   const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
@@ -188,6 +190,43 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   } = useChatViewState()
 
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/nose-pokes', { cache: 'no-store' })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (!cancelled && Array.isArray(data?.events)) setNosePokes(data.events) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    const scheduleReset = () => {
+      const [, tomorrow] = madridDayBounds(madridDateKey())
+      timer = setTimeout(() => {
+        setNosePokes([])
+        scheduleReset()
+      }, Math.max(1_000, new Date(tomorrow).getTime() - Date.now() + 1_000))
+    }
+    scheduleReset()
+    return () => clearTimeout(timer)
+  }, [])
+
+  const pokeLeopardNose = async () => {
+    if (nosePokeBusy) return
+    setNosePokeBusy(true)
+    setNosePokePulse(value => value + 1)
+    try {
+      const response = await fetch('/api/nose-pokes', { method: 'POST' })
+      if (!response.ok) throw new Error('戳鼻子失败')
+      const data = await response.json()
+      if (Array.isArray(data.events)) setNosePokes(data.events)
+      navigator.vibrate?.(12)
+    } catch {
+      window.alert('豹子刚才躲过去了，再戳一下试试。')
+    } finally {
+      setNosePokeBusy(false)
+    }
+  }
   const refreshCcStatus = useCallback(async () => {
     try { setCcStatus(await chatApi.ccStatus(activeSession?.id)) }
     catch { setCcStatus(current => ({ ...current, available: false })) }
@@ -280,7 +319,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   useEffect(() => {
     if (stickBottomRef.current)
       messagesEndRef.current?.scrollIntoView({ behavior: streamText ? 'auto' : 'smooth' })
-  }, [messages, isLoading, streamText])
+  }, [messages, nosePokes, isLoading, streamText])
 
   useEffect(() => {
     const el = inputRef.current
@@ -320,24 +359,17 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const doSend = async (
     sendMessages: { id: string; role: string; route?: 'api' | 'claude-code'; ccAttemptId?: string; content: string; images?: string[]; timestamp?: number }[],
     onResult: (data: any) => void | Promise<void>,
-    requestedMode?: ReplyMode,
     requestedRoute = activeRoute,
     turnId = sendMessages.at(-1)?.id || '',
     sessionAction?: 'rebase',
   ) => {
-    const mode = requestedMode || normalizeReplyMode(activeSession?.conversationMode)
     const route = normalizeChatRoute(requestedRoute)
     const onDone = (data: any) => {
-      const content = mode === 'short' ? cleanLegacyBubbleMarkers(String(data.content || '')) : data.content
-      const blocks: ContentBlock[] | undefined = data.content_blocks
-        ? (mode === 'short' ? cleanReplyBlocks(data.content_blocks) : data.content_blocks.map((block: ContentBlock) => ({ ...block })))
-        : (mode === 'short' && content.trim() ? [{ type: 'text', content }] : undefined)
       return onResult({
         ...data,
-        replyMode: mode,
-        content,
-        content_blocks: blocks,
-        bubbleLayout: mode === 'short' && blocks ? composeBubbleLayout(blocks) : undefined,
+        replyMode: 'long',
+        content_blocks: data.content_blocks?.map((block: ContentBlock) => ({ ...block })),
+        bubbleLayout: undefined,
       })
     }
     const profile = getActiveProfile(settings)
@@ -395,7 +427,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       if (!live) return
       setStreamText(fullText)
       setStreamThinking(fullThinking)
-      setStreamBlocks(mode === 'short' ? composeBubbleBlocks(contentBlocks).blocks : contentBlocks.map(block => ({ ...block })))
+      setStreamBlocks(contentBlocks.map(block => ({ ...block })))
     }
     // iOS PWA becomes unstable when Markdown and the whole message list are
     // reconciled for every token. Paint at most once per 80ms while preserving
@@ -437,7 +469,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         messages: sendMessages,
         system: systemPrompt,
         model,
-        reply_mode: mode,
         thinking_budget: settings.thinkingBudget,
         prompt_caching: settings.promptCaching,
         temperature: settings.temperature,
@@ -697,7 +728,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       id: now.toString(),
       role: 'user',
       route: activeRoute,
-      replyMode: normalizeReplyMode(activeSession?.conversationMode),
+      replyMode: 'long',
       content: input.trim(),
       timestamp: now,
       images: pendingImages.length ? pendingImages : undefined,
@@ -756,7 +787,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       setStreamText('')
       setStreamThinking('')
       setStreamBlocks([])
-    }, userMsg.replyMode, activeRoute, userMsg.id)
+    }, activeRoute, userMsg.id)
   }
 
 
@@ -816,7 +847,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         setStreamText('')
         setStreamThinking('')
         setStreamBlocks([])
-      }, normalizeReplyMode(msg.replyMode), retryRoute, retryTurnId, retryRoute === 'claude-code' ? 'rebase' : undefined)
+      }, retryRoute, retryTurnId, retryRoute === 'claude-code' ? 'rebase' : undefined)
     } else {
       // User retry: regenerate the AI response that follows
       const idx = currentMessages.findIndex(m => m.id === msg.id)
@@ -865,7 +896,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         setStreamText('')
         setStreamThinking('')
         setStreamBlocks([])
-      }, normalizeReplyMode(msg.replyMode), retryRoute, retryTurnId, retryRoute === 'claude-code' && !recoverPending ? 'rebase' : undefined)
+      }, retryRoute, retryTurnId, retryRoute === 'claude-code' && !recoverPending ? 'rebase' : undefined)
     }
   }
 
@@ -986,24 +1017,24 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   /* ── sidebar ──────────────────────────── */
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
-    <div className={`h-full flex flex-col ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32] text-[#3f2c29]'} border-r`}>
-      <div className={`p-4 space-y-3 border-b ${n ? 'border-current/5' : 'border-[#a73a32]/45'}`}>
+    <div className={`h-full flex flex-col ${mobile ? 'w-[82vw] max-w-[360px]' : 'w-[320px]'} ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32] text-[#3f2c29]'} border-r`}>
+      <div className={`p-5 space-y-3 border-b ${n ? 'border-current/5' : 'border-[#a73a32]/45'}`}>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium">会话</div>
-            <div className="text-[10px] opacity-40">{settings.sessions.length} 条对话</div>
+            <div className="text-3xl leading-none">会话</div>
+            <div className="mt-2 text-sm opacity-55">{settings.sessions.length} 条对话</div>
           </div>
           {mobile && <button onClick={() => setSessionDrawerOpen(false)} className="p-2 opacity-60"><X size={16} /></button>}
         </div>
         <button
           onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }}
-          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs ${n ? 'bg-night-amber text-night-bg' : 'border border-[#a73a32] bg-[#fffaf5]/65 text-[#9f302b]'}`}
+          className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-base ${n ? 'bg-night-amber text-night-bg' : 'border border-[#a73a32] bg-[#fffaf5]/65 text-[#9f302b]'}`}
         >
-          <Plus size={13} /> 新对话
+          <Plus size={20} /> 新对话
         </button>
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${n ? 'bg-night-surface' : 'border border-[#a73a32]/25 bg-[#fffaf5]/50'}`}>
-          <Search size={13} className="opacity-40" />
-          <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} placeholder="搜索会话" className="bg-transparent outline-none text-xs flex-1" />
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${n ? 'bg-night-surface' : 'border border-[#a73a32]/25 bg-[#fffaf5]/50'}`}>
+          <Search size={17} className="opacity-40" />
+          <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} placeholder="搜索会话" className="bg-transparent outline-none text-sm flex-1" />
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -1011,7 +1042,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           const active = s.id === settings.activeSessionId
           return (
             <div key={s.id} onClick={() => { setActiveSession(s.id); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
-              className={`group p-3 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-amber/15 text-night-text' : 'bg-[#dce5e8]/75 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
+              className={`group p-4 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-amber/15 text-night-text' : 'bg-[#dce5e8]/75 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   {editingSessionId === s.id ? (
@@ -1019,13 +1050,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       onBlur={finishRename} onKeyDown={(e) => { if (e.key === 'Enter' && !(e.nativeEvent as any).isComposing) finishRename(); if (e.key === 'Escape') setEditingSessionId(null) }}
                       onClick={(e) => e.stopPropagation()} className={`w-full px-2 py-1 rounded text-xs outline-none ${n ? 'bg-night-card' : 'bg-white'}`} />
                   ) : (
-                    <div className="text-xs font-medium truncate flex items-center gap-1">
+                    <div className="text-base truncate flex items-center gap-1.5">
                       {s.pinned && <Pin size={10} className={n ? 'text-night-amber' : 'text-day-heart'} />}
                       {s.title}
                     </div>
                   )}
-                  <div className="text-[10px] opacity-40 mt-1 flex justify-between">
-                    <span>{s.messageCount || s.messages.length} messages</span>
+                  <div className="text-xs opacity-50 mt-1.5 flex justify-between">
+                    <span>{s.messageCount || s.messages.length} 条消息</span>
                     <span>{fmtShortDate(s.updatedAt)}</span>
                   </div>
                 </div>
@@ -1042,11 +1073,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )
         })}
       </div>
-      <div className={`shrink-0 border-t p-2 space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/35'}`}>
-        <button type="button" onClick={() => { if (mobile) setSessionDrawerOpen(false); setSidebarOpen(true) }} className={`flex w-full items-center justify-center gap-2 rounded-xl py-2 text-xs ${n ? 'hover:bg-night-surface' : 'text-[#9f302b] hover:bg-[#fffaf5]/70'}`}><Home size={13}/>回到家</button>
-        <details className="group">
-          <summary className={`flex cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-[10px] tracking-[0.14em] ${n ? 'bg-night-surface/45' : 'border border-[#a73a32]/25 bg-[#fffaf5]/55'}`}><span>额度与上下文</span><ChevronDown size={13} className="transition-transform group-open:rotate-180"/></summary>
-          <div className="mt-2 space-y-2">
+      <div className={`shrink-0 p-3 space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/35'}`}>
         <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/25 bg-[#fffaf5]/55'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CLAUDE 额度 · 订阅</span>
@@ -1114,8 +1141,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             </>
           )}
         </section>
-          </div>
-        </details>
       </div>
     </div>
   )
@@ -1134,7 +1159,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             <button onClick={() => setSessionDrawerOpen(true)} aria-label="打开会话" className="justify-self-start p-2 lg:invisible">
               <Menu size={22} strokeWidth={1.45}/>
             </button>
-            <span aria-hidden="true" className="justify-self-center text-[22px] leading-none text-[#d99118]">✦</span>
+            <motion.button
+              type="button"
+              aria-label="回到主页"
+              onClick={() => setSidebarOpen(true)}
+              whileTap={{ scale: 0.82, rotate: 12 }}
+              className="justify-self-center p-2 text-[25px] leading-none text-[#d99118]"
+            >✦</motion.button>
             <button aria-label="打开聊天菜单" onClick={() => setSettingsOpen(true)} className="justify-self-end p-2">
               <Moon size={21} strokeWidth={1.45}/>
             </button>
@@ -1184,7 +1215,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
                       {/* timestamp */}
                       <p className={`text-[10px] px-1 ${isUser ? 'text-right' : 'text-left'} ${n ? 'text-night-muted' : 'text-[#8b6258]'}`}>
-                        {fmtFullTs(msg.timestamp)}
+                        {fmtShortDate(msg.timestamp)}
                       </p>
 
                       {/* Inline content blocks — interleaved thinking/tool/text */}
@@ -1246,7 +1277,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl ${bi === lastTextBlock ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'border border-[#a73a32] bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`}
+                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[76%] mr-auto break-words px-4 py-3 rounded-2xl ${bi === lastTextBlock ? 'rounded-bl-md' : ''} text-[15px] leading-[1.75] ${n ? '' : 'border border-[#a73a32]'} ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`}
                                   style={aColor ? aiBubbleStyle : undefined}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -1333,7 +1364,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[87%] rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : (n ? 'bg-night-surface text-night-text' : 'border border-[#a73a32] bg-[#fffaf5]/55 text-[#3f2c29]')) : ''}`}
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 rounded-2xl text-[15px] leading-[1.75] ${isUser ? 'w-fit max-w-[74%] rounded-br-md ml-auto' : 'w-fit max-w-[76%] rounded-bl-md mr-auto'} ${!isUser && !n ? 'border border-[#a73a32]' : ''} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : (n ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]')) : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : undefined) : (aColor ? aiBubbleStyle : undefined)}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
@@ -1417,6 +1448,18 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               })}
             </div>
 
+            <AnimatePresence initial={false}>
+              {nosePokes.map((poke, index) => (
+                <motion.p
+                  key={poke.id}
+                  initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+                  className={`text-center text-[11px] tracking-[0.08em] ${n ? 'text-night-amber/75' : 'text-[#9f302b]/70'}`}
+                >
+                  {fmtShortDate(poke.timestamp)} 小火戳了豹子鼻子 · 今天第 {index + 1} 次
+                </motion.p>
+              ))}
+            </AnimatePresence>
+
             {/* loading / streaming */}
             {isLoading && (
               <StreamingReply
@@ -1470,26 +1513,38 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 <button disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><ImagePlus size={16}/>{uploadingImg ? '处理中…' : '上传照片'}</button>
                 <button onClick={() => { setTimelineOpen(true); setMoreOpen(false) }} className="flex min-w-0 items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><Clock3 size={16}/><span className="truncate">{timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'}</span></button>
                 <button onClick={() => { setWheelOpen(true); setMoreOpen(false) }} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[#9d5361]/10 p-3 text-xs text-[#9d5361]"><Dices size={16}/>今天怎么操</button>
-                <div role="group" aria-label="对话模式" className="col-span-2 flex gap-2 rounded-xl bg-black/5 p-1">
-                  {(['long', 'short'] as const).map(mode => <button key={mode} aria-pressed={normalizeReplyMode(activeSession?.conversationMode) === mode} onClick={() => { if (activeSession) setConversationMode(activeSession.id, mode); setMoreOpen(false) }} className={`flex-1 rounded-lg py-2.5 text-xs transition ${normalizeReplyMode(activeSession?.conversationMode) === mode ? (n ? 'bg-night-amber/20 text-night-amber' : 'bg-[#fffaf5] text-[#a73a32] shadow-sm') : 'opacity-60'}`}>{mode === 'long' ? '长聊' : '短聊'}</button>)}
-                </div>
               </div>}
 
-              <ChatRouteChip
-                profileName={activeProfile?.name}
-                modelName={activeModel?.name || activeModel?.id || settings.model}
-                route={activeRoute}
-                ccStatus={ccStatus}
-                isNight={n}
-                onClick={() => setModelPickerOpen(true)}
-              />
+              <div className="flex items-end justify-between gap-2">
+                <ChatRouteChip
+                  profileName={activeProfile?.name}
+                  modelName={activeModel?.name || activeModel?.id || settings.model}
+                  route={activeRoute}
+                  ccStatus={ccStatus}
+                  isNight={n}
+                  onClick={() => setModelPickerOpen(true)}
+                />
+                <motion.button
+                  key={nosePokePulse}
+                  type="button"
+                  aria-label="戳豹子鼻子"
+                  title="戳豹子鼻子"
+                  disabled={nosePokeBusy}
+                  onClick={() => void pokeLeopardNose()}
+                  initial={nosePokePulse ? { scale: 1, rotate: 0 } : false}
+                  animate={nosePokePulse ? { scale: [1, .86, 1.08, 1], rotate: [0, -5, 4, 0] } : {}}
+                  transition={{ duration: .42 }}
+                  className={`mb-1 h-12 w-12 flex-none rounded-full border bg-no-repeat shadow-sm transition disabled:opacity-60 ${n ? 'border-night-amber/35 bg-night-surface' : 'border-[#a73a32]/35 bg-[#fffaf5]'}`}
+                  style={{ backgroundImage: "url('/directory/home/chat-leopard-v3.png')", backgroundSize: '190% auto', backgroundPosition: '82% 55%' }}
+                />
+              </div>
 
               <div className={`chat-input-tray flex items-end gap-2 rounded-2xl border px-3 py-2 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50' : 'border-[#a73a32] bg-[#fffaf5]/90 text-[#3f2c29] focus-within:border-[#8f2d28]'}`}>
+                <button aria-label="更多功能" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)} className={`relative flex-shrink-0 rounded-xl p-2 ${n ? '' : 'text-[#a73a32]'}`}><Plus size={18}/>{timelineCurrent && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#d99118]"/>}</button>
                 <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => { setMoreOpen(false); setMessageActionsId(null) }}
                   placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
                   className={`no-frame flex-1 min-w-0 resize-none bg-transparent outline-none text-base md:text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-[#3f2c29] placeholder:text-[#9a766d]'}`} />
                 <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
-                <button aria-label="更多功能" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)} className={`relative flex-shrink-0 rounded-xl p-2 ${n ? '' : 'text-[#a73a32]'}`}><Plus size={18}/>{timelineCurrent && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#d99118]"/>}</button>
                 {isLoading ? (
                   <button onClick={() => { void handleStopGeneration() }} title="停止生成"
                     className={`p-2 rounded-xl transition-all flex-shrink-0 ${n ? 'bg-night-amber text-night-bg' : 'bg-[#d99118] text-white'}`}>

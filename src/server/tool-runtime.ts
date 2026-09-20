@@ -42,6 +42,7 @@ import { appendPoemLine, createPoem, deletePoem, deletePoemLine, editPoemLine, g
 import { addWheelOption, deleteWheelOption, editWheelOption, readWheel, spinWheel } from './intimacy-wheel-store'
 import { appendStorySection, createStory, deleteStory, getStory, listStories, updateStory, updateStorySection } from './story-store'
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
+import { sendPushMessages } from './push'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -511,6 +512,11 @@ export async function executeRegisteredToolHandler(
         if (input.action === 'toggle') return JSON.stringify({ ok: true, option: editWheelOption(input.pool_id, input.option_id, { enabled: input.enabled }) })
         if (input.action === 'delete') return JSON.stringify({ ok: deleteWheelOption(input.pool_id, input.option_id) })
         throw new Error('未知转盘操作')
+      }
+
+      case 'bite_otter_nape': {
+        const push = await sendPushMessages(['星星咬了水獭后颈一口。'], '被咬了一口')
+        return JSON.stringify({ ok: push.sent > 0, ...push })
       }
 
       // Wake alarm

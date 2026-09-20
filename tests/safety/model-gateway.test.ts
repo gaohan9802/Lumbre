@@ -227,7 +227,7 @@ test('summary endpoint resolves its channel on the server and never needs a brow
   } finally { globalThis.fetch = oldFetch }
 })
 
-test('both gateways receive the reply mode prompt and a reasoning-safe short budget', async () => {
+test('both gateways ignore retired reply modes and keep the long-form budget', async () => {
   const { NextRequest } = await import('next/server')
   const repository = await import('../../src/server/data/repositories/model-credentials')
   const route = await import('../../src/app/api/chat/route')
@@ -251,8 +251,8 @@ test('both gateways receive the reply mode prompt and a reasoning-safe short bud
         assert.equal(response.status, 200)
         const body = bodies.at(-1)
         assert.match(JSON.stringify(body.system || body.messages[0]), /保留这份人设/)
-        assert.match(JSON.stringify(body.system || body.messages[0]), mode === 'short' ? /短聊模式/ : /长聊模式/)
-        assert.equal(body.max_tokens, mode === 'short' ? 10048 : 16000)
+        assert.doesNotMatch(JSON.stringify(body.system || body.messages[0]), /短聊模式|长聊模式/)
+        assert.equal(body.max_tokens, 16000)
         assert.ok(body.max_tokens > 8000)
       }
     }
