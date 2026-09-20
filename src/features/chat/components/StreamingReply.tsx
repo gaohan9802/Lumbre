@@ -53,7 +53,7 @@ export function StreamingReply({
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
             return (
-              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className={`chat-ai-bubble relative block w-fit max-w-[76%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl ${index === lastTextIndex ? 'rounded-bl-md' : ''} text-[15px] leading-[1.75] ${isNight ? '' : 'border border-[#a73a32]'} ${!aiColor ? (isNight ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`} style={aiColor ? aiBubbleStyle : undefined}>
+              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className={`chat-ai-bubble relative block w-fit max-w-[76%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl ${index === lastTextIndex ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${isNight ? '' : 'border border-[#a73a32]'} ${!aiColor ? (isNight ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`} style={aiColor ? aiBubbleStyle : undefined}>
                 {block.content}{isLast && <span className="stream-cursor">…</span>}
               </motion.div>
             )

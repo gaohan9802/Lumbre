@@ -61,7 +61,7 @@ export default function Home() {
   }, [setActiveTab])
   useEffect(() => {
     const viewport = window.visualViewport
-    const fitKeyboard = () => document.documentElement.style.setProperty('--app-height', `${viewport?.height || window.innerHeight}px`)
+    const fitKeyboard = () => document.documentElement.style.setProperty('--app-height', `${Math.round((viewport?.height || window.innerHeight) + (viewport?.offsetTop || 0))}px`)
     fitKeyboard()
     viewport?.addEventListener('resize', fitKeyboard)
     window.addEventListener('resize', fitKeyboard)

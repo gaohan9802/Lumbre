@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback, useState } from 'react'
+import { Fragment, useEffect, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
@@ -33,7 +33,7 @@ import { loadEarlierChat, syncChatNow } from '@/features/chat/sync/ChatSync'
 import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
-import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
+import { ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
@@ -163,7 +163,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
-  const activeModel = activeProfile?.models.find(model => model.id === settings.model)
   const activeRoute = normalizeChatRoute(activeSession?.generationRoute)
   const [ccStatus, setCcStatus] = useState<CcStatus>(EMPTY_CC_STATUS)
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
@@ -291,6 +290,15 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     ? Math.max(0, Number(activeSession.messageCount || 0) - messages.length)
     : 0
   const visibleMessages = hiddenCount > 0 ? messages.slice(-visibleCount) : messages
+  const nosePokeLine = (poke: { id: string; timestamp: number }) => (
+    <motion.p
+      key={poke.id}
+      initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+      className={`my-3 text-center text-[11px] tracking-[0.08em] ${n ? 'text-night-amber/75' : 'text-[#9f302b]/70'}`}
+    >
+      {fmtShortDate(poke.timestamp)} 小火戳了豹子鼻子 · 今天第 {nosePokes.findIndex(item => item.id === poke.id) + 1} 次
+    </motion.p>
+  )
 
   const handleLoadEarlier = async () => {
     if (hiddenCount > 0) {
@@ -1017,32 +1025,32 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   /* ── sidebar ──────────────────────────── */
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
-    <div className={`h-full flex flex-col ${mobile ? 'w-[82vw] max-w-[360px]' : 'w-[320px]'} ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32] text-[#3f2c29]'} border-r`}>
-      <div className={`p-5 space-y-3 border-b ${n ? 'border-current/5' : 'border-[#a73a32]/45'}`}>
+    <div className={`relative h-full flex flex-col overflow-hidden ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32] text-[#3f2c29]'} border-r`}>
+      <div className={`relative z-10 p-4 space-y-3 border-b ${n ? 'border-current/5' : 'border-[#a73a32]/45'}`}>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-3xl leading-none">会话</div>
-            <div className="mt-2 text-sm opacity-55">{settings.sessions.length} 条对话</div>
+            <div className="text-sm font-medium">会话</div>
+            <div className="text-[10px] opacity-40">{settings.sessions.length} 条对话</div>
           </div>
-          {mobile && <button onClick={() => setSessionDrawerOpen(false)} className="p-2 opacity-60"><X size={16} /></button>}
+          {mobile && <div className="flex items-center gap-2"><span aria-hidden="true" className="text-lg text-[#d99118]">✦</span><button onClick={() => setSessionDrawerOpen(false)} className="p-2 opacity-60"><X size={16} /></button></div>}
         </div>
         <button
           onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }}
-          className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-base ${n ? 'bg-night-amber text-night-bg' : 'border border-[#a73a32] bg-[#fffaf5]/65 text-[#9f302b]'}`}
+          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs ${n ? 'bg-night-amber text-night-bg' : 'border border-[#a73a32] bg-[#fffaf5]/65 text-[#9f302b]'}`}
         >
-          <Plus size={20} /> 新对话
+          <Plus size={13} /> 新对话
         </button>
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${n ? 'bg-night-surface' : 'border border-[#a73a32]/25 bg-[#fffaf5]/50'}`}>
-          <Search size={17} className="opacity-40" />
-          <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} placeholder="搜索会话" className="bg-transparent outline-none text-sm flex-1" />
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${n ? 'bg-night-surface' : 'border border-[#a73a32]/25 bg-[#fffaf5]/50'}`}>
+          <Search size={13} className="opacity-40" />
+          <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} placeholder="搜索会话" className="bg-transparent outline-none text-xs flex-1" />
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="relative z-10 flex-1 overflow-y-auto p-2 space-y-1">
         {filteredSessions.map((s) => {
           const active = s.id === settings.activeSessionId
           return (
             <div key={s.id} onClick={() => { setActiveSession(s.id); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
-              className={`group p-4 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-amber/15 text-night-text' : 'bg-[#dce5e8]/75 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
+              className={`group p-3 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-amber/15 text-night-text' : 'bg-[#dce5e8]/75 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   {editingSessionId === s.id ? (
@@ -1050,12 +1058,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       onBlur={finishRename} onKeyDown={(e) => { if (e.key === 'Enter' && !(e.nativeEvent as any).isComposing) finishRename(); if (e.key === 'Escape') setEditingSessionId(null) }}
                       onClick={(e) => e.stopPropagation()} className={`w-full px-2 py-1 rounded text-xs outline-none ${n ? 'bg-night-card' : 'bg-white'}`} />
                   ) : (
-                    <div className="text-base truncate flex items-center gap-1.5">
+                    <div className="text-xs font-medium truncate flex items-center gap-1">
                       {s.pinned && <Pin size={10} className={n ? 'text-night-amber' : 'text-day-heart'} />}
                       {s.title}
                     </div>
                   )}
-                  <div className="text-xs opacity-50 mt-1.5 flex justify-between">
+                  <div className="text-[10px] opacity-40 mt-1 flex justify-between">
                     <span>{s.messageCount || s.messages.length} 条消息</span>
                     <span>{fmtShortDate(s.updatedAt)}</span>
                   </div>
@@ -1073,7 +1081,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )
         })}
       </div>
-      <div className={`shrink-0 p-3 space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/35'}`}>
+      <div className={`relative z-10 shrink-0 p-3 space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/35'}`}>
         <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/25 bg-[#fffaf5]/55'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CLAUDE 额度 · 订阅</span>
@@ -1142,6 +1150,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )}
         </section>
       </div>
+      {!n && <img aria-hidden="true" src="/directory/home/clean-v3/notes.png" className="pointer-events-none absolute -bottom-24 -left-11 z-0 w-44 opacity-75" />}
     </div>
   )
 
@@ -1150,6 +1159,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   return (
     <>
       <div className={`flex h-full relative overflow-hidden ${n ? 'bg-night-bg' : 'chat-paper text-[#3f2c29]'}`}>
+        {!n && <svg aria-hidden="true" viewBox="0 0 130 92" className="pointer-events-none absolute right-0 top-0 z-0 h-24 w-32 text-[#a73a32]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M130 9C101 12 91 31 72 47 58 60 44 67 24 73" />
+          <path d="M103 22c-2 12 1 18 8 22-11 0-18-4-20-11M76 46c-11-1-17-6-19-14 10 1 16 5 19 14M49 62c-3 10-1 16 5 20-9-1-14-5-15-12" />
+          <path d="M116 12c4 4 4 9 0 13-5-3-6-8 0-13Z" fill="#d99118" stroke="#a73a32" />
+          <path d="M74 47c6-1 11 2 13 7-6 3-11 1-13-7Z" fill="#8fa7b6" stroke="#a73a32" />
+        </svg>}
         {!embedded && <div className="hidden lg:block h-full relative z-10">
           <SidebarContent />
         </div>}
@@ -1189,8 +1204,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             )}
 
             <div>
-              {visibleMessages.map((msg) => {
+              {visibleMessages.map((msg, messageIndex) => {
                 const isUser = msg.role === 'user'
+                const previousTimestamp = messageIndex > 0 ? visibleMessages[messageIndex - 1].timestamp : -Infinity
+                const precedingPokes = nosePokes.filter(poke => poke.timestamp > previousTimestamp && poke.timestamp <= msg.timestamp)
                 const versions = msg.versions || []
                 const vIdx = msg.versionIndex ?? 0
                 const hasVersions = versions.length > 1
@@ -1204,7 +1221,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 const lastTextBlock = displayContentBlocks?.reduce((last, block, index) => block.type === 'text' && block.content?.trim() ? index : last, -1) ?? -1
 
                 return (
-                  <div key={msg.id} className="flex mb-4" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
+                  <Fragment key={msg.id}>
+                  {precedingPokes.map(nosePokeLine)}
+                  <div className="flex mb-4" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
                     <div className="w-full space-y-1">
                       {/* wake indicator */}
                       {(msg as any)._wake && (
@@ -1277,7 +1296,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[76%] mr-auto break-words px-4 py-3 rounded-2xl ${bi === lastTextBlock ? 'rounded-bl-md' : ''} text-[15px] leading-[1.75] ${n ? '' : 'border border-[#a73a32]'} ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`}
+                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[76%] mr-auto break-words px-4 py-3 rounded-2xl ${bi === lastTextBlock ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${n ? '' : 'border border-[#a73a32]'} ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`}
                                   style={aColor ? aiBubbleStyle : undefined}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -1364,7 +1383,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 rounded-2xl text-[15px] leading-[1.75] ${isUser ? 'w-fit max-w-[74%] rounded-br-md ml-auto' : 'w-fit max-w-[76%] rounded-bl-md mr-auto'} ${!isUser && !n ? 'border border-[#a73a32]' : ''} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : (n ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]')) : ''}`}
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-br-md ml-auto' : 'w-fit max-w-[76%] rounded-bl-md mr-auto'} ${!isUser && !n ? 'border border-[#a73a32]' : ''} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : (n ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]')) : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : undefined) : (aColor ? aiBubbleStyle : undefined)}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
@@ -1444,21 +1463,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
                     </div>
                   </div>
+                  </Fragment>
                 )
               })}
+              {nosePokes.filter(poke => poke.timestamp > (visibleMessages.at(-1)?.timestamp ?? -Infinity)).map(nosePokeLine)}
             </div>
-
-            <AnimatePresence initial={false}>
-              {nosePokes.map((poke, index) => (
-                <motion.p
-                  key={poke.id}
-                  initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-                  className={`text-center text-[11px] tracking-[0.08em] ${n ? 'text-night-amber/75' : 'text-[#9f302b]/70'}`}
-                >
-                  {fmtShortDate(poke.timestamp)} 小火戳了豹子鼻子 · 今天第 {index + 1} 次
-                </motion.p>
-              ))}
-            </AnimatePresence>
 
             {/* loading / streaming */}
             {isLoading && (
@@ -1477,7 +1486,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
 
           {/* footer */}
-          <div className={`chat-footer relative border-t px-3 pt-2 backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-[#a73a32]/35 bg-[#faf8f3]/88'}`}>
+          <div className={`chat-footer relative border-t px-3 pt-1 backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-[#a73a32]/35 bg-[#faf8f3]/88'}`}>
             {/* pending shared card */}
             {pendingShare && (
               <div className={`mx-1 mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface' : 'border-day-pink/20 bg-white'}`}>
@@ -1508,36 +1517,27 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               </div>
             )}
 
-            <div className="relative">
+            <div className="chat-compose-shell relative">
               {moreOpen && <div className={`absolute bottom-[calc(100%+.5rem)] left-0 z-30 grid w-[min(330px,calc(100vw-1.5rem))] grid-cols-2 gap-2 rounded-2xl border p-3 shadow-lg ${n ? 'border-night-border bg-night-card' : 'border-[#a73a32]/45 bg-[#faf8f3] text-[#5a3933]'}`} aria-label="更多功能">
                 <button disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><ImagePlus size={16}/>{uploadingImg ? '处理中…' : '上传照片'}</button>
                 <button onClick={() => { setTimelineOpen(true); setMoreOpen(false) }} className="flex min-w-0 items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><Clock3 size={16}/><span className="truncate">{timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'}</span></button>
                 <button onClick={() => { setWheelOpen(true); setMoreOpen(false) }} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[#9d5361]/10 p-3 text-xs text-[#9d5361]"><Dices size={16}/>今天怎么操</button>
               </div>}
 
-              <div className="flex items-end justify-between gap-2">
-                <ChatRouteChip
-                  profileName={activeProfile?.name}
-                  modelName={activeModel?.name || activeModel?.id || settings.model}
-                  route={activeRoute}
-                  ccStatus={ccStatus}
-                  isNight={n}
-                  onClick={() => setModelPickerOpen(true)}
-                />
-                <motion.button
-                  key={nosePokePulse}
-                  type="button"
-                  aria-label="戳豹子鼻子"
-                  title="戳豹子鼻子"
-                  disabled={nosePokeBusy}
-                  onClick={() => void pokeLeopardNose()}
-                  initial={nosePokePulse ? { scale: 1, rotate: 0 } : false}
-                  animate={nosePokePulse ? { scale: [1, .86, 1.08, 1], rotate: [0, -5, 4, 0] } : {}}
-                  transition={{ duration: .42 }}
-                  className={`mb-1 h-12 w-12 flex-none rounded-full border bg-no-repeat shadow-sm transition disabled:opacity-60 ${n ? 'border-night-amber/35 bg-night-surface' : 'border-[#a73a32]/35 bg-[#fffaf5]'}`}
-                  style={{ backgroundImage: "url('/directory/home/chat-leopard-v3.png')", backgroundSize: '190% auto', backgroundPosition: '82% 55%' }}
-                />
-              </div>
+              <motion.button
+                key={nosePokePulse}
+                type="button"
+                aria-label="戳豹子鼻子"
+                title="戳豹子鼻子"
+                disabled={nosePokeBusy}
+                onClick={() => void pokeLeopardNose()}
+                initial={nosePokePulse ? { scale: 1, rotate: 0 } : false}
+                animate={nosePokePulse ? { scale: [1, .86, 1.08, 1], rotate: [0, -5, 4, 0] } : {}}
+                transition={{ duration: .42 }}
+                className="chat-nose-button absolute -top-[4.7rem] right-2 z-20 h-20 w-24 origin-bottom-right transition disabled:opacity-60"
+              >
+                <img src="/directory/home/chat-leopard-v3.png" alt="" className="h-full w-full object-contain object-bottom drop-shadow-sm" />
+              </motion.button>
 
               <div className={`chat-input-tray flex items-end gap-2 rounded-2xl border px-3 py-2 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50' : 'border-[#a73a32] bg-[#fffaf5]/90 text-[#3f2c29] focus-within:border-[#8f2d28]'}`}>
                 <button aria-label="更多功能" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)} className={`relative flex-shrink-0 rounded-xl p-2 ${n ? '' : 'text-[#a73a32]'}`}><Plus size={18}/>{timelineCurrent && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#d99118]"/>}</button>

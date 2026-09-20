@@ -86,6 +86,11 @@
     padding-bottom: 0.25rem;
   }
 
+  .chat-compose-shell:focus-within .chat-nose-button {
+    opacity: 0.18;
+    pointer-events: none;
+  }
+
   html:not(.dark) .chat-ai-bubble::before {
     content: '✦';
     position: absolute;
