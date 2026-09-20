@@ -60,7 +60,7 @@ export function Sidebar() {
             style={{ width: 'min(100vw, calc(100dvh * 426 / 923), 520px)' }}
           >
             <Image
-              src="/directory/home/composition.png"
+              src="/directory/home/composition.png?v=2598345"
               alt=""
               fill
               priority
