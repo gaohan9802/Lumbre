@@ -53,8 +53,9 @@ export function useChatViewState() {
   const [pendingShare, setPendingShare] = useState<SharedCard | null>(null)
   const [visibleCount, setVisibleCount] = useState(CHAT_PAGE_SIZE)
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [photoPrompt, setPhotoPrompt] = useState<{ dataUrl: string } | null>(null)
+  const [photoPrompt, setPhotoPrompt] = useState<{ messageId: string; images: string[] } | null>(null)
   const [deleteMenuId, setDeleteMenuId] = useState<string | null>(null)
+  const [messageActionsId, setMessageActionsId] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -82,7 +83,7 @@ export function useChatViewState() {
     copiedId, setCopiedId, mounted, setMounted,
     uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
-    deleteMenuId, setDeleteMenuId,
+    deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
     messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
     activeGenerationRef, explicitStopRef, recoveredTurnsRef,
     ...confirm,

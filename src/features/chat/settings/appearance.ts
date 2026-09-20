@@ -5,7 +5,7 @@ export function bubbleAppearance(ap: ChatAppearance, who: 'user' | 'ai', night: 
   const suffix = night ? 'Night' : ''
   const read = (name: string) => ap[`${who}Bubble${name}${suffix}` as keyof ChatAppearance]
   const custom = String(read('Color') || '')
-  const fallback = who === 'user' ? (night ? '#e2a84b' : '#f3a4ac') : (night ? '#243040' : '#ffffff')
+  const fallback = who === 'user' ? (night ? '#e2a84b' : '#dce5e8') : (night ? '#243040' : '#fffaf5')
   const color = /^#[0-9a-f]{6}$/i.test(custom) ? custom : fallback
   const rawOpacity = Number(read('Opacity') ?? 1)
   const opacity = (Number.isFinite(rawOpacity) ? Math.max(.1, Math.min(1, rawOpacity)) : 1) * (!custom && who === 'user' && night ? .2 : 1)

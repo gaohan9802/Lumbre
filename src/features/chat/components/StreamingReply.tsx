@@ -53,18 +53,18 @@ export function StreamingReply({
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
             return (
-              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className={`block w-fit max-w-[87%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl ${index === lastTextIndex ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${!aiColor ? (isNight ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`} style={aiBubbleStyle}>
+              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className={`block w-fit max-w-[87%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl ${index === lastTextIndex ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${!aiColor ? (isNight ? 'bg-night-surface text-night-text' : 'border border-[#a73a32] bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`} style={aiColor ? aiBubbleStyle : undefined}>
                 {block.content}{isLast && <span className="stream-cursor">…</span>}
               </motion.div>
             )
           }
           return null
         }) : (
-          <div className={`w-fit max-w-[87%] mr-auto px-4 py-3 rounded-2xl rounded-bl-md  ${!aiColor ? (isNight ? 'bg-night-surface' : 'bg-white shadow-sm') : ''}`} style={aiBubbleStyle}>
+          <div className={`w-fit max-w-[87%] mr-auto px-4 py-3 rounded-2xl rounded-bl-md ${!aiColor ? (isNight ? 'bg-night-surface' : 'border border-[#a73a32] bg-[#fffaf5]/55') : ''}`} style={aiColor ? aiBubbleStyle : undefined}>
             <div className="flex gap-1">
               {[0, 1, 2].map(index => (
                 <motion.div key={index} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.2 }}
-                  className={`w-1.5 h-1.5 rounded-full ${isNight ? 'bg-night-amber' : 'bg-day-pink'}`} />
+                  className={`w-1.5 h-1.5 rounded-full ${isNight ? 'bg-night-amber' : 'bg-[#d99118]'}`} />
               ))}
             </div>
           </div>

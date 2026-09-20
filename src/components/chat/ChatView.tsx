@@ -6,8 +6,8 @@ import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Send, ChevronDown, ChevronLeft, ChevronRight, Settings2, PanelLeft,
-  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, BookMarked, ImagePlus, Clock3, FileText, Square, Dices,
+  Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Home, MoreHorizontal,
+  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -24,7 +24,6 @@ import { BookmarkDialog } from './BookmarkDialog'
 import { SummaryDialog } from './SummaryDialog'
 import { MessageReceiptDialog } from './MessageReceiptDialog'
 import { TimelineTimerModal } from '@/components/timeline/TimelineTimerModal'
-import { SyncBadge } from '@/components/layout/SyncBadge'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid } from '@/lib/madrid-time'
 import { buildSummaryRounds, selectLoadedSessionSummarySegment } from '@/lib/chat-summary'
@@ -145,12 +144,13 @@ export interface ChatViewProps {
   onTurn?: (role: 'user' | 'assistant', content: string) => void
 }
 
-export function ChatView({ embedded = false, contextInjection = '', title, inputPlaceholder = '说点什么...', onTurn }: ChatViewProps = {}) {
-  const { setActiveTab } = useApp()
+export function ChatView({ embedded = false, contextInjection = '', inputPlaceholder = '说点什么...', onTurn }: ChatViewProps = {}) {
+  const { setSidebarOpen } = useApp()
   const { theme } = useTheme()
   const n = theme === 'night'
   const [moreOpen, setMoreOpen] = useState(false)
   const [wheelOpen, setWheelOpen] = useState(false)
+  const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
@@ -181,7 +181,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     copiedId, setCopiedId, mounted, setMounted,
     uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
-    deleteMenuId, setDeleteMenuId,
+    deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
     messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
     activeGenerationRef, explicitStopRef, recoveredTurnsRef,
     confirmState, ask, answer,
@@ -298,8 +298,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     reader.onload = async () => {
       const raw = reader.result as string
       const dataUrl = await compressImage(raw)
-      // Show prompt asking if user wants to save to photo wall
-      setPhotoPrompt({ dataUrl })
+      setPendingImages((prev) => [...prev, dataUrl])
+      setMoreOpen(false)
       setUploadingImg(false)
     }
     reader.onerror = () => setUploadingImg(false)
@@ -308,16 +308,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   const handlePhotoPromptChoice = async (choice: 'public' | 'locked' | 'no') => {
     if (!photoPrompt) return
-    const { dataUrl } = photoPrompt
+    const { images } = photoPrompt
     setPhotoPrompt(null)
-    let ref = dataUrl
     if (choice !== 'no') {
-      try {
-        const r = await photosApi.write('fire', dataUrl, '', 'chat', choice === 'locked')
-        if (r?.id) ref = `/api/photos/raw/${r.id}`
-      } catch {}
+      await Promise.all(images.map(dataUrl => photosApi.write('fire', dataUrl, '', 'chat', choice === 'locked').catch(() => null)))
     }
-    setPendingImages((prev) => [...prev, ref])
   }
 
   /* ── send ────────────────────────────── */
@@ -715,6 +710,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
     await durableAppend(activeSession, userMsg)
     if (activeRoute === 'claude-code' && userMsg.images?.length) await flushChatOutbox()
     addMessage(userMsg, activeSession?.id)
+    if (userMsg.images?.length) setPhotoPrompt({ messageId: userMsg.id, images: [...userMsg.images] })
     onTurn?.('user', userMsg.content)
     setInput('')
     setPendingImages([])
@@ -980,14 +976,6 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   /* ── appearance ───────────────────────── */
   const ap = settings.appearance
-  const bgStyle: React.CSSProperties = ap.bgImage ? {
-    backgroundImage: `url(${ap.bgImage})`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-  } : {}
-  const bgOverlayStyle: React.CSSProperties = ap.bgImage ? {
-    backgroundColor: n ? `rgba(15,20,25,${1 - ap.bgOpacity})` : `rgba(255,255,255,${1 - ap.bgOpacity})`,
-  } : {}
 
   // Theme-aware bubble colors — day and night are configured independently.
   const uColor = n ? ap.userBubbleColorNight : ap.userBubbleColor
@@ -998,8 +986,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
   /* ── sidebar ──────────────────────────── */
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
-    <div className={`h-full flex flex-col ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${n ? 'bg-night-card border-night-border' : 'bg-white border-day-muted/10'} border-r`}>
-      <div className="p-4 space-y-3 border-b border-current/5">
+    <div className={`h-full flex flex-col ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32] text-[#3f2c29]'} border-r`}>
+      <div className={`p-4 space-y-3 border-b ${n ? 'border-current/5' : 'border-[#a73a32]/45'}`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-medium">会话</div>
@@ -1009,11 +997,11 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         </div>
         <button
           onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }}
-          className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs ${n ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}
+          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs ${n ? 'bg-night-amber text-night-bg' : 'border border-[#a73a32] bg-[#fffaf5]/65 text-[#9f302b]'}`}
         >
           <Plus size={13} /> 新对话
         </button>
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${n ? 'bg-night-surface' : 'bg-gray-50'}`}>
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${n ? 'bg-night-surface' : 'border border-[#a73a32]/25 bg-[#fffaf5]/50'}`}>
           <Search size={13} className="opacity-40" />
           <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} placeholder="搜索会话" className="bg-transparent outline-none text-xs flex-1" />
         </div>
@@ -1022,8 +1010,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
         {filteredSessions.map((s) => {
           const active = s.id === settings.activeSessionId
           return (
-            <div key={s.id} onClick={() => { setActiveSession(s.id); if (mobile) setSessionDrawerOpen(false) }}
-              className={`group p-3 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-amber/15 text-night-text' : 'bg-day-lemon text-day-text') : (n ? 'hover:bg-night-surface' : 'hover:bg-gray-50')}`}>
+            <div key={s.id} onClick={() => { setActiveSession(s.id); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
+              className={`group p-3 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-amber/15 text-night-text' : 'bg-[#dce5e8]/75 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   {editingSessionId === s.id ? (
@@ -1041,18 +1029,25 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                     <span>{fmtShortDate(s.updatedAt)}</span>
                   </div>
                 </div>
-                <div className="opacity-0 group-hover:opacity-100 flex gap-1" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => togglePinSession(s.id)} className="p-1 opacity-60 hover:opacity-100"><Pin size={12} /></button>
-                  <button onClick={() => startRename(s.id, s.title)} className="p-1 opacity-60 hover:opacity-100"><Pencil size={12} /></button>
-                  <button onClick={async () => { const ok = await ask('删除这条对话？'); if (ok) deleteSession(s.id) }} className="p-1 text-red-500/60 hover:text-red-500"><Trash2 size={12} /></button>
+                <div className="relative" onClick={(e) => e.stopPropagation()}>
+                  <button aria-label="会话操作" onClick={() => setSessionActionsId(current => current === s.id ? null : s.id)} className="p-1.5 opacity-45 hover:opacity-100"><MoreHorizontal size={14}/></button>
+                  {sessionActionsId === s.id && <div className={`absolute right-0 top-full z-20 mt-1 min-w-28 rounded-xl border py-1 shadow-lg ${n ? 'border-night-border bg-night-card' : 'border-[#a73a32]/30 bg-[#faf8f3]'}`}>
+                    <button onClick={() => { togglePinSession(s.id); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"><Pin size={12}/>{s.pinned ? '取消置顶' : '置顶'}</button>
+                    <button onClick={() => { startRename(s.id, s.title); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"><Pencil size={12}/>重命名</button>
+                    <button onClick={async () => { const ok = await ask('删除这条对话？'); if (ok) deleteSession(s.id); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-500"><Trash2 size={12}/>删除</button>
+                  </div>}
                 </div>
               </div>
             </div>
           )
         })}
       </div>
-      <div className="shrink-0 border-t border-current/5 p-2 space-y-2">
-        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-day-border bg-day-tint/65'}`}>
+      <div className={`shrink-0 border-t p-2 space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/35'}`}>
+        <button type="button" onClick={() => { if (mobile) setSessionDrawerOpen(false); setSidebarOpen(true) }} className={`flex w-full items-center justify-center gap-2 rounded-xl py-2 text-xs ${n ? 'hover:bg-night-surface' : 'text-[#9f302b] hover:bg-[#fffaf5]/70'}`}><Home size={13}/>回到家</button>
+        <details className="group">
+          <summary className={`flex cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-[10px] tracking-[0.14em] ${n ? 'bg-night-surface/45' : 'border border-[#a73a32]/25 bg-[#fffaf5]/55'}`}><span>额度与上下文</span><ChevronDown size={13} className="transition-transform group-open:rotate-180"/></summary>
+          <div className="mt-2 space-y-2">
+        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/25 bg-[#fffaf5]/55'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CLAUDE 额度 · 订阅</span>
             <button type="button" aria-label="刷新 CC 状态" onClick={() => void refreshCcStatus()} className="p-1 -m-1 hover:opacity-100">
@@ -1072,7 +1067,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 <span>重置 {fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
               </div>
               <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
-                <div className={`h-full rounded-full ${n ? 'bg-night-amber' : 'bg-day-pink'}`} style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
+                <div className={`h-full rounded-full ${n ? 'bg-night-amber' : 'bg-[#d99118]'}`} style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
               </div>
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
                 <span>{ccStatus.quota.sevenDay ? `7 天剩余 ${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%` : '7 天额度暂缺'}</span>
@@ -1092,7 +1087,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
           )}
         </section>
 
-        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-day-border bg-day-tint/65'}`}>
+        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/25 bg-[#fffaf5]/55'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CC CONTEXT · 当前对话</span>
             <span className={ccStatus.context.available ? (n ? 'text-night-amber' : 'text-emerald-700') : ''}>●</span>
@@ -1105,7 +1100,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 <span>{fmtMetricTime(ccStatus.context.collectedAt)}</span>
               </div>
               <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
-                <div className={`h-full rounded-full ${n ? 'bg-night-amber' : 'bg-day-pink'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
+                <div className={`h-full rounded-full ${n ? 'bg-night-amber' : 'bg-[#d99118]'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
               </div>
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
                 <span>读缓存 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写缓存 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
@@ -1119,6 +1114,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
             </>
           )}
         </section>
+          </div>
+        </details>
       </div>
     </div>
   )
@@ -1127,40 +1124,24 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
   return (
     <>
-      <div className="flex h-full relative overflow-hidden" style={bgStyle}>
-        {/* background overlay for opacity */}
-        {ap.bgImage && <div className="absolute inset-0 pointer-events-none z-0" style={bgOverlayStyle} />}
-
+      <div className={`flex h-full relative overflow-hidden ${n ? 'bg-night-bg' : 'chat-paper text-[#3f2c29]'}`}>
         {!embedded && <div className="hidden lg:block h-full relative z-10">
           <SidebarContent />
         </div>}
 
         <div className="flex flex-col h-full flex-1 min-w-0 relative z-10">
-          {/* desktop header */}
-          {!embedded && <div className="hidden md:flex px-6 py-3 items-center justify-between border-b border-current/5">
-            <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setSessionDrawerOpen(true)} className={`lg:hidden p-2 rounded-xl ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-100'}`}>
-                <PanelLeft size={16} />
-              </button>
-              <h2 className="text-sm font-medium opacity-80 truncate">{title || activeSession?.title || '对话'}</h2>
-            </div>
-            <div className="flex items-center gap-3"><SyncBadge /><button aria-label="打开聊天菜单" onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl transition ${n ? 'hover:bg-night-surface text-night-muted' : 'hover:bg-gray-100 text-day-muted'}`}>
-              <Settings2 size={16} />
-            </button></div>
-          </div>}
-
-          {/* mobile header */}
-          {!embedded && <div className="md:hidden flex justify-between items-center px-4 pt-3 pb-1">
-            <button onClick={() => setSessionDrawerOpen(true)} className={`p-2 rounded-xl ${n ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
-              <PanelLeft size={16} />
+          {!embedded && <div className={`grid grid-cols-3 items-center px-4 pt-[max(.65rem,env(safe-area-inset-top))] pb-1 ${n ? 'text-night-muted' : 'text-[#9f302b]'}`}>
+            <button onClick={() => setSessionDrawerOpen(true)} aria-label="打开会话" className="justify-self-start p-2 lg:invisible">
+              <Menu size={22} strokeWidth={1.45}/>
             </button>
-            <button aria-label="打开聊天菜单" onClick={() => setSettingsOpen(true)} className={`p-2 rounded-xl ${n ? 'bg-night-card/80 text-night-muted' : 'bg-white/80 text-day-muted'} backdrop-blur-md`}>
-              <Settings2 size={16} />
+            <span aria-hidden="true" className="justify-self-center text-[22px] leading-none text-[#d99118]">✦</span>
+            <button aria-label="打开聊天菜单" onClick={() => setSettingsOpen(true)} className="justify-self-end p-2">
+              <Moon size={21} strokeWidth={1.45}/>
             </button>
           </div>}
 
           {/* messages */}
-          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-6 space-y-4" onClick={() => deleteMenuId && setDeleteMenuId(null)}>
+          <div ref={scrollRef} onScroll={handleScroll} onPointerDownCapture={() => setMoreOpen(false)} className="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-5 space-y-4" onClick={() => { if (deleteMenuId) setDeleteMenuId(null); setMessageActionsId(null) }}>
             {messages.length === 0 && (
               <div className="flex items-center justify-center h-full text-center opacity-40">
                 <span className="text-4xl" aria-label="等待对话">🐆</span>
@@ -1192,7 +1173,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                 const lastTextBlock = displayContentBlocks?.reduce((last, block, index) => block.type === 'text' && block.content?.trim() ? index : last, -1) ?? -1
 
                 return (
-                  <div key={msg.id} className="flex mb-4">
+                  <div key={msg.id} className="flex mb-4" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
                     <div className="w-full space-y-1">
                       {/* wake indicator */}
                       {(msg as any)._wake && (
@@ -1202,7 +1183,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                       )}
 
                       {/* timestamp */}
-                      <p className={`text-[10px] px-1 ${isUser ? 'text-right' : 'text-left'} ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                      <p className={`text-[10px] px-1 ${isUser ? 'text-right' : 'text-left'} ${n ? 'text-night-muted' : 'text-[#8b6258]'}`}>
                         {fmtFullTs(msg.timestamp)}
                       </p>
 
@@ -1265,8 +1246,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl ${bi === lastTextBlock ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text') : ''}`}
-                                  style={aiBubbleStyle}>
+                                <div key={blockKey} className={`block w-fit max-w-[87%] mr-auto break-words px-4 py-3 rounded-2xl ${bi === lastTextBlock ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'border border-[#a73a32] bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`}
+                                  style={aColor ? aiBubbleStyle : undefined}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {msg.images.map((src: string, ii: number) => (
@@ -1352,8 +1333,8 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed  ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[87%] rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-day-honey text-day-text') : (n ? 'bg-night-surface text-night-text' : 'bg-white shadow-sm text-day-text')) : ''}`}
-                          style={isUser ? userBubbleStyle : aiBubbleStyle}>
+                        <div className={`block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[80%] rounded-br-md ml-auto' : 'w-fit max-w-[87%] rounded-bl-md mr-auto'} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : (n ? 'bg-night-surface text-night-text' : 'border border-[#a73a32] bg-[#fffaf5]/55 text-[#3f2c29]')) : ''}`}
+                          style={isUser ? (uColor ? userBubbleStyle : undefined) : (aColor ? aiBubbleStyle : undefined)}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
@@ -1372,6 +1353,17 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                           {msg.content.trim() && <MarkdownText content={msg.content} />}
                         </div>
                       ) : null}
+
+                      {photoPrompt?.messageId === msg.id && (
+                        <div className={`ml-auto w-fit max-w-[86%] rounded-xl px-3 py-2 text-xs ${n ? 'bg-night-surface' : 'border border-[#a73a32]/35 bg-[#fffaf5]/75 text-[#70473f]'}`} onClick={event => event.stopPropagation()}>
+                          <p>要收藏进照片墙吗？</p>
+                          <div className="mt-2 flex items-center justify-end gap-3">
+                            <button onClick={() => void handlePhotoPromptChoice('public')} className="text-[#a73a32]">公开</button>
+                            <button onClick={() => void handlePhotoPromptChoice('locked')} className="text-[#a73a32]">上锁</button>
+                            <button onClick={() => void handlePhotoPromptChoice('no')} className="opacity-50">不用</button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* AI model + tokens */}
                       {!isUser && (
@@ -1395,7 +1387,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                       )}
 
                       {/* action buttons */}
-                      <div className={`flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start'} opacity-40 hover:opacity-100 transition-opacity relative`}>
+                      {messageActionsId === msg.id && <div onClick={event => event.stopPropagation()} className={`flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start'} opacity-55 transition-opacity relative`}>
                         <button onClick={() => handleRetry(msg, false, msg.ccGenerationState === 'pending')} title="重试" className="p-1"><RotateCcw size={12} /></button>
                         <button onClick={() => handleDeleteMsg(msg.id)} title="删除" className="p-1"><Trash2 size={12} /></button>
                         <button onClick={() => handleCopy(msg.id, msg.content)} title="复制" className="p-1">
@@ -1408,7 +1400,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                             <button onClick={() => doDeleteAllVersions(msg.id)} className={`w-full text-left px-3 py-2 text-xs text-red-500 ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除全部版本</button>
                           </div>
                         )}
-                      </div>
+                      </div>}
 
                       {/* version switcher */}
                       {hasVersions && (
@@ -1442,7 +1434,7 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
 
 
           {/* footer */}
-          <div className={`p-4 border-t backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-day-muted/10 bg-white/50'} pb-[max(1rem,env(safe-area-inset-bottom))] relative`}>
+          <div className={`chat-footer relative border-t px-3 pt-2 backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-[#a73a32]/35 bg-[#faf8f3]/88'}`}>
             {/* pending shared card */}
             {pendingShare && (
               <div className={`mx-1 mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface' : 'border-day-pink/20 bg-white'}`}>
@@ -1454,25 +1446,10 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
                   {pendingShare.imageUrl && <img src={pendingShare.imageUrl} alt="" className="w-full max-h-40 object-contain rounded-lg" />}
                   <div className="font-medium">{pendingShare.subtitle}</div>
                   <div className="whitespace-pre-wrap opacity-70">{pendingShare.body}</div>
-                  <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all opacity-45">{JSON.stringify(pendingShare.metadata, null, 2)}</pre>
                 </div>
               </div>
             )}
             {/* pending image previews */}
-            {/* Photo wall prompt */}
-            {photoPrompt && (
-              <div className={`mx-1 mb-2 p-3 rounded-xl text-xs space-y-2 ${n ? "bg-night-surface" : "bg-gray-50 border"}`}>
-                <p className="font-medium">📷 要把这张照片贴到照片墙吗？</p>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => handlePhotoPromptChoice("public")}
-                    className={`px-3 py-1.5 rounded-lg ${n ? "bg-night-amber/20 text-night-amber" : "bg-day-pinkLight text-day-pink"}`}>公开贴</button>
-                  <button onClick={() => handlePhotoPromptChoice("locked")}
-                    className={`px-3 py-1.5 rounded-lg ${n ? "bg-night-surface border border-night-amber/30 text-night-amber" : "bg-white border text-day-pink"}`}>🔒 上锁贴</button>
-                  <button onClick={() => handlePhotoPromptChoice("no")}
-                    className="px-3 py-1.5 rounded-lg opacity-50 hover:opacity-80">不贴</button>
-                </div>
-              </div>
-            )}
             {pendingImages.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2 px-1">
                 {pendingImages.map((src, i) => (
@@ -1488,43 +1465,44 @@ export function ChatView({ embedded = false, contextInjection = '', title, input
               </div>
             )}
 
-            <ChatRouteChip
-              profileName={activeProfile?.name}
-              modelName={activeModel?.name || activeModel?.id || settings.model}
-              route={activeRoute}
-              ccStatus={ccStatus}
-              isNight={n}
-              onClick={() => setModelPickerOpen(true)}
-            />
+            <div className="relative">
+              {moreOpen && <div className={`absolute bottom-[calc(100%+.5rem)] left-0 z-30 grid w-[min(330px,calc(100vw-1.5rem))] grid-cols-2 gap-2 rounded-2xl border p-3 shadow-lg ${n ? 'border-night-border bg-night-card' : 'border-[#a73a32]/45 bg-[#faf8f3] text-[#5a3933]'}`} aria-label="更多功能">
+                <button disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><ImagePlus size={16}/>{uploadingImg ? '处理中…' : '上传照片'}</button>
+                <button onClick={() => { setTimelineOpen(true); setMoreOpen(false) }} className="flex min-w-0 items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><Clock3 size={16}/><span className="truncate">{timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'}</span></button>
+                <button onClick={() => { setWheelOpen(true); setMoreOpen(false) }} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[#9d5361]/10 p-3 text-xs text-[#9d5361]"><Dices size={16}/>今天怎么操</button>
+                <div role="group" aria-label="对话模式" className="col-span-2 flex gap-2 rounded-xl bg-black/5 p-1">
+                  {(['long', 'short'] as const).map(mode => <button key={mode} aria-pressed={normalizeReplyMode(activeSession?.conversationMode) === mode} onClick={() => { if (activeSession) setConversationMode(activeSession.id, mode); setMoreOpen(false) }} className={`flex-1 rounded-lg py-2.5 text-xs transition ${normalizeReplyMode(activeSession?.conversationMode) === mode ? (n ? 'bg-night-amber/20 text-night-amber' : 'bg-[#fffaf5] text-[#a73a32] shadow-sm') : 'opacity-60'}`}>{mode === 'long' ? '长聊' : '短聊'}</button>)}
+                </div>
+              </div>}
 
-            {/* input area */}
-            <div className={`chat-input-tray flex items-end gap-2 px-3 py-2 rounded-2xl border transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50 focus-within:shadow-[0_10px_30px_rgba(226,168,75,0.10)]' : 'bg-[#fffaf7]/95 border-day-muted/10 shadow-[0_8px_24px_rgba(93,64,55,0.10)] focus-within:border-day-pink/35 focus-within:shadow-[0_10px_30px_rgba(239,64,103,0.10)]'}`}>
-              <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
-                placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
-                className={`no-frame flex-1 min-w-0 resize-none bg-transparent outline-none text-base md:text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-day-text placeholder:text-day-muted'}`} />
-              <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
-              <button aria-label="更多功能" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)} className="p-2 rounded-xl flex-shrink-0 relative"><Plus size={18}/>{timelineCurrent && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-day-pink"/>}</button>
-              {isLoading ? (
-                <button onClick={() => { void handleStopGeneration() }} title="停止生成"
-                  className={`p-2 rounded-xl transition-all flex-shrink-0 ${n ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}>
-                  <Square size={15} fill="currentColor" />
-                </button>
-              ) : (
-                <button aria-label="发送消息" onClick={handleSend} disabled={!input.trim() && pendingImages.length === 0 && !pendingShare}
-                  className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-day-pink text-white hover:bg-day-pink/80') : 'opacity-30 cursor-not-allowed'}`}>
-                  <Send size={16} />
-                </button>
-              )}
-            </div>
+              <ChatRouteChip
+                profileName={activeProfile?.name}
+                modelName={activeModel?.name || activeModel?.id || settings.model}
+                route={activeRoute}
+                ccStatus={ccStatus}
+                isNight={n}
+                onClick={() => setModelPickerOpen(true)}
+              />
 
-            {moreOpen && <div className="grid grid-cols-2 gap-2 pt-3" aria-label="更多功能">
-              <button disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><ImagePlus size={16}/>{uploadingImg ? '处理中…' : '上传照片'}</button>
-              <button onClick={() => setTimelineOpen(true)} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs min-w-0"><Clock3 size={16}/><span className="truncate">{timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'}</span></button>
-              <button onClick={() => { setWheelOpen(true); setMoreOpen(false) }} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[#9d5361]/10 p-3 text-xs text-[#9d5361]"><Dices size={16}/>今天怎么操</button>
-              <div role="group" aria-label="对话模式" className="col-span-2 flex gap-2 rounded-xl bg-black/5 p-1">
-                {(['long', 'short'] as const).map(mode => <button key={mode} aria-pressed={normalizeReplyMode(activeSession?.conversationMode) === mode} onClick={() => activeSession && setConversationMode(activeSession.id, mode)} className={`flex-1 rounded-lg py-2.5 text-xs transition ${normalizeReplyMode(activeSession?.conversationMode) === mode ? (n ? 'bg-night-amber/20 text-night-amber' : 'bg-white text-day-pink shadow-sm') : 'opacity-60'}`}>{mode === 'long' ? '长聊' : '短聊'}</button>)}
+              <div className={`chat-input-tray flex items-end gap-2 rounded-2xl border px-3 py-2 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50' : 'border-[#a73a32] bg-[#fffaf5]/90 text-[#3f2c29] focus-within:border-[#8f2d28]'}`}>
+                <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => { setMoreOpen(false); setMessageActionsId(null) }}
+                  placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
+                  className={`no-frame flex-1 min-w-0 resize-none bg-transparent outline-none text-base md:text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-[#3f2c29] placeholder:text-[#9a766d]'}`} />
+                <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
+                <button aria-label="更多功能" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)} className={`relative flex-shrink-0 rounded-xl p-2 ${n ? '' : 'text-[#a73a32]'}`}><Plus size={18}/>{timelineCurrent && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#d99118]"/>}</button>
+                {isLoading ? (
+                  <button onClick={() => { void handleStopGeneration() }} title="停止生成"
+                    className={`p-2 rounded-xl transition-all flex-shrink-0 ${n ? 'bg-night-amber text-night-bg' : 'bg-[#d99118] text-white'}`}>
+                    <Square size={15} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button aria-label="发送消息" onClick={handleSend} disabled={!input.trim() && pendingImages.length === 0 && !pendingShare}
+                    className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#d99118] text-white hover:bg-[#c98110]') : 'opacity-30 cursor-not-allowed'}`}>
+                    <Send size={16} />
+                  </button>
+                )}
               </div>
-            </div>}
+            </div>
 
           </div>
         </div>

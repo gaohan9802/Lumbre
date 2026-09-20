@@ -68,6 +68,23 @@
     background: rgba(28, 38, 48, 0.8);
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
   }
+
+  .chat-paper {
+    background-color: #f8f6f1;
+    font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+    background-image:
+      radial-gradient(circle at 18% 12%, rgba(167, 58, 50, 0.025), transparent 24%),
+      radial-gradient(circle at 82% 68%, rgba(113, 139, 151, 0.035), transparent 28%),
+      repeating-linear-gradient(8deg, rgba(92, 65, 54, 0.012) 0 1px, transparent 1px 7px);
+  }
+
+  .chat-footer {
+    padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
+  }
+
+  .chat-footer:focus-within {
+    padding-bottom: 0.25rem;
+  }
 }
 
 ::-webkit-scrollbar {

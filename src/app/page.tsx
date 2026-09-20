@@ -59,15 +59,27 @@ export default function Home() {
     window.addEventListener('lumbre-navigate-chat', onNavigate)
     return () => window.removeEventListener('lumbre-navigate-chat', onNavigate)
   }, [setActiveTab])
+  useEffect(() => {
+    const viewport = window.visualViewport
+    const fitKeyboard = () => document.documentElement.style.setProperty('--app-height', `${viewport?.height || window.innerHeight}px`)
+    fitKeyboard()
+    viewport?.addEventListener('resize', fitKeyboard)
+    window.addEventListener('resize', fitKeyboard)
+    return () => {
+      viewport?.removeEventListener('resize', fitKeyboard)
+      window.removeEventListener('resize', fitKeyboard)
+      document.documentElement.style.removeProperty('--app-height')
+    }
+  }, [])
   const View = views[activeTab] || ChatView
 
   return (
-    <div className="h-dvh overflow-hidden">
+    <div className="h-[var(--app-height,100dvh)] overflow-hidden">
       <ChatSync />
       <CouponsView />
       <Sidebar />
       <main className="flex h-full flex-col overflow-hidden relative">
-        <TopBar />
+        {activeTab !== 'chat' && <TopBar />}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
