@@ -143,7 +143,7 @@ export interface ChatViewProps {
   onTurn?: (role: 'user' | 'assistant', content: string) => void
 }
 
-export function ChatView({ embedded = false, contextInjection = '', inputPlaceholder = '说点什么...', onTurn }: ChatViewProps = {}) {
+export function ChatView({ embedded = false, contextInjection = '', inputPlaceholder = '', onTurn }: ChatViewProps = {}) {
   const { setSidebarOpen } = useApp()
   const { theme } = useTheme()
   const n = theme === 'night'
@@ -152,7 +152,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number }[]>([])
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
-  const [nosePokePulse, setNosePokePulse] = useState(0)
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
@@ -214,7 +213,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const pokeLeopardNose = async () => {
     if (nosePokeBusy) return
     setNosePokeBusy(true)
-    setNosePokePulse(value => value + 1)
     try {
       const response = await fetch('/api/nose-pokes', { method: 'POST' })
       if (!response.ok) throw new Error('戳鼻子失败')
@@ -1152,7 +1150,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )}
         </section>
       </div>
-      {!n && <img aria-hidden="true" src="/directory/home/clean-v3/notes.png" className="pointer-events-none absolute -bottom-24 -left-11 z-0 w-44 opacity-75" />}
+      {!n && <img aria-hidden="true" src="/directory/home/clean-v3/notes.png" className="pointer-events-none absolute -bottom-4 -left-11 z-0 w-44 opacity-75" />}
     </div>
   )
 
@@ -1161,12 +1159,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   return (
     <>
       <div className={`flex h-full relative overflow-hidden ${n ? 'bg-night-bg' : 'chat-paper text-[#3f2c29]'}`}>
-        {!n && <svg aria-hidden="true" viewBox="0 0 130 92" className="pointer-events-none absolute right-0 top-0 z-0 h-24 w-32 text-[#a73a32]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-          <path d="M130 9C101 12 91 31 72 47 58 60 44 67 24 73" />
-          <path d="M103 22c-2 12 1 18 8 22-11 0-18-4-20-11M76 46c-11-1-17-6-19-14 10 1 16 5 19 14M49 62c-3 10-1 16 5 20-9-1-14-5-15-12" />
-          <path d="M116 12c4 4 4 9 0 13-5-3-6-8 0-13Z" fill="#d99118" stroke="#a73a32" />
-          <path d="M74 47c6-1 11 2 13 7-6 3-11 1-13-7Z" fill="#8fa7b6" stroke="#a73a32" />
-        </svg>}
         {!embedded && <div className="hidden lg:block h-full relative z-10">
           <SidebarContent />
         </div>}
@@ -1182,7 +1174,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               onClick={() => setSidebarOpen(true)}
               whileTap={{ scale: 0.82, rotate: 12 }}
               className="justify-self-center p-2 text-[25px] leading-none text-[#d99118]"
-            >✦</motion.button>
+            >🐆</motion.button>
             <button aria-label="打开聊天菜单" onClick={() => setSettingsOpen(true)} className="justify-self-end p-2">
               <Moon size={21} strokeWidth={1.45}/>
             </button>
@@ -1519,25 +1511,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
             <div className="chat-compose-shell relative">
               {moreOpen && <div className={`absolute bottom-[calc(100%+.5rem)] left-0 z-30 grid w-[min(330px,calc(100vw-1.5rem))] grid-cols-2 gap-2 rounded-2xl border p-3 shadow-lg ${n ? 'border-night-border bg-night-card' : 'border-[#a73a32]/45 bg-[#faf8f3] text-[#5a3933]'}`} aria-label="更多功能">
+                <motion.button disabled={nosePokeBusy} onClick={() => { setMoreOpen(false); void pokeLeopardNose() }} whileTap={{ scale: .94 }} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-2 text-xs disabled:opacity-50">
+                  <span aria-hidden="true" className="h-10 w-10 flex-none rounded-full bg-no-repeat" style={{ backgroundImage: "url('/directory/home/chat-leopard-v3.png')", backgroundSize: '100px auto', backgroundPosition: '78% 57%' }} />
+                  戳豹子鼻子
+                </motion.button>
                 <button disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><ImagePlus size={16}/>{uploadingImg ? '处理中…' : '上传照片'}</button>
                 <button onClick={() => { setTimelineOpen(true); setMoreOpen(false) }} className="flex min-w-0 items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><Clock3 size={16}/><span className="truncate">{timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'}</span></button>
-                <button onClick={() => { setWheelOpen(true); setMoreOpen(false) }} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[#9d5361]/10 p-3 text-xs text-[#9d5361]"><Dices size={16}/>今天怎么操</button>
+                <button onClick={() => { setWheelOpen(true); setMoreOpen(false) }} className="flex items-center justify-center gap-2 rounded-xl bg-[#9d5361]/10 p-3 text-xs text-[#9d5361]"><Dices size={16}/>今天怎么操</button>
               </div>}
-
-              <motion.button
-                key={nosePokePulse}
-                type="button"
-                aria-label="戳豹子鼻子"
-                title="戳豹子鼻子"
-                disabled={nosePokeBusy}
-                onClick={() => void pokeLeopardNose()}
-                initial={nosePokePulse ? { scale: 1, rotate: 0 } : false}
-                animate={nosePokePulse ? { scale: [1, .86, 1.08, 1], rotate: [0, -5, 4, 0] } : {}}
-                transition={{ duration: .42 }}
-                className="chat-nose-button absolute -top-[4.7rem] right-2 z-20 h-20 w-24 origin-bottom-right transition disabled:opacity-60"
-              >
-                <img src="/directory/home/chat-leopard-v3.png" alt="" className="h-full w-full object-contain object-bottom drop-shadow-sm" />
-              </motion.button>
 
               <ChatRouteChip
                 profileName={activeProfile?.name}

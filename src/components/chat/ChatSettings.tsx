@@ -138,7 +138,7 @@ export function ChatSettings(props: Props) {
       {pendingDiscard && <div className="absolute inset-0 z-10 bg-black/40 flex items-center justify-center p-5 rounded-inherit"><div ref={discardRef} role="alertdialog" aria-modal="true" aria-label="放弃未保存的修改？" className={`w-full rounded-2xl p-5 shadow-xl ${night ? 'bg-night-card' : 'bg-white'}`}><p className="text-sm">放弃未保存的修改？</p><div className="mt-5 flex justify-end gap-3"><button className={button} onClick={() => { setPendingDiscard(null); dialog.current?.focus() }}>继续编辑</button><button className={button} onClick={() => { const action = pendingDiscard; setPendingDiscard(null); action() }}>放弃修改</button></div></div></div>}
       {panel === 'menu' && <div className={`relative min-h-36 overflow-hidden p-5 pb-[max(5.5rem,env(safe-area-inset-bottom))] border-t ${night ? 'border-current/10' : 'border-[#a73a32]/35'}`}>
         <button onClick={() => { continueSession(50); onClose() }} className={`relative z-10 w-full flex items-center justify-center gap-2 rounded-2xl border py-3 text-sm ${night ? 'border-night-amber/25 bg-night-amber/15 text-night-amber' : 'border-[#a73a32] bg-[#fff6df]/70 text-[#9f302b]'}`}><PanelsTopLeft size={16}/>换窗</button>
-        {!night && <><img aria-hidden="true" src="/directory/home/clean-v3/notes.png" className="pointer-events-none absolute -bottom-12 right-1 w-44 opacity-80"/><span aria-hidden="true" className="absolute bottom-7 right-4 text-2xl text-[#d99118]">☾</span></>}
+        {!night && <><img aria-hidden="true" src="/directory/home/clean-v3/notes.png" className="pointer-events-none absolute bottom-2 right-1 w-44 opacity-80"/><span aria-hidden="true" className="absolute bottom-7 right-4 text-2xl text-[#d99118]">☾</span></>}
       </div>}
     </div>
   </>

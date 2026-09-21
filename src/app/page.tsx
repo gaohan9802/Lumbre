@@ -61,20 +61,26 @@ export default function Home() {
   }, [setActiveTab])
   useEffect(() => {
     const viewport = window.visualViewport
-    const fitKeyboard = () => document.documentElement.style.setProperty('--app-height', `${Math.round((viewport?.height || window.innerHeight) + (viewport?.offsetTop || 0))}px`)
+    const fitKeyboard = () => {
+      document.documentElement.style.setProperty('--app-height', `${Math.round(viewport?.height || window.innerHeight)}px`)
+      document.documentElement.style.setProperty('--app-top', `${Math.round(viewport?.offsetTop || 0)}px`)
+    }
     fitKeyboard()
     viewport?.addEventListener('resize', fitKeyboard)
+    viewport?.addEventListener('scroll', fitKeyboard)
     window.addEventListener('resize', fitKeyboard)
     return () => {
       viewport?.removeEventListener('resize', fitKeyboard)
+      viewport?.removeEventListener('scroll', fitKeyboard)
       window.removeEventListener('resize', fitKeyboard)
       document.documentElement.style.removeProperty('--app-height')
+      document.documentElement.style.removeProperty('--app-top')
     }
   }, [])
   const View = views[activeTab] || ChatView
 
   return (
-    <div className="h-[var(--app-height,100dvh)] overflow-hidden">
+    <div className="h-[var(--app-height,100dvh)] overflow-hidden" style={{ transform: 'translateY(var(--app-top, 0px))' }}>
       <ChatSync />
       <CouponsView />
       <Sidebar />
