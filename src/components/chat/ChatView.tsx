@@ -33,7 +33,7 @@ import { loadEarlierChat, syncChatNow } from '@/features/chat/sync/ChatSync'
 import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
-import { ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
+import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
@@ -163,6 +163,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
+  const activeModel = activeProfile?.models.find(model => model.id === settings.model)
   const activeRoute = normalizeChatRoute(activeSession?.generationRoute)
   const [ccStatus, setCcStatus] = useState<CcStatus>(EMPTY_CC_STATUS)
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
@@ -1021,12 +1022,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const aColor = n ? ap.aiBubbleColorNight : ap.aiBubbleColor
   const userBubbleStyle = bubbleAppearance(ap, 'user', n)
   const aiBubbleStyle = bubbleAppearance(ap, 'ai', n)
+  const aiTextStyle = aColor ? { ...aiBubbleStyle, backgroundColor: 'transparent', backdropFilter: 'none', WebkitBackdropFilter: 'none' } : undefined
 
   /* ── sidebar ──────────────────────────── */
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={`relative h-full flex flex-col overflow-hidden ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32] text-[#3f2c29]'} border-r`}>
-      <div className={`relative z-10 p-4 space-y-3 border-b ${n ? 'border-current/5' : 'border-[#a73a32]/45'}`}>
+      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(1rem,env(safe-area-inset-top))]' : 'pt-4'} ${n ? 'border-current/5' : 'border-[#a73a32]/45'}`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-medium">会话</div>
@@ -1081,7 +1083,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )
         })}
       </div>
-      <div className={`relative z-10 shrink-0 p-3 space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/35'}`}>
+      <div className={`relative z-10 shrink-0 px-3 pt-3 pb-[max(4.5rem,env(safe-area-inset-bottom))] space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/35'}`}>
         <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/25 bg-[#fffaf5]/55'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CLAUDE 额度 · 订阅</span>
@@ -1218,8 +1220,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 const displayContentBlocks = baseDisplayBlocks
                   ? (msg.replyMode === 'short' ? applyBubbleLayout(baseDisplayBlocks, msg.bubbleLayout || composeBubbleLayout(baseDisplayBlocks)) : baseDisplayBlocks)
                   : undefined
-                const lastTextBlock = displayContentBlocks?.reduce((last, block, index) => block.type === 'text' && block.content?.trim() ? index : last, -1) ?? -1
-
                 return (
                   <Fragment key={msg.id}>
                   {precedingPokes.map(nosePokeLine)}
@@ -1296,8 +1296,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[76%] mr-auto break-words px-4 py-3 rounded-2xl ${bi === lastTextBlock ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${n ? '' : 'border border-[#a73a32]'} ${!aColor ? (n ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`}
-                                  style={aColor ? aiBubbleStyle : undefined}>
+                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[87%] mr-auto break-words px-4 py-3 text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}
+                                  style={aiTextStyle}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {msg.images.map((src: string, ii: number) => (
@@ -1383,8 +1383,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 rounded-2xl text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-br-md ml-auto' : 'w-fit max-w-[76%] rounded-bl-md mr-auto'} ${!isUser && !n ? 'border border-[#a73a32]' : ''} ${(isUser ? !uColor : !aColor) ? (isUser ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : (n ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]')) : ''}`}
-                          style={isUser ? (uColor ? userBubbleStyle : undefined) : (aColor ? aiBubbleStyle : undefined)}>
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto' : `w-fit max-w-[87%] mr-auto ${n ? 'text-night-text' : 'text-[#3f2c29]'}`} ${isUser && !uColor ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : ''}`}
+                          style={isUser ? (uColor ? userBubbleStyle : undefined) : aiTextStyle}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
@@ -1539,6 +1539,15 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 <img src="/directory/home/chat-leopard-v3.png" alt="" className="h-full w-full object-contain object-bottom drop-shadow-sm" />
               </motion.button>
 
+              <ChatRouteChip
+                profileName={activeProfile?.name}
+                modelName={activeModel?.name || activeModel?.id || settings.model}
+                route={activeRoute}
+                ccStatus={ccStatus}
+                isNight={n}
+                onClick={() => setModelPickerOpen(true)}
+              />
+
               <div className={`chat-input-tray flex items-end gap-2 rounded-2xl border px-3 py-2 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50' : 'border-[#a73a32] bg-[#fffaf5]/90 text-[#3f2c29] focus-within:border-[#8f2d28]'}`}>
                 <button aria-label="更多功能" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)} className={`relative flex-shrink-0 rounded-xl p-2 ${n ? '' : 'text-[#a73a32]'}`}><Plus size={18}/>{timelineCurrent && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#d99118]"/>}</button>
                 <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => { setMoreOpen(false); setMessageActionsId(null) }}
@@ -1571,7 +1580,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {sessionDrawerOpen && (
               <>
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSessionDrawerOpen(false)} className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-sm lg:hidden" />
-                <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 30, stiffness: 280 }} className="fixed left-0 top-0 bottom-0 z-[61] lg:hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+                <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 30, stiffness: 280 }} className="fixed left-0 top-0 bottom-0 z-[61] lg:hidden">
                   <SidebarContent mobile />
                 </motion.div>
               </>

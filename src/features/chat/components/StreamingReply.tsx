@@ -17,7 +17,6 @@ interface StreamingReplyProps {
 export function StreamingReply({
   blocks, expandedThinking, onToggleThinking, isNight, aiColor, aiBubbleStyle,
 }: StreamingReplyProps) {
-  const lastTextIndex = blocks.reduce((last, block, index) => block.type === 'text' && block.content?.trim() ? index : last, -1)
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
       <div className="w-full space-y-1">
@@ -53,14 +52,14 @@ export function StreamingReply({
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
             return (
-              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className={`chat-ai-bubble relative block w-fit max-w-[76%] mr-auto whitespace-pre-wrap break-words px-4 py-3 rounded-2xl ${index === lastTextIndex ? 'rounded-bl-md' : ''} text-[14px] leading-relaxed ${isNight ? '' : 'border border-[#a73a32]'} ${!aiColor ? (isNight ? 'bg-night-surface text-night-text' : 'bg-[#fffaf5]/55 text-[#3f2c29]') : ''}`} style={aiColor ? aiBubbleStyle : undefined}>
+              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className={`chat-ai-bubble relative block w-fit max-w-[87%] mr-auto whitespace-pre-wrap break-words px-4 py-3 text-[14px] leading-relaxed ${isNight ? 'text-night-text' : 'text-[#3f2c29]'}`} style={aiColor ? { ...aiBubbleStyle, backgroundColor: 'transparent', backdropFilter: 'none', WebkitBackdropFilter: 'none' } : undefined}>
                 {block.content}{isLast && <span className="stream-cursor">…</span>}
               </motion.div>
             )
           }
           return null
         }) : (
-          <div className={`chat-ai-bubble relative w-fit max-w-[76%] mr-auto px-4 py-3 rounded-2xl rounded-bl-md ${isNight ? '' : 'border border-[#a73a32]'} ${!aiColor ? (isNight ? 'bg-night-surface' : 'bg-[#fffaf5]/55') : ''}`} style={aiColor ? aiBubbleStyle : undefined}>
+          <div className={`chat-ai-bubble relative w-fit max-w-[87%] mr-auto px-4 py-3 ${isNight ? 'text-night-text' : 'text-[#3f2c29]'}`} style={aiColor ? { ...aiBubbleStyle, backgroundColor: 'transparent', backdropFilter: 'none', WebkitBackdropFilter: 'none' } : undefined}>
             <div className="flex gap-1">
               {[0, 1, 2].map(index => (
                 <motion.div key={index} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.2 }}
