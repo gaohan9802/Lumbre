@@ -272,6 +272,10 @@ test('Claude executor exposes only a safe failure category', () => {
     classifyClaudeFailure([], 'API Error: 400 {"error":{"message":"thinking.enabled conflicts with token sk-ant-abcdefghijklmnopqrstuvwxyz1234567890 at https://private.example"}}', 'claude-opus-5-5'),
     { code: 'request_invalid', message: 'Claude Code 400：thinking.enabled conflicts with token [redacted] at [url]' },
   )
+  assert.deepEqual(
+    classifyClaudeFailure([], 'API Error: 400 invalid_request_error: tools.17.input_schema contains an unsupported keyword', 'claude-opus-5-5'),
+    { code: 'request_invalid', message: 'Claude Code 400：invalid_request_error: tools.17.input_schema contains an unsupported keyword' },
+  )
   assert.deepEqual(classifyClaudeFailure([], 'token=private', 'claude-opus-5-5'), {
     code: 'cc_failed', message: 'Claude Code request failed',
   })

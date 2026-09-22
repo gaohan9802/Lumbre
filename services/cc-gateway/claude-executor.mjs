@@ -34,12 +34,8 @@ const LUMBRE_MCP_CONFIG = JSON.stringify({ mcpServers: {
 } })
 const STDERR_DIAGNOSTIC_LIMIT = 16 * 1024
 
-function safeApiErrorMessage(detail) {
-  const match = detail.match(/"message"\s*:\s*"((?:\\.|[^"\\])*)"/i)
-  if (!match) return ''
-  let message
-  try { message = JSON.parse(`"${match[1]}"`) } catch { return '' }
-  return String(message)
+function sanitizeFailureDetail(value) {
+  return String(value)
     .replace(/\x1b\[[0-9;]*m/g, '')
     .replace(/\b(authorization|bearer|token)\b(\s*[:=]?\s*)\S+/gi, (_match, label, separator) => `${label}${separator}[redacted]`)
     .replace(/https?:\/\/\S+/gi, '[url]')
@@ -47,6 +43,17 @@ function safeApiErrorMessage(detail) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 280)
+}
+
+function safeApiErrorMessage(detail) {
+  const match = detail.match(/"message"\s*:\s*"((?:\\.|[^"\\])*)"/i)
+  if (match) {
+    try { return sanitizeFailureDetail(JSON.parse(`"${match[1]}"`)) } catch {}
+  }
+  const flattened = String(detail).replace(/\s+/g, ' ').trim()
+  const marker = flattened.search(/(?:api error:?\s*400|invalid_request_error|bad request)/i)
+  if (marker < 0) return ''
+  return sanitizeFailureDetail(flattened.slice(marker).replace(/^api error:?\s*400\s*[-:]?\s*/i, ''))
 }
 
 export function classifyClaudeFailure(events = [], stderr = '', model = '') {
