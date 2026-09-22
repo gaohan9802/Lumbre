@@ -2,6 +2,24 @@
 
 import React, { memo } from 'react'
 
+function tableCells(line: string) {
+  const body = line.trim().replace(/^\|/, '').replace(/\|$/, '')
+  const cells: string[] = []
+  let cell = ''
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === '\\' && body[i + 1] === '|') { cell += '|'; i++; continue }
+    if (body[i] === '|') { cells.push(cell.trim()); cell = ''; continue }
+    cell += body[i]
+  }
+  cells.push(cell.trim())
+  return cells
+}
+
+function tableDivider(line: string) {
+  const cells = tableCells(line)
+  return cells.length > 0 && cells.every(cell => /^:?-{3,}:?$/.test(cell))
+}
+
 function inline(text: string): React.ReactNode[] {
   const tokens: React.ReactNode[] = []
   // Avoid regexp lookbehind: older iOS PWA/WebKit can fail while parsing the whole Chat chunk.
@@ -43,16 +61,37 @@ function MarkdownTextView({ content, cursor = false }: { content: string; cursor
       nodes.push(<pre key={`code-${i}`} className="my-3 max-w-full overflow-x-auto rounded-xl border border-current/10 bg-black/[0.07] p-3.5 text-[0.88em] leading-relaxed dark:bg-black/25"><code data-language={language || undefined}>{body.join('\n')}</code></pre>)
       continue
     }
-    const heading = line.match(/^(#{1,4})\s+(.+)$/)
+    const heading = line.match(/^(#{1,6})\s+(.+)$/)
     if (heading) {
       const level = heading[1].length
-      nodes.push(<div key={i} className={`${level === 1 ? 'text-lg' : level === 2 ? 'text-base' : 'text-sm'} mb-2 mt-5 font-semibold leading-snug first:mt-0`}>{inline(heading[2])}</div>)
+      nodes.push(<div key={i} role="heading" aria-level={level} className={`${level === 1 ? 'text-lg' : level === 2 ? 'text-base' : 'text-sm'} mb-2 mt-5 font-semibold leading-snug first:mt-0`}>{inline(heading[2])}</div>)
       i++; continue
+    }
+    if (line.includes('|') && i + 1 < lines.length && tableDivider(lines[i + 1])) {
+      const headers = tableCells(line)
+      const dividers = tableCells(lines[i + 1])
+      const align = dividers.map(cell => cell.startsWith(':') && cell.endsWith(':') ? 'center' : cell.endsWith(':') ? 'right' : 'left')
+      const rows: string[][] = []
+      i += 2
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(tableCells(lines[i++]))
+      nodes.push(
+        <div key={`table-${i}`} className="my-3 max-w-full overflow-x-auto rounded-lg border border-current/15">
+          <table className="w-full min-w-max border-collapse text-left text-[0.92em]">
+            <thead className="bg-black/[0.045] dark:bg-white/[0.05]"><tr>{headers.map((cell, n) => <th key={n} scope="col" className="border-b border-current/15 px-3 py-2 font-semibold" style={{ textAlign: align[n] as React.CSSProperties['textAlign'] }}>{inline(cell)}</th>)}</tr></thead>
+            <tbody>{rows.map((row, r) => <tr key={r} className="border-b border-current/10 last:border-0">{headers.map((_, c) => <td key={c} className="px-3 py-2 align-top" style={{ textAlign: align[c] as React.CSSProperties['textAlign'] }}>{inline(row[c] || '')}</td>)}</tr>)}</tbody>
+          </table>
+        </div>,
+      )
+      continue
     }
     if (/^\s*[-*+]\s+/.test(line)) {
       const items: string[] = []
       while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*+]\s+/, ''))
-      nodes.push(<ul key={`ul-${i}`} className="my-2.5 list-disc space-y-1 pl-5">{items.map((item, n) => <li key={n}>{inline(item)}</li>)}</ul>)
+      const tasks = items.every(item => /^\[[ xX]\]\s+/.test(item))
+      nodes.push(<ul key={`ul-${i}`} className={`my-2.5 space-y-1 ${tasks ? '' : 'list-disc pl-5'}`}>{items.map((item, n) => {
+        const task = item.match(/^\[([ xX])\]\s+(.+)$/)
+        return <li key={n} className={task ? 'flex items-start gap-2' : ''}>{task && <input type="checkbox" checked={task[1].toLowerCase() === 'x'} readOnly disabled className="mt-[0.28em] accent-current"/>}{inline(task?.[2] || item)}</li>
+      })}</ul>)
       continue
     }
     if (/^\s*\d+[.)]\s+/.test(line)) {
@@ -78,7 +117,8 @@ function MarkdownTextView({ content, cursor = false }: { content: string; cursor
     i++
     while (i < lines.length) {
       const next = lines[i]
-      const startsBlock = !next.trim() || next.startsWith('```') || /^(#{1,4})\s+/.test(next) ||
+      const startsBlock = !next.trim() || next.startsWith('```') || /^(#{1,6})\s+/.test(next) ||
+        (next.includes('|') && i + 1 < lines.length && tableDivider(lines[i + 1])) ||
         /^\s*[-*+]\s+/.test(next) || /^\s*\d+[.)]\s+/.test(next) || /^>\s?/.test(next) ||
         /^\s*([-*_])(?:\s*\1){2,}\s*$/.test(next)
       if (startsBlock) break

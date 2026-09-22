@@ -1310,7 +1310,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[87%] mr-auto break-words px-4 py-3 text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}
+                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[91%] mr-auto break-words px-4 py-3 text-justify [text-justify:inter-ideograph] text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}
                                   style={aiTextStyle}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -1397,7 +1397,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto' : `w-fit max-w-[87%] mr-auto ${n ? 'text-night-text' : 'text-[#3f2c29]'}`} ${isUser && !uColor ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : ''}`}
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto' : `w-fit max-w-[91%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`} ${isUser && !uColor ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : ''}`}
                           style={isUser ? (uColor ? userBubbleStyle : undefined) : aiTextStyle}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
