@@ -34,6 +34,21 @@ const LUMBRE_MCP_CONFIG = JSON.stringify({ mcpServers: {
 } })
 const STDERR_DIAGNOSTIC_LIMIT = 16 * 1024
 
+function safeApiErrorMessage(detail) {
+  const match = detail.match(/"message"\s*:\s*"((?:\\.|[^"\\])*)"/i)
+  if (!match) return ''
+  let message
+  try { message = JSON.parse(`"${match[1]}"`) } catch { return '' }
+  return String(message)
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .replace(/\b(authorization|bearer|token)\b(\s*[:=]?\s*)\S+/gi, (_match, label, separator) => `${label}${separator}[redacted]`)
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[redacted]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 280)
+}
+
 export function classifyClaudeFailure(events = [], stderr = '', model = '') {
   const structured = events.flatMap(event => [
     typeof event?.result === 'string' ? event.result : '',
@@ -58,7 +73,11 @@ export function classifyClaudeFailure(events = [], stderr = '', model = '') {
     return { code: 'session_invalid', message: 'Claude Code 无法恢复这个会话。' }
   }
   if (/(?:api error:?\s*400|invalid request|bad request)/i.test(detail)) {
-    return { code: 'request_invalid', message: 'Claude Code 拒绝了这次请求的参数或会话格式。' }
+    const reason = safeApiErrorMessage(detail)
+    return {
+      code: 'request_invalid',
+      message: reason ? `Claude Code 400：${reason}` : 'Claude Code 拒绝了这次请求的参数或会话格式。',
+    }
   }
   return { code: 'cc_failed', message: 'Claude Code request failed' }
 }

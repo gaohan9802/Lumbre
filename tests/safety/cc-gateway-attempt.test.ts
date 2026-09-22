@@ -268,6 +268,10 @@ test('Claude executor exposes only a safe failure category', () => {
     classifyClaudeFailure([{ result: 'API Error: 429 rate_limit_error' }], 'private detail', 'claude-opus-5-5'),
     { code: 'rate_limited', message: 'Claude Code 当前受到额度或上游流量限制。' },
   )
+  assert.deepEqual(
+    classifyClaudeFailure([], 'API Error: 400 {"error":{"message":"thinking.enabled conflicts with token sk-ant-abcdefghijklmnopqrstuvwxyz1234567890 at https://private.example"}}', 'claude-opus-5-5'),
+    { code: 'request_invalid', message: 'Claude Code 400：thinking.enabled conflicts with token [redacted] at [url]' },
+  )
   assert.deepEqual(classifyClaudeFailure([], 'token=private', 'claude-opus-5-5'), {
     code: 'cc_failed', message: 'Claude Code request failed',
   })
