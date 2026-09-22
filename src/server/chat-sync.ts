@@ -1,5 +1,6 @@
 import { mergeConversationMode } from '@/lib/chat-reply-mode'
 import { mergeConversationRoute } from '@/lib/chat-route'
+import { mergeCcModel } from '@/lib/cc-model'
 import { mergeChatMessages, mergeMessageTombstones, messageDeletedAt, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 /**
  * Durable incremental chat storage.
@@ -40,6 +41,8 @@ export interface SessionManifestItem {
   createdAt?: number
   generationRoute?: 'api' | 'claude-code'
   generationRouteUpdatedAt?: number
+  ccModel?: string
+  ccModelUpdatedAt?: number
   conversationMode?: 'long' | 'short'
   conversationModeUpdatedAt?: number
 }
@@ -73,6 +76,7 @@ function normalizeManifest(raw: any): SyncManifest {
       ? raw.sessions.filter((s: any) => isValidChatSessionId(s?.id)).map((s: any) => ({
           ...mergeConversationMode(s, null),
           ...mergeConversationRoute(s, null),
+          ...mergeCcModel(s, null),
           id: String(s.id),
           updatedAt: Number(s.updatedAt) || 0,
           messageCount: Number(s.messageCount) || 0,
@@ -111,7 +115,7 @@ function recoverMissingSummaries(session: any): any {
 }
 
 function isBlankSession(s: any) {
-  return (s?.messages?.length || 0) === 0 && !(s?.conversationModeUpdatedAt > 0) && !(s?.generationRouteUpdatedAt > 0) && !s?.pinned && (!s?.title || s.title === '新的对话')
+  return (s?.messages?.length || 0) === 0 && !(s?.conversationModeUpdatedAt > 0) && !(s?.generationRouteUpdatedAt > 0) && !(s?.ccModelUpdatedAt > 0) && !s?.pinned && (!s?.title || s.title === '新的对话')
 }
 
 function mergeSummaryLayer(existing: any, incoming: any) {
@@ -174,12 +178,15 @@ function pickSession(a: any, b: any) {
     || JSON.stringify(messageTombstones) !== JSON.stringify(winner?.messageTombstones || {})
   const mode = mergeConversationMode(a, b)
   const route = mergeConversationRoute(a, b)
+  const ccModel = mergeCcModel(a, b)
   if ((merged.conversationMode || 'long') === mode.conversationMode &&
       (merged.conversationModeUpdatedAt || 0) === mode.conversationModeUpdatedAt &&
       (merged.generationRoute || 'api') === route.generationRoute &&
       (merged.generationRouteUpdatedAt || 0) === route.generationRouteUpdatedAt &&
+      merged.ccModel === ccModel.ccModel &&
+      (merged.ccModelUpdatedAt || 0) === ccModel.ccModelUpdatedAt &&
       !messageLayerChanged) return merged
-  return { ...merged, ...mode, ...route, updatedAt: Math.max(Number(a.updatedAt) || 0, Number(b.updatedAt) || 0) + 1 }
+  return { ...merged, ...mode, ...route, ...ccModel, updatedAt: Math.max(Number(a.updatedAt) || 0, Number(b.updatedAt) || 0) + 1 }
 }
 
 function writeSession(session: any, snapshot = true) {
@@ -220,7 +227,7 @@ function ensureInitialized() {
       for (const session of sessions) writeSession(session, false)
       saveManifest({
         version: 2,
-        sessions: sessions.map(s => ({ ...mergeConversationMode(s, null), ...mergeConversationRoute(s, null), id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0 })),
+        sessions: sessions.map(s => ({ ...mergeConversationMode(s, null), ...mergeConversationRoute(s, null), ...mergeCcModel(s, null), id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0 })),
         tombstones,
         config: sanitizeChatConfig(legacy.config),
         configUpdatedAt: Number(legacy.configUpdatedAt) || 0,
@@ -338,6 +345,7 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
     meta.set(winner.id, {
       ...mergeConversationMode(winner, null),
       ...mergeConversationRoute(winner, null),
+      ...mergeCcModel(winner, null),
       id: winner.id,
       updatedAt: Number(winner.updatedAt) || 0,
       messageCount: winner.messages?.length || 0,
@@ -392,7 +400,7 @@ export function appendSyncSessionMessage(sessionId: string, message: any): { app
     const next: SyncManifest = {
       ...manifest,
       sessions: manifest.sessions.map(item => item.id === sessionId
-        ? { ...mergeConversationMode(updated, null), ...mergeConversationRoute(updated, null), id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
+        ? { ...mergeConversationMode(updated, null), ...mergeConversationRoute(updated, null), ...mergeCcModel(updated, null), id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
         : item),
     }
     saveManifest(next)
@@ -420,6 +428,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       summaryConfig: meta.summaryConfig,
       ...mergeConversationMode(meta, null),
       ...mergeConversationRoute(meta, null),
+      ...mergeCcModel(meta, null),
     }
     const messages = Array.isArray(base.messages) ? base.messages : []
     const messageTombstones = normalizeMessageTombstones(base.messageTombstones)
@@ -435,6 +444,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       ...base,
       ...mergeConversationMode(base, meta),
       ...mergeConversationRoute(base, meta),
+      ...mergeCcModel(base, meta),
       title: meta.title || base.title,
       pinned: meta.pinned !== undefined ? !!meta.pinned : !!base.pinned,
       messages: [...messages, message],
@@ -443,7 +453,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       updatedAt: now,
     }
     writeSession(updated)
-    const item = { ...mergeConversationMode(updated, null), ...mergeConversationRoute(updated, null), id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
+    const item = { ...mergeConversationMode(updated, null), ...mergeConversationRoute(updated, null), ...mergeCcModel(updated, null), id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
     const next: SyncManifest = { ...manifest, sessions: oldMeta ? manifest.sessions.map(x => x.id === sessionId ? item : x) : [...manifest.sessions, item] }
     saveManifest(next)
     return { appended: true, sessionUpdatedAt: now, messageCount: updated.messages.length }

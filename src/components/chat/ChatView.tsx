@@ -34,6 +34,7 @@ import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatVi
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
+import { DEFAULT_CC_MODEL, isCcModel } from '@/lib/cc-model'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 import { IntimacyWheelModal } from './IntimacyWheelModal'
@@ -157,13 +158,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    setGenerationRoute, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
+    setGenerationRoute, setCcModel, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
   } = useChatStore()
   const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
   const activeRoute = normalizeChatRoute(activeSession?.generationRoute)
   const [ccStatus, setCcStatus] = useState<CcStatus>(EMPTY_CC_STATUS)
+  const selectedCcModel = isCcModel(activeSession?.ccModel) ? activeSession.ccModel : undefined
+  const activeCcModel = selectedCcModel || (isCcModel(ccStatus?.model) ? ccStatus.model : DEFAULT_CC_MODEL)
+  const effectiveCcModel = selectedCcModel || ccStatus.model || DEFAULT_CC_MODEL
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
 
   const {
@@ -471,6 +475,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     try {
       const res = await chatApi.stream({
         generation_route: route,
+        cc_model: route === 'claude-code' ? selectedCcModel : undefined,
         turn_id: route === 'claude-code' ? turnId : undefined,
         cc_session_action: route === 'claude-code' ? sessionAction : undefined,
         messages: sendMessages,
@@ -562,6 +567,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         ccSessionMode,
         ccSessionReason,
         ccCompacted,
+        ccModelId: typeof usage.model === 'string' ? usage.model : undefined,
       })
       if (route === 'claude-code') void refreshCcStatus()
     } catch (err: any) {
@@ -718,6 +724,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         summaryConfig: session.summaryConfig,
         generationRoute: session.generationRoute,
         generationRouteUpdatedAt: session.generationRouteUpdatedAt,
+        ccModel: session.ccModel,
+        ccModelUpdatedAt: session.ccModelUpdatedAt,
         conversationMode: session.conversationMode,
         conversationModeUpdatedAt: session.conversationModeUpdatedAt,
       })
@@ -742,7 +750,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       sharedCard: pendingShare || undefined,
       ccGenerationState: activeRoute === 'claude-code' ? 'pending' : undefined,
       providerId: activeRoute === 'claude-code' ? 'claude-code' : profile?.id,
-      modelId: activeRoute === 'claude-code' ? (ccStatus.model || 'sonnet') : model,
+      modelId: activeRoute === 'claude-code' ? effectiveCcModel : model,
     }
     stickBottomRef.current = true
     await durableAppend(activeSession, userMsg)
@@ -783,7 +791,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         ccCompacted: data.ccCompacted,
         replyMode: data.replyMode,
         providerId: activeRoute === 'claude-code' ? 'claude-code' : profile?.id,
-        modelId: activeRoute === 'claude-code' ? (ccStatus.model || 'sonnet') : model,
+        modelId: activeRoute === 'claude-code' ? (data.ccModelId || effectiveCcModel) : model,
       }
       await durableAppend(activeSession, assistantMsg)
       addMessage(assistantMsg, activeSession?.id)
@@ -857,7 +865,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           ccCompacted: data.ccCompacted,
           replyMode: data.replyMode,
           providerId: retryRoute === 'claude-code' ? 'claude-code' : profile?.id,
-          modelId: retryRoute === 'claude-code' ? (ccStatus.model || 'sonnet') : model,
+          modelId: retryRoute === 'claude-code' ? (data.ccModelId || effectiveCcModel) : model,
         }
         addMessageVersion(msg.id, newVersion, activeSession?.id)
         void syncChatNow()
@@ -898,7 +906,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           ccCompacted: data.ccCompacted,
           replyMode: data.replyMode,
           providerId: retryRoute === 'claude-code' ? 'claude-code' : profile?.id,
-          modelId: retryRoute === 'claude-code' ? (ccStatus.model || 'sonnet') : model,
+          modelId: retryRoute === 'claude-code' ? (data.ccModelId || effectiveCcModel) : model,
         }
         if (nextMsg?.role === 'assistant') {
           addMessageVersion(nextMsg.id, reply, activeSession?.id)
@@ -1041,20 +1049,19 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(1rem,env(safe-area-inset-top))]' : 'pt-4'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium">会话</div>
-            <div className="text-[10px] opacity-40">{settings.sessions.length} 条对话</div>
+            <div className="text-base font-medium">会话</div>
+            <div className="text-xs opacity-40">{settings.sessions.length} 条对话</div>
           </div>
-          {mobile && <button onClick={() => setSessionDrawerOpen(false)} className="p-2 opacity-60"><X size={16} /></button>}
         </div>
         <button
           onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }}
-          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs ${n ? 'bg-night-muted text-night-bg' : 'border border-[#a73a32]/30 bg-[#fffaf5]/65 text-[#9f302b]'}`}
+          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm ${n ? 'bg-night-muted text-night-bg' : 'border border-[#a73a32]/30 bg-[#fffaf5]/65 text-[#9f302b]'}`}
         >
           <Plus size={13} /> 新对话
         </button>
         <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${n ? 'bg-night-surface' : 'border border-[#a73a32]/15 bg-[#fffaf5]/50'}`}>
           <Search size={13} className="opacity-40" />
-          <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} placeholder="搜索会话" className="bg-transparent outline-none text-xs flex-1" />
+          <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} placeholder="搜索会话" className="bg-transparent outline-none text-sm flex-1" />
         </div>
       </div>
       <div className="relative z-10 flex-1 overflow-y-auto p-2 space-y-1">
@@ -1062,7 +1069,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           const active = s.id === settings.activeSessionId
           return (
             <div key={s.id} onClick={() => { setActiveSession(s.id); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
-              className={`group p-3 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-muted/15 text-night-text' : 'bg-[#dce5e8]/75 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
+              className={`group p-3 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-muted/15 text-night-text' : 'bg-[#DBB9B3]/45 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   {editingSessionId === s.id ? (
@@ -1070,12 +1077,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       onBlur={finishRename} onKeyDown={(e) => { if (e.key === 'Enter' && !(e.nativeEvent as any).isComposing) finishRename(); if (e.key === 'Escape') setEditingSessionId(null) }}
                       onClick={(e) => e.stopPropagation()} className={`w-full px-2 py-1 rounded text-xs outline-none ${n ? 'bg-night-card' : 'bg-white'}`} />
                   ) : (
-                    <div className="text-xs font-medium truncate flex items-center gap-1">
-                      {s.pinned && <Pin size={10} className={n ? 'text-night-muted' : 'text-[#8fa7b6]'} />}
+                    <div className="text-sm font-medium truncate flex items-center gap-1">
+                      {s.pinned && <Pin size={11} className={n ? 'text-night-muted' : 'text-[#DBB9B3]'} />}
                       {s.title}
                     </div>
                   )}
-                  <div className="text-[10px] opacity-40 mt-1 flex justify-between">
+                  <div className="text-xs opacity-40 mt-1 flex justify-between">
                     <span>{s.messageCount || s.messages.length} 条消息</span>
                     <span>{fmtShortDate(s.updatedAt)}</span>
                   </div>
@@ -1105,7 +1112,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             <>
               <div className="mt-1.5 flex items-end justify-between gap-2">
                 <div className="text-xl leading-none tabular-nums">余 {Math.max(0, Math.round(100 - ccStatus.quota.fiveHour.usedPercentage))}%</div>
-                <span className={`text-[10px] ${ccStatus.quota.stale ? 'opacity-45' : (n ? 'text-night-muted' : 'text-[#718b97]')}`}>
+                <span className={`text-[10px] ${ccStatus.quota.stale ? 'opacity-45' : (n ? 'text-night-muted' : 'text-[#DBB9B3]')}`}>
                   {ccStatus.quota.stale ? '● 上次读数' : '● 已读取'}
                 </span>
               </div>
@@ -1114,7 +1121,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 <span>重置 {fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
               </div>
               <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
-                <div className={`h-full rounded-full ${n ? 'bg-night-muted' : 'bg-[#8fa7b6]'}`} style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
+                <div className={`h-full rounded-full ${n ? 'bg-night-muted' : 'bg-[#DBB9B3]'}`} style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
               </div>
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
                 <span>{ccStatus.quota.sevenDay ? `7 天剩余 ${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '7 天额度暂缺'}</span>
@@ -1125,7 +1132,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             <>
               <div className="mt-1.5 flex items-end justify-between gap-2">
                 <div className="text-xl leading-none">暂不可读</div>
-                <span className={`text-[10px] ${ccStatus.available ? (n ? 'text-night-muted' : 'text-[#718b97]') : 'text-red-500'}`}>
+                <span className={`text-[10px] ${ccStatus.available ? (n ? 'text-night-muted' : 'text-[#DBB9B3]') : 'text-red-500'}`}>
                   {ccStatus.available ? '● 线路在线' : '● 线路离线'}
                 </span>
               </div>
@@ -1137,7 +1144,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CC CONTEXT · 当前对话</span>
-            <span className={ccStatus.context.available ? (n ? 'text-night-muted' : 'text-[#718b97]') : ''}>●</span>
+            <span className={ccStatus.context.available ? (n ? 'text-night-muted' : 'text-[#DBB9B3]') : ''}>●</span>
           </div>
           {ccStatus.context.available ? (
             <>
@@ -1147,7 +1154,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 <span>{fmtMetricTime(ccStatus.context.collectedAt)}</span>
               </div>
               <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
-                <div className={`h-full rounded-full ${n ? 'bg-night-muted' : 'bg-[#8fa7b6]'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
+                <div className={`h-full rounded-full ${n ? 'bg-night-muted' : 'bg-[#DBB9B3]'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
               </div>
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
                 <span>读缓存 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写缓存 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
@@ -1383,7 +1390,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto bg-[#dce5e8]/90 text-[#3f2c29]' : `w-fit max-w-[88%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto bg-[#DBB9B3]/60 text-[#3f2c29]' : `w-fit max-w-[88%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
@@ -1521,7 +1528,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
                 <div className={`mt-1 flex items-center gap-0.5 ${n ? 'text-night-muted' : 'text-[#a73a32]/55'}`}>
                   <button type="button" aria-label={uploadingImg ? '正在处理照片' : '上传照片'} title="照片" disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full disabled:opacity-35"><ImagePlus size={17}/></button>
-                  <button type="button" aria-label="打开 Timeline" title={timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'} onClick={() => setTimelineOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-full"><Clock3 size={17}/>{timelineCurrent && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#8fa7b6]"/>}</button>
+                  <button type="button" aria-label="打开 Timeline" title={timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'} onClick={() => setTimelineOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-full"><Clock3 size={17}/>{timelineCurrent && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#DBB9B3]"/>}</button>
                   <motion.button type="button" aria-label="戳豹子鼻子" title="戳豹子鼻子" disabled={nosePokeBusy} onPointerDown={event => event.preventDefault()} onClick={() => void pokeLeopardNose()} whileTap={{ scale: .9 }} className="grid h-8 w-8 place-items-center rounded-full text-[18px] leading-none disabled:opacity-35">
                     <span aria-hidden="true">🐆</span>
                   </motion.button>
@@ -1529,12 +1536,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <ChatRouteChip route={activeRoute} isNight={n} onClick={() => setModelPickerOpen(true)} />
                   <span className="flex-1" />
                   {isLoading ? (
-                    <button onClick={() => { void handleStopGeneration() }} title="停止生成" className={`grid h-8 w-8 place-items-center rounded-full ${n ? 'bg-night-muted text-night-bg' : 'bg-[#8fa7b6] text-white'}`}>
+                    <button onClick={() => { void handleStopGeneration() }} title="停止生成" className={`grid h-8 w-8 place-items-center rounded-full ${n ? 'bg-night-muted text-night-bg' : 'bg-[#DBB9B3] text-white'}`}>
                       <Square size={14} fill="currentColor" />
                     </button>
                   ) : (
                     <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && !pendingShare)}
-                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-muted text-night-bg' : 'bg-[#8fa7b6] text-white hover:bg-[#7f98a5]') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
+                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-muted text-night-bg' : 'bg-[#DBB9B3] text-white hover:bg-[#DBB9B3]/80') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
                       <Send size={15} />
                     </button>
                   )}
@@ -1568,14 +1575,18 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             activeProfileId={settings.activeProfileId}
             activeModelId={settings.model}
             activeRoute={activeRoute}
+            activeCcModel={activeCcModel}
             ccStatus={ccStatus}
             onSelectApiModel={(profileId, modelId) => {
               if (activeSession) setGenerationRoute(activeSession.id, 'api')
               setActiveModel(profileId, modelId)
               setModelPickerOpen(false)
             }}
-            onSelectCc={() => {
-              if (activeSession && ccStatus.available) setGenerationRoute(activeSession.id, 'claude-code')
+            onSelectCc={(modelId) => {
+              if (activeSession && ccStatus.available) {
+                setCcModel(activeSession.id, modelId)
+                setGenerationRoute(activeSession.id, 'claude-code')
+              }
               setModelPickerOpen(false)
             }}
             onClose={() => setModelPickerOpen(false)}
@@ -1585,8 +1596,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {todoOpen && (
               <>
                 <motion.button type="button" aria-label="关闭 Todo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setTodoOpen(false)} className="fixed inset-0 z-[74] bg-black/35 backdrop-blur-[2px]" />
-                <motion.section role="dialog" aria-modal="true" aria-label="Todo" initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .97 }} className={`fixed inset-x-3 bottom-[3dvh] top-[3dvh] z-[75] mx-auto max-w-[460px] overflow-hidden rounded-2xl shadow-2xl ${n ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
-                  <button type="button" aria-label="关闭 Todo" onClick={() => setTodoOpen(false)} className="absolute right-3 top-3 z-20 rounded-full bg-black/5 p-2 opacity-60"><X size={16}/></button>
+                <motion.section role="dialog" aria-modal="true" aria-label="Todo" initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .97 }} className="pointer-events-none fixed inset-0 z-[75] overflow-hidden">
                   <TodoView />
                 </motion.section>
               </>

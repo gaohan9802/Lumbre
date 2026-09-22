@@ -72,7 +72,7 @@ function jsonInit(method: 'POST' | 'DELETE', body: unknown, signal?: AbortSignal
   }
 }
 
-type SessionMeta = Pick<ChatSession, 'title' | 'pinned' | 'createdAt' | 'summaryConfig' | 'generationRoute' | 'generationRouteUpdatedAt' | 'conversationMode' | 'conversationModeUpdatedAt'>
+type SessionMeta = Pick<ChatSession, 'title' | 'pinned' | 'createdAt' | 'summaryConfig' | 'generationRoute' | 'generationRouteUpdatedAt' | 'ccModel' | 'ccModelUpdatedAt' | 'conversationMode' | 'conversationModeUpdatedAt'>
 
 export const chatApi = {
   stream: (body: unknown, signal: AbortSignal) =>

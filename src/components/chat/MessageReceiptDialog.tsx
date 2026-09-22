@@ -2,7 +2,6 @@
 
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X } from 'lucide-react'
 import type { ChatMessage, ChatSettings } from '@/features/chat/state/types'
 import type { ReceiptMetric } from '@/lib/chat-receipt'
 import { formatMadrid } from '@/lib/madrid-time'
@@ -10,6 +9,9 @@ import { formatMadrid } from '@/lib/madrid-time'
 type Prices = { input: number; output: number; cacheRead: number; cacheWrite: number }
 
 function pricesFor(settings: ChatSettings, message: ChatMessage): Prices | null {
+  if (message.route === 'claude-code' && /claude-opus-5-5/i.test(message.modelId || '')) {
+    return { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 8 }
+  }
   if (message.route === 'claude-code' && /claude-opus-4-6/i.test(message.modelId || '')) {
     return { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 10 }
   }
@@ -97,10 +99,9 @@ export function MessageReceiptDialog({
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className={`relative pointer-events-auto w-full max-w-[410px] max-h-[88dvh] overflow-y-auto border font-mono shadow-[0_18px_50px_rgba(49,29,23,0.2)] ${night ? 'bg-[#24221f] text-[#eee6d6] border-[#857b6c]' : 'chat-paper bg-[#faf7f0] text-[#4b332e] border-[#a73a32]/20'}`}>
             <div className={`h-2 opacity-35 ${night ? 'text-night-muted' : 'text-[#a73a32]'}`} style={{ backgroundImage: 'repeating-linear-gradient(135deg, currentColor 0 5px, transparent 5px 10px)' }} />
-            <div aria-hidden="true" className={`absolute left-1/2 top-3.5 z-10 h-4 w-4 -translate-x-1/2 rounded-full border shadow-inner ${night ? 'border-night-muted/60 bg-night-muted' : 'border-[#718b97]/60 bg-[#8fa7b6]'}`}>
+            <div aria-hidden="true" className={`absolute left-1/2 top-3.5 z-10 h-4 w-4 -translate-x-1/2 rounded-full border shadow-inner ${night ? 'border-night-muted/60 bg-night-muted' : 'border-[#DBB9B3]/60 bg-[#DBB9B3]'}`}>
               <span className="absolute inset-[3px] rounded-full border border-white/30" />
             </div>
-            <button type="button" onClick={onClose} aria-label="关闭" className={`absolute right-3 top-4 z-10 p-1 opacity-55 hover:opacity-100 ${night ? '' : 'text-[#a73a32]'}`}><X size={17} /></button>
             <div className="px-6 pb-8 pt-9 sm:px-8">
               <header className="relative text-center">
                 <h3 id="message-receipt-title" className="font-serif text-xl font-semibold tracking-[0.2em]">LUMBRE</h3>
@@ -120,12 +121,12 @@ export function MessageReceiptDialog({
               </dl>
 
               <section className="relative pt-4">
-                <p className={`mb-3 text-center text-[10px] tracking-[0.18em] ${night ? 'opacity-45' : 'text-[#a73a32]/55'}`}>本轮真实用量</p>
-                <div className={`pointer-events-none absolute right-2 top-12 z-10 grid h-[76px] w-[76px] -rotate-6 place-content-center rounded-[42%] border-[3px] bg-[#faf7f0]/80 text-center outline outline-1 outline-offset-[-6px] ${night ? 'border-[#ad7a73]/55 text-[#c79890]/75 outline-[#ad7a73]/35' : 'border-[#a73a32]/35 text-[#a73a32]/60 outline-[#a73a32]/25'}`}>
+                <p className={`relative z-10 mb-3 text-center text-[10px] tracking-[0.18em] ${night ? 'opacity-45' : 'text-[#a73a32]/55'}`}>本轮真实用量</p>
+                <div className={`pointer-events-none absolute right-2 top-14 z-0 grid h-[76px] w-[76px] -rotate-6 place-content-center rounded-[42%] border-[3px] text-center opacity-70 outline outline-1 outline-offset-[-6px] ${night ? 'border-[#ad7a73]/55 text-[#c79890]/75 outline-[#ad7a73]/35' : 'border-[#a73a32]/35 text-[#a73a32]/60 outline-[#a73a32]/25'}`}>
                   <span className="text-[9px] tracking-[0.12em]">CACHE HIT</span>
                   <strong className="mt-1 font-serif text-lg leading-none">{hitRate.toFixed(1)}%</strong>
                 </div>
-                <dl className="relative text-[12px] space-y-1.5">
+                <dl className="relative z-10 text-[12px] space-y-1.5">
                   {[
                     ['输入 Tokens', input], ['输出 Tokens', output], ['缓存读取', cacheRead], ['缓存写入', cacheWrite],
                   ].map(([label, value]) => <div key={String(label)} className="flex justify-between gap-4"><dt>{label}</dt><dd>{Number(value).toLocaleString()}</dd></div>)}
@@ -138,18 +139,18 @@ export function MessageReceiptDialog({
                 <p className={`mb-2 text-[10px] tracking-[0.18em] ${night ? 'opacity-45' : 'text-[#a73a32]/55'}`}>请求内容审计 · 实际载荷</p>
                 <dl className="text-[12px] space-y-1.5">
                   {rows.map(([label, metric]) => <div key={label} className={`relative flex justify-between gap-4 ${label === '内容总长度' ? `mt-2 border-t pt-2 font-semibold ${night ? 'border-current/20' : 'border-[#a73a32]/15'}` : ''}`}>
-                    <dt>{label}</dt><dd className="text-right">{metricText(metric)}</dd>
-                    {label === '内容总长度' && <svg aria-hidden="true" viewBox="0 0 76 66" className={`pointer-events-none absolute -right-1 -top-9 z-10 h-[68px] w-[80px] -rotate-12 opacity-35 mix-blend-multiply ${night ? 'text-[#c79890]' : 'text-[#a73a32]'}`}>
+                    <dt className="relative z-10">{label}</dt><dd className="relative z-10 text-right">{metricText(metric)}</dd>
+                    {label === '内容总长度' && <svg aria-hidden="true" viewBox="0 0 92 82" className={`pointer-events-none absolute -right-1 -top-11 z-0 h-[82px] w-[92px] -rotate-6 opacity-[0.16] mix-blend-multiply ${night ? 'text-[#c79890]' : 'text-[#a73a32]'}`}>
                       <defs>
-                        <filter id="receipt-paw-ink" x="-15%" y="-15%" width="130%" height="130%"><feTurbulence type="fractalNoise" baseFrequency="0.12" numOctaves="3" seed="7" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="2.7"/></filter>
-                        <mask id="receipt-paw-wear"><rect width="76" height="66" fill="white"/><path d="m18 48 13-5m-16 11 20-4m5-10 13 4m-10 8 15 4M23 10l8 3m13-5 9 5M4 27l9 2m49-4 10 3" stroke="black" strokeWidth="2.3" strokeLinecap="round" opacity=".8"/></mask>
+                        <filter id="receipt-paw-ink" x="-15%" y="-15%" width="130%" height="130%"><feTurbulence type="fractalNoise" baseFrequency="0.1" numOctaves="4" seed="7" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="3.6"/></filter>
+                        <mask id="receipt-paw-wear"><rect width="92" height="82" fill="white"/><path d="m13 57 21-8m-24 15 28-7m7-12 21 7m-18 7 26 6M26 13l12 4m14-7 14 6M4 34l15 3m54-6 15 4M27 70l39-9m-29 14 22-5" stroke="black" strokeWidth="3.1" strokeLinecap="round" opacity=".9"/></mask>
                       </defs>
                       <g fill="currentColor" filter="url(#receipt-paw-ink)" mask="url(#receipt-paw-wear)">
-                        <path d="M15 61c-4-7 1-17 8-23 5-5 9-8 15-8 7 0 12 4 17 9 7 7 10 16 5 22-5 5-13 0-22 0-9 0-18 5-23 0Z"/>
-                        <ellipse cx="9" cy="27" rx="8" ry="11" transform="rotate(-27 9 27)"/>
-                        <ellipse cx="27" cy="12" rx="8" ry="12" transform="rotate(-10 27 12)"/>
-                        <ellipse cx="49" cy="12" rx="8" ry="12" transform="rotate(10 49 12)"/>
-                        <ellipse cx="67" cy="27" rx="8" ry="11" transform="rotate(27 67 27)"/>
+                        <path d="M13 73c-5-10 2-24 12-32 7-6 13-10 21-10 9 0 16 5 23 12 10 9 14 22 7 30-7 7-18 1-30 1-13 0-26 7-33-1Z"/>
+                        <ellipse cx="11" cy="33" rx="9" ry="14" transform="rotate(-25 11 33)"/>
+                        <ellipse cx="32" cy="15" rx="10" ry="15" transform="rotate(-9 32 15)"/>
+                        <ellipse cx="59" cy="15" rx="10" ry="15" transform="rotate(9 59 15)"/>
+                        <ellipse cx="81" cy="33" rx="9" ry="14" transform="rotate(25 81 33)"/>
                       </g>
                     </svg>}
                   </div>)}

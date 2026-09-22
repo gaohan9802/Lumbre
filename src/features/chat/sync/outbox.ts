@@ -4,7 +4,7 @@ import type { ChatMessage, ChatSession } from '@/features/chat/state/types'
 import { createCoalescingRunner } from '@/lib/coalescingRunner'
 import { chatApi } from '@/features/chat/api/client'
 
-type SessionMeta = Pick<ChatSession, 'title' | 'pinned' | 'createdAt' | 'summaryConfig' | 'generationRoute' | 'generationRouteUpdatedAt' | 'conversationMode' | 'conversationModeUpdatedAt'>
+type SessionMeta = Pick<ChatSession, 'title' | 'pinned' | 'createdAt' | 'summaryConfig' | 'generationRoute' | 'generationRouteUpdatedAt' | 'ccModel' | 'ccModelUpdatedAt' | 'conversationMode' | 'conversationModeUpdatedAt'>
 type OutboxRecord = {
   key: string
   sessionId: string
@@ -90,6 +90,8 @@ export async function queueChatAppend(session: ChatSession, message: ChatMessage
       summaryConfig: session.summaryConfig,
       generationRoute: session.generationRoute,
       generationRouteUpdatedAt: session.generationRouteUpdatedAt,
+      ccModel: session.ccModel,
+      ccModelUpdatedAt: session.ccModelUpdatedAt,
       conversationMode: session.conversationMode,
       conversationModeUpdatedAt: session.conversationModeUpdatedAt,
     },

@@ -61,6 +61,7 @@ interface ChatStore {
   ensureSession: (id: string, title: string, activate?: boolean) => string
   setActiveSession: (id: string) => void
   setGenerationRoute: (id: string, route: 'api' | 'claude-code') => void
+  setCcModel: (id: string, model: import('@/lib/cc-model').CcModelId) => void
   setConversationMode: (id: string, mode: 'long' | 'short') => void
   deleteMessage: (id: string) => void
   truncateFrom: (id: string) => void

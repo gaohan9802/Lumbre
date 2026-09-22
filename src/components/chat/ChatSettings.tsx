@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTheme } from '@/lib/theme'
 import { useChatStore } from '@/lib/chatStore'
 
@@ -80,7 +80,6 @@ export function ChatSettings(props: Props) {
       <div className={`relative z-10 flex items-center gap-3 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b ${night ? 'border-current/10' : 'border-[#a73a32]/20'}`}>
         {panel !== 'menu' && <button aria-label="返回菜单" onClick={() => confirm(() => setPanel('menu'))} className="p-2"><ChevronLeft size={20}/></button>}
         <h2 id="chat-menu-title" className="flex-1 font-medium">{titles[panel]}</h2>
-        <button aria-label="关闭菜单" onClick={close} className="p-2"><X size={20}/></button>
       </div>
       <div className={`flex-1 min-h-0 overflow-y-auto p-5 ${panel === 'menu' ? 'space-y-0' : 'space-y-4'}`}>
         {panel === 'menu' && <>
@@ -113,7 +112,7 @@ export function ChatSettings(props: Props) {
       </div>
       {pendingDiscard && <div className="absolute inset-0 z-10 bg-black/40 flex items-center justify-center p-5 rounded-inherit"><div ref={discardRef} role="alertdialog" aria-modal="true" aria-label="放弃未保存的修改？" className={`w-full rounded-2xl p-5 shadow-xl ${night ? 'bg-night-card' : 'bg-white'}`}><p className="text-sm">放弃未保存的修改？</p><div className="mt-5 flex justify-end gap-3"><button className={button} onClick={() => { setPendingDiscard(null); dialog.current?.focus() }}>继续编辑</button><button className={button} onClick={() => { const action = pendingDiscard; setPendingDiscard(null); action() }}>放弃修改</button></div></div></div>}
       {panel === 'menu' && <div className={`relative min-h-28 overflow-hidden px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-8 border-t ${night ? 'border-current/10' : 'border-[#a73a32]/20'}`}>
-        <button onClick={() => { continueSession(50); onClose() }} className={`relative z-10 w-full rounded-2xl border py-3 text-sm ${night ? 'border-white/10 bg-white/10 text-night-text' : 'border-[#b7c1c5]/70 bg-[#dce5e8]/80 text-[#52636a]'}`}>换窗</button>
+        <button onClick={() => { continueSession(50); onClose() }} className={`relative z-10 w-full rounded-2xl border py-3 text-sm ${night ? 'border-white/10 bg-white/10 text-night-text' : 'border-[#DBB9B3]/70 bg-[#DBB9B3]/45 text-[#765953]'}`}>换窗</button>
       </div>}
     </div>
   </>

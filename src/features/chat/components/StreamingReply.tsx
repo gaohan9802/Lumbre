@@ -59,7 +59,7 @@ export function StreamingReply({
             <div className="flex gap-1">
               {[0, 1, 2].map(index => (
                 <motion.div key={index} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.2 }}
-                  className={`w-1.5 h-1.5 rounded-full ${isNight ? 'bg-night-muted' : 'bg-[#8fa7b6]'}`} />
+                  className={`w-1.5 h-1.5 rounded-full ${isNight ? 'bg-night-muted' : 'bg-[#DBB9B3]'}`} />
               ))}
             </div>
           </div>

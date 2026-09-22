@@ -1,5 +1,6 @@
 import { normalizeReplyMode, type ReplyMode } from '@/lib/chat-reply-mode'
 import { DEFAULT_CHAT_ROUTE, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
+import { isCcModel, type CcModelId } from '@/lib/cc-model'
 import { DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import { getActiveSession, sortedSessions } from '@/features/chat/state/accessors'
 import { normalizeSettings } from '@/features/chat/migrations/browser-state'
@@ -12,6 +13,7 @@ type SetChatState = (updater: (state: ChatState) => Partial<ChatState> | ChatSta
 
 export interface SessionActions {
   setGenerationRoute: (id: string, route: ChatRoute) => void
+  setCcModel: (id: string, model: CcModelId) => void
   setConversationMode: (id: string, mode: ReplyMode) => void
   createSession: () => string
   ensureSession: (id: string, title: string, activate?: boolean) => string
@@ -35,6 +37,16 @@ export function createSessionActions(set: SetChatState): SessionActions {
         ...session,
         generationRoute: normalizeChatRoute(route),
         generationRouteUpdatedAt: Math.max(Date.now(), (session.generationRouteUpdatedAt || 0) + 1),
+        updatedAt: Math.max(Date.now(), session.updatedAt + 1),
+      } : session)
+      return { settings: { ...state.settings, sessions } }
+    }),
+    setCcModel: (id, model) => set(state => {
+      if (!isCcModel(model)) return state
+      const sessions = state.settings.sessions.map(session => session.id === id ? {
+        ...session,
+        ccModel: model,
+        ccModelUpdatedAt: Math.max(Date.now(), (session.ccModelUpdatedAt || 0) + 1),
         updatedAt: Math.max(Date.now(), session.updatedAt + 1),
       } : session)
       return { settings: { ...state.settings, sessions } }
@@ -113,6 +125,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
           stageSummaries: [],
           generationRoute: normalizeChatRoute(active.generationRoute),
           generationRouteUpdatedAt: now,
+          ccModel: active.ccModel,
+          ccModelUpdatedAt: now,
           conversationMode: active.conversationMode,
           conversationModeUpdatedAt: now,
           summaryConfig: { ...(active.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount }), modeVersion: 2, anchorMessageId: active.messages[idx]?.id, anchorTimestamp: active.messages[idx]?.timestamp },
@@ -197,6 +211,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
           stageSummaries: [],
           generationRoute: normalizeChatRoute(active.generationRoute),
           generationRouteUpdatedAt: now,
+          ccModel: active.ccModel,
+          ccModelUpdatedAt: now,
           conversationMode: active.conversationMode,
           conversationModeUpdatedAt: now,
           summaryConfig: { ...(active.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount }), modeVersion: 2, anchorMessageId: tail[tail.length - 1]?.id, anchorTimestamp: tail[tail.length - 1]?.timestamp },

@@ -13,20 +13,23 @@ test('durable append, manifest and stale snapshots preserve the selected route',
   sync.upsertSyncSessionMessage(
     'route-chat',
     { id: 'u', role: 'user', route: 'claude-code', content: 'hi', timestamp: 1 },
-    { title: 'fixture', generationRoute: 'claude-code', generationRouteUpdatedAt: 100 },
+    { title: 'fixture', generationRoute: 'claude-code', generationRouteUpdatedAt: 100, ccModel: 'claude-opus-5-5', ccModelUpdatedAt: 100 },
   )
 
   let session = sync.loadSyncSessions(['route-chat'])[0]
   assert.equal(session.generationRoute, 'claude-code')
   assert.equal(session.messages[0].route, 'claude-code')
   assert.equal(sync.loadSyncManifest().sessions[0].generationRoute, 'claude-code')
+  assert.equal(session.ccModel, 'claude-opus-5-5')
+  assert.equal(sync.loadSyncManifest().sessions[0].ccModel, 'claude-opus-5-5')
 
   sync.mergeSyncDelta({
-    sessions: [{ ...session, updatedAt: session.updatedAt + 1, generationRoute: undefined, generationRouteUpdatedAt: undefined }],
+    sessions: [{ ...session, updatedAt: session.updatedAt + 1, generationRoute: undefined, generationRouteUpdatedAt: undefined, ccModel: undefined, ccModelUpdatedAt: undefined }],
     tombstones: {},
   })
   session = sync.loadSyncSessions(['route-chat'])[0]
   assert.equal(session.generationRoute, 'claude-code')
+  assert.equal(session.ccModel, 'claude-opus-5-5')
 
   sync.mergeSyncDelta({
     sessions: [{ ...session, updatedAt: session.updatedAt + 1, generationRoute: 'api', generationRouteUpdatedAt: 101 }],

@@ -89,7 +89,13 @@ export function TodoView() {
     setEditDraft('')
     load(viewDate)
   }
-  const shareTodo = (item: TodoItem) => shareToChat({kind:'todo', title:'🧾 待办项', subtitle:`${item.done?'已完成':'未完成'} · ${emojiFor(item.author)}`, body:item.text, metadata:{...item, date:viewDate}})
+  const shareReceipt = () => shareToChat({
+    kind: 'todo',
+    title: '待办小票',
+    subtitle: `${dateStr} · ${doneCount}/${items.length} 已结清`,
+    body: items.map(item => `${item.done ? '✓' : '○'} ${item.text}`).join('\n') || '今天还没有待办',
+    metadata: { date: viewDate, items },
+  })
 
   const addComment = async (id: string) => {
     if (!commentDraft.trim()) return
@@ -100,23 +106,26 @@ export function TodoView() {
   }
 
   return (
-    <div className="h-full overflow-y-auto flex items-start justify-center p-4 pt-8">
+    <div className="pointer-events-none flex h-full w-full items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="chat-paper relative w-full max-w-sm overflow-hidden rounded-lg border border-[#a73a32]/20 bg-[#faf7f0] p-6 text-[#4b332e] shadow-[0_18px_50px_rgba(49,29,23,0.16)]"
+        className="chat-paper pointer-events-auto relative max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-lg border border-[#a73a32]/20 bg-[#faf7f0] p-6 text-[#4b332e] shadow-[0_18px_50px_rgba(49,29,23,0.16)]"
       >
         <div className="absolute left-0 right-0 top-0 h-2 text-[#a73a32] opacity-35" style={{ backgroundImage: 'repeating-linear-gradient(135deg, currentColor 0 5px, transparent 5px 10px)' }} />
 
         {/* Header */}
         <div className="text-center mb-4 relative">
+          <button onClick={shareReceipt} className="absolute left-0 top-0 text-receipt-ink/30 hover:text-receipt-ink/65" title="分享整张小票" aria-label="分享整张待办小票">
+            <Share2 size={15} />
+          </button>
           <button onClick={() => setShowHistory((v) => !v)}
             className="absolute right-0 top-0 text-receipt-ink/40 hover:text-receipt-ink/80" title="小票回顾（近7天）">
             <History size={16} />
           </button>
           {!isToday && (
             <button onClick={() => setViewDate(todayStr())}
-              className="absolute left-0 top-0 text-receipt-ink/40 hover:text-receipt-ink/80 flex items-center text-[10px] font-receipt">
+              className="absolute left-6 top-0 text-receipt-ink/40 hover:text-receipt-ink/80 flex items-center text-[10px] font-receipt">
               <ChevronLeft size={14} /> 今天
             </button>
           )}
@@ -187,15 +196,13 @@ export function TodoView() {
                       {item.text}
                     </span>
                   )}
-                  <button onClick={() => shareTodo(item)} className="opacity-50 group-hover:opacity-100 hover:!opacity-100"><Share2 size={12}/></button>
-                  <span className="text-xs" title={item.author === 'fire' ? '猜猜写的' : '星星写的'}>{emojiFor(item.author)}</span>
                   <button onClick={() => { setEditingId(item.id); setEditDraft(item.text) }}
                     className="opacity-0 group-hover:opacity-40 hover:opacity-100 transition">
                     <Pencil size={11} />
                   </button>
                   <button onClick={() => setCommentFor(commentFor === item.id ? null : item.id)}
                     className={`transition ${item.comments?.length ? 'text-receipt-ink/50' : 'opacity-0 group-hover:opacity-40 hover:opacity-100'}`}>
-                    <span className="flex items-center gap-0.5"><MessageCircle size={12} />{item.comments?.length ? item.comments.length : ''}</span>
+                    <MessageCircle size={12} />
                   </button>
                   <button onClick={() => setDeleteConfirm(item.id)} className="opacity-0 group-hover:opacity-40 hover:opacity-100 transition">
                     <Trash2 size={11} />
@@ -283,9 +290,9 @@ export function TodoView() {
         {deleteConfirm && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[80] bg-black/30" onClick={() => setDeleteConfirm(null)} />
+              className="pointer-events-auto fixed inset-0 z-[80] bg-black/30" onClick={() => setDeleteConfirm(null)} />
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-[260px] p-5 rounded-2xl text-center bg-white shadow-xl">
+              className="pointer-events-auto fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-[260px] p-5 rounded-2xl text-center bg-white shadow-xl">
               <p className="text-sm font-medium mb-3">确定删除这项待办？</p>
               <div className="flex items-center gap-2">
                 <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2 rounded-xl text-xs bg-gray-100">取消</button>

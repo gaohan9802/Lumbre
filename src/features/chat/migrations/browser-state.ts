@@ -1,4 +1,5 @@
 import { normalizeReplyMode } from '@/lib/chat-reply-mode'
+import { isCcModel } from '@/lib/cc-model'
 import { normalizeChatRoute } from '@/lib/chat-route'
 import { mergeChatMessages, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
@@ -163,6 +164,8 @@ export function normalizeSettings(settings: any): ChatSettings {
         id: session.id || makeId('session'),
         generationRoute: normalizeChatRoute(session.generationRoute),
         generationRouteUpdatedAt: Number.isFinite(session.generationRouteUpdatedAt) ? session.generationRouteUpdatedAt : 0,
+        ccModel: isCcModel(session.ccModel) ? session.ccModel : undefined,
+        ccModelUpdatedAt: Number.isFinite(session.ccModelUpdatedAt) ? session.ccModelUpdatedAt : 0,
         conversationMode: normalizeReplyMode(session.conversationMode),
         conversationModeUpdatedAt: Number.isFinite(session.conversationModeUpdatedAt) ? session.conversationModeUpdatedAt : 0,
         title: session.title || '新的对话',

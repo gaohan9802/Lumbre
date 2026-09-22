@@ -122,6 +122,8 @@ export interface SessionSummaryConfig {
 export interface ChatSession {
   generationRoute?: ChatRoute
   generationRouteUpdatedAt?: number
+  ccModel?: string
+  ccModelUpdatedAt?: number
   conversationMode?: ReplyMode
   conversationModeUpdatedAt?: number
   id: string

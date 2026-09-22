@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { addToolResultsToAudit, type MessageRequestAudit } from '@/lib/chat-receipt'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { loadSyncSessions } from '@/server/chat-sync'
+import { isCcModel } from '@/lib/cc-model'
 
 type FetchLike = typeof fetch
 
@@ -121,7 +122,7 @@ function canonicalContextMessages(body: any, sessionId: string, turnId: string) 
   })
 }
 
-async function submitAttempt(config: CcGatewayConfig, body: any, system: string, volatileContext: string, fetchImpl: FetchLike) {
+async function submitAttempt(config: CcGatewayConfig, body: any, system: string, volatileContext: string, model: string, fetchImpl: FetchLike) {
   const { sessionId, turnId } = validateTurn(body.session_id, body.turn_id)
   const messages = canonicalContextMessages(body, sessionId, turnId)
   const response = await gatewayFetch(config, '/v1/attempts', {
@@ -130,7 +131,7 @@ async function submitAttempt(config: CcGatewayConfig, body: any, system: string,
     body: JSON.stringify({
       idempotency_key: idempotencyKey(sessionId, turnId),
       conversation_id: sessionId,
-      model: config.model,
+      model,
       session_action: body.cc_session_action === 'rebase' ? 'rebase' : undefined,
       context: {
         system,
@@ -217,10 +218,14 @@ export async function createCcChatResponse({
   const config = configFromEnvironment()
   if (!config) return Response.json({ error: 'CC 网关尚未安全配置；不会自动改走 API。' }, { status: 503 })
   if (body.stream !== true) return Response.json({ error: 'CC 线路目前只接受流式聊天。' }, { status: 400 })
+  if (body.cc_model !== undefined && !isCcModel(body.cc_model)) {
+    return Response.json({ error: 'CC 模型无效。' }, { status: 400 })
+  }
+  const model = isCcModel(body.cc_model) ? body.cc_model : config.model
 
   let submitted: CcAttempt
   try {
-    submitted = await submitAttempt(config, body, system, volatileContext, fetchImpl)
+    submitted = await submitAttempt(config, body, system, volatileContext, model, fetchImpl)
   } catch (error: any) {
     return Response.json({ error: error?.message || 'CC 网关连接失败；不会自动改走 API。' }, { status: 502 })
   }
@@ -272,7 +277,7 @@ export async function createCcChatResponse({
                   ...usagePayload(final.result?.usage),
                   attempt_id: final.id,
                   route: 'claude-code',
-                  model: config.model,
+                  model,
                   session_fingerprint: sessionFingerprint(final.result?.sessionId),
                   session_mode: final.sessionMode,
                   session_reason: final.sessionReason,

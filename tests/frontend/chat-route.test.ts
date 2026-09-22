@@ -3,6 +3,7 @@ import test from 'node:test'
 import { isRecoverableChatDisconnect, mergeConversationRoute, normalizeChatRoute } from '../../src/lib/chat-route'
 import { normalizeSettings } from '../../src/features/chat/migrations/browser-state'
 import { snapshotOfMessage } from '../../src/features/chat/sessions/messages'
+import { mergeCcModel } from '../../src/lib/cc-model'
 
 test('old conversations and message versions normalize to the API route', () => {
   const settings = normalizeSettings({
@@ -31,6 +32,15 @@ test('a newer route selection wins independently from a newer message snapshot',
   )
 })
 
+test('a newer CC model selection wins independently from a newer message snapshot', () => {
+  const selected = { ccModel: 'claude-opus-4-6', ccModelUpdatedAt: 50 }
+  assert.deepEqual(mergeCcModel(selected, { updatedAt: 100 }), selected)
+  assert.deepEqual(
+    mergeCcModel(selected, { ccModel: 'claude-opus-5-5', ccModelUpdatedAt: 51 }),
+    { ccModel: 'claude-opus-5-5', ccModelUpdatedAt: 51 },
+  )
+})
+
 test('an iOS Load failed keeps only CC turns recoverable', () => {
   assert.equal(isRecoverableChatDisconnect('claude-code', false, 'TypeError'), true)
   assert.equal(isRecoverableChatDisconnect('api', false, 'TypeError'), false)
@@ -43,15 +53,18 @@ test('route persists through store continuation, stale sync and message versions
   try {
     const id = useChatStore.getState().createSession()
     useChatStore.getState().setGenerationRoute(id, 'claude-code')
+    useChatStore.getState().setCcModel(id, 'claude-opus-5-5')
     useChatStore.getState().addMessage({ id: 'cc-reply', role: 'assistant', route: 'claude-code', content: 'hi', timestamp: 1 })
     const current = useChatStore.getState().settings.sessions.find(session => session.id === id)!
 
     const continued = useChatStore.getState().continueSession(50)
     assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === continued)?.generationRoute, 'claude-code')
+    assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === continued)?.ccModel, 'claude-opus-5-5')
 
     useChatStore.getState().setActiveSession(id)
     useChatStore.getState().mergeRemote([{ ...current, updatedAt: Date.now() + 20, generationRoute: undefined, generationRouteUpdatedAt: undefined }], {})
     assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === id)?.generationRoute, 'claude-code')
+    assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === id)?.ccModel, 'claude-opus-5-5')
 
     useChatStore.getState().addMessageVersion('cc-reply', { route: 'api', content: 'api reroll', timestamp: 2 })
     assert.equal(useChatStore.getState().messages[0].route, 'api')

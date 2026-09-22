@@ -6,6 +6,7 @@ import { Check, ChevronDown } from 'lucide-react'
 import type { ApiProfile, ProviderModel } from '@/features/chat/state/types'
 import type { ChatRoute } from '@/lib/chat-route'
 import type { CcStatus } from '@/features/chat/api/client'
+import { CC_MODELS, type CcModelId } from '@/lib/cc-model'
 
 type ModelChoice = { profile: ApiProfile; model: ProviderModel }
 
@@ -38,6 +39,7 @@ export function ChatRoutePicker({
   activeProfileId,
   activeModelId,
   activeRoute,
+  activeCcModel,
   ccStatus,
   onSelectApiModel,
   onSelectCc,
@@ -49,9 +51,10 @@ export function ChatRoutePicker({
   activeProfileId: string
   activeModelId: string
   activeRoute: ChatRoute
+  activeCcModel: CcModelId
   ccStatus: CcStatus
   onSelectApiModel: (profileId: string, modelId: string) => void
-  onSelectCc: () => void
+  onSelectCc: (model: CcModelId) => void
   onClose: () => void
 }) {
   const [providerFilter, setProviderFilter] = useState<string | null>(null)
@@ -75,39 +78,47 @@ export function ChatRoutePicker({
             <div className="px-4 pb-3">
               <div className="text-xs font-medium">发送线路与模型</div>
               <div className="mt-1 flex items-center gap-1.5 text-[10px] opacity-50">
-                <span className={`h-1.5 w-1.5 rounded-full ${isNight ? 'bg-night-muted' : 'bg-[#8fa7b6]'}`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${isNight ? 'bg-night-muted' : 'bg-[#DBB9B3]'}`} />
                 API 已连接 · CC {ccStatus.available ? '已连接' : ccStatus.configured ? '暂时离线' : '尚未配置'}
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1">
-              <button
-                type="button"
-                disabled={!ccStatus.available}
-                onClick={onSelectCc}
-                className={`mb-3 w-full rounded-xl border px-3 py-3 text-left transition ${activeRoute === 'claude-code' ? (isNight ? 'border-night-muted/40 bg-night-muted/15' : 'border-[#8fa7b6]/35 bg-[#dce5e8]/55') : (isNight ? 'border-night-border hover:bg-night-surface' : 'border-[#a73a32]/15 hover:bg-[#fffaf5]/70')} ${ccStatus.available ? '' : 'cursor-not-allowed opacity-45'}`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">Claude Code · {ccStatus.model || '订阅线路'}</div>
-                    {(!ccStatus.available || !ccStatus.toolsAvailable) && <div className="mt-0.5 text-[10px] opacity-50">{ccStatus.available
-                      ? '文字聊天已接通 · 生活工具尚未接通'
-                      : ccStatus.configured ? '网关暂时无法连接' : '服务端尚未配置 CC 网关'}</div>}
-                  </div>
-                  {activeRoute === 'claude-code' && <Check size={16} className={`flex-shrink-0 ${isNight ? 'text-night-muted' : 'text-[#8fa7b6]'}`} />}
-                </div>
-              </button>
+              <div className="mb-3 space-y-1">
+                {CC_MODELS.map(model => {
+                  const active = activeRoute === 'claude-code' && activeCcModel === model.id
+                  return (
+                    <button
+                      key={model.id}
+                      type="button"
+                      disabled={!ccStatus.available}
+                      onClick={() => onSelectCc(model.id)}
+                      className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${active ? (isNight ? 'border-night-muted/40 bg-night-muted/15' : 'border-[#DBB9B3]/55 bg-[#DBB9B3]/30') : (isNight ? 'border-night-border hover:bg-night-surface' : 'border-[#a73a32]/15 hover:bg-[#fffaf5]/70')} ${ccStatus.available ? '' : 'cursor-not-allowed opacity-45'}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">Claude Code · {model.name}</div>
+                          {(!ccStatus.available || !ccStatus.toolsAvailable) && <div className="mt-0.5 text-[10px] opacity-50">{ccStatus.available
+                            ? '文字聊天已接通 · 生活工具尚未接通'
+                            : ccStatus.configured ? '网关暂时无法连接' : '服务端尚未配置 CC 网关'}</div>}
+                        </div>
+                        {active && <Check size={16} className={`flex-shrink-0 ${isNight ? 'text-night-muted' : 'text-[#DBB9B3]'}`} />}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
               {filtered.map(({ profile, model }) => {
                 const active = activeRoute === 'api' && activeProfileId === profile.id && activeModelId === model.id
                 return (
                   <button key={`${profile.id}-${model.id}`}
                     onClick={() => onSelectApiModel(profile.id, model.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl ${active ? (isNight ? 'bg-night-muted/15' : 'bg-[#dce5e8]/75') : (isNight ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
+                    className={`w-full text-left px-3 py-2.5 rounded-xl ${active ? (isNight ? 'bg-night-muted/15' : 'bg-[#DBB9B3]/45') : (isNight ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{profile.name} · {model.name || model.id}</div>
                         <div className="text-[10px] opacity-40 truncate">API · {model.id}</div>
                       </div>
-                      {active && <Check size={16} className={`flex-shrink-0 ml-2 ${isNight ? 'text-night-muted' : 'text-[#8fa7b6]'}`} />}
+                      {active && <Check size={16} className={`flex-shrink-0 ml-2 ${isNight ? 'text-night-muted' : 'text-[#DBB9B3]'}`} />}
                     </div>
                   </button>
                 )
@@ -116,10 +127,10 @@ export function ChatRoutePicker({
             </div>
             <div className={`flex gap-1 px-4 py-3 border-t overflow-x-auto pb-[max(0.75rem,env(safe-area-inset-bottom))] ${isNight ? 'border-night-border' : 'border-[#a73a32]/15'}`}>
               <button onClick={() => setProviderFilter(null)}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${!providerFilter ? (isNight ? 'bg-night-muted/20 text-night-muted' : 'bg-[#dce5e8]/70 text-[#718b97] font-medium') : 'opacity-60'}`}>全部 API</button>
+                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${!providerFilter ? (isNight ? 'bg-night-muted/20 text-night-muted' : 'bg-[#DBB9B3]/40 text-[#8a625d] font-medium') : 'opacity-60'}`}>全部 API</button>
               {providerNames.map(name => (
                 <button key={name} onClick={() => setProviderFilter(providerFilter === name ? null : name)}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${providerFilter === name ? (isNight ? 'bg-night-muted/20 text-night-muted' : 'bg-[#dce5e8]/70 text-[#718b97] font-medium') : 'opacity-60'}`}>{name}</button>
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${providerFilter === name ? (isNight ? 'bg-night-muted/20 text-night-muted' : 'bg-[#DBB9B3]/40 text-[#8a625d] font-medium') : 'opacity-60'}`}>{name}</button>
               ))}
             </div>
           </motion.div>
