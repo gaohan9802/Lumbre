@@ -54,7 +54,7 @@
 从仓库根目录执行，但把 build context 限定为 `services/`：
 
 ```bash
-docker build -f services/cc-gateway/Dockerfile -t lumbre-cc-gateway:2.1.236 services
+docker build -f services/cc-gateway/Dockerfile -t lumbre-cc-gateway:2.1.280 services
 ```
 
 镜像只收到 CC probe 的固定 CLI 合同、系统级拒绝策略和 gateway 文件，不会收到 Lumbre 源码、聊天记录、`.env` 或生产卷。

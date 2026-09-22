@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-export const PINNED_CLAUDE_CODE_VERSION = '2.1.236'
+export const PINNED_CLAUDE_CODE_VERSION = '2.1.280'
 export const DEFAULT_TIMEOUT_MS = 180_000
 export const DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 

@@ -258,7 +258,7 @@ test('status and explicit cancel use server-only gateway credentials', async () 
   const fakeFetch: typeof fetch = async (input, init) => {
     const url = String(input)
     requests.push({ url, init })
-    if (url.endsWith('/healthz')) return Response.json({ status: 'ok', claudeCodeVersion: '2.1.236', capabilities: { lumbreTools: true } })
+    if (url.endsWith('/healthz')) return Response.json({ status: 'ok', claudeCodeVersion: '2.1.280', capabilities: { lumbreTools: true } })
     if (url.includes('/v1/metrics?conversation_id=conversation-1')) return Response.json({
       quota: { available: false, reason: 'headless_not_exposed', source: 'claude_code_headless', collectedAt: null },
       context: { available: true, usedTokens: 8740, maxTokens: 200000, usedPercentage: 4.4, model: 'claude-sonnet-4-6', source: 'last_assistant_usage', collectedAt: '2026-09-07T12:00:00.000Z' },

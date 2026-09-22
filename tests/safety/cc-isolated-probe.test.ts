@@ -18,7 +18,7 @@ import {
 import { runProcess } from '../../services/cc-probe/process.mjs'
 
 test('probe pins the reviewed stable CLI and disables every built-in tool', () => {
-  assert.equal(PINNED_CLAUDE_CODE_VERSION, '2.1.236')
+  assert.equal(PINNED_CLAUDE_CODE_VERSION, '2.1.280')
   const args = buildClaudeArgs({ outputFormat: 'stream-json' })
   assert.deepEqual(args.slice(0, 3), ['-p', '--tools', ''])
   assert.equal(args[args.indexOf('--permission-mode') + 1], 'dontAsk')

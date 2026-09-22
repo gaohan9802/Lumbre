@@ -318,7 +318,7 @@ export class GatewayRuntime {
           headers: {
             authorization: `Bearer ${oauthToken}`,
             'anthropic-beta': 'oauth-2025-04-20',
-            'user-agent': 'claude-code/2.1.236',
+            'user-agent': 'claude-code/2.1.280',
             accept: 'application/json',
           },
           redirect: 'error',
