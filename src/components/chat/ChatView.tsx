@@ -17,7 +17,6 @@ import { photos as photosApi } from '@/lib/api'
 import type { SharedCard } from '@/lib/share'
 import { ChatSettings } from './ChatSettings'
 import { applyBubbleLayout, composeBubbleLayout } from '@/lib/chat-bubble-composer'
-import { bubbleAppearance } from '@/features/chat/settings/appearance'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { SummaryDialog } from './SummaryDialog'
@@ -38,6 +37,7 @@ import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type C
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 import { IntimacyWheelModal } from './IntimacyWheelModal'
+import { TodoView } from '@/components/todo/TodoView'
 
 /* ── helpers ────────────────────────────── */
 
@@ -147,8 +147,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const { setSidebarOpen } = useApp()
   const { theme } = useTheme()
   const n = theme === 'night'
-  const [moreOpen, setMoreOpen] = useState(false)
   const [wheelOpen, setWheelOpen] = useState(false)
+  const [todoOpen, setTodoOpen] = useState(false)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number }[]>([])
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
@@ -158,11 +158,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     renameSession, deleteSession, togglePinSession, setActiveModel,
     setGenerationRoute, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
   } = useChatStore()
-  const activeProfile = getActiveProfile(settings)
   const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
   const activeSession = settings.sessions.find((s) => s.id === settings.activeSessionId)
-  const activeModel = activeProfile?.models.find(model => model.id === settings.model)
   const activeRoute = normalizeChatRoute(activeSession?.generationRoute)
   const [ccStatus, setCcStatus] = useState<CcStatus>(EMPTY_CC_STATUS)
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
@@ -345,7 +343,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       const raw = reader.result as string
       const dataUrl = await compressImage(raw)
       setPendingImages((prev) => [...prev, dataUrl])
-      setMoreOpen(false)
       setUploadingImg(false)
     }
     reader.onerror = () => setUploadingImg(false)
@@ -1034,16 +1031,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const startRename = (id: string, title: string) => { setEditingSessionId(id); setEditingTitle(title) }
   const finishRename = () => { if (editingSessionId) renameSession(editingSessionId, editingTitle); setEditingSessionId(null); setEditingTitle('') }
 
-  /* ── appearance ───────────────────────── */
-  const ap = settings.appearance
-
-  // Theme-aware bubble colors — day and night are configured independently.
-  const uColor = n ? ap.userBubbleColorNight : ap.userBubbleColor
-  const aColor = n ? ap.aiBubbleColorNight : ap.aiBubbleColor
-  const userBubbleStyle = bubbleAppearance(ap, 'user', n)
-  const aiBubbleStyle = bubbleAppearance(ap, 'ai', n)
-  const aiTextStyle = aColor ? { ...aiBubbleStyle, backgroundColor: 'transparent', backdropFilter: 'none', WebkitBackdropFilter: 'none' } : undefined
-
   /* ── sidebar ──────────────────────────── */
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
@@ -1054,7 +1041,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             <div className="text-sm font-medium">会话</div>
             <div className="text-[10px] opacity-40">{settings.sessions.length} 条对话</div>
           </div>
-          {mobile && <div className="flex items-center gap-2"><span aria-hidden="true" className="text-lg text-[#d99118]">✦</span><button onClick={() => setSessionDrawerOpen(false)} className="p-2 opacity-60"><X size={16} /></button></div>}
+          {mobile && <button onClick={() => setSessionDrawerOpen(false)} className="p-2 opacity-60"><X size={16} /></button>}
         </div>
         <button
           onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }}
@@ -1120,14 +1107,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 </span>
               </div>
               <div className="mt-2 flex justify-between text-[10px] opacity-50">
-                <span>5 小时已用 · {Math.round(ccStatus.quota.fiveHour.usedPercentage)}%</span>
+                <span>5 小时已用 {Math.round(ccStatus.quota.fiveHour.usedPercentage)}%{ccStatus.quota.fiveHour.requestCount != null ? ` · ${ccStatus.quota.fiveHour.requestCount} 次` : ''}</span>
                 <span>重置 {fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
               </div>
               <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
                 <div className={`h-full rounded-full ${n ? 'bg-night-amber' : 'bg-[#d99118]'}`} style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
               </div>
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
-                <span>{ccStatus.quota.sevenDay ? `7 天剩余 ${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%` : '7 天额度暂缺'}</span>
+                <span>{ccStatus.quota.sevenDay ? `7 天剩余 ${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '7 天额度暂缺'}</span>
                 <span>{ccStatus.quota.sevenDay ? `重置 ${fmtMetricReset(ccStatus.quota.sevenDay.resetsAt)}` : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
               </div>
             </>
@@ -1172,7 +1159,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )}
         </section>
       </div>
-      {!n && <img aria-hidden="true" src="/directory/home/clean-v3/notes.png" className="pointer-events-none absolute -bottom-4 -left-11 z-0 w-44 opacity-75" />}
     </div>
   )
 
@@ -1203,7 +1189,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </div>}
 
           {/* messages */}
-          <div ref={scrollRef} onScroll={handleScroll} onPointerDownCapture={() => setMoreOpen(false)} className="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-5 space-y-4" onClick={() => { if (deleteMenuId) setDeleteMenuId(null); setMessageActionsId(null) }}>
+          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-5 space-y-4" onClick={() => { if (deleteMenuId) setDeleteMenuId(null); setMessageActionsId(null) }}>
             {messages.length === 0 && (
               <div className="flex items-center justify-center h-full text-center opacity-40">
                 <span className="text-4xl" aria-label="等待对话">🐆</span>
@@ -1310,8 +1296,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[91%] mr-auto break-words px-4 py-3 text-justify [text-justify:inter-ideograph] text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}
-                                  style={aiTextStyle}>
+                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[91%] mr-auto break-words px-4 py-3 text-justify [text-justify:inter-ideograph] text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {msg.images.map((src: string, ii: number) => (
@@ -1397,8 +1382,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto' : `w-fit max-w-[91%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`} ${isUser && !uColor ? (n ? 'bg-night-amber/20 text-night-text' : 'bg-[#dce5e8]/90 text-[#3f2c29]') : ''}`}
-                          style={isUser ? (uColor ? userBubbleStyle : undefined) : aiTextStyle}>
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto bg-[#dce5e8]/90 text-[#3f2c29]' : `w-fit max-w-[91%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
@@ -1429,10 +1413,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                         </div>
                       )}
 
-                      {/* AI model + tokens */}
-                      {!isUser && (
-                        <div className={`text-[10px] px-1 flex flex-wrap gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                          <span className="opacity-40">{chatRouteLabel(msg.route)}{msg.modelId ? ` · ${msg.modelId}` : ''}</span>
+                      {/* AI route; session and cache details unfold with message actions. */}
+                      {!isUser && messageActionsId === msg.id && (
+                        <div onClick={event => event.stopPropagation()} className={`text-[10px] px-1 flex flex-wrap items-center gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                          <span className="opacity-40">{chatRouteLabel(msg.route)}</span>
                           {msg.ccSessionFingerprint && <span className="opacity-35" title={`${msg.ccSessionMode || 'session'} · ${msg.ccSessionReason || 'normal'}${msg.ccCompacted ? ' · compacted' : ''}`}>会话 {msg.ccSessionFingerprint}{msg.ccCompacted ? ' · 已整理' : ''}</span>}
                           {(msg.input_tokens != null && msg.input_tokens > 0) && (() => {
                             const inp = msg.input_tokens || 0
@@ -1442,8 +1426,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             const ratio = (inp + cr + cw) > 0 ? Math.round((cr / (inp + cr + cw)) * 100) : 0
                             return (
                               <button type="button" onClick={() => setReceiptMessage(msg)} className="opacity-60 hover:opacity-100 underline decoration-dotted underline-offset-2" title={`查看上下文小票：输入${inp} · 输出${out} · 缓存命中${ratio}%`}>
-                                ↑{inp.toLocaleString()}・↓{out.toLocaleString()}
-                                {cr > 0 && <span className={n ? 'text-night-amber' : 'text-day-pink'}>・⚡️{ratio}%</span>}
+                                缓存 {ratio}%
                               </button>
                             )
                           })()}
@@ -1490,8 +1473,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 expandedThinking={expandedThinking}
                 onToggleThinking={toggleThinking}
                 isNight={n}
-                aiColor={aColor}
-                aiBubbleStyle={aiBubbleStyle}
               />
             )}
 
@@ -1532,42 +1513,31 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             )}
 
             <div className="chat-compose-shell relative">
-              {moreOpen && <div className={`absolute bottom-[calc(100%+.5rem)] left-0 z-30 grid w-[min(330px,calc(100vw-1.5rem))] grid-cols-2 gap-2 rounded-2xl border p-3 shadow-lg ${n ? 'border-night-border bg-night-card' : 'border-[#a73a32]/45 bg-[#faf8f3] text-[#5a3933]'}`} aria-label="更多功能">
-                <motion.button disabled={nosePokeBusy} onClick={() => { setMoreOpen(false); void pokeLeopardNose() }} whileTap={{ scale: .94 }} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-2 text-xs disabled:opacity-50">
-                  <span aria-hidden="true" className="h-10 w-10 flex-none rounded-full bg-no-repeat" style={{ backgroundImage: "url('/directory/home/chat-leopard-v3.png')", backgroundSize: '100px auto', backgroundPosition: '78% 57%' }} />
-                  戳豹子鼻子
-                </motion.button>
-                <button disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><ImagePlus size={16}/>{uploadingImg ? '处理中…' : '上传照片'}</button>
-                <button onClick={() => { setTimelineOpen(true); setMoreOpen(false) }} className="flex min-w-0 items-center justify-center gap-2 rounded-xl bg-black/5 p-3 text-xs"><Clock3 size={16}/><span className="truncate">{timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'}</span></button>
-                <button onClick={() => { setWheelOpen(true); setMoreOpen(false) }} className="flex items-center justify-center gap-2 rounded-xl bg-[#9d5361]/10 p-3 text-xs text-[#9d5361]"><Dices size={16}/>今天怎么操</button>
-              </div>}
-
-              <ChatRouteChip
-                profileName={activeProfile?.name}
-                modelName={activeModel?.name || activeModel?.id || settings.model}
-                route={activeRoute}
-                ccStatus={ccStatus}
-                isNight={n}
-                onClick={() => setModelPickerOpen(true)}
-              />
-
-              <div className={`chat-input-tray flex items-end gap-2 rounded-2xl border px-3 py-2 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50' : 'border-[#a73a32] bg-[#fffaf5]/90 text-[#3f2c29] focus-within:border-[#8f2d28]'}`}>
-                <button aria-label="更多功能" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)} className={`relative flex-shrink-0 rounded-xl p-2 ${n ? '' : 'text-[#a73a32]'}`}><Plus size={18}/>{timelineCurrent && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#d99118]"/>}</button>
-                <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => { setMoreOpen(false); setMessageActionsId(null) }}
+              <div className={`chat-input-tray rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50' : 'border-[#a73a32] bg-[#fffaf5]/90 text-[#3f2c29] focus-within:border-[#8f2d28]'}`}>
+                <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => setMessageActionsId(null)}
                   placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
-                  className={`no-frame flex-1 min-w-0 resize-none bg-transparent outline-none text-base md:text-sm py-1 max-h-40 ${n ? 'text-night-text placeholder:text-night-muted' : 'text-[#3f2c29] placeholder:text-[#9a766d]'}`} />
+                  className={`no-frame block min-h-10 w-full resize-none bg-transparent px-1 py-1 text-base outline-none max-h-40 md:text-sm ${n ? 'text-night-text placeholder:text-night-muted' : 'text-[#3f2c29] placeholder:text-[#9a766d]'}`} />
                 <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
-                {isLoading ? (
-                  <button onClick={() => { void handleStopGeneration() }} title="停止生成"
-                    className={`p-2 rounded-xl transition-all flex-shrink-0 ${n ? 'bg-night-amber text-night-bg' : 'bg-[#d99118] text-white'}`}>
-                    <Square size={15} fill="currentColor" />
-                  </button>
-                ) : (
-                  <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && !pendingShare)}
-                    className={`p-2 rounded-xl transition-all flex-shrink-0 ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#d99118] text-white hover:bg-[#c98110]') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
-                    <Send size={16} />
-                  </button>
-                )}
+                <div className={`mt-1 flex items-center gap-0.5 ${n ? 'text-night-muted' : 'text-[#6d7b80]'}`}>
+                  <button type="button" aria-label={uploadingImg ? '正在处理照片' : '上传照片'} title="照片" disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full disabled:opacity-35"><ImagePlus size={17}/></button>
+                  <button type="button" aria-label="打开 Timeline" title={timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'} onClick={() => setTimelineOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-full"><Clock3 size={17}/>{timelineCurrent && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#d99118]"/>}</button>
+                  <motion.button type="button" aria-label="戳豹子鼻子" title="戳豹子鼻子" disabled={nosePokeBusy} onClick={() => void pokeLeopardNose()} whileTap={{ scale: .9 }} className="grid h-8 w-8 place-items-center rounded-full disabled:opacity-35">
+                    <span aria-hidden="true" className="h-7 w-7 rounded-full bg-no-repeat" style={{ backgroundImage: "url('/directory/home/chat-leopard-v3.png')", backgroundSize: '88px auto', backgroundPosition: '78% 57%' }} />
+                  </motion.button>
+                  <button type="button" aria-label="打开今天怎么操" title="今天怎么操" onClick={() => setWheelOpen(true)} className="grid h-8 w-8 place-items-center rounded-full text-[#9d5361]"><Dices size={17}/></button>
+                  <ChatRouteChip route={activeRoute} isNight={n} onClick={() => setModelPickerOpen(true)} />
+                  <span className="flex-1" />
+                  {isLoading ? (
+                    <button onClick={() => { void handleStopGeneration() }} title="停止生成" className={`grid h-8 w-8 place-items-center rounded-full ${n ? 'bg-night-amber text-night-bg' : 'bg-[#d99118] text-white'}`}>
+                      <Square size={14} fill="currentColor" />
+                    </button>
+                  ) : (
+                    <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && !pendingShare)}
+                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#d99118] text-white hover:bg-[#c98110]') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
+                      <Send size={15} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1610,6 +1580,18 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             onClose={() => setModelPickerOpen(false)}
           />
 
+          <AnimatePresence>
+            {todoOpen && (
+              <>
+                <motion.button type="button" aria-label="关闭 Todo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setTodoOpen(false)} className="fixed inset-0 z-[74] bg-black/35 backdrop-blur-[2px]" />
+                <motion.section role="dialog" aria-modal="true" aria-label="Todo" initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .97 }} className={`fixed inset-x-3 bottom-[3dvh] top-[3dvh] z-[75] mx-auto max-w-[460px] overflow-hidden rounded-2xl shadow-2xl ${n ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
+                  <button type="button" aria-label="关闭 Todo" onClick={() => setTodoOpen(false)} className="absolute right-3 top-3 z-20 rounded-full bg-black/5 p-2 opacity-60"><X size={16}/></button>
+                  <TodoView />
+                </motion.section>
+              </>
+            )}
+          </AnimatePresence>
+
           {/* confirm dialog */}
           <AnimatePresence>
             {confirmState && (
@@ -1629,7 +1611,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings onSummary={() => setSummaryDialogOpen(true)} onBookmarks={() => setBookmarkDialogOpen(true)} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onModelPicker={() => setModelPickerOpen(true)} onModelManager={() => setModelDialogOpen(true)} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <ChatSettings onSummary={() => setSummaryDialogOpen(true)} onBookmarks={() => setBookmarkDialogOpen(true)} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onModelPicker={() => setModelPickerOpen(true)} onModelManager={() => setModelDialogOpen(true)} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />

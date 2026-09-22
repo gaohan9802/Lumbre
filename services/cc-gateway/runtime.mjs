@@ -355,11 +355,28 @@ export class GatewayRuntime {
   }
 
   async metrics(conversationId) {
-    const latest = this.ledger.list()
+    const attempts = this.ledger.list()
+    const latest = attempts
       .filter(attempt => attempt.conversationId === conversationId && attempt.status === 'completed' && attempt.result?.context)
       .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)))[0]
+    const quota = await this.subscriptionQuota()
+    const now = this.clock()
+    const withCount = (window, duration) => {
+      if (!window) return window
+      const resetAt = Date.parse(window.resetsAt || '')
+      const start = Number.isFinite(resetAt) && resetAt > now ? resetAt - duration : now - duration
+      const requestCount = attempts.filter(attempt => {
+        const createdAt = Date.parse(attempt?.createdAt || '')
+        return Number.isFinite(createdAt) && createdAt >= start && createdAt <= now
+      }).length
+      return { ...window, requestCount }
+    }
     return {
-      quota: await this.subscriptionQuota(),
+      quota: quota.available ? {
+        ...quota,
+        fiveHour: withCount(quota.fiveHour, 5 * 60 * 60 * 1000),
+        sevenDay: withCount(quota.sevenDay, 7 * 24 * 60 * 60 * 1000),
+      } : quota,
       context: latest?.result?.context
         ? { available: true, ...latest.result.context }
         : { available: false, reason: 'no_cc_response', source: 'last_assistant_usage', collectedAt: null },

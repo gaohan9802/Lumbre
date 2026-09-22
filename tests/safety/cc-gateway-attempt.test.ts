@@ -56,7 +56,11 @@ test('subscription quota stays server-side, cached, and falls back to the last g
   let fail = false
   let authorization = ''
   const runtime = new GatewayRuntime({
-    ledger: { list: () => [] },
+    ledger: { list: () => [
+      { createdAt: '2026-09-08T11:30:00.000Z' },
+      { createdAt: '2026-09-07T12:00:00.000Z' },
+      { createdAt: '2026-09-01T12:00:00.000Z' },
+    ] },
     executor: {},
     oauthToken: 'private-oauth-token',
     clock: () => now,
@@ -77,6 +81,8 @@ test('subscription quota stays server-side, cached, and falls back to the last g
   assert.equal(authorization, 'Bearer private-oauth-token')
   assert.equal(first.quota.fiveHour.usedPercentage, 18.4)
   assert.equal(first.quota.sevenDay.usedPercentage, 7)
+  assert.equal(first.quota.fiveHour.requestCount, 1)
+  assert.equal(first.quota.sevenDay.requestCount, 2)
   assert.deepEqual(cached.quota, first.quota)
   assert.doesNotMatch(JSON.stringify(first), /private-oauth-token/)
 

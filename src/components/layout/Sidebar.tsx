@@ -15,7 +15,6 @@ const entrances = [
   { id: 'diary', label: '日记', left: '79%', top: '36%', width: '21%', height: '12%' },
   { id: 'photos', label: '照片', left: '2%', top: '58%', width: '23%', height: '13%' },
   { id: 'notes', label: '小纸条', left: '80%', top: '58%', width: '20%', height: '13%' },
-  { id: 'todo', label: '待办', left: '20%', top: '70%', width: '22%', height: '13%' },
   { id: 'memory', label: '记忆', left: '67%', top: '70%', width: '23%', height: '13%' },
   { id: 'dreams', label: '现实与梦境', left: '39%', top: '77%', width: '27%', height: '13%' },
 ] as const

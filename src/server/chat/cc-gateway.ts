@@ -32,8 +32,8 @@ type CcMetrics = {
     source: string
     collectedAt: string | null
     stale?: boolean
-    fiveHour?: { usedPercentage: number; resetsAt: string | null } | null
-    sevenDay?: { usedPercentage: number; resetsAt: string | null } | null
+    fiveHour?: { usedPercentage: number; resetsAt: string | null; requestCount?: number } | null
+    sevenDay?: { usedPercentage: number; resetsAt: string | null; requestCount?: number } | null
   }
   context: {
     available: boolean

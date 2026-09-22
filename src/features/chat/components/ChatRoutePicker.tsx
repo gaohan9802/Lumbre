@@ -10,17 +10,11 @@ import type { CcStatus } from '@/features/chat/api/client'
 type ModelChoice = { profile: ApiProfile; model: ProviderModel }
 
 export function ChatRouteChip({
-  profileName,
-  modelName,
   route,
-  ccStatus,
   isNight,
   onClick,
 }: {
-  profileName?: string
-  modelName?: string
   route: ChatRoute
-  ccStatus: CcStatus
   isNight: boolean
   onClick: () => void
 }) {
@@ -29,13 +23,9 @@ export function ChatRouteChip({
       type="button"
       aria-label="选择发送线路与模型"
       onClick={onClick}
-      className={`mb-2 ml-1 inline-flex max-w-[min(76vw,420px)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] transition ${isNight ? 'border-night-border/80 bg-night-surface/75 text-night-muted hover:border-night-amber/45' : 'border-[#a73a32]/25 bg-[#fffaf5]/65 text-[#80584f] hover:border-[#a73a32]/50'}`}
+      className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[10px] transition ${isNight ? 'border-night-border/80 bg-night-surface/75 text-night-muted hover:border-night-amber/45' : 'border-[#a73a32]/25 bg-white/35 text-[#80584f] hover:border-[#a73a32]/50'}`}
     >
       <span className={`font-semibold tracking-[0.12em] ${isNight ? 'text-night-amber' : 'text-[#a73a32]'}`}>{route === 'claude-code' ? 'CC' : 'API'}</span>
-      <span className="opacity-35">·</span>
-      <span className="truncate opacity-65">{route === 'claude-code'
-        ? `Claude Code · ${ccStatus.model || '未连接'}`
-        : `${profileName || 'API'} · ${modelName || '未选择模型'}`}</span>
       <ChevronDown size={11} className="flex-shrink-0 opacity-45" />
     </button>
   )

@@ -72,15 +72,14 @@ export function MessageReceiptDialog({
 
   const profile = settings.apiProfiles.find(item => item.id === message?.providerId)
   const provider = message?.route === 'claude-code'
-    ? 'Anthropic · First-party'
-    : `${profile?.name || '未知渠道'} · ${profile?.provider === 'anthropic' ? 'Anthropic' : 'OpenAI-compatible'}`
+    ? 'Anthropic'
+    : profile?.provider === 'anthropic' ? 'Anthropic' : profile?.name || 'OpenAI-compatible'
   const input = message?.input_tokens || 0
   const output = message?.output_tokens || 0
   const cacheRead = message?.cache_read_tokens || 0
   const cacheWrite = message?.cache_creation_tokens || 0
   const cacheBase = input + cacheRead + cacheWrite
   const hitRate = cacheBase ? (cacheRead / cacheBase) * 100 : 0
-  const estimate = message ? estimateListPrice(settings, message) : null
   const audit = message?.request_audit
   const rows: [string, ReceiptMetric | undefined][] = [
     ['固定人格', audit?.persona],
@@ -88,7 +87,7 @@ export function MessageReceiptDialog({
     ['历史消息', audit?.history],
     ['工具结果', audit?.toolResults],
     ['工具定义', audit?.toolDefinitions],
-    ['时间 / Pulse / 纸条', audit?.currentContext],
+    ['其他', audit?.currentContext],
     ['内容总长度', audit?.total],
   ]
 
@@ -109,7 +108,6 @@ export function MessageReceiptDialog({
             <button type="button" onClick={onClose} aria-label="关闭" className={`absolute right-3 top-4 z-10 p-1 opacity-55 hover:opacity-100 ${night ? '' : 'text-[#a73a32]'}`}><X size={17} /></button>
             <div className="px-6 pb-8 pt-9 sm:px-8">
               <header className="relative text-center">
-                {!night && <svg aria-hidden="true" viewBox="0 0 24 32" className="absolute left-[calc(50%-5.7rem)] top-0 h-7 w-5 -rotate-12" fill="#8fa7b6" stroke="#a73a32" strokeWidth="1.2"><path d="M20 2C8 7 3 16 5 29c10-4 15-13 15-27Z"/><path d="M5 29 17 8" fill="none"/></svg>}
                 <h3 id="message-receipt-title" className="font-serif text-xl font-semibold tracking-[0.2em]">LUMBRE</h3>
                 <p className={`mt-1 text-[10px] tracking-[0.28em] ${night ? 'opacity-55' : 'text-[#a73a32]/70'}`}>USAGE DETAIL</p>
               </header>
@@ -126,20 +124,17 @@ export function MessageReceiptDialog({
                 <div className="flex justify-between gap-4"><dt>模型</dt><dd className="text-right break-all">{message.modelId || '—'}</dd></div>
               </dl>
 
-              <section className="pt-4">
+              <section className="relative pt-4">
                 <p className={`mb-3 text-center text-[10px] tracking-[0.18em] ${night ? 'opacity-45' : 'text-[#a73a32]/65'}`}>本轮真实用量</p>
-                <div className="grid grid-cols-[1fr_auto] items-center gap-5">
-                  <dl className="text-[12px] space-y-1.5">
-                    {[
-                      ['输入 Tokens', input], ['输出 Tokens', output], ['缓存读取', cacheRead], ['缓存写入', cacheWrite],
-                    ].map(([label, value]) => <div key={String(label)} className="flex justify-between gap-4"><dt>{label}</dt><dd>{Number(value).toLocaleString()}</dd></div>)}
-                  </dl>
-                  <div className={`grid h-[76px] w-[76px] -rotate-6 place-content-center rounded-full border-2 text-center ${night ? 'border-[#b18a48] text-[#d8b66c]' : 'border-[#b18329] text-[#9c711b]'}`}>
-                    <span className="text-[9px] tracking-[0.12em]">CACHE HIT</span>
-                    <strong className="mt-0.5 font-serif text-lg leading-none">{hitRate.toFixed(1)}%</strong>
-                    <span aria-hidden="true" className="mt-1 text-[10px]">✦</span>
-                  </div>
+                <div className={`pointer-events-none absolute right-2 top-8 z-10 grid h-[76px] w-[76px] -rotate-6 place-content-center rounded-full border-2 text-center opacity-75 ${night ? 'border-[#b18a48] text-[#d8b66c]' : 'border-[#b18329] text-[#9c711b]'}`}>
+                  <span className="text-[9px] tracking-[0.12em]">CACHE HIT</span>
+                  <strong className="mt-1 font-serif text-lg leading-none">{hitRate.toFixed(1)}%</strong>
                 </div>
+                <dl className="relative text-[12px] space-y-1.5">
+                  {[
+                    ['输入 Tokens', input], ['输出 Tokens', output], ['缓存读取', cacheRead], ['缓存写入', cacheWrite],
+                  ].map(([label, value]) => <div key={String(label)} className="flex justify-between gap-4"><dt>{label}</dt><dd>{Number(value).toLocaleString()}</dd></div>)}
+                </dl>
               </section>
 
               <ReceiptDivider night={night} />
@@ -147,10 +142,22 @@ export function MessageReceiptDialog({
               <section>
                 <p className={`mb-2 text-[10px] tracking-[0.18em] ${night ? 'opacity-45' : 'text-[#a73a32]/65'}`}>请求内容审计 · 实际载荷</p>
                 <dl className="text-[12px] space-y-1.5">
-                  {rows.map(([label, metric]) => <div key={label} className={`flex justify-between gap-4 ${label === '内容总长度' ? `mt-2 border-t pt-2 font-semibold ${night ? 'border-current/20' : 'border-[#a73a32]/25'}` : ''}`}><dt>{label}</dt><dd className="text-right">{metricText(metric)}</dd></div>)}
+                  {rows.map(([label, metric]) => <div key={label} className={`relative flex justify-between gap-4 ${label === '内容总长度' ? `mt-2 border-t pt-2 font-semibold ${night ? 'border-current/20' : 'border-[#a73a32]/25'}` : ''}`}>
+                    <dt>{label}</dt><dd className="text-right">{metricText(metric)}</dd>
+                    {label === '内容总长度' && <svg aria-hidden="true" viewBox="0 0 72 58" className={`pointer-events-none absolute -right-1 -top-7 z-10 h-[62px] w-[76px] -rotate-12 opacity-60 mix-blend-multiply ${night ? 'text-[#bda47c]' : 'text-[#a73a32]'}`}>
+                      <defs><filter id="receipt-paw-ink" x="-15%" y="-15%" width="130%" height="130%"><feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="2" seed="7" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="1.8"/></filter></defs>
+                      <g fill="currentColor" filter="url(#receipt-paw-ink)">
+                        <path d="M21 51c-5-5-3-14 2-19 4-4 7-7 13-7s10 3 13 7c5 6 7 14 2 19-4 4-9 1-15 1s-11 3-15-1Z"/>
+                        <ellipse cx="10" cy="27" rx="7" ry="9" transform="rotate(-25 10 27)"/>
+                        <ellipse cx="23" cy="13" rx="7" ry="10" transform="rotate(-10 23 13)"/>
+                        <ellipse cx="41" cy="12" rx="7" ry="10" transform="rotate(9 41 12)"/>
+                        <ellipse cx="58" cy="25" rx="7" ry="9" transform="rotate(24 58 25)"/>
+                      </g>
+                      <g fill="none" stroke="currentColor" strokeWidth="1" opacity=".35"><path d="M24 49c8-4 18-4 25 0"/><path d="M8 24c2 4 4 6 7 7M21 9c1 5 3 8 6 10M40 8c0 5-1 8-4 11M57 22c-2 4-4 6-7 8"/></g>
+                    </svg>}
+                  </div>)}
                 </dl>
                 {!audit && <p className="mt-3 text-[10px] opacity-45">旧消息未留存内容快照；新回复会自动记录。</p>}
-                <p className="mt-3 text-[10px] leading-relaxed opacity-45">字符与 UTF-8 字节来自本轮 Lumbre 内容快照；协议包装由供应商处理，token 以上方返回值为准。</p>
               </section>
 
               <details className={`mt-4 border-y py-3 text-[11px] ${night ? 'border-current/20' : 'border-[#a73a32]/25'}`}>
@@ -162,22 +169,6 @@ export function MessageReceiptDialog({
                 </div>
               </details>
 
-              <div className="pt-4 flex justify-between text-[13px]">
-                <span>官方标价估值</span>
-                <strong className={night ? 'text-[#d8b66c]' : 'text-[#a73a32]'}>{estimate == null ? '未配置' : `$${estimate.toFixed(6)}`}</strong>
-              </div>
-              {message.route === 'claude-code' && <p className="mt-2 text-[10px] opacity-45">按 Anthropic API 的一小时缓存公开标价折算；CC 订阅不按此金额扣费。</p>}
-
-              <div className="mt-6 text-center">
-                <p className="font-serif text-[13px] tracking-[0.12em]">让每一次命中，都有迹可循。</p>
-                <svg aria-hidden="true" viewBox="0 0 34 26" className={`mx-auto mt-2 h-6 w-8 rotate-6 fill-current ${night ? 'text-[#bda47c]' : 'text-[#a73a32]'}`}>
-                  <ellipse cx="17" cy="17" rx="8" ry="7" />
-                  <ellipse cx="6" cy="10" rx="3.5" ry="4.5" transform="rotate(-22 6 10)" />
-                  <ellipse cx="13" cy="5" rx="3.5" ry="4.5" transform="rotate(-7 13 5)" />
-                  <ellipse cx="21" cy="5" rx="3.5" ry="4.5" transform="rotate(7 21 5)" />
-                  <ellipse cx="28" cy="10" rx="3.5" ry="4.5" transform="rotate(22 28 10)" />
-                </svg>
-              </div>
             </div>
             <div className={`h-2 opacity-55 ${night ? '' : 'text-[#a73a32]'}`} style={{ backgroundImage: 'repeating-linear-gradient(45deg, currentColor 0 5px, transparent 5px 10px)' }} />
           </motion.section>
