@@ -32,6 +32,36 @@ const LUMBRE_MCP_CONFIG = JSON.stringify({ mcpServers: {
     args: ['/opt/lumbre/services/cc-gateway/lumbre-mcp-server.mjs'],
   },
 } })
+const STDERR_DIAGNOSTIC_LIMIT = 16 * 1024
+
+export function classifyClaudeFailure(events = [], stderr = '', model = '') {
+  const structured = events.flatMap(event => [
+    typeof event?.result === 'string' ? event.result : '',
+    typeof event?.error?.message === 'string' ? event.error.message : '',
+  ])
+  const detail = `${structured.join('\n')}\n${stderr}`
+  if (/(?:model.{0,100}(?:not found|does not exist|invalid|unsupported|unavailable|not available|access|permission)|(?:not (?:authorized|entitled)|do not have access|don't have access|don’t have access).{0,100}model|model_not_found)/i.test(detail)) {
+    return {
+      code: 'model_unavailable',
+      message: String(model).includes('opus-5-5')
+        ? 'Claude Code 当前账号暂时无法使用 Opus 5.5。'
+        : 'Claude Code 当前账号暂时无法使用所选模型。',
+    }
+  }
+  if (/(?:authentication|not logged in|oauth|unauthorized|invalid[^\n]{0,40}token|token[^\n]{0,40}expired|\b401\b)/i.test(detail)) {
+    return { code: 'auth_failed', message: 'Claude Code 登录已失效。' }
+  }
+  if (/(?:rate.?limit|usage limit|quota|\b429\b|overloaded)/i.test(detail)) {
+    return { code: 'rate_limited', message: 'Claude Code 当前受到额度或上游流量限制。' }
+  }
+  if (/(?:session.{0,80}(?:not found|invalid|does not exist)|resume.{0,80}(?:failed|invalid))/i.test(detail)) {
+    return { code: 'session_invalid', message: 'Claude Code 无法恢复这个会话。' }
+  }
+  if (/(?:api error:?\s*400|invalid request|bad request)/i.test(detail)) {
+    return { code: 'request_invalid', message: 'Claude Code 拒绝了这次请求的参数或会话格式。' }
+  }
+  return { code: 'cc_failed', message: 'Claude Code request failed' }
+}
 
 function findTranscript(home, sessionId) {
   if (!home || !sessionId) return null
@@ -268,7 +298,7 @@ export class ClaudeExecutor {
         stdio: ['pipe', 'pipe', 'pipe'],
       })
       let stdoutBuffer = ''
-      let stderrBytes = 0
+      let stderrBuffer = ''
       let totalBytes = 0
       let settled = false
       let stoppedFor = null
@@ -377,10 +407,13 @@ export class ClaudeExecutor {
           parseLine(line)
         }
       })
+      child.stderr.setEncoding('utf8')
       child.stderr.on('data', chunk => {
         const bytes = Buffer.byteLength(chunk)
-        stderrBytes += bytes
         totalBytes += bytes
+        if (stderrBuffer.length < STDERR_DIAGNOSTIC_LIMIT) {
+          stderrBuffer = (stderrBuffer + chunk).slice(0, STDERR_DIAGNOSTIC_LIMIT)
+        }
         if (totalBytes > this.maxOutputBytes) stop('output_limit')
       })
       child.on('error', () => finish(new ClaudeExecutionError('spawn_failed', 'Claude Code could not start')))
@@ -388,7 +421,11 @@ export class ClaudeExecutor {
         drainToolEvents()
         if (stdoutBuffer.trim()) parseLine(stdoutBuffer)
         if (stoppedFor) return finish(new ClaudeExecutionError(stoppedFor, `Claude Code stopped: ${stoppedFor}`))
-        if (code !== 0) return finish(new ClaudeExecutionError(`exit_${code ?? 'signal'}`, 'Claude Code request failed'))
+        if (code !== 0) {
+          const failure = classifyClaudeFailure(events, stderrBuffer, model)
+          const failureCode = failure.code === 'cc_failed' ? `exit_${code ?? 'signal'}` : failure.code
+          return finish(new ClaudeExecutionError(failureCode, failure.message))
+        }
         try {
           const sessionId = findSessionId(events)
           if (resumeSessionId && !forkSession && sessionId !== resumeSessionId) {

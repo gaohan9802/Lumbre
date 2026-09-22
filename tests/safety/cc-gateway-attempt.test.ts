@@ -5,7 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 import { AttemptLedger } from '../../services/cc-gateway/attempt-ledger.mjs'
-import { ClaudeExecutor, collectContextSnapshot } from '../../services/cc-gateway/claude-executor.mjs'
+import { ClaudeExecutor, classifyClaudeFailure, collectContextSnapshot } from '../../services/cc-gateway/claude-executor.mjs'
 import { GatewayRuntime } from '../../services/cc-gateway/runtime.mjs'
 import { assertGatewayDataDir } from '../../services/cc-gateway/storage.mjs'
 
@@ -257,6 +257,20 @@ test('runtime records whether a failed attempt can safely resume', async () => {
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('Claude executor exposes only a safe failure category', () => {
+  assert.deepEqual(
+    classifyClaudeFailure([], "The model 'claude-opus-5-5' does not exist or you do not have access to it. token=private", 'claude-opus-5-5'),
+    { code: 'model_unavailable', message: 'Claude Code 当前账号暂时无法使用 Opus 5.5。' },
+  )
+  assert.deepEqual(
+    classifyClaudeFailure([{ result: 'API Error: 429 rate_limit_error' }], 'private detail', 'claude-opus-5-5'),
+    { code: 'rate_limited', message: 'Claude Code 当前受到额度或上游流量限制。' },
+  )
+  assert.deepEqual(classifyClaudeFailure([], 'token=private', 'claude-opus-5-5'), {
+    code: 'cc_failed', message: 'Claude Code request failed',
+  })
 })
 
 test('cache warm forks the latest session with matching tool schema and returns cache usage', async () => {
