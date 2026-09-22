@@ -168,7 +168,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
 
   const {
-    input, setInput, isLoading, setIsLoading,
+    input, setInput, isLoading, setIsLoading, sendStarting, setSendStarting,
     streamText, setStreamText, streamThinking, setStreamThinking, streamBlocks, setStreamBlocks,
     expandedThinking, setExpandedThinking, expandedTools, setExpandedTools,
     settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
@@ -184,7 +184,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
     messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
-    activeGenerationRef, explicitStopRef, recoveredTurnsRef,
+    activeGenerationRef, explicitStopRef, recoveredTurnsRef, sendLockRef,
     confirmState, ask, answer,
   } = useChatViewState()
 
@@ -725,7 +725,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     void flushChatOutbox().catch(() => {})
   }, [])
 
-  const handleSend = async () => {
+  const sendMessage = async () => {
     if ((!input.trim() && pendingImages.length === 0 && !pendingShare) || isLoading) return
     if (!await ensureCcAvailable(activeRoute)) return
     const profile = getActiveProfile(settings)
@@ -797,10 +797,21 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     }, activeRoute, userMsg.id)
   }
 
+  const handleSend = async () => {
+    if (sendLockRef.current) return
+    sendLockRef.current = true
+    setSendStarting(true)
+    try { await sendMessage() }
+    finally {
+      sendLockRef.current = false
+      setSendStarting(false)
+    }
+  }
+
 
   /* ── retry ────────────────────────────── */
 
-  const handleRetry = async (msg: ChatMessage, skipConfirm = false, recoverPending = false) => {
+  const retryMessage = async (msg: ChatMessage, skipConfirm = false, recoverPending = false) => {
     if (isLoading) return
     const retryRoute = normalizeChatRoute(msg.route)
     if (!skipConfirm) {
@@ -907,11 +918,22 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     }
   }
 
+  const handleRetry = async (msg: ChatMessage, skipConfirm = false, recoverPending = false) => {
+    if (isLoading || sendLockRef.current) return
+    sendLockRef.current = true
+    setSendStarting(true)
+    try { await retryMessage(msg, skipConfirm, recoverPending) }
+    finally {
+      sendLockRef.current = false
+      setSendStarting(false)
+    }
+  }
+
   // If a tab refreshed or iOS suspended the PWA after the user message was
   // saved, re-submit the same turn id. The gateway's idempotency ledger either
   // reconnects to the running attempt or replays its one completed result.
   useEffect(() => {
-    if (!mounted || isLoading || !ccStatus.available || !activeSession?.id) return
+    if (!mounted || isLoading || sendStarting || !ccStatus.available || !activeSession?.id) return
     const pending = [...messages].reverse().find(message => message.role === 'user' && message.route === 'claude-code' && message.ccGenerationState === 'pending')
     if (!pending || messages.at(-1)?.id !== pending.id) return
     const key = `${activeSession.id}:${pending.id}`
@@ -920,7 +942,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     void handleRetry(pending, true, true)
     // Recovery is keyed to the durable turn, not ordinary streaming renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, activeSession?.id, ccStatus.available, isLoading, messages.at(-1)?.id, messages.at(-1)?.ccGenerationState])
+  }, [mounted, activeSession?.id, ccStatus.available, isLoading, sendStarting, messages.at(-1)?.id, messages.at(-1)?.ccGenerationState])
 
   /* ── delete message ───────────────────── */
 
@@ -1541,8 +1563,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                     <Square size={15} fill="currentColor" />
                   </button>
                 ) : (
-                  <button aria-label="发送消息" onClick={handleSend} disabled={!input.trim() && pendingImages.length === 0 && !pendingShare}
-                    className={`p-2 rounded-xl transition-all flex-shrink-0 ${(input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#d99118] text-white hover:bg-[#c98110]') : 'opacity-30 cursor-not-allowed'}`}>
+                  <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && !pendingShare)}
+                    className={`p-2 rounded-xl transition-all flex-shrink-0 ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#d99118] text-white hover:bg-[#c98110]') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
                     <Send size={16} />
                   </button>
                 )}

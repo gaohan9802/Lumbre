@@ -21,6 +21,7 @@ function useConfirm() {
 export function useChatViewState() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [sendStarting, setSendStarting] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [streamThinking, setStreamThinking] = useState('')
   const [streamBlocks, setStreamBlocks] = useState<ContentBlock[]>([])
@@ -66,10 +67,11 @@ export function useChatViewState() {
   const activeGenerationRef = useRef<{ route: 'api' | 'claude-code'; sessionId: string; turnId: string } | null>(null)
   const explicitStopRef = useRef(false)
   const recoveredTurnsRef = useRef<Set<string>>(new Set())
+  const sendLockRef = useRef(false)
   const confirm = useConfirm()
 
   return {
-    input, setInput, isLoading, setIsLoading,
+    input, setInput, isLoading, setIsLoading, sendStarting, setSendStarting,
     streamText, setStreamText, streamThinking, setStreamThinking, streamBlocks, setStreamBlocks,
     expandedThinking, setExpandedThinking, expandedTools, setExpandedTools,
     settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
@@ -85,7 +87,7 @@ export function useChatViewState() {
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
     messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
-    activeGenerationRef, explicitStopRef, recoveredTurnsRef,
+    activeGenerationRef, explicitStopRef, recoveredTurnsRef, sendLockRef,
     ...confirm,
   }
 }
