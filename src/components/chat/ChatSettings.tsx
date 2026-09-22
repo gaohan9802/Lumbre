@@ -63,21 +63,21 @@ export function ChatSettings(props: Props) {
   useEffect(() => { if (open) dialog.current?.focus() }, [panel, open])
   useEffect(() => { if (pendingDiscard) discardRef.current?.querySelector('button')?.focus() }, [pendingDiscard])
   if (!open) return null
-  const card = night ? 'bg-night-card' : 'border border-[#a73a32]/25 bg-[#fffaf5]/60'
+  const card = night ? 'bg-night-card' : 'border border-[#a73a32]/15 bg-[#fffaf5]/60'
   const button = `px-4 py-2.5 rounded-xl text-sm ${card}`
   const activeSession = settings.sessions.find(s => s.id === settings.activeSessionId)
   const profile = settings.apiProfiles.find(p => p.id === settings.activeProfileId)
   const titles = { menu: 'Settings', star: '星星', settings: '参数', models: '模型' }
   const navigate = (action?: () => void) => { onClose(); action?.() }
-  const row = (label: string, action: () => void, detail?: string) => <button key={label} onClick={action} className={`w-full flex items-center gap-2 px-2 py-3 text-left ${night ? 'rounded-xl bg-night-card' : 'border-b border-[#a73a32]/35'}`}>
-    <span className="flex-1 min-w-0"><span className="block text-sm">{label}</span>{detail && <span className="block text-xs opacity-50 truncate mt-1">{detail}</span>}</span><ChevronRight size={16}/>
+  const row = (label: string, action: () => void, detail?: string) => <button key={label} onClick={action} className={`min-h-[52px] w-full flex items-center gap-2 px-2 py-3 text-left ${night ? 'rounded-xl bg-night-card' : 'border-b border-[#a73a32]/20'}`}>
+    <span className="flex flex-1 min-w-0 items-baseline gap-2"><span className="text-sm">{label}</span>{detail && <span className="truncate text-xs opacity-50">{detail}</span>}</span><ChevronRight size={16}/>
   </button>
   const slider = (label: string, value: number, change: (v: number) => void, min = 0, max = 1, step = .05, display?: string) => <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>{label}</span><span className="opacity-60">{display || `${Math.round(value * 100)}%`}</span></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))} className="w-full"/></label>
-  const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? (night ? 'bg-night-amber' : 'bg-[#a73a32]') : 'bg-gray-400/40'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
+  const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? (night ? 'bg-night-muted' : 'bg-[#a73a32]/70') : 'bg-gray-400/40'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
   return <>
     <div className="fixed inset-0 z-[70] bg-black/30" onClick={close}/>
-    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`fixed ${panel === 'star' ? 'inset-x-4 mx-auto top-[8dvh] h-[84dvh] max-w-[640px] rounded-2xl' : 'right-0 top-0 bottom-0 w-[80vw] max-w-[420px]'} z-[71] flex flex-col overflow-hidden outline-none ${night ? 'bg-night-surface text-night-text shadow-2xl' : 'chat-paper border-l border-[#a73a32] text-[#3f2c29]'}`}>
-      <div className={`relative z-10 flex items-center gap-3 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b ${night ? 'border-current/10' : 'border-[#a73a32]/45'}`}>
+    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`fixed ${panel === 'star' ? 'inset-x-4 mx-auto top-[8dvh] h-[84dvh] max-w-[640px] rounded-2xl' : 'right-0 top-0 bottom-0 w-[86vw] max-w-[340px]'} z-[71] flex flex-col overflow-hidden outline-none ${night ? 'bg-night-surface text-night-text shadow-2xl' : 'chat-paper border-l border-[#a73a32]/30 text-[#3f2c29]'}`}>
+      <div className={`relative z-10 flex items-center gap-3 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b ${night ? 'border-current/10' : 'border-[#a73a32]/20'}`}>
         {panel !== 'menu' && <button aria-label="返回菜单" onClick={() => confirm(() => setPanel('menu'))} className="p-2"><ChevronLeft size={20}/></button>}
         <h2 id="chat-menu-title" className="flex-1 font-medium">{titles[panel]}</h2>
         <button aria-label="关闭菜单" onClick={close} className="p-2"><X size={20}/></button>
@@ -112,7 +112,7 @@ export function ChatSettings(props: Props) {
         </>}
       </div>
       {pendingDiscard && <div className="absolute inset-0 z-10 bg-black/40 flex items-center justify-center p-5 rounded-inherit"><div ref={discardRef} role="alertdialog" aria-modal="true" aria-label="放弃未保存的修改？" className={`w-full rounded-2xl p-5 shadow-xl ${night ? 'bg-night-card' : 'bg-white'}`}><p className="text-sm">放弃未保存的修改？</p><div className="mt-5 flex justify-end gap-3"><button className={button} onClick={() => { setPendingDiscard(null); dialog.current?.focus() }}>继续编辑</button><button className={button} onClick={() => { const action = pendingDiscard; setPendingDiscard(null); action() }}>放弃修改</button></div></div></div>}
-      {panel === 'menu' && <div className={`relative min-h-28 overflow-hidden px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-8 border-t ${night ? 'border-current/10' : 'border-[#a73a32]/35'}`}>
+      {panel === 'menu' && <div className={`relative min-h-28 overflow-hidden px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-8 border-t ${night ? 'border-current/10' : 'border-[#a73a32]/20'}`}>
         <button onClick={() => { continueSession(50); onClose() }} className={`relative z-10 w-full rounded-2xl border py-3 text-sm ${night ? 'border-white/10 bg-white/10 text-night-text' : 'border-[#b7c1c5]/70 bg-[#dce5e8]/80 text-[#52636a]'}`}>换窗</button>
       </div>}
     </div>

@@ -104,9 +104,9 @@ export function TodoView() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm receipt-paper rounded-lg p-6 shadow-lg relative"
+        className="chat-paper relative w-full max-w-sm overflow-hidden rounded-lg border border-[#a73a32]/20 bg-[#faf7f0] p-6 text-[#4b332e] shadow-[0_18px_50px_rgba(49,29,23,0.16)]"
       >
-        <div className="absolute -top-2 left-0 right-0 h-3 receipt-edge-top" />
+        <div className="absolute left-0 right-0 top-0 h-2 text-[#a73a32] opacity-35" style={{ backgroundImage: 'repeating-linear-gradient(135deg, currentColor 0 5px, transparent 5px 10px)' }} />
 
         {/* Header */}
         <div className="text-center mb-4 relative">
@@ -120,7 +120,6 @@ export function TodoView() {
               <ChevronLeft size={14} /> 今天
             </button>
           )}
-          <p className="text-[10px] tracking-[0.3em] text-receipt-ink/50 mb-1">NEST · GENERAL STORE</p>
           <h2 className="text-xl font-receipt font-bold text-receipt-ink">
             {isToday ? "Today's Receipt" : 'Past Receipt'}
           </h2>
@@ -265,9 +264,8 @@ export function TodoView() {
               PAID · 谢谢
             </motion.div>
           ) : (
-            <p className="text-[10px] text-receipt-ink/30 font-receipt">今天也辛苦了 🐆 · 🦦</p>
+            <p className="text-[10px] text-receipt-ink/30 font-receipt">今天也辛苦了</p>
           )}
-          <p className="text-[10px] text-receipt-ink/20 font-receipt">未结清的不会消失，会顺延到第二天。</p>
           <div className="flex justify-center gap-px mt-2">
             {Array.from({ length: 30 }, (_, i) => (
               <div key={i} className="bg-receipt-ink/20" style={{ width: i % 3 === 0 ? '2px' : '1px', height: '20px' }} />
@@ -277,6 +275,7 @@ export function TodoView() {
             {format(viewDateObj, 'yy MM dd')} {receiptNo.slice(1)}
           </p>
         </div>
+        <div className="absolute bottom-0 left-0 right-0 h-2 text-[#a73a32] opacity-35" style={{ backgroundImage: 'repeating-linear-gradient(45deg, currentColor 0 5px, transparent 5px 10px)' }} />
       </motion.div>
 
       {/* Delete confirmation */}

@@ -149,6 +149,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const n = theme === 'night'
   const [wheelOpen, setWheelOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
+  const [ccRefreshing, setCcRefreshing] = useState(false)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number }[]>([])
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
@@ -224,8 +225,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     }
   }
   const refreshCcStatus = useCallback(async () => {
+    setCcRefreshing(true)
     try { setCcStatus(await chatApi.ccStatus(activeSession?.id)) }
     catch { setCcStatus(current => ({ ...current, available: false })) }
+    finally { setCcRefreshing(false) }
   }, [activeSession?.id])
   const ensureCcAvailable = useCallback(async (route: ChatRoute, notify = true) => {
     if (route !== 'claude-code') return true
@@ -291,9 +294,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     <motion.p
       key={poke.id}
       initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-      className={`my-3 text-center text-[11px] tracking-[0.08em] ${n ? 'text-night-amber/75' : 'text-[#9f302b]/70'}`}
+      className={`my-3 text-center text-[11px] tracking-[0.08em] ${n ? 'text-night-muted' : 'text-[#9f302b]/70'}`}
     >
-      {fmtShortDate(poke.timestamp)} 小火戳了豹子鼻子 · 今天第 {nosePokes.findIndex(item => item.id === poke.id) + 1} 次
+      {fmtShortDate(poke.timestamp)} 你戳了一下豹子的鼻子
     </motion.p>
   )
 
@@ -1034,8 +1037,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   /* ── sidebar ──────────────────────────── */
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
-    <div className={`relative h-full flex flex-col overflow-hidden ${mobile ? 'w-[86vw] max-w-[340px]' : 'w-[300px]'} ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32] text-[#3f2c29]'} border-r`}>
-      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(1rem,env(safe-area-inset-top))]' : 'pt-4'} ${n ? 'border-current/5' : 'border-[#a73a32]/45'}`}>
+    <div className={`relative h-full w-[86vw] max-w-[340px] flex flex-col overflow-hidden ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29]'} border-r`}>
+      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(1rem,env(safe-area-inset-top))]' : 'pt-4'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-medium">会话</div>
@@ -1045,11 +1048,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         </div>
         <button
           onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }}
-          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs ${n ? 'bg-night-amber text-night-bg' : 'border border-[#a73a32] bg-[#fffaf5]/65 text-[#9f302b]'}`}
+          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs ${n ? 'bg-night-muted text-night-bg' : 'border border-[#a73a32]/30 bg-[#fffaf5]/65 text-[#9f302b]'}`}
         >
           <Plus size={13} /> 新对话
         </button>
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${n ? 'bg-night-surface' : 'border border-[#a73a32]/25 bg-[#fffaf5]/50'}`}>
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${n ? 'bg-night-surface' : 'border border-[#a73a32]/15 bg-[#fffaf5]/50'}`}>
           <Search size={13} className="opacity-40" />
           <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} placeholder="搜索会话" className="bg-transparent outline-none text-xs flex-1" />
         </div>
@@ -1059,7 +1062,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           const active = s.id === settings.activeSessionId
           return (
             <div key={s.id} onClick={() => { setActiveSession(s.id); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
-              className={`group p-3 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-amber/15 text-night-text' : 'bg-[#dce5e8]/75 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
+              className={`group p-3 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-muted/15 text-night-text' : 'bg-[#dce5e8]/75 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   {editingSessionId === s.id ? (
@@ -1068,7 +1071,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       onClick={(e) => e.stopPropagation()} className={`w-full px-2 py-1 rounded text-xs outline-none ${n ? 'bg-night-card' : 'bg-white'}`} />
                   ) : (
                     <div className="text-xs font-medium truncate flex items-center gap-1">
-                      {s.pinned && <Pin size={10} className={n ? 'text-night-amber' : 'text-day-heart'} />}
+                      {s.pinned && <Pin size={10} className={n ? 'text-night-muted' : 'text-[#8fa7b6]'} />}
                       {s.title}
                     </div>
                   )}
@@ -1079,7 +1082,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 </div>
                 <div className="relative" onClick={(e) => e.stopPropagation()}>
                   <button aria-label="会话操作" onClick={() => setSessionActionsId(current => current === s.id ? null : s.id)} className="p-1.5 opacity-45 hover:opacity-100"><MoreHorizontal size={14}/></button>
-                  {sessionActionsId === s.id && <div className={`absolute right-0 top-full z-20 mt-1 min-w-28 rounded-xl border py-1 shadow-lg ${n ? 'border-night-border bg-night-card' : 'border-[#a73a32]/30 bg-[#faf8f3]'}`}>
+                  {sessionActionsId === s.id && <div className={`absolute right-0 top-full z-20 mt-1 min-w-28 rounded-xl border py-1 shadow-lg ${n ? 'border-night-border bg-night-card' : 'border-[#a73a32]/15 bg-[#faf8f3]'}`}>
                     <button onClick={() => { togglePinSession(s.id); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"><Pin size={12}/>{s.pinned ? '取消置顶' : '置顶'}</button>
                     <button onClick={() => { startRename(s.id, s.title); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"><Pencil size={12}/>重命名</button>
                     <button onClick={async () => { const ok = await ask('删除这条对话？'); if (ok) deleteSession(s.id); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-500"><Trash2 size={12}/>删除</button>
@@ -1090,19 +1093,19 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )
         })}
       </div>
-      <div className={`relative z-10 shrink-0 px-3 pt-3 pb-[max(4.5rem,env(safe-area-inset-bottom))] space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/35'}`}>
-        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/25 bg-[#fffaf5]/55'}`}>
+      <div className={`relative z-10 shrink-0 px-3 pt-3 pb-[max(4.5rem,env(safe-area-inset-bottom))] space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
+        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CLAUDE 额度 · 订阅</span>
-            <button type="button" aria-label="刷新 CC 状态" onClick={() => void refreshCcStatus()} className="p-1 -m-1 hover:opacity-100">
-              <RotateCcw size={13} />
+            <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="p-1 -m-1 hover:opacity-100 disabled:opacity-70">
+              <RotateCcw size={13} className={ccRefreshing ? 'animate-spin' : ''} />
             </button>
           </div>
           {ccStatus.quota.available && ccStatus.quota.fiveHour ? (
             <>
               <div className="mt-1.5 flex items-end justify-between gap-2">
                 <div className="text-xl leading-none tabular-nums">余 {Math.max(0, Math.round(100 - ccStatus.quota.fiveHour.usedPercentage))}%</div>
-                <span className={`text-[10px] ${ccStatus.quota.stale ? 'opacity-45' : (n ? 'text-night-amber' : 'text-emerald-700')}`}>
+                <span className={`text-[10px] ${ccStatus.quota.stale ? 'opacity-45' : (n ? 'text-night-muted' : 'text-[#718b97]')}`}>
                   {ccStatus.quota.stale ? '● 上次读数' : '● 已读取'}
                 </span>
               </div>
@@ -1111,7 +1114,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 <span>重置 {fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
               </div>
               <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
-                <div className={`h-full rounded-full ${n ? 'bg-night-amber' : 'bg-[#d99118]'}`} style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
+                <div className={`h-full rounded-full ${n ? 'bg-night-muted' : 'bg-[#8fa7b6]'}`} style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
               </div>
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
                 <span>{ccStatus.quota.sevenDay ? `7 天剩余 ${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '7 天额度暂缺'}</span>
@@ -1122,7 +1125,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             <>
               <div className="mt-1.5 flex items-end justify-between gap-2">
                 <div className="text-xl leading-none">暂不可读</div>
-                <span className={`text-[10px] ${ccStatus.available ? (n ? 'text-night-amber' : 'text-emerald-700') : 'text-red-500'}`}>
+                <span className={`text-[10px] ${ccStatus.available ? (n ? 'text-night-muted' : 'text-[#718b97]') : 'text-red-500'}`}>
                   {ccStatus.available ? '● 线路在线' : '● 线路离线'}
                 </span>
               </div>
@@ -1131,20 +1134,20 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )}
         </section>
 
-        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/25 bg-[#fffaf5]/55'}`}>
+        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CC CONTEXT · 当前对话</span>
-            <span className={ccStatus.context.available ? (n ? 'text-night-amber' : 'text-emerald-700') : ''}>●</span>
+            <span className={ccStatus.context.available ? (n ? 'text-night-muted' : 'text-[#718b97]') : ''}>●</span>
           </div>
           {ccStatus.context.available ? (
             <>
-              <div className="mt-1.5 text-[25px] leading-none tabular-nums">{fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</div>
+              <div className="mt-1.5 text-xl leading-none tabular-nums">{fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</div>
               <div className="mt-2 flex justify-between text-[10px] opacity-50">
                 <span>上下文水位 · {ccStatus.context.usedPercentage ?? '—'}%</span>
                 <span>{fmtMetricTime(ccStatus.context.collectedAt)}</span>
               </div>
               <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
-                <div className={`h-full rounded-full ${n ? 'bg-night-amber' : 'bg-[#d99118]'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
+                <div className={`h-full rounded-full ${n ? 'bg-night-muted' : 'bg-[#8fa7b6]'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
               </div>
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
                 <span>读缓存 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写缓存 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
@@ -1181,7 +1184,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               aria-label="回到主页"
               onClick={() => setSidebarOpen(true)}
               whileTap={{ scale: 0.82, rotate: 12 }}
-              className="justify-self-center p-2 text-[25px] leading-none text-[#d99118]"
+              className="justify-self-center p-2 text-[25px] leading-none"
             >🐆</motion.button>
             <button aria-label="打开聊天菜单" onClick={() => setSettingsOpen(true)} className="justify-self-end p-2">
               <Moon size={21} strokeWidth={1.45}/>
@@ -1227,13 +1230,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                     <div className="w-full space-y-1">
                       {/* wake indicator */}
                       {(msg as any)._wake && (
-                        <div className={`flex items-center gap-1.5 text-[10px] px-1 mb-0.5 ${n ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
+                        <div className={`flex items-center gap-1.5 text-[10px] px-1 mb-0.5 ${n ? 'text-night-muted' : 'text-day-pink/70'}`}>
                           <span>💓</span> <span>心跳唤醒</span>
                         </div>
                       )}
 
                       {/* timestamp */}
-                      <p className={`text-[10px] px-1 ${isUser ? 'text-right' : 'text-left'} ${n ? 'text-night-muted' : 'text-[#8b6258]'}`}>
+                      <p className={`text-[10px] ${isUser ? 'pr-1 text-right' : 'pl-4 text-left'} ${n ? 'text-night-muted' : 'text-[#8b6258]'}`}>
                         {fmtShortDate(msg.timestamp)}
                       </p>
 
@@ -1246,8 +1249,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               const isExp = expandedThinking.has(blockKey)
                               return (
                                 <div key={blockKey}>
-                                  <button onClick={() => toggleThinking(blockKey)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                                    <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
+                                  <button onClick={() => toggleThinking(blockKey)} className={`ml-4 text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                     <span className="truncate">💭星星的小算盘</span>
                                   </button>
                                   <AnimatePresence>
@@ -1266,8 +1268,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               return (
                                 <div key={blockKey} className={`w-fit max-w-[87%] mr-auto rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
                                   <button onClick={() => toggleTools(blockKey)} className={`w-full flex items-center gap-2 px-3 py-2 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                                    <span className={`${n ? 'text-night-amber' : 'text-day-pink'}`}>🔧</span>
-                                    <span>调用工具: <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{block.name}</span></span>
+                                    <span className={`${n ? 'text-night-muted' : 'text-day-pink'}`}>🔧</span>
+                                    <span>调用工具: <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{block.name}</span></span>
                                     <ChevronDown size={12} className={`ml-auto transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
                                   </button>
                                   <AnimatePresence>
@@ -1296,7 +1298,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[91%] mr-auto break-words px-4 py-3 text-justify [text-justify:inter-ideograph] text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}>
+                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[88%] mr-auto break-words px-4 py-3 text-justify [text-justify:inter-ideograph] text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {msg.images.map((src: string, ii: number) => (
@@ -1316,8 +1318,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           {/* Legacy: thinking above bubble */}
                           {msg.thinking && (
                             <>
-                              <button onClick={() => toggleThinking(msg.id)} className={`text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                                <ChevronDown size={12} className={`transition-transform flex-shrink-0 ${expandedThinking.has(msg.id) ? '' : '-rotate-90'}`} />
+                              <button onClick={() => toggleThinking(msg.id)} className={`ml-4 text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                 <span className="truncate">💭星星的小算盘</span>
                               </button>
                               <AnimatePresence>
@@ -1334,7 +1335,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           {/* Legacy: tool calls above bubble */}
                           {msg.tool_calls && msg.tool_calls.length > 0 && (
                             <div className="w-fit max-w-[87%] mr-auto">
-                              <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-amber/70' : 'text-day-pink/70'}`}>
+                              <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-muted' : 'text-day-pink/70'}`}>
                                 <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? '' : '-rotate-90'}`} />
                                 🔧 {msg.tool_calls.map((tc: any) => tc.name).join(', ')}
                               </button>
@@ -1345,7 +1346,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                                       {msg.tool_calls.map((tc: any, i: number) => (
                                         <div key={i} className={`p-2 rounded-lg space-y-1.5 ${n ? 'bg-night-card' : 'bg-white'}`}>
                                           <div>
-                                            <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>{tc.name}</span>
+                                            <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{tc.name}</span>
                                           </div>
                                           {tc.input && Object.keys(tc.input).length > 0 && (
                                             <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
@@ -1378,13 +1379,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             className={`w-full p-3 text-sm outline-none resize-y ${n ? 'bg-night-surface text-night-text' : 'bg-gray-50 text-day-text'}`} rows={3} autoFocus />
                           <div className={`flex gap-2 justify-end px-3 py-2 ${n ? 'bg-night-surface' : 'bg-gray-50'}`}>
                             <button onClick={() => { setEditingMsgId(null); setEditingMsgText('') }} className="text-xs opacity-60">取消</button>
-                            <button onClick={finishEditMsg} className={`text-xs font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>保存</button>
+                            <button onClick={finishEditMsg} className={`text-xs font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>保存</button>
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto bg-[#dce5e8]/90 text-[#3f2c29]' : `w-fit max-w-[91%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto bg-[#dce5e8]/90 text-[#3f2c29]' : `w-fit max-w-[88%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
                           {msg.sharedCard && (
-                            <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
+                            <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
                               {msg.sharedCard.imageUrl && <img src={msg.sharedCard.imageUrl} alt="" className="w-full max-h-48 object-contain" />}
                               <div className="px-3 pb-2 text-[11px] whitespace-pre-wrap">{msg.sharedCard.subtitle}{msg.sharedCard.body ? `\n${msg.sharedCard.body}` : ''}</div>
@@ -1415,7 +1416,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
                       {/* AI route; session and cache details unfold with message actions. */}
                       {!isUser && messageActionsId === msg.id && (
-                        <div onClick={event => event.stopPropagation()} className={`text-[10px] px-1 flex flex-wrap items-center gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                        <div onClick={event => event.stopPropagation()} className={`text-[10px] pl-4 flex flex-wrap items-center gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                           <span className="opacity-40">{chatRouteLabel(msg.route)}</span>
                           {msg.ccSessionFingerprint && <span className="opacity-35" title={`${msg.ccSessionMode || 'session'} · ${msg.ccSessionReason || 'normal'}${msg.ccCompacted ? ' · compacted' : ''}`}>会话 {msg.ccSessionFingerprint}{msg.ccCompacted ? ' · 已整理' : ''}</span>}
                           {(msg.input_tokens != null && msg.input_tokens > 0) && (() => {
@@ -1434,7 +1435,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       )}
 
                       {/* action buttons */}
-                      {messageActionsId === msg.id && <div onClick={event => event.stopPropagation()} className={`flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start'} opacity-55 transition-opacity relative`}>
+                      {messageActionsId === msg.id && <div onClick={event => event.stopPropagation()} className={`flex items-center gap-1 ${isUser ? 'justify-end' : 'justify-start pl-3'} opacity-55 transition-opacity relative`}>
                         <button onClick={() => handleRetry(msg, false, msg.ccGenerationState === 'pending')} title="重试" className="p-1"><RotateCcw size={12} /></button>
                         <button onClick={() => handleDeleteMsg(msg.id)} title="删除" className="p-1"><Trash2 size={12} /></button>
                         <button onClick={() => handleCopy(msg.id, msg.content)} title="复制" className="p-1">
@@ -1481,10 +1482,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
 
           {/* footer */}
-          <div className={`chat-footer relative border-t px-3 pt-1 backdrop-blur-md ${n ? 'border-night-border bg-night-card/50' : 'border-[#a73a32]/35 bg-[#faf8f3]/88'}`}>
+          <div className={`chat-footer relative px-3 pt-1 ${n ? 'bg-night-card/50' : 'chat-paper'}`}>
             {/* pending shared card */}
             {pendingShare && (
-              <div className={`mx-1 mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-amber/30 bg-night-surface' : 'border-day-pink/20 bg-white'}`}>
+              <div className={`mx-1 mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface' : 'border-day-pink/20 bg-white'}`}>
                 <div className="flex items-center justify-between px-3 py-2 text-xs">
                   <span>📎 已带入 {pendingShare.title}</span>
                   <button onClick={() => setPendingShare(null)} className="opacity-50"><X size={14} /></button>
@@ -1513,27 +1514,27 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             )}
 
             <div className="chat-compose-shell relative">
-              <div className={`chat-input-tray rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-amber/50' : 'border-[#a73a32] bg-[#fffaf5]/90 text-[#3f2c29] focus-within:border-[#8f2d28]'}`}>
+              <div className={`chat-input-tray rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-muted/50' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29] focus-within:border-[#a73a32]/45'}`}>
                 <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => setMessageActionsId(null)}
                   placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
                   className={`no-frame block min-h-10 w-full resize-none bg-transparent px-1 py-1 text-base outline-none max-h-40 md:text-sm ${n ? 'text-night-text placeholder:text-night-muted' : 'text-[#3f2c29] placeholder:text-[#9a766d]'}`} />
                 <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
-                <div className={`mt-1 flex items-center gap-0.5 ${n ? 'text-night-muted' : 'text-[#6d7b80]'}`}>
+                <div className={`mt-1 flex items-center gap-0.5 ${n ? 'text-night-muted' : 'text-[#a73a32]/55'}`}>
                   <button type="button" aria-label={uploadingImg ? '正在处理照片' : '上传照片'} title="照片" disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full disabled:opacity-35"><ImagePlus size={17}/></button>
-                  <button type="button" aria-label="打开 Timeline" title={timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'} onClick={() => setTimelineOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-full"><Clock3 size={17}/>{timelineCurrent && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#d99118]"/>}</button>
-                  <motion.button type="button" aria-label="戳豹子鼻子" title="戳豹子鼻子" disabled={nosePokeBusy} onClick={() => void pokeLeopardNose()} whileTap={{ scale: .9 }} className="grid h-8 w-8 place-items-center rounded-full disabled:opacity-35">
-                    <span aria-hidden="true" className="h-7 w-7 rounded-full bg-no-repeat" style={{ backgroundImage: "url('/directory/home/chat-leopard-v3.png')", backgroundSize: '88px auto', backgroundPosition: '78% 57%' }} />
+                  <button type="button" aria-label="打开 Timeline" title={timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'} onClick={() => setTimelineOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-full"><Clock3 size={17}/>{timelineCurrent && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#8fa7b6]"/>}</button>
+                  <motion.button type="button" aria-label="戳豹子鼻子" title="戳豹子鼻子" disabled={nosePokeBusy} onPointerDown={event => event.preventDefault()} onClick={() => void pokeLeopardNose()} whileTap={{ scale: .9 }} className="grid h-8 w-8 place-items-center rounded-full text-[18px] leading-none disabled:opacity-35">
+                    <span aria-hidden="true">🐆</span>
                   </motion.button>
-                  <button type="button" aria-label="打开今天怎么操" title="今天怎么操" onClick={() => setWheelOpen(true)} className="grid h-8 w-8 place-items-center rounded-full text-[#9d5361]"><Dices size={17}/></button>
+                  <button type="button" aria-label="打开今天怎么操" title="今天怎么操" onClick={() => setWheelOpen(true)} className="grid h-8 w-8 place-items-center rounded-full"><Dices size={17}/></button>
                   <ChatRouteChip route={activeRoute} isNight={n} onClick={() => setModelPickerOpen(true)} />
                   <span className="flex-1" />
                   {isLoading ? (
-                    <button onClick={() => { void handleStopGeneration() }} title="停止生成" className={`grid h-8 w-8 place-items-center rounded-full ${n ? 'bg-night-amber text-night-bg' : 'bg-[#d99118] text-white'}`}>
+                    <button onClick={() => { void handleStopGeneration() }} title="停止生成" className={`grid h-8 w-8 place-items-center rounded-full ${n ? 'bg-night-muted text-night-bg' : 'bg-[#8fa7b6] text-white'}`}>
                       <Square size={14} fill="currentColor" />
                     </button>
                   ) : (
                     <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && !pendingShare)}
-                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#d99118] text-white hover:bg-[#c98110]') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
+                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-muted text-night-bg' : 'bg-[#8fa7b6] text-white hover:bg-[#7f98a5]') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
                       <Send size={15} />
                     </button>
                   )}
@@ -1603,7 +1604,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <p className="text-sm mb-6">{confirmState.msg}</p>
                   <div className="flex justify-end gap-3">
                     <button onClick={() => answer(false)} className="px-4 py-2 text-sm opacity-60 hover:opacity-100">取消</button>
-                    <button onClick={() => answer(true)} className={`px-4 py-2 text-sm font-medium rounded-lg ${n ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'}`}>确认</button>
+                    <button onClick={() => answer(true)} className={`px-4 py-2 text-sm font-medium rounded-lg ${n ? 'bg-night-muted text-night-bg' : 'bg-day-pink text-white'}`}>确认</button>
                   </div>
                 </motion.div>
               </>
