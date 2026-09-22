@@ -20,7 +20,7 @@ test('HTTP chunk boundaries cannot corrupt Unicode history or rebase a CC sessio
       return { text: '收到。', sessionId: input.resumeSessionId || `session-${runs.length}` }
     } },
   })
-  const server = createGatewayServer({ runtime, secret })
+  const server = createGatewayServer({ runtime, secret, claudeCodeVersion: '2.1.280' })
   const handler = server.listeners('request')[0] as Function
   const history: any[] = [{ id: 'old-api', role: 'assistant', route: 'api', content: '屏幕亮着。小火🦦晚安。' }]
 

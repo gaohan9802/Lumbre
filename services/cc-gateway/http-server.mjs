@@ -2,7 +2,6 @@ import http from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { AttemptValidationError } from './attempt-ledger.mjs'
 import { ContextBridgeValidationError } from './context-bridge.mjs'
-import { PINNED_CLAUDE_CODE_VERSION } from '../cc-probe/contract.mjs'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 const CONVERSATION_ID = /^[A-Za-z0-9._:-]{1,160}$/
@@ -47,8 +46,9 @@ function sendSse(response, event) {
   response.write(`data: ${JSON.stringify(event)}\n\n`)
 }
 
-export function createGatewayServer({ runtime, secret, heartbeatMs = 15_000 }) {
+export function createGatewayServer({ runtime, secret, claudeCodeVersion, heartbeatMs = 15_000 }) {
   if (typeof secret !== 'string' || secret.length < 32) throw new Error('LUMBRE_CC_GATEWAY_SECRET must be at least 32 characters')
+  if (typeof claudeCodeVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(claudeCodeVersion)) throw new Error('claudeCodeVersion is required')
 
   return http.createServer(async (request, response) => {
     response.setHeader('x-content-type-options', 'nosniff')
@@ -57,7 +57,7 @@ export function createGatewayServer({ runtime, secret, heartbeatMs = 15_000 }) {
     if (request.method === 'GET' && url.pathname === '/healthz') {
       return json(response, 200, {
         status: 'ok',
-        claudeCodeVersion: PINNED_CLAUDE_CODE_VERSION,
+        claudeCodeVersion,
         capabilities: runtime.capabilities?.() || { lumbreTools: false },
       })
     }

@@ -83,10 +83,13 @@ test('HTTP auth, disconnect, polling and event replay preserve one attempt', asy
       }
     } },
   })
-  const server = createGatewayServer({ runtime, secret: SECRET, heartbeatMs: 50 })
+  const server = createGatewayServer({ runtime, secret: SECRET, claudeCodeVersion: '2.1.280', heartbeatMs: 50 })
   const socketPath = await listen(server, root)
 
   try {
+    const health = await request(socketPath, '/healthz')
+    assert.equal(JSON.parse(health.body).claudeCodeVersion, '2.1.280')
+
     const unauthorized = await request(socketPath, '/v1/attempts', { method: 'POST' })
     assert.equal(unauthorized.status, 401)
 
