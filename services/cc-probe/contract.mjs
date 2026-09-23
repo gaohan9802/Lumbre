@@ -95,6 +95,7 @@ export function buildClaudeArgs({
     '--mcp-config', mcpConfig,
     '--max-turns', String(maxTurns),
     '--output-format', outputFormat,
+    '--thinking-display', 'summarized',
   ]
 
   if (allowedTools.length) args.push('--allowedTools', ...allowedTools)

@@ -385,6 +385,7 @@ process.stdin.on('end', () => {
     assert.equal(observed.args[observed.args.indexOf('--tools') + 1], '')
     assert.equal(observed.args.includes('--bare'), false)
     assert.equal(observed.args.includes('--safe-mode'), false)
+    assert.equal(observed.args[observed.args.indexOf('--thinking-display') + 1], 'summarized')
     assert.equal(observed.args[observed.args.indexOf('--system-prompt') + 1], 'You are Star.')
     assert.equal(observed.args[observed.args.indexOf('--resume') + 1], '550e8400-e29b-41d4-a716-446655440000')
     assert.equal(observed.args.some((arg: string) => /dangerously|Bash|Shell/.test(arg)), false)

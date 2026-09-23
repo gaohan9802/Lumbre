@@ -30,6 +30,7 @@ test('probe pins the reviewed stable CLI and disables every built-in tool', () =
   assert.equal(args[args.indexOf('--mcp-config') + 1], '{"mcpServers":{}}')
   assert.equal(args.includes('--verbose'), true)
   assert.equal(args.includes('--include-partial-messages'), true)
+  assert.equal(args[args.indexOf('--thinking-display') + 1], 'summarized')
   assert.equal(args.some(arg => arg.includes('dangerously-skip-permissions')), false)
   assert.throws(() => buildClaudeArgs({ systemPrompt: '' }), /System prompt/)
 })
