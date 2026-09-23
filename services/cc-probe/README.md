@@ -7,7 +7,7 @@
 - 镜像只复制本目录的探针文件，不复制 Lumbre 源码、聊天数据、环境文件或 `/persistent`。
 - 容器使用非 root 用户，在空的 `/probe/workspace` 中运行。
 - CLI 固定为 `2.1.280`，关闭自动更新。
-- 每次调用都传 `--safe-mode`、`--tools ""`、`--permission-mode dontAsk`、`--strict-mcp-config` 和空 MCP 配置；系统级策略再拒绝文件、Shell、网络搜索与子代理工具。
+- 每次调用都传 `--tools ""`、`--permission-mode dontAsk`、`--strict-mcp-config` 和空 MCP 配置；系统级策略再拒绝文件、Shell、网络搜索与子代理工具。
 - 子进程环境使用白名单，只允许系统运行字段和 `CLAUDE_CODE_OAUTH_TOKEN`。`ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`DATA_DIR` 与 Lumbre 密钥不会传入。
 - 报告不输出 OAuth token、完整 session id 或模型回复，只输出测试结果、session 指纹和 token 计数。
 
@@ -33,4 +33,4 @@ docker run --rm lumbre-cc-probe:2.1.280 inspect
 
 远程环境使用订阅时，应由用户在可信终端运行 `claude setup-token`，再把结果直接保存为部署平台的加密 secret `CLAUDE_CODE_OAUTH_TOKEN`。不要把 token 发到聊天、写进镜像、提交进 Git 或打印进日志。探针不接受浏览器传来的 token。
 
-官方文档注明 `--bare` 不读取 `CLAUDE_CODE_OAUTH_TOKEN`，所以本探针使用保留认证的 `--safe-mode`；隔离由 safe mode、空容器、空工作区、工具禁用、严格 MCP 和环境白名单共同完成。
+官方文档注明 `--bare` 不读取 `CLAUDE_CODE_OAUTH_TOKEN`，而 `--safe-mode` 会停用 MCP，所以本探针不使用这两个模式；隔离由完整替换的系统提示词、空容器、空工作区、工具禁用、严格 MCP 和环境白名单共同完成。

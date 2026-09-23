@@ -23,7 +23,7 @@ test('probe pins the reviewed stable CLI and disables every built-in tool', () =
   const args = buildClaudeArgs({ outputFormat: 'stream-json', systemPrompt: 'You are Star.' })
   assert.deepEqual(args.slice(0, 3), ['-p', '--tools', ''])
   assert.equal(args.includes('--bare'), false)
-  assert.equal(args.includes('--safe-mode'), true)
+  assert.equal(args.includes('--safe-mode'), false)
   assert.equal(args[args.indexOf('--system-prompt') + 1], 'You are Star.')
   assert.equal(args[args.indexOf('--permission-mode') + 1], 'dontAsk')
   assert.equal(args.includes('--strict-mcp-config'), true)

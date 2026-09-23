@@ -89,7 +89,6 @@ export function buildClaudeArgs({
   const args = [
     '-p',
     '--tools', '',
-    '--safe-mode',
     '--permission-mode', 'dontAsk',
     '--no-chrome',
     '--strict-mcp-config',
