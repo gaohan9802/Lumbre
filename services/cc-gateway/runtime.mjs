@@ -189,6 +189,7 @@ export class GatewayRuntime {
     try {
       const result = await this.executor.run({
         prompt: running.prompt,
+        systemPrompt: running.systemPrompt,
         model: running.model,
         resumeSessionId: running.resumeSessionId || undefined,
         attemptId: running.id,

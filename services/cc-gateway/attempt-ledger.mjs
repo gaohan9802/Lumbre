@@ -29,6 +29,10 @@ function validateCreateInput(input) {
   if (typeof input.prompt !== 'string' || !input.prompt.trim() || Buffer.byteLength(input.prompt) > 1_500_000) {
     throw new AttemptValidationError('prompt must be between 1 byte and 1.5 MB')
   }
+  if (input.systemPrompt !== undefined && (
+    typeof input.systemPrompt !== 'string' || !input.systemPrompt.trim()
+    || input.systemPrompt.includes('\0') || Buffer.byteLength(input.systemPrompt) > 64_000
+  )) throw new AttemptValidationError('system prompt must be safe, non-empty, and at most 64 KB')
   if (typeof input.model !== 'string' || !SAFE_MODEL.test(input.model)) {
     throw new AttemptValidationError('model is invalid')
   }
@@ -124,6 +128,7 @@ export class AttemptLedger {
         idempotencyHash,
         conversationId: input.conversationId,
         prompt: input.prompt,
+        systemPrompt: input.systemPrompt || null,
         resumeSessionId: input.resumeSessionId || null,
         sessionPlan: input.sessionPlan || null,
         model: input.model,
@@ -164,7 +169,8 @@ export class AttemptLedger {
       // The first atomic replacement backs up the running record, which still
       // contains the prompt. Replace once more so both primary and latest
       // recovery backup contain the scrubbed terminal record.
-      if (typeof current.prompt === 'string' && next.prompt === null) writeJsonAtomic(filePath, next)
+      if ((typeof current.prompt === 'string' && next.prompt === null)
+        || (typeof current.systemPrompt === 'string' && next.systemPrompt === null)) writeJsonAtomic(filePath, next)
       return next
     })
   }
@@ -239,6 +245,7 @@ export class AttemptLedger {
       attempt.status = 'completed'
       attempt.completedAt = nowIso(this.clock)
       attempt.prompt = null
+      attempt.systemPrompt = null
       attempt.result = result
       attempt.error = null
       attempt.transcriptCheckpoint = null
@@ -253,6 +260,7 @@ export class AttemptLedger {
       attempt.status = 'failed'
       attempt.completedAt = nowIso(this.clock)
       attempt.prompt = null
+      attempt.systemPrompt = null
       attempt.result = null
       attempt.transcriptCheckpoint = null
       attempt.error = {
@@ -272,6 +280,7 @@ export class AttemptLedger {
       attempt.cancelRequested = true
       attempt.completedAt = nowIso(this.clock)
       attempt.prompt = null
+      attempt.systemPrompt = null
       attempt.result = null
       attempt.error = null
       attempt.resumeSafe = resumeSafe === true

@@ -260,6 +260,7 @@ export class ClaudeExecutor {
   /**
    * @param {{
    *   prompt: string,
+   *   systemPrompt?: string,
    *   model?: string,
    *   resumeSessionId?: string,
    *   forkSession?: boolean,
@@ -276,6 +277,7 @@ export class ClaudeExecutor {
    */
   run({
     prompt,
+    systemPrompt,
     model,
     resumeSessionId,
     forkSession = false,
@@ -303,6 +305,7 @@ export class ClaudeExecutor {
       const args = buildClaudeArgs({
         outputFormat: 'stream-json', model, resumeSessionId,
         forkSession,
+        systemPrompt,
         mcpConfig: useToolBridge ? LUMBRE_MCP_CONFIG : undefined,
         allowedTools: useToolBridge ? ['mcp__lumbre__*'] : undefined,
         maxTurns: useToolBridge ? 24 : undefined,

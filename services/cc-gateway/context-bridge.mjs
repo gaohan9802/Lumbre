@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 const SAFE_ID = /^[A-Za-z0-9._:-]{1,180}$/
 const ROUTES = new Set(['api', 'claude-code'])
+const SYSTEM_PROMPT_MODE = 'top_level_v1'
 
 export class ContextBridgeValidationError extends Error {}
 
@@ -55,10 +56,6 @@ function bootstrapPrompt(context, messages, reason) {
   return `[LUMBRE SESSION ${reason === 'first_cc_turn' ? 'BOOTSTRAP' : 'REBASE'}]
 The following data is the canonical Lumbre conversation supplied by the application. Continue it naturally and answer the final user message. Route labels only describe which transport produced a message; API and Claude Code messages belong to one conversation. Use only the tools exposed by the Lumbre MCP bridge. Bash, Shell, source-code, and filesystem tools are not available.
 
-<lumbre_system>
-${context.system || ''}
-</lumbre_system>
-
 <lumbre_memory_snapshot>
 ${context.bookmarkInjections}
 </lumbre_memory_snapshot>
@@ -68,18 +65,17 @@ ${jsonLines(messages)}
 </lumbre_history_jsonl>${currentContextBlock(context)}`
 }
 
-function currentContextBlock(context, { includeSystem = false, includeMemory = false } = {}) {
+function currentContextBlock(context, { includeMemory = false } = {}) {
   const blocks = []
-  if (includeSystem) blocks.push(`<lumbre_system_refresh supersedes="all-prior-system-instructions">\n${context.system}\n</lumbre_system_refresh>`)
   if (includeMemory) blocks.push(`<lumbre_memory_refresh supersedes="all-prior-memory-snapshots">\n${context.bookmarkInjections || '(empty — clear prior memory snapshot)'}\n</lumbre_memory_refresh>`)
   if (context.volatileContext) blocks.push(`<lumbre_current_context>\n${context.volatileContext}\n</lumbre_current_context>`)
   return blocks.length ? `\n\n${blocks.join('\n\n')}` : ''
 }
 
-function deltaPrompt(context, messages, includeSystem, includeMemory) {
+function deltaPrompt(context, messages, includeMemory) {
   return `[LUMBRE CANONICAL DELTA]
 These entries were added to the shared Lumbre conversation after your last successful reply. They may include API-generated turns. Incorporate all of them, then answer the final user message.
-${currentContextBlock(context, { includeSystem, includeMemory })}
+${currentContextBlock(context, { includeMemory })}
 
 <lumbre_delta_jsonl>
 ${jsonLines(messages)}
@@ -100,7 +96,7 @@ function recentTurns(messages, turnCount) {
 function postCompactPrompt(context, rehydration, delta) {
   return `[LUMBRE POST-COMPACT REHYDRATION]
 Claude Code compacted this same session during the previous successful reply. The first block below contains recent canonical turns that already happened. Use them only to restore relationship, voice, and near-term details. Do not answer them again or describe them as new messages. The second block contains genuinely new conversation entries; answer its final user message.
-${currentContextBlock(context, { includeSystem: true, includeMemory: true })}
+${currentContextBlock(context, { includeMemory: true })}
 
 <lumbre_recent_history_jsonl>
 ${jsonLines(rehydration)}
@@ -122,8 +118,12 @@ export class ContextBridge {
 
   prepare(input) {
     if (!input?.context || typeof input.context !== 'object') throw new ContextBridgeValidationError('context is required')
+    const system = typeof input.context.system === 'string' ? input.context.system : ''
+    if (!system.trim() || system.includes('\0') || Buffer.byteLength(system) > 64_000) {
+      throw new ContextBridgeValidationError('context.system must contain a safe non-empty Lumbre system prompt')
+    }
     const context = {
-      system: typeof input.context.system === 'string' ? input.context.system : '',
+      system,
       bookmarkInjections: typeof input.context.bookmarkInjections === 'string' ? input.context.bookmarkInjections : '',
       volatileContext: typeof input.context.volatileContext === 'string' ? input.context.volatileContext : '',
     }
@@ -137,6 +137,8 @@ export class ContextBridge {
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
     const latestCompletedIndex = attempts.findLastIndex(attempt => attempt.status === 'completed' && attempt.result?.sessionId)
     const base = latestCompletedIndex >= 0 ? attempts[latestCompletedIndex] : null
+    const systemDeliveryChanged = !!base && base.sessionPlan?.systemPromptMode !== SYSTEM_PROMPT_MODE
+    const systemChanged = !!base && base.sessionPlan?.contextEnvelopeHashes?.system !== envelopeHashes.system
     const laterUnsafeAttempt = latestCompletedIndex >= 0
       ? attempts.slice(latestCompletedIndex + 1).some(attempt => (
         (attempt.status === 'cancelled' && attempt.resumeSafe !== true)
@@ -176,11 +178,16 @@ export class ContextBridge {
       } else if (overlapChanged(base.sessionPlan?.contextMessageHashes, messages)) {
         mode = 'rebase'
         reason = 'history_changed'
+      } else if (systemDeliveryChanged) {
+        mode = 'rebase'
+        reason = 'system_prompt_migrated'
+      } else if (systemChanged) {
+        mode = 'rebase'
+        reason = 'system_changed'
       } else {
         delta = messages.slice(markerIndex + 1)
         if (!delta.length || delta.at(-1)?.role !== 'user') throw new ContextBridgeValidationError('resume delta must end with a new user message')
         mode = 'resume'
-        const systemChanged = base.sessionPlan?.contextEnvelopeHashes?.system !== envelopeHashes.system
         const routeGap = delta.some(message => message.route === 'api')
         if (base.result.compacted === true) {
           rehydration = recentTurns(messages.slice(0, markerIndex + 1), this.rehydrateTurns)
@@ -188,27 +195,27 @@ export class ContextBridge {
             ? 'post_compact_rehydration_with_route_gap'
             : 'post_compact_rehydration'
         } else {
-          reason = systemChanged ? (routeGap ? 'route_gap_with_system_refresh' : 'system_refresh')
-            : routeGap ? 'route_gap' : 'ordinary_delta'
+          reason = routeGap ? 'route_gap' : 'ordinary_delta'
         }
         resumeSessionId = base.result.sessionId
       }
     }
 
     const selected = mode === 'resume' ? [...rehydration, ...delta] : messages
-    const systemChanged = base?.sessionPlan?.contextEnvelopeHashes?.system !== envelopeHashes.system
     const memoryChanged = base?.sessionPlan?.contextEnvelopeHashes?.bookmarkInjections !== envelopeHashes.bookmarkInjections
     const prompt = mode === 'resume'
-      ? (rehydration.length ? postCompactPrompt(context, rehydration, delta) : deltaPrompt(context, delta, systemChanged, memoryChanged))
+      ? (rehydration.length ? postCompactPrompt(context, rehydration, delta) : deltaPrompt(context, delta, memoryChanged))
       : bootstrapPrompt(context, selected, reason)
     return {
       prompt,
+      systemPrompt: context.system,
       resumeSessionId,
       sessionPlan: {
         mode,
         reason,
         baseAttemptId,
         contextCursorMessageId: messages.at(-1).id,
+        systemPromptMode: SYSTEM_PROMPT_MODE,
         contextMessageHashes: contextHashes(messages),
         contextEnvelopeHashes: envelopeHashes,
         submittedMessageIds: selected.map(message => message.id),

@@ -68,26 +68,35 @@ export function TodoView() {
 
   const addItem = async () => {
     if (!newItem.trim()) return
-    await todoApi.add(newItem.trim(), currentUser, isToday ? undefined : viewDate)
+    const result = await todoApi.add(newItem.trim(), currentUser, isToday ? undefined : viewDate)
     setNewItem('')
     setShowAdd(false)
-    load(viewDate)
+    if (result.item) setDay((current) => current.date === viewDate
+      ? { ...current, items: [...current.items, result.item] }
+      : current)
   }
   const toggleItem = async (id: string) => {
     await todoApi.toggle(id, isToday ? undefined : viewDate)
-    load(viewDate)
+    setDay((current) => current.date === viewDate
+      ? { ...current, items: current.items.map((item) => item.id === id ? { ...item, done: !item.done } : item) }
+      : current)
   }
   const removeItem = async (id: string) => {
     await todoApi.remove(id, isToday ? undefined : viewDate)
     setDeleteConfirm(null)
-    load(viewDate)
+    setDay((current) => current.date === viewDate
+      ? { ...current, items: current.items.filter((item) => item.id !== id) }
+      : current)
   }
   const editItem = async (id: string) => {
     if (!editDraft.trim()) return
-    await todoApi.edit(id, editDraft.trim(), isToday ? undefined : viewDate)
+    const text = editDraft.trim()
+    await todoApi.edit(id, text, isToday ? undefined : viewDate)
     setEditingId(null)
     setEditDraft('')
-    load(viewDate)
+    setDay((current) => current.date === viewDate
+      ? { ...current, items: current.items.map((item) => item.id === id ? { ...item, text } : item) }
+      : current)
   }
   const shareReceipt = () => shareToChat({
     kind: 'todo',
@@ -99,10 +108,18 @@ export function TodoView() {
 
   const addComment = async (id: string) => {
     if (!commentDraft.trim()) return
-    await todoApi.comment(id, currentUser, commentDraft.trim(), isToday ? undefined : viewDate)
+    const content = commentDraft.trim()
+    await todoApi.comment(id, currentUser, content, isToday ? undefined : viewDate)
     setCommentDraft('')
     setCommentFor(null)
-    load(viewDate)
+    setDay((current) => current.date === viewDate
+      ? {
+          ...current,
+          items: current.items.map((item) => item.id === id
+            ? { ...item, comments: [...(item.comments || []), { author: currentUser, content, time: new Date().toISOString() }] }
+            : item),
+        }
+      : current)
   }
 
   return (
@@ -172,7 +189,7 @@ export function TodoView() {
 
         {/* Items */}
         <div className="space-y-2 min-h-[100px]">
-          <AnimatePresence>
+          <AnimatePresence initial={false}>
             {items.map((item) => (
               <motion.div key={item.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10, height: 0 }}
                 className="font-receipt text-sm">
@@ -201,7 +218,7 @@ export function TodoView() {
                     <Pencil size={11} />
                   </button>
                   <button onClick={() => setCommentFor(commentFor === item.id ? null : item.id)}
-                    className={`transition ${item.comments?.length ? 'text-receipt-ink/50' : 'opacity-0 group-hover:opacity-40 hover:opacity-100'}`}>
+                    className="opacity-0 group-hover:opacity-40 hover:opacity-100 focus:opacity-100 transition">
                     <MessageCircle size={12} />
                   </button>
                   <button onClick={() => setDeleteConfirm(item.id)} className="opacity-0 group-hover:opacity-40 hover:opacity-100 transition">

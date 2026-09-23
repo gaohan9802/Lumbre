@@ -14,6 +14,7 @@ function fixtureInput(overrides: Record<string, string> = {}) {
     idempotencyKey: 'turn:conversation-1:message-1',
     conversationId: 'conversation-1',
     prompt: 'sanitized test prompt',
+    systemPrompt: 'You are Star.',
     model: 'sonnet',
     ...overrides,
   }
@@ -156,6 +157,7 @@ test('attempt ledger stores one durable task for repeated idempotency keys', () 
     assert.equal(second.created, false)
     assert.equal(second.attempt.id, first.attempt.id)
     assert.equal(second.attempt.prompt, 'sanitized test prompt')
+    assert.equal(second.attempt.systemPrompt, 'You are Star.')
 
     const stored = readFileSync(path.join(root, 'attempts', `${first.attempt.id}.json`), 'utf8')
     const index = readFileSync(path.join(root, 'idempotency-index.json'), 'utf8')
@@ -174,8 +176,9 @@ test('result is durable before the completed event is published', async () => {
     const ledger = new AttemptLedger(root)
     const runtime = new GatewayRuntime({
       ledger,
-      executor: { run: async ({ onText, onThinking }: any) => {
+      executor: { run: async ({ onText, onThinking, systemPrompt }: any) => {
         calls++
+        assert.equal(systemPrompt, 'You are Star.')
         onThinking('想')
         onText('星')
         await gate.promise
@@ -204,6 +207,7 @@ test('result is durable before the completed event is published', async () => {
     const backup = readFileSync(path.join(root, 'attempts', `${first.attempt!.id}.json.bak`), 'utf8')
     assert.doesNotMatch(stored, /sanitized test prompt/)
     assert.doesNotMatch(backup, /sanitized test prompt/)
+    assert.doesNotMatch(stored + backup, /You are Star/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -370,7 +374,7 @@ process.stdin.on('end', () => {
       ANTHROPIC_API_KEY: 'must-not-pass', DATA_DIR: '/persistent',
     } })
     const result: any = await executor.run({
-      prompt: 'hello', model: 'sonnet', resumeSessionId: '550e8400-e29b-41d4-a716-446655440000', signal: undefined,
+      prompt: 'hello', systemPrompt: 'You are Star.', model: 'sonnet', resumeSessionId: '550e8400-e29b-41d4-a716-446655440000', signal: undefined,
       onText: (text: string) => deltas.push(text), onThinking: (text: string) => thoughts.push(text),
     })
     const observed = JSON.parse(readFileSync(path.join(root, 'observed.json'), 'utf8'))
@@ -379,6 +383,8 @@ process.stdin.on('end', () => {
     assert.deepEqual(deltas, ['好'])
     assert.deepEqual(thoughts, ['想一想'])
     assert.equal(observed.args[observed.args.indexOf('--tools') + 1], '')
+    assert.equal(observed.args.includes('--bare'), true)
+    assert.equal(observed.args[observed.args.indexOf('--system-prompt') + 1], 'You are Star.')
     assert.equal(observed.args[observed.args.indexOf('--resume') + 1], '550e8400-e29b-41d4-a716-446655440000')
     assert.equal(observed.args.some((arg: string) => /dangerously|Bash|Shell/.test(arg)), false)
     assert.equal(observed.env.includes('CLAUDE_CODE_OAUTH_TOKEN'), true)

@@ -31,7 +31,9 @@ test('first CC turn bootstraps from canonical Lumbre context without storing con
     assert.equal(prepared.sessionPlan.mode, 'bootstrap')
     assert.equal(prepared.sessionPlan.reason, 'first_cc_turn')
     assert.equal(prepared.resumeSessionId, null)
-    assert.match(prepared.prompt, /You are Star/)
+    assert.equal(prepared.systemPrompt, 'You are Star.')
+    assert.equal(prepared.sessionPlan.systemPromptMode, 'top_level_v1')
+    assert.doesNotMatch(prepared.prompt, /You are Star|lumbre_system/)
     assert.match(prepared.prompt, /<lumbre_memory_snapshot>\s*shared memory/)
     assert.match(prepared.prompt, /"content":"hello"/)
     assert.match(prepared.prompt, /<lumbre_current_context>\s*now/)
@@ -139,7 +141,7 @@ test('a silent unattended wake keeps the same session without adding a fake chat
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
-test('resume refreshes changed memory and system inside the same session', () => {
+test('resume refreshes changed memory and rebases a changed top-level system prompt', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-envelope-'))
   try {
     const ledger = new AttemptLedger(root)
@@ -180,10 +182,42 @@ test('resume refreshes changed memory and system inside the same session', () =>
       conversationId: 'conversation-1',
       context: { ...context(messages), system: 'You are a changed Star.' },
     })
-    assert.equal(systemRefresh.sessionPlan.mode, 'resume')
-    assert.equal(systemRefresh.sessionPlan.reason, 'system_refresh')
-    assert.equal(systemRefresh.resumeSessionId, first.attempt.result.sessionId)
-    assert.match(systemRefresh.prompt, /<lumbre_system_refresh supersedes="all-prior-system-instructions">\s*You are a changed Star\./)
+    assert.equal(systemRefresh.sessionPlan.mode, 'rebase')
+    assert.equal(systemRefresh.sessionPlan.reason, 'system_changed')
+    assert.equal(systemRefresh.resumeSessionId, null)
+    assert.equal(systemRefresh.systemPrompt, 'You are a changed Star.')
+    assert.doesNotMatch(systemRefresh.prompt, /You are a changed Star|lumbre_system_refresh/)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test('a session created before top-level Lumbre prompts rebases once', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-system-migration-'))
+  try {
+    const ledger = new AttemptLedger(root)
+    const bridge = new ContextBridge(ledger)
+    const prepared = bridge.prepare({
+      conversationId: 'conversation-1',
+      context: context([{ id: 'u1', role: 'user', route: 'claude-code', content: 'first' }]),
+    })
+    delete (prepared.sessionPlan as Partial<typeof prepared.sessionPlan>).systemPromptMode
+    const attempt = ledger.createOrGet({
+      idempotencyKey: 'turn-1', conversationId: 'conversation-1', model: 'sonnet', ...prepared,
+    }).attempt
+    ledger.markRunning(attempt.id)
+    ledger.markCompleted(attempt.id, { text: 'first answer', sessionId: '550e8400-e29b-41d4-a716-446655440000' })
+
+    const migrated = bridge.prepare({
+      conversationId: 'conversation-1',
+      context: context([
+        { id: 'u1', role: 'user', route: 'claude-code', content: 'first' },
+        { id: 'a1', role: 'assistant', route: 'claude-code', ccAttemptId: attempt.id, content: 'first answer' },
+        { id: 'u2', role: 'user', route: 'claude-code', content: 'continue' },
+      ]),
+    })
+    assert.equal(migrated.sessionPlan.mode, 'rebase')
+    assert.equal(migrated.sessionPlan.reason, 'system_prompt_migrated')
+    assert.equal(migrated.resumeSessionId, null)
+    assert.equal(migrated.systemPrompt, 'You are Star.')
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 

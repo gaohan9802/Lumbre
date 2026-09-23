@@ -53,6 +53,7 @@ export function buildProbeEnvironment(source = process.env) {
  * @property {string} [mcpConfig]
  * @property {string[]} [allowedTools]
  * @property {number} [maxTurns]
+ * @property {string} [systemPrompt]
  */
 
 /** @param {ClaudeArgsOptions} [options] */
@@ -64,6 +65,7 @@ export function buildClaudeArgs({
   mcpConfig = '{"mcpServers":{}}',
   allowedTools = [],
   maxTurns = 1,
+  systemPrompt,
 } = {}) {
   if (!['json', 'stream-json'].includes(outputFormat)) {
     throw new Error(`Unsupported probe output format: ${outputFormat}`)
@@ -80,10 +82,14 @@ export function buildClaudeArgs({
   if (!Array.isArray(allowedTools) || allowedTools.some(name => typeof name !== 'string' || !/^mcp__[A-Za-z0-9_-]+__(?:\*|[A-Za-z0-9_-]+)$/.test(name))) {
     throw new Error('Only explicit MCP allowed tools are accepted')
   }
+  if (systemPrompt !== undefined && (
+    typeof systemPrompt !== 'string' || !systemPrompt.trim() || systemPrompt.includes('\0') || Buffer.byteLength(systemPrompt) > 64_000
+  )) throw new Error('System prompt must be safe, non-empty, and at most 64 KB')
 
   const args = [
     '-p',
     '--tools', '',
+    '--bare',
     '--permission-mode', 'dontAsk',
     '--no-chrome',
     '--strict-mcp-config',
@@ -93,6 +99,7 @@ export function buildClaudeArgs({
   ]
 
   if (allowedTools.length) args.push('--allowedTools', ...allowedTools)
+  if (systemPrompt) args.push('--system-prompt', systemPrompt)
 
   if (outputFormat === 'stream-json') {
     args.push('--verbose', '--include-partial-messages')
