@@ -16,6 +16,7 @@ import {
   sessionFingerprint,
 } from '../../services/cc-probe/contract.mjs'
 import { runProcess } from '../../services/cc-probe/process.mjs'
+import { resolveClaudeBinary } from '../../services/cc-gateway/claude-binary.mjs'
 
 test('probe pins the reviewed stable CLI and disables every built-in tool', () => {
   assert.equal(PINNED_CLAUDE_CODE_VERSION, '2.1.280')
@@ -27,6 +28,39 @@ test('probe pins the reviewed stable CLI and disables every built-in tool', () =
   assert.equal(args.includes('--verbose'), true)
   assert.equal(args.includes('--include-partial-messages'), true)
   assert.equal(args.some(arg => arg.includes('dangerously-skip-permissions')), false)
+})
+
+test('gateway installs and reuses the pinned CLI when the image binary is stale', () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-binary-'))
+  const calls: Array<{ command: string, args: string[] }> = []
+  let installed = false
+  const run = (command: string, args: string[]) => {
+    calls.push({ command, args })
+    if (command === 'claude') return '2.1.236 (Claude Code)'
+    if (command === 'npm') {
+      installed = true
+      return ''
+    }
+    if (command.endsWith('/node_modules/.bin/claude')) {
+      if (!installed) throw new Error('missing')
+      return '2.1.280 (Claude Code)'
+    }
+    throw new Error(`unexpected command: ${command}`)
+  }
+
+  try {
+    const first = resolveClaudeBinary({ dataDir, run: run as any })
+    assert.equal(first.version, PINNED_CLAUDE_CODE_VERSION)
+    assert.match(first.binary, /claude-code\/2\.1\.280\/node_modules\/\.bin\/claude$/)
+    assert.equal(calls.some(call => call.command === 'npm' && call.args.includes('@anthropic-ai/claude-code@2.1.280')), true)
+
+    calls.length = 0
+    const second = resolveClaudeBinary({ dataDir, run: run as any })
+    assert.equal(second.binary, first.binary)
+    assert.equal(calls.some(call => call.command === 'npm'), false)
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true })
+  }
 })
 
 test('resume keeps an explicit session target and fork cannot run without one', () => {

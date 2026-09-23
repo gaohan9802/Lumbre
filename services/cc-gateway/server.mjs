@@ -2,14 +2,13 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
 import { AttemptLedger } from './attempt-ledger.mjs'
+import { resolveClaudeBinary } from './claude-binary.mjs'
 import { ClaudeExecutor } from './claude-executor.mjs'
 import { createGatewayServer } from './http-server.mjs'
 import { GatewayRuntime } from './runtime.mjs'
 import { ContextBridge } from './context-bridge.mjs'
 import { assertGatewayDataDir } from './storage.mjs'
-import { PINNED_CLAUDE_CODE_VERSION, extractVersion } from '../cc-probe/contract.mjs'
 
 function positiveInteger(name, fallback) {
   const raw = process.env[name]
@@ -46,20 +45,15 @@ try {
   const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN || ''
   if (secret.length < 32) throw new Error('LUMBRE_CC_GATEWAY_SECRET must be at least 32 characters')
   if (!oauthToken) throw new Error('CLAUDE_CODE_OAUTH_TOKEN is required')
-  const claudeCodeVersion = extractVersion(execFileSync('claude', ['--version'], {
-    encoding: 'utf8', timeout: 5_000, maxBuffer: 64_000,
-  }))
-  if (claudeCodeVersion !== PINNED_CLAUDE_CODE_VERSION) {
-    throw new Error(`Claude Code version mismatch: expected ${PINNED_CLAUDE_CODE_VERSION}, found ${claudeCodeVersion || 'unknown'}`)
-  }
-
   const dataDir = assertGatewayDataDir(process.env.CC_GATEWAY_DATA_DIR || '/gateway-data')
+  const { binary: claudeBinary, version: claudeCodeVersion } = resolveClaudeBinary({ dataDir })
   const workspace = path.resolve(process.env.CC_GATEWAY_WORKSPACE || '/gateway-workspace')
   const claudeHome = path.resolve(process.env.CC_GATEWAY_CLAUDE_HOME || path.join(dataDir, 'claude-home'))
   fs.mkdirSync(workspace, { recursive: true, mode: 0o700 })
   fs.mkdirSync(claudeHome, { recursive: true, mode: 0o700 })
   const ledger = new AttemptLedger(dataDir)
   const executor = new ClaudeExecutor({
+    binary: claudeBinary,
     workspace,
     env: { ...process.env, HOME: claudeHome },
     timeoutMs: positiveInteger('CC_GATEWAY_TIMEOUT_MS', 180_000),
