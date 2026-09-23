@@ -1,9 +1,7 @@
 FROM node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
 
-ARG CLAUDE_CODE_VERSION=2.1.280
-
-RUN npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
-  && claude --version | grep -F "${CLAUDE_CODE_VERSION}"
+RUN npm install --global "@anthropic-ai/claude-code@2.1.280" \
+  && claude --version | grep -F "2.1.280"
 
 RUN useradd --create-home --uid 10001 ccprobe \
   && mkdir -p /probe/workspace /etc/claude-code \
