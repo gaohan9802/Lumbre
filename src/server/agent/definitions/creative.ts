@@ -93,4 +93,31 @@ export const CREATIVE_TOOL_DEFINITIONS = [
       required: ['action', 'entity'],
     },
   },
+  {
+    name: 'read_detroit',
+    description: '读取“底特律”文字决策游戏在当前主聊天里的存档。progress 看总体进度；current 恢复当前等待选择的场景；history 回看某章的路线和结局。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        detail: { type: 'string', enum: ['progress', 'current', 'history'] },
+        chapter_number: { type: 'integer', description: 'history 可指定 1 至 32 章；省略时读取最近完成的一章' },
+      },
+    },
+  },
+  {
+    name: 'play_detroit',
+    description: '在当前主聊天里玩“底特律”文字决策游戏。start 开始或恢复整部游戏；choose 根据当前可见情景选择，并会返回下一幕；拿到 awaiting_choice 后继续调用 choose，直到 chapter_complete。chapter_complete 后必须停止工具调用，先和小火聊这一章；只有她明确要求下一章时才调用 continue。不得利用攻略或未展示的后果。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['start', 'choose', 'continue'] },
+        difficulty: { type: 'string', enum: ['casual', 'experienced', 'hardcore'], description: '仅 start 使用，默认 casual' },
+        chapter_id: { type: 'string', description: 'choose 必填，照抄当前返回的 chapter.id' },
+        node_id: { type: 'string', description: 'choose 必填，照抄当前返回的 scene.node_id' },
+        choice_id: { type: 'string', description: 'choose 必填，只能选当前 scene.choices 中的 id' },
+        reasoning: { type: 'string', description: 'choose 必填；星星自己的简短选择理由，不超过 500 字' },
+      },
+      required: ['action'],
+    },
+  },
 ] satisfies ToolDef[]

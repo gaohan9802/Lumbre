@@ -1,0 +1,40 @@
+import type { DetroitChapter } from './types'
+import ch01 from './data/zh/ch01_the_hostage_zh.json'
+import ch02 from './data/zh/ch02_opening_zh.json'
+import ch03 from './data/zh/ch03_shades_of_color_zh.json'
+import ch04 from './data/zh/ch04_a_new_home_zh.json'
+import ch05 from './data/zh/ch05_the_painter_zh.json'
+import ch06 from './data/zh/ch06_partners_zh.json'
+import ch07 from './data/zh/ch07_stormy_night_zh.json'
+import ch08 from './data/zh/ch08_broken_zh.json'
+import ch09 from './data/zh/ch09_the_interrogation_zh.json'
+import ch10 from './data/zh/ch10_fugitives_zh.json'
+import ch11 from './data/zh/ch11_from_the_dead_zh.json'
+import ch12 from './data/zh/ch12_waiting_for_hank_zh.json'
+import ch13 from './data/zh/ch13_on_the_run_zh.json'
+import ch14 from './data/zh/ch14_jericho_zh.json'
+import ch15 from './data/zh/ch15_the_nest_zh.json'
+import ch16 from './data/zh/ch16_time_to_decide_zh.json'
+import ch17 from './data/zh/ch17_zlatko_zh.json'
+import ch18 from './data/zh/ch18_russian_roulette_zh.json'
+import ch19 from './data/zh/ch19_spare_parts_zh.json'
+import ch20 from './data/zh/ch20_the_eden_club_zh.json'
+import ch21 from './data/zh/ch21_the_pirates_cove_zh.json'
+import ch22 from './data/zh/ch22_the_bridge_zh.json'
+import ch23 from './data/zh/ch23_the_stratford_tower_zh.json'
+import ch24 from './data/zh/ch24_public_enemy_zh.json'
+import ch25 from './data/zh/ch25_midnight_train_zh.json'
+import ch26 from './data/zh/ch26_capitol_park_zh.json'
+import ch27 from './data/zh/ch27_meet_kamski_zh.json'
+import ch28 from './data/zh/ch28_freedom_march_zh.json'
+import ch29 from './data/zh/ch29_last_chance_connor_zh.json'
+import ch30 from './data/zh/ch30_crossroads_zh.json'
+import ch31 from './data/zh/ch31_night_of_the_soul_zh.json'
+import ch32 from './data/zh/ch32_battle_for_detroit_zh.json'
+
+export const DETROIT_CHAPTERS = [
+  ch01, ch02, ch03, ch04, ch05, ch06, ch07, ch08,
+  ch09, ch10, ch11, ch12, ch13, ch14, ch15, ch16,
+  ch17, ch18, ch19, ch20, ch21, ch22, ch23, ch24,
+  ch25, ch26, ch27, ch28, ch29, ch30, ch31, ch32,
+] as DetroitChapter[]

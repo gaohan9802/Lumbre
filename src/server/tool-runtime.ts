@@ -42,6 +42,7 @@ import { appendPoemLine, createPoem, deletePoem, deletePoemLine, editPoemLine, g
 import { addWheelOption, deleteWheelOption, editWheelOption, readWheel, spinWheel } from './intimacy-wheel-store'
 import { appendStorySection, createStory, deleteStory, getStory, listStories, updateStory, updateStorySection } from './story-store'
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
+import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
@@ -512,6 +513,15 @@ export async function executeRegisteredToolHandler(
         if (input.action === 'toggle') return JSON.stringify({ ok: true, option: editWheelOption(input.pool_id, input.option_id, { enabled: input.enabled }) })
         if (input.action === 'delete') return JSON.stringify({ ok: deleteWheelOption(input.pool_id, input.option_id) })
         throw new Error('未知转盘操作')
+      }
+
+      case 'read_detroit': {
+        if (!context?.sessionId) throw new Error('底特律工具需要主聊天会话')
+        return JSON.stringify(readDetroitGame(context.sessionId, input.detail, input.chapter_number))
+      }
+      case 'play_detroit': {
+        if (!context?.sessionId) throw new Error('底特律工具需要主聊天会话')
+        return JSON.stringify(playDetroitGame(context.sessionId, input))
       }
 
       case 'bite_otter_nape': {

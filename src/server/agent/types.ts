@@ -22,6 +22,7 @@ export type ToolDomain =
   | 'intimacy-wheel'
   | 'stories'
   | 'research'
+  | 'games'
 
 export interface ToolDef {
   name: string

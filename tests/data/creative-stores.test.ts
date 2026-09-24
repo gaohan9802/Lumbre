@@ -81,3 +81,30 @@ test('星星工具分段写故事并只返回紧凑收据', async () => {
   assert.equal(finished.status, 'complete')
   assert.equal('sections' in finished, false)
 })
+
+test('底特律工具把存档绑定到主聊天并在章末停下', async () => {
+  const context = { actorId: 'star', sessionId: 'detroit-chat-fixture', source: 'chat' as const, requestedAt: new Date().toISOString() }
+  let result = JSON.parse(await runtime.executeRegisteredToolHandler('play_detroit', { action: 'start' }, context))
+  assert.equal(result.status, 'awaiting_choice')
+  const first = result.scene
+  result = JSON.parse(await runtime.executeRegisteredToolHandler('play_detroit', {
+    action: 'choose', chapter_id: result.chapter.id, node_id: first.node_id,
+    choice_id: first.choices[0].id, reasoning: '先救眼前的生命。',
+  }, context))
+  const repeated = JSON.parse(await runtime.executeRegisteredToolHandler('play_detroit', {
+    action: 'choose', chapter_id: 'ch01_the_hostage', node_id: first.node_id,
+    choice_id: first.choices[0].id, reasoning: '重复提交。',
+  }, context))
+  assert.equal(repeated.deduplicated, true)
+  while (result.status === 'awaiting_choice') {
+    result = JSON.parse(await runtime.executeRegisteredToolHandler('play_detroit', {
+      action: 'choose', chapter_id: result.chapter.id, node_id: result.scene.node_id,
+      choice_id: result.scene.choices[0].id, reasoning: '测试路线。',
+    }, context))
+  }
+  assert.equal(result.status, 'chapter_complete')
+  assert.equal(result.progress.completed, 1)
+  const progress = JSON.parse(await runtime.executeRegisteredToolHandler('read_detroit', { detail: 'progress' }, context))
+  assert.equal(progress.status, 'between_chapters')
+  assert.equal(progress.completed_chapters[0].ending, '狙击手击毙了丹尼尔')
+})

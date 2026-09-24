@@ -33,6 +33,7 @@ const TOOL_ORDER = [
   'read_poems', 'write_poem', 'read_intimacy_wheel', 'update_intimacy_wheel',
   'read_stories', 'write_story', 'read_research', 'write_research',
   'bite_otter_nape',
+  'read_detroit', 'play_detroit',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))
