@@ -149,6 +149,20 @@
   scrollbar-color: #63717B #182632;
 }
 
+.todo-receipt-night .text-receipt-ink { color: #eee6d6; }
+.todo-receipt-night [class*="text-receipt-ink/"] { color: rgba(238, 230, 214, 0.55); }
+.todo-receipt-night [class*="text-receipt-ink/20"] { color: rgba(238, 230, 214, 0.22); }
+.todo-receipt-night [class*="text-receipt-ink/30"] { color: rgba(238, 230, 214, 0.32); }
+.todo-receipt-night [class*="text-receipt-ink/40"] { color: rgba(238, 230, 214, 0.42); }
+.todo-receipt-night [class*="text-receipt-ink/50"] { color: rgba(238, 230, 214, 0.52); }
+.todo-receipt-night [class*="text-receipt-ink/60"] { color: rgba(238, 230, 214, 0.62); }
+.todo-receipt-night [class*="text-receipt-ink/70"] { color: rgba(238, 230, 214, 0.72); }
+.todo-receipt-night .text-receipt-stamp { color: #c79890; }
+.todo-receipt-night .border-receipt-line { border-color: rgba(133, 123, 108, 0.5); }
+.todo-receipt-night [class*="border-receipt-ink/"] { border-color: rgba(238, 230, 214, 0.28); }
+.todo-receipt-night .border-receipt-stamp { border-color: rgba(199, 152, 144, 0.75); }
+.todo-receipt-night [class*="bg-receipt-ink/"] { background-color: rgba(238, 230, 214, 0.2); }
+
 .receipt-edge-top {
   background: linear-gradient(135deg, #F5F0E8 33.33%, transparent 33.33%) -6px 0,
               linear-gradient(225deg, #F5F0E8 33.33%, transparent 33.33%) -6px 0;

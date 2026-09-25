@@ -96,7 +96,7 @@ export function PoemsView() {
         <article className={`relative overflow-hidden rounded-[28px] border px-5 py-8 shadow-sm sm:px-10 ${night ? 'border-white/10 bg-[#211e1a]' : 'chat-dialog-card'}`}>
           <div className="pointer-events-none absolute inset-y-0 left-8 w-px bg-[#b86673]/15" />
           <div className="relative mb-8 flex items-start justify-between gap-3">
-            <div><button onClick={async () => { const title = window.prompt('诗题', poem.title); if (title !== null) await act('rename', { id: poem.id, title }) }} className="group flex items-center gap-2 text-left"><h1 className="font-serif text-3xl tracking-wide">{poem.title}</h1><Edit3 size={14} className="opacity-0 transition group-hover:opacity-40"/></button><p className="mt-1 text-xs opacity-45">始于 {time(poem.created_at)}</p></div>
+            <div><button onClick={async () => { const title = window.prompt('诗题', poem.title); if (title !== null) await act('rename', { id: poem.id, title }) }} className="group flex items-center gap-2 text-left"><h1 className="font-serif text-2xl tracking-wide">{poem.title}</h1><Edit3 size={14} className="opacity-0 transition group-hover:opacity-40"/></button><p className="mt-1 text-xs opacity-45">始于 {time(poem.created_at)}</p></div>
             <button onClick={() => share(false)} className="rounded-full border border-current/15 px-3 py-2 text-xs"><Send className="mr-1 inline" size={13}/>发到聊天</button>
           </div>
 
@@ -107,7 +107,7 @@ export function PoemsView() {
               return <div key={line.id} className={`group flex gap-3 ${line.author === 'star' ? 'pl-5 sm:pl-10' : ''}`}>
                 <span className={`mt-2 h-2 w-2 shrink-0 rounded-full ${line.author === 'fire' ? 'bg-[#a73a32]/70' : 'bg-[#DBB9B3]'}`}/>
                 <div className="min-w-0 flex-1">
-                  <p className="whitespace-pre-wrap font-serif text-lg leading-8">{latest.text}</p>
+                  <p className="whitespace-pre-wrap font-serif text-sm leading-7">{latest.text}</p>
                   <div className="mt-1 flex items-center gap-2 text-[10px] opacity-40"><span>{who(line.author)} · {time(latest.at)}</span>{line.versions.length > 1 && <details><summary className="cursor-pointer list-none"><Clock3 className="inline" size={11}/> {line.versions.length} 个版本</summary><div className={`absolute z-10 mt-1 max-w-xs rounded-xl p-3 shadow-xl ${night ? 'bg-[#312b25]' : 'chat-dialog'}`}>{line.versions.map((version, versionIndex) => <p key={version.at} className="mb-2 text-xs"><b>v{versionIndex + 1}</b> · {time(version.at)}<br/>{version.text}</p>)}</div></details>}</div>
                 </div>
                 {line.author === currentUser && <div className="flex opacity-30 transition group-hover:opacity-100"><button aria-label={`编辑第 ${index + 1} 句`} onClick={async () => { const next = window.prompt('修改这句', latest.text); if (next !== null) await act('edit_line', { id: poem.id, line_id: line.id, text: next }) }} className="p-1"><Edit3 size={13}/></button><button aria-label={`删除第 ${index + 1} 句`} onClick={async () => { if (window.confirm('删除这句？编辑历史会保留。')) await act('delete_line', { id: poem.id, line_id: line.id }) }} className="p-1 text-red-500"><Trash2 size={13}/></button></div>}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/lib/store'
+import { useTheme } from '@/lib/theme'
 import { todo as todoApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check, MessageCircle, Send, History, ChevronLeft, Pencil, Trash2, Share2 } from 'lucide-react'
@@ -27,6 +28,7 @@ function todayStr() { return madridDateKey() }
 
 export function TodoView() {
   const { currentUser } = useApp()
+  const night = useTheme(state => state.theme === 'night')
 
   const [viewDate, setViewDate] = useState<string>(todayStr())
   const [day, setDay] = useState<TodoDay>({ date: viewDate, items: [] })
@@ -127,9 +129,9 @@ export function TodoView() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="chat-paper pointer-events-auto relative max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-lg border border-[#a73a32]/20 bg-[#faf7f0] p-6 text-[#4b332e] shadow-[0_18px_50px_rgba(49,29,23,0.16)]"
+        className={`pointer-events-auto relative max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-lg border p-6 shadow-[0_18px_50px_rgba(49,29,23,0.16)] ${night ? 'todo-receipt-night border-[#857b6c] bg-[#24221f] text-[#eee6d6]' : 'chat-paper border-[#a73a32]/20 bg-[#faf7f0] text-[#4b332e]'}`}
       >
-        <div className="absolute left-0 right-0 top-0 h-2 text-[#a73a32] opacity-35" style={{ backgroundImage: 'repeating-linear-gradient(135deg, currentColor 0 5px, transparent 5px 10px)' }} />
+        <div className={`absolute left-0 right-0 top-0 h-2 opacity-35 ${night ? 'text-[#857b6c]' : 'text-[#a73a32]'}`} style={{ backgroundImage: 'repeating-linear-gradient(135deg, currentColor 0 5px, transparent 5px 10px)' }} />
 
         {/* Header */}
         <div className="text-center mb-4 relative">
@@ -299,7 +301,7 @@ export function TodoView() {
             {format(viewDateObj, 'yy MM dd')} {receiptNo.slice(1)}
           </p>
         </div>
-        <div className="absolute bottom-0 left-0 right-0 h-2 text-[#a73a32] opacity-35" style={{ backgroundImage: 'repeating-linear-gradient(45deg, currentColor 0 5px, transparent 5px 10px)' }} />
+        <div className={`absolute bottom-0 left-0 right-0 h-2 opacity-35 ${night ? 'text-[#857b6c]' : 'text-[#a73a32]'}`} style={{ backgroundImage: 'repeating-linear-gradient(45deg, currentColor 0 5px, transparent 5px 10px)' }} />
       </motion.div>
 
       {/* Delete confirmation */}
@@ -309,10 +311,10 @@ export function TodoView() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="pointer-events-auto fixed inset-0 z-[80] bg-black/30" onClick={() => setDeleteConfirm(null)} />
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="pointer-events-auto fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-[260px] p-5 rounded-2xl text-center bg-white shadow-xl">
+              className={`pointer-events-auto fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-[260px] p-5 rounded-2xl text-center shadow-xl ${night ? 'border border-night-border bg-night-surface text-night-text' : 'bg-white'}`}>
               <p className="text-sm font-medium mb-3">确定删除这项待办？</p>
               <div className="flex items-center gap-2">
-                <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2 rounded-xl text-xs bg-gray-100">取消</button>
+                <button onClick={() => setDeleteConfirm(null)} className={`flex-1 py-2 rounded-xl text-xs ${night ? 'bg-night-card' : 'bg-gray-100'}`}>取消</button>
                 <button onClick={() => removeItem(deleteConfirm)} className="flex-1 py-2 rounded-xl text-xs bg-red-500 text-white">删除</button>
               </div>
             </motion.div>

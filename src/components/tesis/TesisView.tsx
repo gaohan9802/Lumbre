@@ -104,7 +104,7 @@ export function TesisView() {
         </div>
 
         {/* Line chart */}
-        <ProgressChart progress={progress} night={night} accent={night ? '#f4b860' : '#b78680'} />
+        <ProgressChart progress={progress} night={night} accent={night ? '#CFA7A2' : '#b78680'} />
 
         {/* Chapters */}
         <div className="space-y-3">

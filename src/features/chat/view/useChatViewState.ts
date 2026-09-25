@@ -42,7 +42,6 @@ export function useChatViewState() {
   const [timelineNow, setTimelineNow] = useState(Date.now())
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
-  const [sessionSearch, setSessionSearch] = useState('')
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
@@ -80,7 +79,7 @@ export function useChatViewState() {
     stageSummaryGenerating, setStageSummaryGenerating, stageAttemptRef,
     timelineOpen, setTimelineOpen, timelineCurrent, setTimelineCurrent, timelineNow, setTimelineNow,
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
-    sessionSearch, setSessionSearch, editingSessionId, setEditingSessionId,
+    editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
     copiedId, setCopiedId, mounted, setMounted,
     uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,

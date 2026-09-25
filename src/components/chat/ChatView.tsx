@@ -7,7 +7,7 @@ import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Sun, MoreHorizontal,
-  Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices,
+  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -54,7 +54,7 @@ const WishlistView = dynamic(() => import('@/components/wishlist/WishlistView').
 const MemoryView = dynamic(() => import('@/components/memory/MemoryView').then(module => module.MemoryView), { ssr: false })
 
 type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'wake' | 'memory' | 'wishlist' | 'timeline' | 'tesis'
-const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', wake: '心跳唤醒', memory: '记忆庭院', wishlist: '愿望清单', timeline: 'Timeline', tesis: 'Tesis' }
+const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', wake: '心跳唤醒', memory: '记忆', wishlist: '愿望清单', timeline: 'Timeline', tesis: 'Tesis' }
 
 /* ── helpers ────────────────────────────── */
 
@@ -198,7 +198,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     stageSummaryGenerating, setStageSummaryGenerating, stageAttemptRef,
     timelineOpen, setTimelineOpen, timelineCurrent, setTimelineCurrent, timelineNow, setTimelineNow,
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
-    sessionSearch, setSessionSearch, editingSessionId, setEditingSessionId,
+    editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
     copiedId, setCopiedId, mounted, setMounted,
     uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,
@@ -1053,10 +1053,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     abortControllerRef.current?.abort()
   }
 
-  const filteredSessions = sessions.filter(s =>
-    !sessionSearch.trim() || s.title.toLowerCase().includes(sessionSearch.toLowerCase()),
-  )
-
   const startRename = (id: string, title: string) => { setEditingSessionId(id); setEditingTitle(title) }
   const finishRename = () => { if (editingSessionId) renameSession(editingSessionId, editingTitle); setEditingSessionId(null); setEditingTitle('') }
   const openChatSettings = (panel: ChatSettingsPanel) => { setChatSettingsPanel(panel); setSettingsOpen(true); setSessionDrawerOpen(false) }
@@ -1088,13 +1084,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         >
           <Plus size={13} /> 新对话
         </button>
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${n ? 'bg-night-surface' : 'border border-[#a73a32]/15 bg-[#fffaf5]/50'}`}>
-          <Search size={13} className="opacity-40" />
-          <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} placeholder="搜索会话" className="bg-transparent outline-none text-sm flex-1" />
-        </div>
       </div>
       <div className="relative z-10 flex-1 overflow-y-auto p-2 space-y-1">
-        {filteredSessions.map((s) => {
+        {sessions.map((s) => {
           const active = s.id === settings.activeSessionId
           return (
             <div key={s.id} onClick={() => { setActiveSession(s.id); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
@@ -1204,8 +1196,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           <button type="button" onClick={() => openChatSettings('models')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
           <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
         </div>
-        <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`mt-1 w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>💓 心跳唤醒</button>
-        <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>🧠 记忆庭院</button>
+        <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`mt-1 w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>心跳唤醒</button>
+        <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>记忆</button>
       </div>
     </div>
   )

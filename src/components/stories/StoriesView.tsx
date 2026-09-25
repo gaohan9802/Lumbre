@@ -101,14 +101,14 @@ export function StoriesView() {
           <main className={`min-h-0 overflow-y-auto rounded-[32px] border px-6 py-8 sm:px-12 ${night ? 'border-white/10 bg-[#1b1b24]' : 'chat-dialog-card'}`}>
             {!story ? <div className="grid h-full place-items-center text-center opacity-35"><div><BookOpen className="mx-auto mb-3"/><p>选一本故事，或者写下第一篇。</p></div></div> : <article className="mx-auto max-w-2xl">
               <div className="mb-8 flex items-start justify-between gap-3 border-b border-current/10 pb-5">
-                <div><p className="text-[10px] tracking-[.24em] opacity-45">{shelfName(story.shelf)} · {story.status === 'draft' ? '写作中' : '已完成'}</p><h2 className="mt-2 font-serif text-3xl leading-tight">{story.title}</h2><p className="mt-2 text-[11px] opacity-40">{date(story.created_at)} · {body.length.toLocaleString()} 字</p></div>
+                <div><p className="text-[10px] tracking-[.24em] opacity-45">{shelfName(story.shelf)} · {story.status === 'draft' ? '写作中' : '已完成'}</p><h2 className="mt-2 font-serif text-2xl leading-tight">{story.title}</h2><p className="mt-2 text-[11px] opacity-40">{date(story.created_at)} · {body.length.toLocaleString()} 字</p></div>
                 <div className="flex gap-1">
                   <button aria-label="收藏" onClick={() => void act('update', { id: story.id, patch: { favorite: !story.favorite } })} className="rounded-full p-2 hover:bg-current/5"><Heart size={16} fill={story.favorite ? 'currentColor' : 'none'} className={story.favorite ? 'text-[#aa6271]' : ''}/></button>
                   <button aria-label="置顶" onClick={() => void act('update', { id: story.id, patch: { pinned: !story.pinned } })} className="rounded-full p-2 hover:bg-current/5"><Pin size={16} fill={story.pinned ? 'currentColor' : 'none'}/></button>
                   <button aria-label="编辑" onClick={() => openEdit()} className="rounded-full p-2 hover:bg-current/5"><Edit3 size={16}/></button>
                 </div>
               </div>
-              {body ? <div className="whitespace-pre-wrap font-serif text-[17px] leading-[2.05] tracking-[.015em]">{body}</div> : <p className="py-20 text-center font-serif opacity-35">纸页在等第一句话。</p>}
+              {body ? <div className="whitespace-pre-wrap font-serif text-sm leading-7 tracking-[.015em]">{body}</div> : <p className="py-20 text-center font-serif opacity-35">纸页在等第一句话。</p>}
               <footer className="mt-12 flex items-center justify-between border-t border-current/10 pt-5 text-xs">
                 <button disabled={!body || busy} onClick={() => void act('update', { id: story.id, patch: { status: story.status === 'complete' ? 'draft' : 'complete' } })} className="opacity-60 disabled:opacity-20"><Check className="mr-1 inline" size={14}/>{story.status === 'complete' ? '改回写作中' : '标记完成'}</button>
                 <button className="text-red-500/70" onClick={async () => { if (confirm('删除这篇故事？')) { await act('delete', { id: story.id }); setStory(null) } }}><Trash2 className="mr-1 inline" size={14}/>删除</button>
