@@ -36,16 +36,16 @@ const config: Config = {
         },
         // Night Mode — 雪豹夜行 Snow Leopard
         night: {
-          bg: '#0f1419',        // Base — page background
-          card: '#1c2630',      // Surface — cards/modules
-          surface: '#243040',   // Elevated — overlays/popups/dropdowns
-          amber: '#e2a84b',     // Amber — buttons/highlights/active
-          amberGlow: '#f5c96b', // Amber Glow — small glow/notification dots
-          amberDim: '#c48a30',  // Amber Dim — hover/secondary emphasis
-          text: '#e8e4df',      // Primary text
-          muted: '#8899a6',     // Secondary text/timestamps/labels
-          disabled: '#4d5b6a',  // Disabled/placeholder
-          border: '#2e3d4d',    // Divider/border
+          bg: '#111B25',        // Deep ink-blue paper
+          card: '#15222D',      // Quiet card surface
+          surface: '#182632',   // Elevated paper surface
+          amber: '#CFA7A2',     // Mist rose — buttons/highlights/active
+          amberGlow: '#E2C3BF', // Pale rose — tiny highlights
+          amberDim: '#B88984',  // Muted rose — secondary emphasis
+          text: '#F2EEE7',      // Warm paper-white
+          muted: '#AEB8BF',     // Blue-grey secondary text
+          disabled: '#63717B',  // Disabled/placeholder
+          border: '#3A4853',    // Quiet ink-blue divider
           success: '#4a9e7e',
           warning: '#d4915c',
           error: '#c45c5c',

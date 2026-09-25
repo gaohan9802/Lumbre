@@ -6,7 +6,7 @@ import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, MoreHorizontal,
+  Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Sun, MoreHorizontal,
   Plus, Pin, Trash2, Pencil, Search, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices,
 } from 'lucide-react'
 import {
@@ -162,7 +162,7 @@ export interface ChatViewProps {
 
 export function ChatView({ embedded = false, contextInjection = '', inputPlaceholder = '', onTurn }: ChatViewProps = {}) {
   const { setSidebarOpen } = useApp()
-  const { theme } = useTheme()
+  const { theme, toggle: toggleTheme } = useTheme()
   const n = theme === 'night'
   const [wheelOpen, setWheelOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
@@ -1071,6 +1071,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             <div className="text-base font-medium">会话</div>
             <div className="text-xs opacity-40">{settings.sessions.length} 条对话</div>
           </div>
+          <motion.button
+            type="button"
+            aria-label={n ? '切换到日间模式' : '切换到夜间模式'}
+            title={n ? '切换到日间模式' : '切换到夜间模式'}
+            onClick={toggleTheme}
+            whileTap={{ scale: .82, rotate: n ? 18 : -18 }}
+            className={`grid h-9 w-9 place-items-center rounded-full border ${n ? 'border-night-amber/35 text-night-amber' : 'border-[#a73a32]/20 text-[#9f302b]'}`}
+          >
+            {n ? <Sun size={17} strokeWidth={1.45}/> : <Moon size={17} strokeWidth={1.45}/>}
+          </motion.button>
         </div>
         <button
           onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }}
@@ -1418,7 +1428,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto bg-[#DBB9B3]/60 text-[#3f2c29]' : `w-fit max-w-[88%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? `w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto ${n ? 'bg-night-amber/45 text-night-text' : 'bg-[#DBB9B3]/60 text-[#3f2c29]'}` : `w-fit max-w-[88%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
@@ -1517,7 +1527,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
 
           {/* footer */}
-          <div className={`chat-footer relative px-3 pt-1 ${n ? 'bg-night-card/50' : 'chat-paper'}`}>
+          <div className={`chat-footer relative px-3 pt-1 ${n ? 'bg-night-bg' : 'chat-paper'}`}>
             {/* pending shared card */}
             {pendingShare && (
               <div className={`mx-1 mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface' : 'border-day-pink/20 bg-white'}`}>
@@ -1549,12 +1559,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             )}
 
             <div className="chat-compose-shell relative">
-              <div className={`chat-input-tray rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-border/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:border-night-muted/50' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29] focus-within:border-[#a73a32]/45'}`}>
+              <div className={`chat-input-tray rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-amber/40 shadow-[0_8px_24px_rgba(3,10,16,0.26)] focus-within:border-night-amber/70' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29] focus-within:border-[#a73a32]/45'}`}>
                 <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => setMessageActionsId(null)}
                   placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
                   className={`no-frame block min-h-10 w-full resize-none bg-transparent px-1 py-1 text-base outline-none max-h-40 md:text-sm ${n ? 'text-night-text placeholder:text-night-muted' : 'text-[#3f2c29] placeholder:text-[#9a766d]'}`} />
                 <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
-                <div className={`mt-1 flex items-center gap-0.5 ${n ? 'text-night-muted' : 'text-[#a73a32]/55'}`}>
+                <div className={`mt-1 flex items-center gap-0.5 ${n ? 'text-night-amber/85' : 'text-[#a73a32]/55'}`}>
                   <button type="button" aria-label={uploadingImg ? '正在处理照片' : '上传照片'} title="照片" disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full disabled:opacity-35"><ImagePlus size={17}/></button>
                   <button type="button" aria-label="打开 Timeline" title={timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'} onClick={() => setTimelineOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-full"><Clock3 size={17}/>{timelineCurrent && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#DBB9B3]"/>}</button>
                   <motion.button type="button" aria-label="戳豹子鼻子" title="戳豹子鼻子" disabled={nosePokeBusy} onPointerDown={event => event.preventDefault()} onClick={() => void pokeLeopardNose()} whileTap={{ scale: .9 }} className="grid h-8 w-8 place-items-center rounded-full text-[18px] leading-none disabled:opacity-35">
@@ -1564,12 +1574,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <ChatRouteChip route={activeRoute} isNight={n} onClick={() => setModelPickerOpen(true)} />
                   <span className="flex-1" />
                   {isLoading ? (
-                    <button onClick={() => { void handleStopGeneration() }} title="停止生成" className={`grid h-8 w-8 place-items-center rounded-full ${n ? 'bg-night-muted text-night-bg' : 'bg-[#DBB9B3] text-white'}`}>
+                    <button onClick={() => { void handleStopGeneration() }} title="停止生成" className={`grid h-8 w-8 place-items-center rounded-full ${n ? 'bg-night-amber text-night-bg' : 'bg-[#DBB9B3] text-white'}`}>
                       <Square size={14} fill="currentColor" />
                     </button>
                   ) : (
                     <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && !pendingShare)}
-                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-muted text-night-bg' : 'bg-[#DBB9B3] text-white hover:bg-[#DBB9B3]/80') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
+                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#DBB9B3] text-white hover:bg-[#DBB9B3]/80') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
                       <Send size={15} />
                     </button>
                   )}

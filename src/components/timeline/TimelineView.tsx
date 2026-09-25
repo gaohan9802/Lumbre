@@ -14,10 +14,12 @@ const dayKey=(d:Date)=>madridDateKey(d)
 const dayBounds=(date:string)=>madridDayBounds(date)
 const fmtTime=(v:string)=>new Date(v).toLocaleTimeString('zh-CN',{timeZone:APP_TIME_ZONE,hour:'2-digit',minute:'2-digit',hour12:false})
 const fmtDuration=(s:number)=>{const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?`${h}小时${m?m+'分':''}`:`${Math.max(1,m)}分钟`}
-const COLORS=['#EF4067','#84BECA','#e2a84b','#4a9e7e','#9b7bb8','#d4915c','#6e9fb4','#be6d7d']
+const DAY_COLORS=['#EF4067','#84BECA','#e2a84b','#4a9e7e','#9b7bb8','#d4915c','#6e9fb4','#be6d7d']
+const NIGHT_COLORS=['#CFA7A2','#91A8B6','#B88984','#7F9B94','#9B90A7','#A88D82','#7893A3','#A9868F']
 
 export function TimelineView(){
   const {theme}=useTheme(); const n=theme==='night'
+  const colors=n?NIGHT_COLORS:DAY_COLORS
   const [date,setDate]=useState(dayKey(new Date()))
   const [records,setRecords]=useState<RecordT[]>([])
   const [weekRecords,setWeekRecords]=useState<RecordT[]>([])
@@ -88,9 +90,9 @@ export function TimelineView(){
   const toggleEncTag=(tag:string)=>setEncDraft(v=>({...v,tags:v.tags.includes(tag)?v.tags.filter(x=>x!==tag):[...v.tags,tag]}))
   const move=(days:number)=>setDate(addMadridDays(date,days))
   const [dayStartIso,dayEndIso]=dayBounds(date); const dayStart=new Date(dayStartIso).getTime(); const dayEnd=new Date(dayEndIso).getTime(); const daySpan=Math.max(1,dayEnd-dayStart)
-  const blocks=records.map((r,i)=>{const s=Math.max(dayStart,new Date(r.start_at).getTime());const e=Math.min(dayEnd,r.end_at?new Date(r.end_at).getTime():Date.now());return{r,top:((s-dayStart)/daySpan)*100,height:Math.max(1.3,((Math.max(s,e)-s)/daySpan)*100),color:COLORS[i%COLORS.length]}})
+  const blocks=records.map((r,i)=>{const s=Math.max(dayStart,new Date(r.start_at).getTime());const e=Math.min(dayEnd,r.end_at?new Date(r.end_at).getTime():Date.now());return{r,top:((s-dayStart)/daySpan)*100,height:Math.max(1.3,((Math.max(s,e)-s)/daySpan)*100),color:colors[i%colors.length]}})
   const pie=useMemo(()=>{const map=new Map<string,number>();const [weekFrom,weekTo]=madridDayBounds(monday,7);const ws=new Date(weekFrom).getTime(),we=new Date(weekTo).getTime();for(const r of weekRecords){const s=Math.max(ws,new Date(r.start_at).getTime()),e=Math.min(we,r.end_at?new Date(r.end_at).getTime():Date.now());if(e>s)map.set(r.title,(map.get(r.title)||0)+(e-s)/1000)}return Array.from(map.entries()).sort((a,b)=>b[1]-a[1])},[weekRecords,monday])
-  const pieTotal=pie.reduce((a,b)=>a+b[1],0);let acc=0;const stops=pie.map(([_,v],i)=>{const a=acc/pieTotal*360;acc+=v;return`${COLORS[i%COLORS.length]} ${a}deg ${acc/pieTotal*360}deg`}).join(', ')
+  const pieTotal=pie.reduce((a,b)=>a+b[1],0);let acc=0;const stops=pie.map(([_,v],i)=>{const a=acc/pieTotal*360;acc+=v;return`${colors[i%colors.length]} ${a}deg ${acc/pieTotal*360}deg`}).join(', ')
   const saveEdit=async()=>{if(!editing)return;await timelineApi.update(editing.id,{title:editing.title,tags:editing.tags,note:editing.note,end_note:editing.end_note,start_at:parseMadridDateTime(editing.start_at)?.toISOString(),end_at:editing.end_at?parseMadridDateTime(editing.end_at)?.toISOString():undefined});setEditing(null);load()}
   const remove=async(r:RecordT)=>{if(!confirm(`删除「${r.title}」这条记录？`))return;await timelineApi.remove(r.id);load()}
   return <div className={`h-full overflow-y-auto ${n?'bg-night-bg text-night-text':'chat-paper text-[#3f2c29]'}`}>
@@ -106,14 +108,14 @@ export function TimelineView(){
       <div className="grid lg:grid-cols-[1.45fr_0.8fr] gap-5">
         <section className={`rounded-2xl p-4 md:p-6 ${n?'border border-night-border bg-night-card':'chat-dialog-card'}`}>
           <div className="flex justify-between items-end mb-4"><div><h2 className="font-medium">{date}</h2><p className="text-[10px] opacity-45 mt-1">00:00 — 24:00</p></div><span className="text-xs opacity-50">{records.length} 段记录</span></div>
-          <div className="relative h-[960px] ml-11 border-l" style={{borderColor:n?'#2e3d4d':'#ead8d3'}}>
-            {Array.from({length:25},(_,h)=><div key={h} className="absolute left-0 right-0 border-t" style={{top:`${h/24*100}%`,borderColor:n?'rgba(46,61,77,.55)':'rgba(234,216,211,.7)'}}><span className="absolute -left-11 -top-2 text-[9px] opacity-45 w-8 text-right">{pad(h)}:00</span></div>)}
+          <div className="relative h-[960px] ml-11 border-l" style={{borderColor:n?'#3A4853':'#ead8d3'}}>
+            {Array.from({length:25},(_,h)=><div key={h} className="absolute left-0 right-0 border-t" style={{top:`${h/24*100}%`,borderColor:n?'rgba(58,72,83,.55)':'rgba(234,216,211,.7)'}}><span className="absolute -left-11 -top-2 text-[9px] opacity-45 w-8 text-right">{pad(h)}:00</span></div>)}
             {blocks.map(({r,top,height,color})=><button key={r.id} onClick={()=>setEditing({...r})} className="absolute left-3 right-2 md:right-5 rounded-xl px-3 py-2 text-left overflow-hidden shadow-sm hover:brightness-105 transition" style={{top:`${top}%`,height:`${height}%`,minHeight:36,background:`${color}22`,borderLeft:`4px solid ${color}`}}><div className="font-medium text-xs truncate">{r.title}</div><div className="text-[9px] opacity-60 truncate">{fmtTime(r.start_at)}–{r.end_at?fmtTime(r.end_at):'现在'} · {fmtDuration(r.duration_seconds)}</div></button>)}
             {!loading&&records.length===0&&<div className="absolute inset-0 grid place-items-center text-xs opacity-35">这一天还没有记录</div>}
           </div>
         </section>
         <aside className="space-y-5">
-          <section className={`rounded-2xl p-5 ${n?'border border-night-border bg-night-card':'chat-dialog-card'}`}><h2 className="font-medium">本周时间占比</h2><p className="text-[10px] opacity-45 mt-1">{monday} 起的 7 天</p>{pieTotal>0?<><div className="w-48 h-48 rounded-full mx-auto my-6 relative" style={{background:`conic-gradient(${stops})`}}><div className={`absolute inset-10 rounded-full grid place-items-center text-center ${n?'bg-night-card':'bg-[#f8f6f1]'}`}><div><div className="text-lg font-semibold">{fmtDuration(pieTotal)}</div><div className="text-[9px] opacity-45">已记录</div></div></div></div><div className="space-y-2">{pie.map(([title,v],i)=><div key={title} className="flex items-center gap-2 text-xs"><span className="w-2.5 h-2.5 rounded-full" style={{background:COLORS[i%COLORS.length]}}/><span className="flex-1 truncate">{title}</span><span className="opacity-55">{Math.round(v/pieTotal*100)}% · {fmtDuration(v)}</span></div>)}</div></>:<div className="py-16 text-center text-xs opacity-35">本周还没有完整的时间记录</div>}</section>
+          <section className={`rounded-2xl p-5 ${n?'border border-night-border bg-night-card':'chat-dialog-card'}`}><h2 className="font-medium">本周时间占比</h2><p className="text-[10px] opacity-45 mt-1">{monday} 起的 7 天</p>{pieTotal>0?<><div className="w-48 h-48 rounded-full mx-auto my-6 relative" style={{background:`conic-gradient(${stops})`}}><div className={`absolute inset-10 rounded-full grid place-items-center text-center ${n?'bg-night-card':'bg-[#f8f6f1]'}`}><div><div className="text-lg font-semibold">{fmtDuration(pieTotal)}</div><div className="text-[9px] opacity-45">已记录</div></div></div></div><div className="space-y-2">{pie.map(([title,v],i)=><div key={title} className="flex items-center gap-2 text-xs"><span className="w-2.5 h-2.5 rounded-full" style={{background:colors[i%colors.length]}}/><span className="flex-1 truncate">{title}</span><span className="opacity-55">{Math.round(v/pieTotal*100)}% · {fmtDuration(v)}</span></div>)}</div></>:<div className="py-16 text-center text-xs opacity-35">本周还没有完整的时间记录</div>}</section>
           <section className={`rounded-2xl p-5 ${n?'border border-night-border bg-night-card':'chat-dialog-card'}`}><h2 className="font-medium mb-3">当天记录</h2><div className="space-y-2">{records.map(r=><div key={r.id} className={`rounded-xl p-3 ${n?'bg-night-bg/55':'bg-[#DBB9B3]/18'}`}><div className="flex gap-2"><div className="flex-1 min-w-0"><div className="text-sm truncate">{r.title}</div><div className="text-[10px] opacity-50 mt-1">{fmtTime(r.start_at)}–{r.end_at?fmtTime(r.end_at):'现在'} · {fmtDuration(r.duration_seconds)}</div></div><button onClick={()=>setEditing({...r})} className="p-1.5 opacity-45 hover:opacity-100"><Pencil size={13}/></button><button onClick={()=>remove(r)} className="p-1.5 opacity-35 hover:opacity-100 text-red-500"><Trash2 size={13}/></button></div>{r.tags?.length>0&&<div className="mt-2 text-[9px] opacity-45">{r.tags.map(t=>`#${t}`).join(' ')}</div>}{r.note&&<p className="text-[10px] mt-2 opacity-60">开始：{r.note}</p>}{r.end_note&&<p className="text-[10px] mt-1 opacity-60">结束：{r.end_note}</p>}</div>)}</div></section>
         </aside>
       </div>

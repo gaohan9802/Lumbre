@@ -580,7 +580,7 @@ function BreathTab({ isNight }: { isNight: boolean }) {
   const c = useColors(isNight)
 
   const barColors: Record<string, string> = {
-    topic: isNight ? '#D4A574' : '#E8A0BF',
+    topic: isNight ? '#CFA7A2' : '#E8A0BF',
     emotion: '#8B6A6A',
     time: '#9A7B4F',
     importance: '#4A7C59',
@@ -683,7 +683,7 @@ function NetworkTab({ isNight }: { isNight: boolean }) {
     const { nodes, edges } = data
 
     if (!nodes.length) {
-      ctx.fillStyle = isNight ? '#8A8070' : '#888'
+      ctx.fillStyle = isNight ? '#AEB8BF' : '#888'
       ctx.font = '14px sans-serif'; ctx.textAlign = 'center'
       ctx.fillText('没有记忆桶', W / 2, H / 2)
       return
@@ -725,7 +725,7 @@ function NetworkTab({ isNight }: { isNight: boolean }) {
       })
     }
 
-    ctx.fillStyle = isNight ? '#1A1814' : '#FDFCF0'
+    ctx.fillStyle = isNight ? '#111B25' : '#FDFCF0'
     ctx.fillRect(0, 0, W, H)
 
     edges.forEach((e: any) => {
@@ -736,7 +736,7 @@ function NetworkTab({ isNight }: { isNight: boolean }) {
       ctx.lineWidth = Math.max(0.5, (e.weight || 0.5) * 2); ctx.stroke()
     })
 
-    const nodeColor = isNight ? '#D4A574' : '#2F4F4F'
+    const nodeColor = isNight ? '#CFA7A2' : '#2F4F4F'
     nodes.forEach((n: any) => {
       const p = pos[n.id]; if (!p) return
       const r = Math.max(4, Math.min(14, (n.importance || 5) * 1.4))
@@ -746,7 +746,7 @@ function NetworkTab({ isNight }: { isNight: boolean }) {
       ctx.fillStyle = nodeColor; ctx.fill()
 
       const name = (n.name || '').length > 10 ? n.name.slice(0, 10) + '…' : n.name
-      ctx.fillStyle = isNight ? '#C4B89A' : '#3A3530'
+      ctx.fillStyle = isNight ? '#F2EEE7' : '#3A3530'
       ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
       ctx.fillText(name, p.x, p.y + r + 12)
     })
@@ -755,8 +755,8 @@ function NetworkTab({ isNight }: { isNight: boolean }) {
   return (
     <div>
       <div className="flex gap-3 mb-2 text-[10px]">
-        <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: isNight ? '#D4A574' : '#2F4F4F' }} /> 节点</div>
-        <div className="flex items-center gap-1"><span className="w-6 h-px" style={{ background: isNight ? '#D4A574' : '#2F4F4F' }} /> 共享标签</div>
+        <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: isNight ? '#CFA7A2' : '#2F4F4F' }} /> 节点</div>
+        <div className="flex items-center gap-1"><span className="w-6 h-px" style={{ background: isNight ? '#CFA7A2' : '#2F4F4F' }} /> 共享标签</div>
       </div>
       {loading && <div className={`text-center py-12 text-sm ${c.muted}`}>加载记忆网络...</div>}
       <canvas ref={canvasRef} className={`w-full rounded-xl border ${c.border}`}
@@ -827,7 +827,7 @@ function AdminTab({ isNight, onRefresh }: { isNight: boolean; onRefresh: () => v
                     <div className={`flex-1 h-1.5 rounded-full ${isNight ? 'bg-night-border' : 'bg-gray-200'} overflow-hidden`}>
                       <div className="h-full rounded-full transition-all" style={{
                         width: `${pct}%`,
-                        background: isNight ? '#D4A574' : '#E8A0BF',
+                        background: isNight ? '#CFA7A2' : '#E8A0BF',
                       }} />
                     </div>
                     <span className={`text-[10px] w-8 text-right ${c.muted}`}>{count as number}</span>
