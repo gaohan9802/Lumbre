@@ -20,7 +20,7 @@ interface Note {
 
 // Sticky note color palettes
 const dayColors = [
-  { bg: '#FFFFFF', border: '#F3A4AC' },  // Surface + Girl's Dream (spec)
+  { bg: '#FFFAF5', border: '#DBB9B3' },
 ]
 const nightColors = [
   { bg: '#243040', border: '#e2a84b' },  // Elevated + Amber
@@ -82,9 +82,9 @@ export function NotesView() {
   const formatTime = (t: string) => t ? formatMadridShort(t) : ''
 
   return (
-    <div className="h-full flex flex-col">
+    <div className={`h-full flex flex-col ${isNight ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Header */}
-      <div className="px-6 py-4 flex items-center justify-between flex-shrink-0">
+      <div className={`px-6 py-4 flex items-center justify-between flex-shrink-0 border-b ${isNight ? 'border-night-border' : 'chat-dialog-line'}`}>
         <h2 className="text-lg font-medium">
           📌 留言板
           <span className={`ml-2 text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
@@ -94,7 +94,7 @@ export function NotesView() {
         <button
           onClick={() => setIsWriting(true)}
           className={`p-2.5 rounded-xl transition ${
-            isNight ? 'hover:bg-night-surface text-night-amber' : 'hover:bg-day-pinkLight text-day-pink'
+            isNight ? 'hover:bg-night-surface text-night-amber' : 'chat-dialog-accent'
           }`}
         >
           <Plus size={20} />
@@ -102,9 +102,7 @@ export function NotesView() {
       </div>
 
       {/* Fridge door surface */}
-      <div className={`flex-1 overflow-y-auto px-4 pb-6 ${
-        isNight ? '' : 'bg-gradient-to-b from-day-bg to-[#F5EDE6]'
-      }`}>
+      <div className="flex-1 overflow-y-auto px-4 pb-6">
         {/* Write new note - floating card */}
         <AnimatePresence>
           {isWriting && (
@@ -112,10 +110,10 @@ export function NotesView() {
               initial={{ scale: 0.8, opacity: 0, rotate: -3 }}
               animate={{ scale: 1, opacity: 1, rotate: 0 }}
               exit={{ scale: 0.8, opacity: 0, rotate: 3 }}
-              className="mb-4 p-5 rounded-2xl shadow-lg relative"
+              className={`mb-4 p-5 rounded-2xl relative ${isNight ? 'shadow-lg' : 'chat-dialog-card'}`}
               style={{
-                backgroundColor: isNight ? '#243040' : '#FEDAB8',
-                borderLeft: `3px solid ${isNight ? '#e2a84b' : '#EF4067'}`,
+                backgroundColor: isNight ? '#243040' : undefined,
+                borderLeft: `3px solid ${isNight ? '#e2a84b' : '#DBB9B3'}`,
               }}
             >
               <button
@@ -131,14 +129,14 @@ export function NotesView() {
                 rows={4}
                 autoFocus
                 className="w-full bg-transparent outline-none text-sm resize-none leading-relaxed"
-                style={{ color: isNight ? '#e8e4df' : '#5D4037' }}
+                style={{ color: isNight ? '#e8e4df' : '#3f2c29' }}
               />
               <div className="flex justify-end mt-3">
                 <button
                   onClick={handlePost}
                   disabled={!newNote.trim()}
                   className={`px-4 py-2 rounded-xl text-sm font-medium transition disabled:opacity-30 ${
-                    isNight ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'
+                    isNight ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent'
                   }`}
                 >
                   📌 贴！
@@ -188,7 +186,7 @@ export function NotesView() {
 
                   {/* Author + time */}
                   <div className="flex items-center justify-between mb-2 mt-1">
-                    <span className="text-xs font-medium" style={{ color: isNight ? '#e2a84b' : '#5D4037' }}>
+                    <span className="text-xs font-medium" style={{ color: isNight ? '#e2a84b' : '#765953' }}>
                       {note.author === 'star' ? '🐆 星星' : '🦦 小火'}
                     </span>
                     <span className="text-[10px] opacity-40">
@@ -199,7 +197,7 @@ export function NotesView() {
                   {/* Content */}
                   <p
                     className={`text-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-4'}`}
-                    style={{ color: isNight ? '#e8e4df' : '#5D4037' }}
+                    style={{ color: isNight ? '#e8e4df' : '#3f2c29' }}
                   >
                     {note.content}
                   </p>
@@ -209,7 +207,7 @@ export function NotesView() {
                   {/* Replies */}
                   {hasReplies && (
                     <div className="mt-3 pt-2 space-y-2" style={{
-                      borderTop: `1px dashed ${isNight ? '#2e3d4d' : '#F0E4DD'}`,
+                      borderTop: `1px dashed ${isNight ? '#2e3d4d' : 'rgba(167,58,50,.14)'}`,
                     }}>
                       {note.replies!.map((reply, j) => (
                         <div key={j} className="flex gap-2 items-start">
@@ -217,7 +215,7 @@ export function NotesView() {
                             {reply.author === 'star' ? '🐆' : '🦦'}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs leading-relaxed" style={{ color: isNight ? '#8899a6' : '#8D7468' }}>
+                            <p className="text-xs leading-relaxed" style={{ color: isNight ? '#8899a6' : '#8a6f69' }}>
                               {reply.content}
                             </p>
                             <span className="text-[9px] opacity-30">
@@ -236,7 +234,7 @@ export function NotesView() {
                       animate={{ opacity: 1, height: 'auto' }}
                       className="mt-3 pt-2 space-y-2"
                       style={{
-                        borderTop: hasReplies ? 'none' : `1px dashed ${isNight ? '#2e3d4d' : '#F0E4DD'}`,
+                        borderTop: hasReplies ? 'none' : `1px dashed ${isNight ? '#2e3d4d' : 'rgba(167,58,50,.14)'}`,
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -251,8 +249,8 @@ export function NotesView() {
                             onKeyDown={(e) => e.key === 'Enter' && handleReply(note.id)}
                             className="flex-1 text-xs bg-transparent outline-none py-1"
                             style={{
-                              borderBottom: `1px solid ${isNight ? '#2e3d4d' : 'rgba(0,0,0,0.15)'}`,
-                              color: isNight ? '#e8e4df' : '#5D4037',
+                              borderBottom: `1px solid ${isNight ? '#2e3d4d' : 'rgba(167,58,50,.18)'}`,
+                              color: isNight ? '#e8e4df' : '#3f2c29',
                             }}
                           />
                           <button

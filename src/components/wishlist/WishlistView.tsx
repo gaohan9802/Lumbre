@@ -64,7 +64,7 @@ export function WishlistView() {
   const fireWishes = wishes.filter(w => w.author === 'fire')
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className={`h-full overflow-y-auto ${night ? '' : 'chat-paper text-[#3f2c29]'}`}>
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="text-center mb-6">
           <h1 className={`text-2xl font-semibold ${night ? 'text-night-text' : 'text-day-text'}`}>
@@ -114,9 +114,9 @@ function WishColumn({
   const [desc, setDesc] = useState('')
   const [priority, setPriority] = useState<Priority>('want')
 
-  const accent = night ? 'text-night-amber' : 'text-day-pink'
+  const accent = night ? 'text-night-amber' : 'text-[#9c6e69]'
   const mutedCls = night ? 'text-night-muted' : 'text-day-muted'
-  const panelCls = night ? 'bg-night-surface/40 border-night-border' : 'bg-day-pinkLight/40 border-day-border'
+  const panelCls = night ? 'bg-night-surface/40 border-night-border' : 'chat-dialog-card'
   const canAdd = currentUser === owner
 
   const active = wishes
@@ -140,7 +140,7 @@ function WishColumn({
         {canAdd && (
           <button
             onClick={() => setShowAdd(v => !v)}
-            className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg ${night ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-white hover:bg-day-pink/15'} ${accent}`}
+            className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg ${night ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-[#DBB9B3]/15 hover:bg-[#DBB9B3]/25'} ${accent}`}
           >
             <Plus size={14} /> 许个愿
           </button>
@@ -153,13 +153,13 @@ function WishColumn({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className={`mb-3 rounded-xl border p-3 overflow-hidden ${night ? 'bg-night-card border-night-border' : 'bg-white border-day-border'}`}
+            className={`mb-3 rounded-xl border p-3 overflow-hidden ${night ? 'bg-night-card border-night-border' : 'chat-dialog-card'}`}
           >
             <input
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="想要什么？（短短一句）"
-              className={`no-frame w-full text-sm bg-transparent outline-none px-1 py-1 border-b ${night ? 'border-night-border' : 'border-day-border'}`}
+              className={`no-frame w-full text-sm bg-transparent outline-none px-1 py-1 border-b ${night ? 'border-night-border' : 'chat-dialog-line'}`}
               onKeyDown={e => { if (e.key === 'Enter' && !(e.nativeEvent as any).isComposing) submit() }}
             />
             <textarea
@@ -167,7 +167,7 @@ function WishColumn({
               onChange={e => setDesc(e.target.value)}
               placeholder="想多说两句？（可选）"
               rows={2}
-              className={`no-frame w-full text-sm bg-transparent outline-none px-1 py-1 mt-2 resize-none border-b ${night ? 'border-night-border' : 'border-day-border'}`}
+              className={`no-frame w-full text-sm bg-transparent outline-none px-1 py-1 mt-2 resize-none border-b ${night ? 'border-night-border' : 'chat-dialog-line'}`}
             />
             <div className="flex items-center justify-between mt-3">
               <div className="flex gap-1">
@@ -176,8 +176,8 @@ function WishColumn({
                     key={p}
                     onClick={() => setPriority(p)}
                     className={`text-xs px-2 py-1 rounded-lg transition ${priority === p
-                      ? (night ? 'bg-night-amber/20 text-night-amber' : 'bg-day-pink/15 text-day-pink')
-                      : (night ? 'text-night-muted hover:bg-night-surface' : 'text-day-muted hover:bg-day-pinkLight')}`}
+                      ? (night ? 'bg-night-amber/20 text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]')
+                      : (night ? 'text-night-muted hover:bg-night-surface' : 'text-day-muted hover:bg-[#DBB9B3]/15')}`}
                   >
                     {PRIORITY[p].emoji} {PRIORITY[p].label}
                   </button>
@@ -187,7 +187,7 @@ function WishColumn({
                 <button onClick={() => { setShowAdd(false); setTitle(''); setDesc('') }} className={`p-1.5 rounded-lg ${mutedCls}`}>
                   <X size={16} />
                 </button>
-                <button onClick={submit} className={`p-1.5 rounded-lg ${accent} ${night ? 'hover:bg-night-surface' : 'hover:bg-day-pinkLight'}`}>
+                <button onClick={submit} className={`p-1.5 rounded-lg ${accent} ${night ? 'hover:bg-night-surface' : 'hover:bg-[#DBB9B3]/15'}`}>
                   <Send size={16} />
                 </button>
               </div>
@@ -212,7 +212,7 @@ function WishColumn({
             <div className={`pt-2 mt-1 text-xs ${mutedCls} flex items-center gap-2`}>
               <span>✨ 实现了的愿望</span>
               <span className="opacity-70">({done.length})</span>
-              <div className={`flex-1 h-px ${night ? 'bg-night-border' : 'bg-day-border'}`} />
+              <div className={`flex-1 h-px ${night ? 'bg-night-border' : 'bg-[#a73a32]/15'}`} />
             </div>
           )}
           {done.map(w => (
@@ -240,9 +240,9 @@ function WishCard({
 
   const isOwner = currentUser === w.author
   const isDone = w.status === 'done'
-  const accent = night ? 'text-night-amber' : 'text-day-pink'
+  const accent = night ? 'text-night-amber' : 'text-[#9c6e69]'
   const mutedCls = night ? 'text-night-muted' : 'text-day-muted'
-  const cardCls = night ? 'bg-night-card border-night-border' : 'bg-white border-day-border'
+  const cardCls = night ? 'bg-night-card border-night-border' : 'chat-dialog-card'
 
   const likes = Array.isArray(w.likes) ? w.likes : []
   const comments = Array.isArray(w.comments) ? w.comments : []
@@ -299,8 +299,8 @@ function WishCard({
           disabled={!isOwner}
           title={isOwner ? (isDone ? '取消实现' : '标记为已实现') : ''}
           className={`mt-0.5 shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition ${isDone
-            ? (night ? 'bg-night-amber/80 border-night-amber text-night-bg' : 'bg-day-pink border-day-pink text-white')
-            : (night ? 'border-night-border' : 'border-day-border')} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}
+            ? (night ? 'bg-night-amber/80 border-night-amber text-night-bg' : 'bg-[#DBB9B3] border-[#DBB9B3] text-white')
+            : (night ? 'border-night-border' : 'border-[#a73a32]/20')} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}
         >
           {isDone && <Check size={13} />}
         </button>
@@ -313,7 +313,7 @@ function WishCard({
               onBlur={saveTitle}
               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
               autoFocus
-              className={`no-frame w-full text-sm bg-transparent outline-none border-b ${night ? 'border-night-border' : 'border-day-border'}`}
+              className={`no-frame w-full text-sm bg-transparent outline-none border-b ${night ? 'border-night-border' : 'chat-dialog-line'}`}
             />
           ) : (
             <div
@@ -328,14 +328,14 @@ function WishCard({
             <button
               onClick={cyclePriority}
               disabled={!isOwner || isDone}
-              className={`text-[11px] px-1.5 py-0.5 rounded-md ${night ? 'bg-night-surface' : 'bg-day-pinkLight'} ${mutedCls} ${isOwner && !isDone ? 'cursor-pointer' : 'cursor-default'}`}
+              className={`text-[11px] px-1.5 py-0.5 rounded-md ${night ? 'bg-night-surface' : 'bg-[#DBB9B3]/15'} ${mutedCls} ${isOwner && !isDone ? 'cursor-pointer' : 'cursor-default'}`}
             >
               {PRIORITY[w.priority].emoji} {PRIORITY[w.priority].label}
             </button>
             <button
               onClick={cycleStatus}
               disabled={!isOwner}
-              className={`text-[11px] px-1.5 py-0.5 rounded-md ${night ? 'bg-night-surface' : 'bg-day-pinkLight'} ${accent} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}
+              className={`text-[11px] px-1.5 py-0.5 rounded-md ${night ? 'bg-night-surface' : 'bg-[#DBB9B3]/15'} ${accent} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}
             >
               {STATUS[w.status].emoji} {STATUS[w.status].label}
             </button>
@@ -397,7 +397,7 @@ function WishCard({
                     </div>
                   ))}
                 </div>
-                <div className={`flex items-center gap-1.5 mt-2 pt-2 border-t ${night ? 'border-night-border' : 'border-day-border'}`}>
+                <div className={`flex items-center gap-1.5 mt-2 pt-2 border-t ${night ? 'border-night-border' : 'chat-dialog-line'}`}>
                   <span className="text-xs">{emojiFor(currentUser)}</span>
                   <input
                     value={commentDraft}

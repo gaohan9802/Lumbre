@@ -20,7 +20,7 @@ export function BookmarkDialog({ open, onClose }: Props) {
   const [editing, setEditing] = useState<(Omit<Bookmark, 'id'> & { id?: string }) | null>(null)
   const [kwInput, setKwInput] = useState('')
 
-  const inputCls = `w-full text-sm px-3 py-2.5 rounded-lg outline-none border ${n ? 'bg-night-surface border-night-border text-night-text placeholder:text-night-muted' : 'bg-white border-gray-200 text-day-text placeholder:text-gray-300'}`
+  const inputCls = `w-full text-sm px-3 py-2.5 rounded-lg outline-none border ${n ? 'bg-night-surface border-night-border text-night-text placeholder:text-night-muted' : 'chat-dialog-field placeholder:text-[#9b7a74]'}`
 
   const startNew = () => { setEditing({ ...EMPTY }); setKwInput('') }
   const startEdit = (b: Bookmark) => { setEditing({ ...b }); setKwInput(b.keywords.join(', ')) }
@@ -42,7 +42,7 @@ export function BookmarkDialog({ open, onClose }: Props) {
             initial={{ opacity: 0, scale: 0.96, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 10 }}
-            className={`fixed z-[71] inset-x-0 mx-auto w-[min(500px,calc(100vw-2rem))] max-h-[80dvh] overflow-y-auto rounded-2xl shadow-2xl ${n ? 'bg-night-card text-night-text' : 'bg-[#faf9f5] text-day-text'}`}
+            className={`fixed z-[71] inset-x-0 mx-auto w-[min(500px,calc(100vw-2rem))] max-h-[80dvh] overflow-y-auto rounded-2xl ${n ? 'bg-night-card text-night-text shadow-2xl' : 'chat-dialog'}`}
             style={{ top: 'max(calc(env(safe-area-inset-top, 0px) + 10dvh), 10dvh)' }}
           >
             <div className="sticky top-0 z-10 px-6 py-4 flex items-center justify-between backdrop-blur-md bg-inherit border-b border-current/10">
@@ -55,7 +55,7 @@ export function BookmarkDialog({ open, onClose }: Props) {
                 <>
 
                   {settings.bookmarks.map((bm) => (
-                    <div key={bm.id} className={`rounded-xl border p-3 cursor-pointer ${n ? 'border-night-border hover:bg-night-surface' : 'border-gray-200 hover:bg-gray-50'} ${!bm.enabled ? 'opacity-40' : ''}`} onClick={() => startEdit(bm)}>
+                    <div key={bm.id} className={`rounded-xl p-3 cursor-pointer ${n ? 'border border-night-border hover:bg-night-surface' : 'chat-dialog-card hover:bg-[#DBB9B3]/20'} ${!bm.enabled ? 'opacity-40' : ''}`} onClick={() => startEdit(bm)}>
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <div className="text-sm font-medium truncate">{bm.name || '(未命名)'}</div>
@@ -69,7 +69,7 @@ export function BookmarkDialog({ open, onClose }: Props) {
                       </div>
                     </div>
                   ))}
-                  <button onClick={startNew} className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm ${n ? 'bg-night-surface hover:bg-night-amber/10' : 'bg-gray-50 hover:bg-gray-100'}`}>
+                  <button onClick={startNew} className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm ${n ? 'bg-night-surface hover:bg-night-amber/10' : 'chat-dialog-accent'}`}>
                     <Plus size={15} /> 新纸条
                   </button>
                 </>
@@ -119,13 +119,13 @@ export function BookmarkDialog({ open, onClose }: Props) {
                       <p className="text-xs opacity-60">常驻</p>
 
                     </div>
-                    <button onClick={() => setEditing({ ...editing, alwaysOn: !editing.alwaysOn })} className={`relative w-10 h-6 rounded-full transition flex-shrink-0 ${editing.alwaysOn ? (n ? 'bg-night-amber' : 'bg-day-pink') : 'bg-gray-300 dark:bg-night-card'}`}>
+                    <button onClick={() => setEditing({ ...editing, alwaysOn: !editing.alwaysOn })} className={`relative w-10 h-6 rounded-full transition flex-shrink-0 ${editing.alwaysOn ? (n ? 'bg-night-amber' : 'bg-[#DBB9B3]') : 'bg-gray-300 dark:bg-night-card'}`}>
                       <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${editing.alwaysOn ? 'translate-x-4' : ''}`} />
                     </button>
                   </div>
                   <div className="flex gap-3 justify-end pt-2">
                     <button onClick={() => setEditing(null)} className="px-4 py-2 text-sm opacity-60 hover:opacity-100">取消</button>
-                    <button onClick={save} className={`px-4 py-2 text-sm font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>保存</button>
+                    <button onClick={save} className={`px-4 py-2 rounded-xl text-sm font-medium ${n ? 'text-night-amber' : 'chat-dialog-accent'}`}>保存</button>
                   </div>
                 </div>
               )}

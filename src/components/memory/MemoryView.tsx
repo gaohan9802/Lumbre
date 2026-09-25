@@ -224,16 +224,18 @@ export function MemoryView() {
   }, [buckets, filter, query])
 
   const c = {
-    accent: isNight ? 'text-night-amber' : 'text-day-pink',
-    accentBg: isNight ? 'bg-night-amber/15' : 'bg-day-pinkLight',
-    card: isNight ? 'bg-night-card' : 'bg-white',
-    surface: isNight ? 'bg-night-surface' : 'bg-gray-50',
+    accent: isNight ? 'text-night-amber' : 'text-[#9c6e69]',
+    accentBg: isNight ? 'bg-night-amber/15' : 'bg-[#DBB9B3]/20',
+    card: isNight ? 'bg-night-card' : 'chat-dialog-card',
+    surface: isNight ? 'bg-night-surface' : 'bg-[#DBB9B3]/10',
     muted: isNight ? 'text-night-muted' : 'text-day-muted',
-    border: isNight ? 'border-night-border' : 'border-day-border',
+    border: isNight ? 'border-night-border' : 'border-[#a73a32]/15',
   }
+  const tabGroup = activeTab === 'admin' ? 'admin' : ['breath', 'network'].includes(activeTab) ? 'observe' : 'memory'
+  const visibleTabs = tabGroup === 'observe' ? TABS.slice(4, 6) : TABS.slice(0, 4)
 
   return (
-    <div className="h-full flex flex-col">
+    <div className={`relative h-full flex flex-col ${isNight ? '' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Stats bar */}
       <div className={`px-4 pt-2 pb-1 text-[10px] ${c.muted} flex gap-3 items-center`}>
         <span>{stats.total} 桶</span><span>📌 {stats.pinned}</span>
@@ -250,15 +252,20 @@ export function MemoryView() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className={`px-4 pb-1 flex items-center gap-0.5 border-b ${c.border} overflow-x-auto`}>
-        {TABS.map(tab => (
+      {/* Tab groups */}
+      <div className={`mx-4 mb-1 grid grid-cols-3 gap-1 rounded-xl p-1 ${c.surface}`}>
+        <button onClick={() => setActiveTab('clusters')} className={`rounded-lg px-3 py-1.5 text-[11px] ${tabGroup === 'memory' ? `${c.accentBg} ${c.accent} font-medium` : c.muted}`}>记忆</button>
+        <button onClick={() => setActiveTab('breath')} className={`rounded-lg px-3 py-1.5 text-[11px] ${tabGroup === 'observe' ? `${c.accentBg} ${c.accent} font-medium` : c.muted}`}>观察</button>
+        <button aria-label="记忆管理" onClick={() => setActiveTab('admin')} className={`grid place-items-center rounded-lg px-3 py-1.5 ${tabGroup === 'admin' ? `${c.accentBg} ${c.accent}` : c.muted}`}><Settings size={13}/></button>
+      </div>
+      {tabGroup !== 'admin' && <div className={`px-4 pb-1 flex items-center gap-0.5 border-b ${c.border} overflow-x-auto`}>
+        {visibleTabs.map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             className={`px-2.5 py-1.5 text-[11px] rounded-lg transition-all flex-shrink-0 ${
               activeTab === tab.key ? `${c.accentBg} ${c.accent} font-medium` : `${c.muted} hover:opacity-70`
             }`}>{tab.label}</button>
         ))}
-      </div>
+      </div>}
 
       {/* Filters + Search (browse tabs only) */}
       {['clusters','nodes','lines','evolution'].includes(activeTab) && (
@@ -871,12 +878,12 @@ function AdminTab({ isNight, onRefresh }: { isNight: boolean; onRefresh: () => v
 // ─── Shared ───────────────────────────────────────────────────
 function useColors(isNight: boolean) {
   return {
-    accent: isNight ? 'text-night-amber' : 'text-day-pink',
-    accentBg: isNight ? 'bg-night-amber/15' : 'bg-day-pinkLight',
-    card: isNight ? 'bg-night-card' : 'bg-white',
-    surface: isNight ? 'bg-night-surface' : 'bg-gray-50',
+    accent: isNight ? 'text-night-amber' : 'text-[#9c6e69]',
+    accentBg: isNight ? 'bg-night-amber/15' : 'bg-[#DBB9B3]/20',
+    card: isNight ? 'bg-night-card' : 'chat-dialog-card',
+    surface: isNight ? 'bg-night-surface' : 'bg-[#DBB9B3]/10',
     muted: isNight ? 'text-night-muted' : 'text-day-muted',
-    border: isNight ? 'border-night-border' : 'border-day-border',
+    border: isNight ? 'border-night-border' : 'border-[#a73a32]/15',
   }
 }
 

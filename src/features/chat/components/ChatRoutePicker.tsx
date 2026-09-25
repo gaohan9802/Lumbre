@@ -24,9 +24,9 @@ export function ChatRouteChip({
       type="button"
       aria-label="选择发送线路与模型"
       onClick={onClick}
-      className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[10px] transition ${isNight ? 'border-night-border/80 bg-night-surface/75 text-night-muted hover:border-night-muted/45' : 'border-[#a73a32]/15 bg-white/35 text-[#a73a32]/60 hover:border-[#a73a32]/30'}`}
+      className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[10px] transition ${isNight ? 'border-night-border/80 bg-night-surface/75 text-night-muted hover:border-night-muted/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/45 text-[#8a625d] hover:border-[#DBB9B3]/70'}`}
     >
-      <span className={`font-semibold tracking-[0.12em] ${isNight ? 'text-night-muted' : 'text-[#a73a32]/65'}`}>{route === 'claude-code' ? 'CC' : 'API'}</span>
+      <span className={`font-semibold tracking-[0.12em] ${isNight ? 'text-night-muted' : 'text-[#8a625d]'}`}>{route === 'claude-code' ? 'CC' : 'API'}</span>
       <ChevronDown size={11} className="flex-shrink-0 opacity-45" />
     </button>
   )
@@ -71,10 +71,10 @@ export function ChatRoutePicker({
           <motion.div
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 280 }}
-            className={`fixed bottom-0 left-0 right-0 z-[61] max-h-[65dvh] rounded-t-2xl shadow-2xl flex flex-col ${isNight ? 'bg-night-card text-night-text' : 'chat-paper text-[#3f2c29]'}`}
+            className={`fixed bottom-0 left-0 right-0 z-[61] max-h-[65dvh] rounded-t-2xl flex flex-col ${isNight ? 'bg-night-card text-night-text shadow-2xl' : 'chat-dialog border-x-0 border-b-0'}`}
             style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
           >
-            <div className="flex justify-center pt-2 pb-1"><div className={`w-10 h-1 rounded-full ${isNight ? 'bg-night-border' : 'bg-[#a73a32]/20'}`} /></div>
+            <div className="flex justify-center pt-2 pb-1"><div className={`w-10 h-1 rounded-full ${isNight ? 'bg-night-border' : 'bg-[#DBB9B3]/70'}`} /></div>
             <div className="px-4 pb-3">
               <div className="text-xs font-medium">发送线路与模型</div>
               <div className="mt-1 flex items-center gap-1.5 text-[10px] opacity-50">
@@ -92,7 +92,7 @@ export function ChatRoutePicker({
                       type="button"
                       disabled={!ccStatus.available}
                       onClick={() => onSelectCc(model.id)}
-                      className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${active ? (isNight ? 'border-night-muted/40 bg-night-muted/15' : 'border-[#DBB9B3]/55 bg-[#DBB9B3]/30') : (isNight ? 'border-night-border hover:bg-night-surface' : 'border-[#a73a32]/15 hover:bg-[#fffaf5]/70')} ${ccStatus.available ? '' : 'cursor-not-allowed opacity-45'}`}
+                      className={`w-full rounded-xl px-3 py-2.5 text-left transition ${active ? (isNight ? 'border border-night-muted/40 bg-night-muted/15' : 'chat-dialog-accent') : (isNight ? 'border border-night-border hover:bg-night-surface' : 'chat-dialog-card hover:bg-[#DBB9B3]/20')} ${ccStatus.available ? '' : 'cursor-not-allowed opacity-45'}`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
@@ -112,7 +112,7 @@ export function ChatRoutePicker({
                 return (
                   <button key={`${profile.id}-${model.id}`}
                     onClick={() => onSelectApiModel(profile.id, model.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl ${active ? (isNight ? 'bg-night-muted/15' : 'bg-[#DBB9B3]/45') : (isNight ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
+                    className={`w-full text-left px-3 py-2.5 rounded-xl ${active ? (isNight ? 'bg-night-muted/15' : 'chat-dialog-accent') : (isNight ? 'hover:bg-night-surface' : 'hover:bg-[#DBB9B3]/20')}`}>
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{profile.name} · {model.name || model.id}</div>
@@ -125,7 +125,7 @@ export function ChatRoutePicker({
               })}
               {!filtered.length && <div className="text-center text-xs opacity-40 py-8">没有可用的 API 模型</div>}
             </div>
-            <div className={`flex gap-1 px-4 py-3 border-t overflow-x-auto pb-[max(0.75rem,env(safe-area-inset-bottom))] ${isNight ? 'border-night-border' : 'border-[#a73a32]/15'}`}>
+            <div className={`flex gap-1 px-4 py-3 border-t overflow-x-auto pb-[max(0.75rem,env(safe-area-inset-bottom))] ${isNight ? 'border-night-border' : 'chat-dialog-line'}`}>
               <button onClick={() => setProviderFilter(null)}
                 className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${!providerFilter ? (isNight ? 'bg-night-muted/20 text-night-muted' : 'bg-[#DBB9B3]/40 text-[#8a625d] font-medium') : 'opacity-60'}`}>全部 API</button>
               {providerNames.map(name => (

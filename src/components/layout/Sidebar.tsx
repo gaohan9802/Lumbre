@@ -7,18 +7,6 @@ import { X } from 'lucide-react'
 import { useApp } from '@/lib/store'
 import { lumbreTogetherDays } from '@/lib/madrid-time'
 
-const entrances = [
-  { id: 'research', label: '星野手记', left: '47%', top: '12%', width: '25%', height: '12%' },
-  { id: 'poems', label: '共诗', left: '18%', top: '19%', width: '29%', height: '10%' },
-  { id: 'timeline', label: 'Timeline', left: '73%', top: '23%', width: '23%', height: '11%' },
-  { id: 'stories', label: '枕边集', left: '2%', top: '29%', width: '27%', height: '11%' },
-  { id: 'diary', label: '日记', left: '79%', top: '36%', width: '21%', height: '12%' },
-  { id: 'photos', label: '照片', left: '2%', top: '58%', width: '23%', height: '13%' },
-  { id: 'notes', label: '小纸条', left: '80%', top: '58%', width: '20%', height: '13%' },
-  { id: 'memory', label: '记忆', left: '67%', top: '70%', width: '23%', height: '13%' },
-  { id: 'dreams', label: '现实与梦境', left: '39%', top: '77%', width: '27%', height: '13%' },
-] as const
-
 export function Sidebar() {
   const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen } = useApp()
   const reduceMotion = useReducedMotion()
@@ -37,7 +25,7 @@ export function Sidebar() {
     }
   }, [sidebarOpen, setSidebarOpen])
 
-  const open = (tab: (typeof entrances)[number]['id'] | 'chat') => {
+  const open = (tab: 'chat') => {
     setActiveTab(tab)
     window.setTimeout(() => setSidebarOpen(false), reduceMotion ? 0 : 100)
   }
@@ -78,19 +66,6 @@ export function Sidebar() {
               whileTap={{ scale: 0.98 }}
               className="absolute left-[19%] top-[35%] z-10 h-[31%] w-[58%] rounded-[42%] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B78337]/55"
             />
-
-            {entrances.map(entrance => (
-              <motion.button
-                key={entrance.id}
-                type="button"
-                onClick={() => open(entrance.id)}
-                aria-label={entrance.label}
-                aria-current={activeTab === entrance.id ? 'page' : undefined}
-                whileTap={{ scale: 0.94 }}
-                className="absolute z-10 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B78337]/55"
-                style={{ left: entrance.left, top: entrance.top, width: entrance.width, height: entrance.height }}
-              />
-            ))}
 
             <p className="absolute inset-x-0 top-[89%] text-center font-serif text-[11px] tracking-[0.24em] text-[#9f302b]/70">
               <span className="mr-2 text-[#d99118]">·</span>在一起 · 第 {togetherDays} 天<span className="ml-2 text-[#718b97]">·</span>

@@ -38,10 +38,10 @@ export function TesisView() {
   const [newTotal, setNewTotal] = useState('')
   const [commentDraft, setCommentDraft] = useState('')
 
-  const accent = night ? 'text-night-amber' : 'text-day-pink'
-  const accentBg = night ? 'bg-night-amber' : 'bg-day-pink'
-  const cardCls = night ? 'bg-night-card border-night-border' : 'bg-white border-day-border'
-  const mutedCls = night ? 'text-night-muted' : 'text-day-muted'
+  const accent = night ? 'text-night-amber' : 'text-[#9c6e69]'
+  const accentBg = night ? 'bg-night-amber' : 'bg-[#DBB9B3]'
+  const cardCls = night ? 'bg-night-card border-night-border' : 'chat-dialog-card'
+  const mutedCls = night ? 'text-night-muted' : 'text-[#8a6f69]'
 
   const load = useCallback(async () => {
     try {
@@ -81,7 +81,7 @@ export function TesisView() {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className={`h-full overflow-y-auto ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
 
         {/* Header — overall progress */}
@@ -93,7 +93,7 @@ export function TesisView() {
           <div className={`mt-1 text-sm ${mutedCls}`}>
             共 {totals.total} 页 · 已完成 {totals.done} 页 · 剩余 {Math.max(0, totals.total - totals.done)} 页
           </div>
-          <div className={`mt-3 h-2.5 rounded-full overflow-hidden ${night ? 'bg-night-surface' : 'bg-day-pinkLight'}`}>
+          <div className={`mt-3 h-2.5 rounded-full overflow-hidden ${night ? 'bg-night-surface' : 'bg-[#DBB9B3]/25'}`}>
             <motion.div
               className={`h-full rounded-full ${accentBg}`}
               initial={{ width: 0 }}
@@ -104,7 +104,7 @@ export function TesisView() {
         </div>
 
         {/* Line chart */}
-        <ProgressChart progress={progress} night={night} accent={night ? '#f4b860' : '#e8879a'} />
+        <ProgressChart progress={progress} night={night} accent={night ? '#f4b860' : '#b78680'} />
 
         {/* Chapters */}
         <div className="space-y-3">
@@ -112,7 +112,7 @@ export function TesisView() {
             <h2 className="text-sm font-medium">章节</h2>
             <button
               onClick={() => setShowAdd(v => !v)}
-              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg ${night ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-day-pinkLight hover:bg-day-pink/15'} ${accent}`}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg ${night ? 'bg-night-surface hover:bg-night-amber/15' : 'chat-dialog-accent'} ${accent}`}
             >
               <Plus size={14} /> 新建章节
             </button>
@@ -131,7 +131,7 @@ export function TesisView() {
                   value={newTitle}
                   onChange={e => setNewTitle(e.target.value)}
                   placeholder="章节标题（如：第一章 引言）"
-                  className={`no-frame w-full text-sm bg-transparent outline-none px-1 py-1 border-b ${night ? 'border-night-border' : 'border-day-border'}`}
+                  className={`no-frame w-full text-sm bg-transparent outline-none px-1 py-1 border-b ${night ? 'border-night-border' : 'chat-dialog-line'}`}
                 />
                 <div className="flex items-center gap-2">
                   <input
@@ -139,11 +139,11 @@ export function TesisView() {
                     value={newTotal}
                     onChange={e => setNewTotal(e.target.value)}
                     placeholder="总页数"
-                    className={`no-frame w-28 text-sm bg-transparent outline-none px-1 py-1 border-b ${night ? 'border-night-border' : 'border-day-border'}`}
+                    className={`no-frame w-28 text-sm bg-transparent outline-none px-1 py-1 border-b ${night ? 'border-night-border' : 'chat-dialog-line'}`}
                   />
                   <div className="flex-1" />
                   <button onClick={() => { setShowAdd(false); setNewTitle(''); setNewTotal('') }} className={`p-1.5 rounded-lg ${mutedCls}`}><X size={16} /></button>
-                  <button onClick={addChapter} className={`p-1.5 rounded-lg ${accentBg} text-white`}><Check size={16} /></button>
+                  <button onClick={addChapter} className={`p-1.5 rounded-lg ${accentBg} ${night ? 'text-night-bg' : 'text-[#654944]'}`}><Check size={16} /></button>
                 </div>
               </motion.div>
             )}
@@ -231,7 +231,7 @@ function ChapterCard({ ch, night, accent, accentBg, cardCls, mutedCls, onPatch, 
         <span className={`text-sm font-semibold ${accent}`}>{pct}%</span>
       </div>
 
-      <div className={`mt-2 h-1.5 rounded-full overflow-hidden ${night ? 'bg-night-surface' : 'bg-day-pinkLight'}`}>
+      <div className={`mt-2 h-1.5 rounded-full overflow-hidden ${night ? 'bg-night-surface' : 'bg-[#DBB9B3]/25'}`}>
         <div className={`h-full rounded-full ${accentBg}`} style={{ width: `${pct}%` }} />
       </div>
 
@@ -239,7 +239,7 @@ function ChapterCard({ ch, night, accent, accentBg, cardCls, mutedCls, onPatch, 
         <div className={`flex items-center gap-1.5 text-sm ${mutedCls}`}>
           <button
             onClick={() => commitCur(Math.max(0, ch.currentPages - 1))}
-            className={`p-1 rounded-md ${night ? 'hover:bg-night-surface' : 'hover:bg-day-pinkLight'}`}
+            className={`p-1 rounded-md ${night ? 'hover:bg-night-surface' : 'hover:bg-[#DBB9B3]/20'}`}
           ><Minus size={13} /></button>
           <input
             type="number" min={0}
@@ -247,11 +247,11 @@ function ChapterCard({ ch, night, accent, accentBg, cardCls, mutedCls, onPatch, 
             onChange={e => setCurDraft(e.target.value)}
             onBlur={() => commitCur(parseInt(curDraft) || 0)}
             onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-            className={`no-frame w-12 text-center bg-transparent outline-none border-b ${night ? 'border-night-border' : 'border-day-border'}`}
+            className={`no-frame w-12 text-center bg-transparent outline-none border-b ${night ? 'border-night-border' : 'chat-dialog-line'}`}
           />
           <button
             onClick={() => commitCur(ch.totalPages > 0 ? Math.min(ch.totalPages, ch.currentPages + 1) : ch.currentPages + 1)}
-            className={`p-1 rounded-md ${night ? 'hover:bg-night-surface' : 'hover:bg-day-pinkLight'}`}
+            className={`p-1 rounded-md ${night ? 'hover:bg-night-surface' : 'hover:bg-[#DBB9B3]/20'}`}
           ><Plus size={13} /></button>
           <span>/</span>
           {editTotal ? (
@@ -261,13 +261,13 @@ function ChapterCard({ ch, night, accent, accentBg, cardCls, mutedCls, onPatch, 
               onChange={e => setTotalDraft(e.target.value)}
               onBlur={() => { onPatch(ch.id, { totalPages: parseInt(totalDraft) || 0 }); setEditTotal(false) }}
               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-              className={`no-frame w-12 text-center bg-transparent outline-none border-b ${night ? 'border-night-border' : 'border-day-border'}`}
+              className={`no-frame w-12 text-center bg-transparent outline-none border-b ${night ? 'border-night-border' : 'chat-dialog-line'}`}
             />
           ) : (
             <button onClick={() => setEditTotal(true)} className="underline decoration-dotted underline-offset-2">{ch.totalPages} 页</button>
           )}
         </div>
-        <button onClick={() => onRemove(ch.id)} className={`p-1.5 rounded-lg ${mutedCls} ${night ? 'hover:bg-night-surface' : 'hover:bg-day-pinkLight'}`}>
+        <button onClick={() => onRemove(ch.id)} className={`p-1.5 rounded-lg ${mutedCls} ${night ? 'hover:bg-night-surface' : 'hover:bg-[#DBB9B3]/20'}`}>
           <Trash2 size={14} />
         </button>
       </div>
@@ -276,8 +276,8 @@ function ChapterCard({ ch, night, accent, accentBg, cardCls, mutedCls, onPatch, 
 }
 
 function ProgressChart({ progress, night, accent }: { progress: ProgressPoint[]; night: boolean; accent: string }) {
-  const cardCls = night ? 'bg-night-card border-night-border' : 'bg-white border-day-border'
-  const mutedCls = night ? 'text-night-muted' : 'text-day-muted'
+  const cardCls = night ? 'bg-night-card border-night-border' : 'chat-dialog-card'
+  const mutedCls = night ? 'text-night-muted' : 'text-[#8a6f69]'
   const grid = night ? '#3a3a3a' : '#f0dfe4'
 
   if (progress.length === 0) {

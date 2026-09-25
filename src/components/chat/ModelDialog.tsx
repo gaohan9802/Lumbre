@@ -57,7 +57,7 @@ export function ModelDialog({ open, onClose }: Props) {
   const [newCachePrice, setNewCachePrice] = useState('')
 
   const inputClass = `w-full text-sm px-3 py-2.5 rounded-lg outline-none border ${
-    isNight ? 'bg-night-surface border-night-border text-night-text placeholder:text-night-muted' : 'bg-white border-gray-200 text-day-text placeholder:text-gray-300'
+    isNight ? 'bg-night-surface border-night-border text-night-text placeholder:text-night-muted' : 'chat-dialog-field placeholder:text-[#9b7a74]'
   }`
   const labelClass = 'text-xs opacity-60 block mb-1.5'
 
@@ -161,7 +161,7 @@ export function ModelDialog({ open, onClose }: Props) {
             initial={{ opacity: 0, scale: 0.96, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 10 }}
-            className={`fixed z-[71] inset-x-0 mx-auto w-[min(560px,calc(100vw-2rem))] max-h-[80dvh] overflow-y-auto rounded-2xl shadow-2xl ${isNight ? 'bg-night-card text-night-text' : 'bg-[#faf9f5] text-day-text'}`}
+            className={`fixed z-[71] inset-x-0 mx-auto w-[min(560px,calc(100vw-2rem))] max-h-[80dvh] overflow-y-auto rounded-2xl ${isNight ? 'bg-night-card text-night-text shadow-2xl' : 'chat-dialog'}`}
             style={{ top: 'max(calc(env(safe-area-inset-top, 0px) + 10dvh), 10dvh)' }}
           >
             <div className="sticky top-0 z-10 px-6 py-4 flex items-center justify-between backdrop-blur-md bg-inherit border-b border-current/10">
@@ -175,7 +175,7 @@ export function ModelDialog({ open, onClose }: Props) {
                 const isActiveProfile = p.id === settings.activeProfileId
                 const expanded = expandedProfile === p.id
                 return (
-                  <div key={p.id} className={`rounded-xl border ${isActiveProfile ? (isNight ? 'border-night-amber' : 'border-day-text') : (isNight ? 'border-night-border' : 'border-gray-200')}`}>
+                  <div key={p.id} className={`rounded-xl border ${isActiveProfile ? (isNight ? 'border-night-amber' : 'border-[#DBB9B3]') : (isNight ? 'border-night-border' : 'chat-dialog-line')}`}>
                     <div className="px-4 py-3 flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setExpandedProfile(expanded ? null : p.id)}>
                         <div className="text-sm font-medium truncate">
@@ -185,7 +185,7 @@ export function ModelDialog({ open, onClose }: Props) {
                       </div>
                       <button
                         onClick={() => void removeProfile(p.id)}
-                        className={`text-xs px-3 py-1.5 rounded-lg border flex-shrink-0 ${isNight ? 'border-night-border hover:bg-night-surface' : 'border-gray-300 hover:bg-gray-100'}`}
+                        className={`text-xs px-3 py-1.5 rounded-lg border flex-shrink-0 ${isNight ? 'border-night-border hover:bg-night-surface' : 'chat-dialog-line hover:bg-[#DBB9B3]/20'}`}
                       >删除</button>
                     </div>
 
@@ -195,10 +195,10 @@ export function ModelDialog({ open, onClose }: Props) {
                         const active = isActiveProfile && settings.model === m.id
                         const priceKey = `${p.id}:${m.id}`
                         return (
-                          <div key={m.id} className={`rounded-lg px-2.5 py-2 ${active ? (isNight ? 'bg-night-amber/15' : 'bg-day-pinkLight/60') : (isNight ? 'bg-night-surface/60' : 'bg-white')}`}>
+                          <div key={m.id} className={`rounded-lg px-2.5 py-2 ${active ? (isNight ? 'bg-night-amber/15' : 'chat-dialog-accent') : (isNight ? 'bg-night-surface/60' : 'chat-dialog-card')}`}>
                             <div className="flex items-center gap-2">
                               {expanded && (
-                                <button onClick={() => toggleModelEnabled(p.id, m.id)} className={`p-1 rounded flex-shrink-0 ${m.enabled ? (isNight ? 'text-night-amber' : 'text-day-pink') : 'opacity-30'}`} title={m.enabled ? '已启用' : '已停用'}>
+                                <button onClick={() => toggleModelEnabled(p.id, m.id)} className={`p-1 rounded flex-shrink-0 ${m.enabled ? (isNight ? 'text-night-amber' : 'text-[#9c6e69]') : 'opacity-30'}`} title={m.enabled ? '已启用' : '已停用'}>
                                   <Power size={13} />
                                 </button>
                               )}
@@ -206,7 +206,7 @@ export function ModelDialog({ open, onClose }: Props) {
                                 <div className="text-xs font-medium truncate">{m.name || m.id}</div>
                                 <div className="text-[10px] opacity-40 truncate">{m.id}</div>
                               </button>
-                              {active && <Check size={15} className={`flex-shrink-0 ${isNight ? 'text-night-amber' : 'text-day-pink'}`} />}
+                              {active && <Check size={15} className={`flex-shrink-0 ${isNight ? 'text-night-amber' : 'text-[#9c6e69]'}`} />}
                               {expanded && (
                                 <button
                                   disabled={p.models.length <= 1}
@@ -231,7 +231,7 @@ export function ModelDialog({ open, onClose }: Props) {
                                       type="number" step="any" min="0"
                                       defaultValue={m[k] ?? ''}
                                       onBlur={(e) => updateModelMeta(p.id, m.id, { [k]: numOrUndef(e.target.value) })}
-                                      className={`w-full text-xs px-2 py-1.5 rounded-lg outline-none border ${isNight ? 'bg-night-surface border-night-border' : 'bg-white border-gray-200'}`}
+                                      className={`w-full text-xs px-2 py-1.5 rounded-lg outline-none border ${isNight ? 'bg-night-surface border-night-border' : 'chat-dialog-field'}`}
                                       placeholder="$"
                                     />
                                   </div>
@@ -248,18 +248,18 @@ export function ModelDialog({ open, onClose }: Props) {
                         <div className="flex gap-2 mb-2">
                           <button
                             onClick={() => setAllModelsEnabled(p.id, true)}
-                            className={`px-3 py-1.5 rounded-lg text-xs ${isNight ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-gray-100 hover:bg-gray-200'}`}
+                            className={`px-3 py-1.5 rounded-lg text-xs ${isNight ? 'bg-night-surface hover:bg-night-amber/15' : 'chat-dialog-card hover:bg-[#DBB9B3]/30'}`}
                           >一键全选</button>
                           <button
                             onClick={() => setAllModelsEnabled(p.id, false)}
-                            className={`px-3 py-1.5 rounded-lg text-xs ${isNight ? 'bg-night-surface hover:bg-night-amber/15' : 'bg-gray-100 hover:bg-gray-200'}`}
+                            className={`px-3 py-1.5 rounded-lg text-xs ${isNight ? 'bg-night-surface hover:bg-night-amber/15' : 'chat-dialog-card hover:bg-[#DBB9B3]/30'}`}
                           >一键反选</button>
                         </div>
                         <div className="grid grid-cols-1 gap-2">
                           <input className={inputClass} value={p.name} placeholder="名称" onChange={(e) => updateApiProfile(p.id, { name: e.target.value })} />
                           <input className={inputClass} value={credentialDrafts[p.id]?.baseUrl || ''} placeholder={p.upstreamOrigin ? `新 Base URL（当前 ${p.upstreamOrigin}）` : 'Base URL'} onChange={(e) => setCredentialDrafts(prev => ({ ...prev, [p.id]: { baseUrl: e.target.value, apiKey: prev[p.id]?.apiKey || '' } }))} />
                           <input className={`${inputClass} font-mono`} type="password" value={credentialDrafts[p.id]?.apiKey || ''} placeholder={p.credentialConfigured ? '输入新 API Key 以替换服务器凭据' : 'API Key'} onChange={(e) => setCredentialDrafts(prev => ({ ...prev, [p.id]: { baseUrl: prev[p.id]?.baseUrl || '', apiKey: e.target.value } }))} />
-                          <button disabled={fetchingId === p.id} onClick={() => void saveCredential(p.id)} className={`px-3 py-2 rounded-lg text-xs ${isNight ? 'bg-night-surface' : 'bg-gray-100'} disabled:opacity-50`}>保存凭据到服务器</button>
+                          <button disabled={fetchingId === p.id} onClick={() => void saveCredential(p.id)} className={`px-3 py-2 rounded-lg text-xs ${isNight ? 'bg-night-surface' : 'chat-dialog-accent'} disabled:opacity-50`}>保存凭据到服务器</button>
                         </div>
                         <div className="flex gap-2">
                           <input
@@ -269,8 +269,8 @@ export function ModelDialog({ open, onClose }: Props) {
                             onChange={(e) => setManualModel(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter' && manualModel.trim()) { addManualModel(p.id, manualModel); setManualModel('') } }}
                           />
-                          <button onClick={() => { if (manualModel.trim()) { addManualModel(p.id, manualModel); setManualModel('') } }} className={`px-3 rounded-lg text-xs flex-shrink-0 ${isNight ? 'bg-night-surface' : 'bg-gray-100'}`}>添加</button>
-                          <button disabled={fetchingId === p.id} onClick={() => fetchModels(p.id)} className={`px-3 rounded-lg text-xs flex items-center gap-1 flex-shrink-0 ${isNight ? 'bg-night-surface' : 'bg-gray-100'} disabled:opacity-50`}>
+                          <button onClick={() => { if (manualModel.trim()) { addManualModel(p.id, manualModel); setManualModel('') } }} className={`px-3 rounded-lg text-xs flex-shrink-0 ${isNight ? 'bg-night-surface' : 'chat-dialog-card'}`}>添加</button>
+                          <button disabled={fetchingId === p.id} onClick={() => fetchModels(p.id)} className={`px-3 rounded-lg text-xs flex items-center gap-1 flex-shrink-0 ${isNight ? 'bg-night-surface' : 'chat-dialog-card'} disabled:opacity-50`}>
                             <Download size={11} /> {fetchingId === p.id ? '拉取中' : '拉取'}
                           </button>
                         </div>
@@ -331,7 +331,7 @@ export function ModelDialog({ open, onClose }: Props) {
                       </div>
                     </div>
                     <div className="flex gap-2 pb-2">
-                      <button disabled={fetchingId !== null || !newApiKey.trim()} onClick={() => void createApi()} className={`px-4 py-2.5 rounded-lg text-sm ${isNight ? 'bg-night-amber text-night-bg' : 'bg-day-text text-white'} disabled:opacity-50`}>保存</button>
+                      <button disabled={fetchingId !== null || !newApiKey.trim()} onClick={() => void createApi()} className={`px-4 py-2.5 rounded-lg text-sm ${isNight ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent'} disabled:opacity-50`}>保存</button>
                       <button onClick={() => setAddOpen(false)} className="px-4 py-2.5 rounded-lg text-sm opacity-60 hover:opacity-100">取消</button>
                     </div>
                   </div>

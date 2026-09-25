@@ -15,7 +15,7 @@ import {
 } from '@/lib/chatStore'
 import { photos as photosApi } from '@/lib/api'
 import type { SharedCard } from '@/lib/share'
-import { ChatSettings } from './ChatSettings'
+import { ChatSettings, type ChatSettingsPanel } from './ChatSettings'
 import { applyBubbleLayout, composeBubbleLayout } from '@/lib/chat-bubble-composer'
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
@@ -39,6 +39,22 @@ import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 import { IntimacyWheelModal } from './IntimacyWheelModal'
 import { TodoView } from '@/components/todo/TodoView'
+import dynamic from 'next/dynamic'
+
+const TimelineView = dynamic(() => import('@/components/timeline/TimelineView').then(module => module.TimelineView), { ssr: false })
+const TesisView = dynamic(() => import('@/components/tesis/TesisView').then(module => module.TesisView), { ssr: false })
+const NotesView = dynamic(() => import('@/components/notes/NotesView').then(module => module.NotesView), { ssr: false })
+const DiaryView = dynamic(() => import('@/components/diary/DiaryView').then(module => module.DiaryView), { ssr: false })
+const PhotosView = dynamic(() => import('@/components/photos/PhotosView').then(module => module.PhotosView), { ssr: false })
+const PoemsView = dynamic(() => import('@/components/poems/PoemsView').then(module => module.PoemsView), { ssr: false })
+const StoriesView = dynamic(() => import('@/components/stories/StoriesView').then(module => module.StoriesView), { ssr: false })
+const ResearchView = dynamic(() => import('@/components/research/ResearchView').then(module => module.ResearchView), { ssr: false })
+const DreamsView = dynamic(() => import('@/components/dreams/DreamsView').then(module => module.DreamsView), { ssr: false })
+const WishlistView = dynamic(() => import('@/components/wishlist/WishlistView').then(module => module.WishlistView), { ssr: false })
+const MemoryView = dynamic(() => import('@/components/memory/MemoryView').then(module => module.MemoryView), { ssr: false })
+
+type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'wake' | 'memory' | 'wishlist' | 'timeline' | 'tesis'
+const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', wake: '心跳唤醒', memory: '记忆庭院', wishlist: '愿望清单', timeline: 'Timeline', tesis: 'Tesis' }
 
 /* ── helpers ────────────────────────────── */
 
@@ -150,6 +166,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const n = theme === 'night'
   const [wheelOpen, setWheelOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
+  const [roomPanel, setRoomPanel] = useState<RoomPanel | null>(null)
+  const [chatSettingsPanel, setChatSettingsPanel] = useState<ChatSettingsPanel>('menu')
   const [ccRefreshing, setCcRefreshing] = useState(false)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number }[]>([])
@@ -258,7 +276,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     }
     const onShare = (e: Event) => {
       const detail = (e as CustomEvent<SharedCard | string>).detail
-      if (detail) accept(detail)
+      if (detail) { accept(detail); setRoomPanel(null) }
     }
     try {
       const raw = sessionStorage.getItem('lumbre-pending-share')
@@ -1041,6 +1059,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   const startRename = (id: string, title: string) => { setEditingSessionId(id); setEditingTitle(title) }
   const finishRename = () => { if (editingSessionId) renameSession(editingSessionId, editingTitle); setEditingSessionId(null); setEditingTitle('') }
+  const openChatSettings = (panel: ChatSettingsPanel) => { setChatSettingsPanel(panel); setSettingsOpen(true); setSessionDrawerOpen(false) }
 
   /* ── sidebar ──────────────────────────── */
 
@@ -1100,7 +1119,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )
         })}
       </div>
-      <div className={`relative z-10 shrink-0 px-3 pt-3 pb-[max(4.5rem,env(safe-area-inset-bottom))] space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
+      <div className={`relative z-10 shrink-0 px-3 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
         <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CLAUDE 额度 · 订阅</span>
@@ -1168,6 +1187,15 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             </>
           )}
         </section>
+        <div className="grid grid-cols-5 gap-1 pt-1">
+          <button type="button" onClick={() => openChatSettings('star')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>SP</button>
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>摘要</button>
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>书签</button>
+          <button type="button" onClick={() => openChatSettings('models')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
+          <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
+        </div>
+        <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`mt-1 w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>💓 心跳唤醒</button>
+        <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>🧠 记忆庭院</button>
       </div>
     </div>
   )
@@ -1193,7 +1221,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               whileTap={{ scale: 0.82, rotate: 12 }}
               className="justify-self-center p-2 text-[25px] leading-none"
             >🐆</motion.button>
-            <button aria-label="打开聊天菜单" onClick={() => setSettingsOpen(true)} className="justify-self-end p-2">
+            <button aria-label="打开房间" onClick={() => openChatSettings('menu')} className="justify-self-end p-2">
               <Moon size={21} strokeWidth={1.45}/>
             </button>
           </div>}
@@ -1603,18 +1631,33 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             )}
           </AnimatePresence>
 
+          <AnimatePresence>
+            {roomPanel && (
+              <>
+                <motion.button type="button" aria-label={`关闭 ${roomLabels[roomPanel]}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setRoomPanel(null)} className="fixed inset-0 z-[74] bg-black/35 backdrop-blur-[2px]" />
+                <motion.section role="dialog" aria-modal="true" aria-label={roomLabels[roomPanel]} initial={{ opacity: 0, scale: .97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .97, y: 8 }} className={`fixed inset-x-3 bottom-3 top-[max(.75rem,env(safe-area-inset-top))] z-[75] mx-auto flex max-w-6xl flex-col overflow-hidden rounded-[28px] ${n ? 'border border-night-border bg-night-surface text-night-text shadow-2xl' : 'chat-dialog'}`}>
+                  <header className={`flex items-center justify-between border-b px-5 py-3 ${n ? 'border-night-border' : 'chat-dialog-line'}`}>
+                    <h2 className="font-serif text-lg">{roomLabels[roomPanel]}</h2>
+                    <button type="button" aria-label="关闭" onClick={() => setRoomPanel(null)} className="rounded-full p-2 opacity-55 hover:opacity-100"><X size={18}/></button>
+                  </header>
+                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
+                </motion.section>
+              </>
+            )}
+          </AnimatePresence>
+
           {/* confirm dialog */}
           <AnimatePresence>
             {confirmState && (
               <>
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" onClick={() => answer(false)} />
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-                  className={`fixed z-[71] inset-x-0 mx-auto w-[min(340px,calc(100vw-3rem))] rounded-2xl shadow-2xl p-6 ${n ? 'bg-night-card text-night-text' : 'bg-white text-day-text'}`}
+                  className={`fixed z-[71] inset-x-0 mx-auto w-[min(340px,calc(100vw-3rem))] rounded-2xl p-6 ${n ? 'bg-night-card text-night-text shadow-2xl' : 'chat-dialog'}`}
                   style={{ top: 'max(env(safe-area-inset-top, 0px) + 30dvh, 30dvh)', transform: 'translateY(-50%)' }}>
                   <p className="text-sm mb-6">{confirmState.msg}</p>
                   <div className="flex justify-end gap-3">
                     <button onClick={() => answer(false)} className="px-4 py-2 text-sm opacity-60 hover:opacity-100">取消</button>
-                    <button onClick={() => answer(true)} className={`px-4 py-2 text-sm font-medium rounded-lg ${n ? 'bg-night-muted text-night-bg' : 'bg-day-pink text-white'}`}>确认</button>
+                    <button onClick={() => answer(true)} className={`px-4 py-2 text-sm font-medium rounded-lg ${n ? 'bg-night-muted text-night-bg' : 'chat-dialog-accent'}`}>确认</button>
                   </div>
                 </motion.div>
               </>
@@ -1622,7 +1665,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings onSummary={() => setSummaryDialogOpen(true)} onBookmarks={() => setBookmarkDialogOpen(true)} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onModelPicker={() => setModelPickerOpen(true)} onModelManager={() => setModelDialogOpen(true)} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onWishlist={() => setRoomPanel('wishlist')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} onModelPicker={() => setModelPickerOpen(true)} onModelManager={() => setModelDialogOpen(true)} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />

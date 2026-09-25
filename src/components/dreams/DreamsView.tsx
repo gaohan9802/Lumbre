@@ -85,7 +85,7 @@ const fmtRelative = (ts: number) => {
   return `${Math.floor(diff / 86400000)} 天前`
 }
 
-export function DreamsView() {
+export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {}) {
   const { theme } = useTheme()
   const n = theme === 'night'
   const { settings } = useChatStore()
@@ -102,6 +102,7 @@ export function DreamsView() {
   const [promptSaving, setPromptSaving] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushStatus, setPushStatus] = useState('')
+  const activeTab = fixedTab || tab
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -225,15 +226,15 @@ export function DreamsView() {
   }
 
   return (
-    <div className={`h-full flex flex-col ${n ? 'text-night-text' : 'text-day-text'}`}>
+    <div className={`h-full flex flex-col ${n ? 'text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Tab header */}
-      <div className={`flex items-center gap-1 px-4 py-3 border-b ${n ? 'border-night-border' : 'border-day-border'}`}
+      {!fixedTab && <div className={`flex items-center gap-1 px-4 py-3 border-b ${n ? 'border-night-border' : 'chat-dialog-line'}`}
         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <button
           onClick={() => setTab('reality')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm transition ${
             tab === 'reality'
-              ? n ? 'bg-night-amber/15 text-night-amber' : 'bg-day-pinkLight text-day-pink'
+              ? n ? 'bg-night-amber/15 text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'
               : 'opacity-50 hover:opacity-80'
           }`}
         >
@@ -243,38 +244,41 @@ export function DreamsView() {
           onClick={() => setTab('dreams')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm transition ${
             tab === 'dreams'
-              ? n ? 'bg-night-amber/15 text-night-amber' : 'bg-day-pinkLight text-day-pink'
+              ? n ? 'bg-night-amber/15 text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'
               : 'opacity-50 hover:opacity-80'
           }`}
         >
           <Moon size={14} /> 梦境
         </button>
         <div className="flex-1" />
-        {tab === 'reality' && (
+        {activeTab === 'reality' && (
           <button onClick={fetchData} className={`p-2 rounded-xl opacity-50 hover:opacity-100 ${loading ? 'animate-spin' : ''}`}>
             <RefreshCw size={14} />
           </button>
         )}
-      </div>
+      </div>}
 
       <div className="flex-1 overflow-y-auto">
-        {tab === 'reality' ? (
+        {activeTab === 'reality' ? (
           <div className="p-4 space-y-4 pb-[env(safe-area-inset-bottom)]">
-            <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
-              <div>
-                <h3 className="text-sm font-medium">💓 星星的唤醒</h3>
-                <p className={`text-[10px] mt-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>四种唤醒各自工作，撞在一起时只醒一次。</p>
+            <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium">💓 星星的唤醒</h3>
+                  <p className={`text-[10px] mt-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>四种唤醒各自工作，撞在一起时只醒一次。</p>
+                </div>
+                {fixedTab && <button type="button" aria-label="刷新唤醒信息" onClick={fetchData} className={`rounded-lg p-2 opacity-50 hover:opacity-100 ${loading ? 'animate-spin' : ''}`}><RefreshCw size={14}/></button>}
               </div>
               <div className="space-y-1.5">
                 <label className={`text-[11px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>主对话框</label>
-                <select value={config?.sessionId || ''} onChange={(e) => setSession(e.target.value)} className={`w-full text-sm px-3 py-2 rounded-xl outline-none ${n ? 'bg-night-surface border-night-border text-night-text' : 'bg-gray-50 text-day-text'}`}>
+                <select value={config?.sessionId || ''} onChange={(e) => setSession(e.target.value)} className={`w-full text-sm px-3 py-2 rounded-xl outline-none ${n ? 'bg-night-surface border-night-border text-night-text' : 'chat-dialog-field'}`}>
                   <option value="">未选择</option>
                   {sessions.map(s => <option key={s.id} value={s.id}>{s.title} ({s.messages.length}条)</option>)}
                 </select>
               </div>
               {config && (
                 <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                  {nextWake?.overall && <p className={n ? 'text-night-amber' : 'text-day-pink'}>最近一次预计唤醒：{fmtTime(nextWake.overall)}</p>}
+                  {nextWake?.overall && <p className={n ? 'text-night-amber' : 'text-[#9c6e69]'}>最近一次预计唤醒：{fmtTime(nextWake.overall)}</p>}
                   {nextWake?.alarm && <p>⏰ wake me：{fmtTime(nextWake.alarm.at)}{nextWake.alarm.note ? ` · ${nextWake.alarm.note}` : ''}</p>}
                   {config.lastWakeAt > 0 && <p>上次醒来：{fmtRelative(config.lastWakeAt)}</p>}
                   <p>wake me 不受 30 分钟规则影响；如果届时正在调用，该闹钟直接取消。</p>
@@ -290,58 +294,58 @@ export function DreamsView() {
                 { key: 'inactivity' as const, title: '🍂 久未说话', note: '一段沉默期只醒一次，有话才出现', value: config.inactivity.afterHours, label: '超过', suffix: '小时', options: [1, 2, 3, 4, 6, 8, 12, 24, 48, 72], next: nextWake?.inactivity },
               ]).map(item => {
                 const setting = config[item.key]
-                return <div key={item.key} className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
+                return <div key={item.key} className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div><h3 className="text-sm font-medium">{item.title}</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>{item.note}</p></div>
-                    <button aria-label={`${item.title}${setting.enabled ? '关闭' : '开启'}`} onClick={() => updateRule(item.key, { enabled: !setting.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${setting.enabled ? n ? 'bg-night-amber' : 'bg-day-pink' : n ? 'bg-night-surface' : 'bg-gray-200'}`}>
+                    <button aria-label={`${item.title}${setting.enabled ? '关闭' : '开启'}`} onClick={() => updateRule(item.key, { enabled: !setting.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${setting.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20'}`}>
                       <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${setting.enabled ? 'translate-x-5' : ''}`} />
                     </button>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
                     <span className={n ? 'text-night-muted' : 'text-day-muted'}>{item.label}</span>
-                    <select value={item.value} disabled={!setting.enabled} onChange={event => updateRule(item.key, item.key === 'random' ? { timesPerDay: Number(event.target.value) } : item.key === 'inactivity' ? { afterHours: Number(event.target.value) } : { intervalHours: Number(event.target.value) })} className={`px-2.5 py-1.5 rounded-lg outline-none disabled:opacity-40 ${n ? 'bg-night-surface text-night-text' : 'bg-gray-50 text-day-text'}`}>
+                    <select value={item.value} disabled={!setting.enabled} onChange={event => updateRule(item.key, item.key === 'random' ? { timesPerDay: Number(event.target.value) } : item.key === 'inactivity' ? { afterHours: Number(event.target.value) } : { intervalHours: Number(event.target.value) })} className={`px-2.5 py-1.5 rounded-lg outline-none disabled:opacity-40 ${n ? 'bg-night-surface text-night-text' : 'chat-dialog-field'}`}>
                       {item.options.map(value => <option key={value} value={value}>{value}</option>)}
                     </select>
                     <span className={n ? 'text-night-muted' : 'text-day-muted'}>{item.suffix}</span>
                   </div>
-                  {setting.enabled && <p className={`text-[10px] ${n ? 'text-night-amber' : 'text-day-pink'}`}>下一次：{item.next ? fmtTime(item.next) : '等待条件成立'}</p>}
+                  {setting.enabled && <p className={`text-[10px] ${n ? 'text-night-amber' : 'text-[#9c6e69]'}`}>下一次：{item.next ? fmtTime(item.next) : '等待条件成立'}</p>}
                 </div>
               })}
             </div>}
 
-            {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
+            {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
               <div className="flex items-start justify-between gap-3">
                 <div><h3 className="text-sm font-medium">🔥 CC 缓存保温</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>约 50 分钟时 fork 一条临时会话，回复不进聊天，不开工具。</p></div>
-                <button aria-label={`CC 缓存保温${config.warmCache.enabled ? '关闭' : '开启'}`} onClick={() => updateRule('warmCache', { enabled: !config.warmCache.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${config.warmCache.enabled ? n ? 'bg-night-amber' : 'bg-day-pink' : n ? 'bg-night-surface' : 'bg-gray-200'}`}>
+                <button aria-label={`CC 缓存保温${config.warmCache.enabled ? '关闭' : '开启'}`} onClick={() => updateRule('warmCache', { enabled: !config.warmCache.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${config.warmCache.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20'}`}>
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${config.warmCache.enabled ? 'translate-x-5' : ''}`} />
                 </button>
               </div>
               {config.warmCache.enabled && <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                <p className={n ? 'text-night-amber' : 'text-day-pink'}>状态：{{ idle: '等待下一次 CC 活动', warmed: '保温成功', busy: '星星正在回复，稍后再试', cold: '缓存已冷却，等下一条真实 CC 消息', miss: '本次没有命中缓存', failed: '保温失败', 'no-session': '这条对话还没有 CC session' }[config.warmCache.status]}</p>
+                <p className={n ? 'text-night-amber' : 'text-[#9c6e69]'}>状态：{{ idle: '等待下一次 CC 活动', warmed: '保温成功', busy: '星星正在回复，稍后再试', cold: '缓存已冷却，等下一条真实 CC 消息', miss: '本次没有命中缓存', failed: '保温失败', 'no-session': '这条对话还没有 CC session' }[config.warmCache.status]}</p>
                 {nextWake?.warmCache && <p>预计下次保温：{fmtTime(nextWake.warmCache)}</p>}
                 {config.warmCache.lastAttemptAt > 0 && <p>上次尝试：{fmtRelative(config.warmCache.lastAttemptAt)} · 读缓存 {Math.round((config.warmCache.cacheReadTokens || 0) / 100) / 10}K · 写缓存 {Math.round((config.warmCache.cacheCreationTokens || 0) / 100) / 10}K</p>}
                 {config.warmCache.error && <p className={n ? 'text-night-error' : 'text-red-600'}>{config.warmCache.error}</p>}
               </div>}
             </div>}
 
-            <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
+            <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-medium flex items-center gap-1.5">{config?.pushEnabled ? <Bell size={14} /> : <BellOff size={14} />} 主屏幕推送</h3>
                   <p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>iOS 需先把 Lumbre 添加到主屏幕，再从 PWA 内开启。星星醒来后可自己决定是否推送一到多条短句。</p>
                 </div>
-                <button disabled={pushBusy} onClick={config?.pushEnabled ? disablePush : enablePush} className={`px-3 py-2 rounded-xl text-xs flex-shrink-0 ${config?.pushEnabled ? (n ? 'bg-night-surface' : 'bg-gray-100') : (n ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white')}`}>
+                <button disabled={pushBusy} onClick={config?.pushEnabled ? disablePush : enablePush} className={`px-3 py-2 rounded-xl text-xs flex-shrink-0 ${config?.pushEnabled ? (n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20') : (n ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent')}`}>
                   {config?.pushEnabled ? '关闭' : '开启'}
                 </button>
               </div>
               <div className="flex items-center gap-2">
-                {config?.pushEnabled && <button disabled={pushBusy} onClick={testPush} className={`text-[11px] px-2.5 py-1.5 rounded-lg ${n ? 'bg-night-surface text-night-amber' : 'bg-gray-50 text-day-pink'}`}>发送测试</button>}
+                {config?.pushEnabled && <button disabled={pushBusy} onClick={testPush} className={`text-[11px] px-2.5 py-1.5 rounded-lg ${n ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/15 text-[#9c6e69]'}`}>发送测试</button>}
                 {pushStatus && <span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>{pushStatus}</span>}
               </div>
             </div>
 
             {/* Editable wake prompt */}
-            <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
+            <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-medium">📝 唤醒文案</h3>
@@ -353,7 +357,7 @@ export function DreamsView() {
                   <button
                     onClick={resetPrompt}
                     title="恢复默认"
-                    className={`p-1.5 rounded-lg opacity-40 hover:opacity-100 ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-100'}`}
+                    className={`p-1.5 rounded-lg opacity-40 hover:opacity-100 ${n ? 'hover:bg-night-surface' : 'hover:bg-[#DBB9B3]/15'}`}
                   >
                     <RotateCcw size={13} />
                   </button>
@@ -363,7 +367,7 @@ export function DreamsView() {
                     title="保存"
                     className={`p-1.5 rounded-lg transition ${
                       promptDirty
-                        ? n ? 'bg-night-amber text-night-bg' : 'bg-day-pink text-white'
+                        ? n ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent'
                         : 'opacity-20 cursor-not-allowed'
                     }`}
                   >
@@ -376,11 +380,11 @@ export function DreamsView() {
                 onChange={(e) => { setPromptText(e.target.value); setPromptDirty(true) }}
                 rows={10}
                 className={`w-full text-xs leading-relaxed p-3 rounded-xl outline-none resize-y font-mono ${
-                  n ? 'bg-night-surface text-night-text placeholder:text-night-muted' : 'bg-gray-50 text-day-text placeholder:text-day-muted'
+                  n ? 'bg-night-surface text-night-text placeholder:text-night-muted' : 'chat-dialog-field placeholder:text-day-muted'
                 }`}
               />
               {promptDirty && (
-                <p className={`text-[10px] ${n ? 'text-night-amber' : 'text-day-pink'}`}>
+                <p className={`text-[10px] ${n ? 'text-night-amber' : 'text-[#9c6e69]'}`}>
                   ● 有未保存的修改
                 </p>
               )}
@@ -397,7 +401,7 @@ export function DreamsView() {
               {logs.map((log) => {
                 const expanded = expandedLog === log.id
                 return (
-                  <div key={log.id} className={`rounded-xl overflow-hidden ${n ? 'bg-night-card' : 'bg-white shadow-sm'}`}>
+                  <div key={log.id} className={`rounded-xl overflow-hidden ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
                     <button
                       onClick={() => setExpandedLog(expanded ? null : log.id)}
                       className="w-full text-left px-4 py-3 flex items-center gap-3"
@@ -425,7 +429,7 @@ export function DreamsView() {
                           initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
                           className="overflow-hidden"
                         >
-                          <div className={`px-4 pb-4 space-y-3 border-t ${n ? 'border-night-border' : 'border-gray-100'}`}>
+                          <div className={`px-4 pb-4 space-y-3 border-t ${n ? 'border-night-border' : 'chat-dialog-line'}`}>
                             <div className="pt-3">
                               <span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>触发原因</span>
                               <p className="text-xs mt-0.5">{log.reason}</p>
@@ -443,9 +447,9 @@ export function DreamsView() {
                                 <span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>行动轨迹</span>
                                 <div className="mt-1 space-y-1.5">
                                   {log.actions.map((action, i) => (
-                                    <div key={i} className={`text-xs p-2 rounded-lg ${n ? 'bg-night-surface' : 'bg-gray-50'}`}>
+                                    <div key={i} className={`text-xs p-2 rounded-lg ${n ? 'bg-night-surface' : 'bg-[#DBB9B3]/10'}`}>
                                       <div className="flex items-center gap-1.5">
-                                        <span className={`font-medium ${n ? 'text-night-amber' : 'text-day-pink'}`}>
+                                        <span className={`font-medium ${n ? 'text-night-amber' : 'text-[#9c6e69]'}`}>
                                           🔧 {action.name || action.type}
                                         </span>
                                         <span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>

@@ -78,6 +78,39 @@
       repeating-linear-gradient(8deg, rgba(92, 65, 54, 0.012) 0 1px, transparent 1px 7px);
   }
 
+  .chat-dialog {
+    background-color: #f8f6f1;
+    color: #3f2c29;
+    font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+    background-image:
+      radial-gradient(circle at 18% 12%, rgba(167, 58, 50, 0.025), transparent 24%),
+      radial-gradient(circle at 82% 68%, rgba(219, 185, 179, 0.055), transparent 28%),
+      repeating-linear-gradient(8deg, rgba(92, 65, 54, 0.012) 0 1px, transparent 1px 7px);
+    border: 1px solid rgba(167, 58, 50, 0.18);
+    box-shadow: 0 18px 50px rgba(49, 29, 23, 0.16);
+  }
+
+  .chat-dialog-card {
+    background: rgba(255, 250, 245, 0.62);
+    border: 1px solid rgba(167, 58, 50, 0.14);
+  }
+
+  .chat-dialog-field {
+    background: rgba(255, 250, 245, 0.72);
+    border: 1px solid rgba(167, 58, 50, 0.18);
+    color: #3f2c29;
+  }
+
+  .chat-dialog-accent {
+    background: rgba(219, 185, 179, 0.58);
+    border-color: rgba(167, 58, 50, 0.18);
+    color: #654944;
+  }
+
+  .chat-dialog-line {
+    border-color: rgba(167, 58, 50, 0.16);
+  }
+
   .chat-footer {
     padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
   }
