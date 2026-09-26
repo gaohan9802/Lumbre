@@ -20,7 +20,7 @@ import { resolveClaudeBinary } from '../../services/cc-gateway/claude-binary.mjs
 
 test('probe pins the reviewed stable CLI and disables every built-in tool', () => {
   assert.equal(PINNED_CLAUDE_CODE_VERSION, '2.1.280')
-  const args = buildClaudeArgs({ outputFormat: 'stream-json', systemPrompt: 'You are Star.' })
+  const args = buildClaudeArgs({ outputFormat: 'stream-json', systemPrompt: 'You are Star.', effort: 'max' })
   assert.deepEqual(args.slice(0, 3), ['-p', '--tools', ''])
   assert.equal(args.includes('--bare'), false)
   assert.equal(args.includes('--safe-mode'), false)
@@ -31,8 +31,10 @@ test('probe pins the reviewed stable CLI and disables every built-in tool', () =
   assert.equal(args.includes('--verbose'), true)
   assert.equal(args.includes('--include-partial-messages'), true)
   assert.equal(args[args.indexOf('--thinking-display') + 1], 'summarized')
+  assert.equal(args[args.indexOf('--effort') + 1], 'max')
   assert.equal(args.some(arg => arg.includes('dangerously-skip-permissions')), false)
   assert.throws(() => buildClaudeArgs({ systemPrompt: '' }), /System prompt/)
+  assert.throws(() => buildClaudeArgs({ effort: 'impossible' as any }), /effort level/)
 })
 
 test('gateway installs and reuses the pinned CLI when the image binary is stale', () => {

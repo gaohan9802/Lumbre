@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { addToolResultsToAudit, type MessageRequestAudit } from '@/lib/chat-receipt'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { loadSyncSessions } from '@/server/chat-sync'
-import { isCcModel } from '@/lib/cc-model'
+import { isCcEffort, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
 
 type FetchLike = typeof fetch
 
@@ -122,7 +122,7 @@ function canonicalContextMessages(body: any, sessionId: string, turnId: string) 
   })
 }
 
-async function submitAttempt(config: CcGatewayConfig, body: any, system: string, volatileContext: string, model: string, fetchImpl: FetchLike) {
+async function submitAttempt(config: CcGatewayConfig, body: any, system: string, volatileContext: string, model: string, effort: string | undefined, fetchImpl: FetchLike) {
   const { sessionId, turnId } = validateTurn(body.session_id, body.turn_id)
   const messages = canonicalContextMessages(body, sessionId, turnId)
   const response = await gatewayFetch(config, '/v1/attempts', {
@@ -132,6 +132,7 @@ async function submitAttempt(config: CcGatewayConfig, body: any, system: string,
       idempotency_key: idempotencyKey(sessionId, turnId),
       conversation_id: sessionId,
       model,
+      effort,
       session_action: body.cc_session_action === 'rebase' ? 'rebase' : undefined,
       context: {
         system,
@@ -221,11 +222,15 @@ export async function createCcChatResponse({
   if (body.cc_model !== undefined && !isCcModel(body.cc_model)) {
     return Response.json({ error: 'CC 模型无效。' }, { status: 400 })
   }
+  if (body.cc_effort !== undefined && !isCcEffort(body.cc_effort)) {
+    return Response.json({ error: 'CC 推理强度无效。' }, { status: 400 })
+  }
   const model = isCcModel(body.cc_model) ? body.cc_model : config.model
+  const effort = normalizeCcEffortForModel(model, body.cc_effort)
 
   let submitted: CcAttempt
   try {
-    submitted = await submitAttempt(config, body, system, volatileContext, model, fetchImpl)
+    submitted = await submitAttempt(config, body, system, volatileContext, model, effort, fetchImpl)
   } catch (error: any) {
     return Response.json({ error: error?.message || 'CC 网关连接失败；不会自动改走 API。' }, { status: 502 })
   }

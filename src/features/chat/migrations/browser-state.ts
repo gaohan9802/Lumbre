@@ -1,5 +1,5 @@
 import { normalizeReplyMode } from '@/lib/chat-reply-mode'
-import { isCcModel } from '@/lib/cc-model'
+import { DEFAULT_CC_EFFORT, isCcEffort, isCcModel } from '@/lib/cc-model'
 import { normalizeChatRoute } from '@/lib/chat-route'
 import { mergeChatMessages, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
@@ -212,6 +212,7 @@ export function normalizeSettings(settings: any): ChatSettings {
     apiProfiles: profiles,
     activeProfileId,
     model: settings?.model || activeProfile?.defaultModel || 'claude-sonnet-4-20250514',
+    ccEffort: isCcEffort(settings?.ccEffort) ? settings.ccEffort : DEFAULT_CC_EFFORT,
     temperature: typeof settings?.temperature === 'number' ? settings.temperature : 1,
     streamEnabled: !!settings?.streamEnabled,
     appearance: { ...DEFAULT_APPEARANCE, ...(settings?.appearance || {}) },

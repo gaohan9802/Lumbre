@@ -1,5 +1,6 @@
 import type { ReplyMode } from '@/lib/chat-reply-mode'
 import type { ChatRoute } from '@/lib/chat-route'
+import type { CcEffort } from '@/lib/cc-model'
 import type { SharedCard } from '@/lib/share'
 import type { MessageRequestAudit } from '@/lib/chat-receipt'
 
@@ -179,6 +180,7 @@ export interface ChatSettings {
   systemPrompt: string
   contextLength: number
   model: string
+  ccEffort: CcEffort
   thinkingBudget: number
   temperature: number
   streamEnabled: boolean

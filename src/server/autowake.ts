@@ -13,6 +13,7 @@
 
 import { createHash, randomUUID } from 'crypto'
 import { addMadridDays, madridDateKey, parseMadridDateTime } from '@/lib/madrid-time'
+import { isCcEffort, isCcModel, type CcEffort } from '@/lib/cc-model'
 import { readChatEventStream } from '@/features/chat/api/event-stream'
 import { appendSyncSessionMessage, loadSyncManifest, loadSyncSessions } from './chat-sync'
 import {
@@ -543,12 +544,14 @@ ${JSON.stringify(recentDigests)}`
   let apiProfile: any = undefined
   let systemPrompt: string | undefined = undefined
   let modelOverride: string | undefined = undefined
+  let ccEffort: CcEffort | undefined = undefined
   let bookmarkInjections = ''
   try {
     const cfg = loadSyncManifest().config
     if (cfg) {
       systemPrompt = cfg.systemPrompt || undefined
       modelOverride = cfg.model || undefined
+      ccEffort = isCcEffort(cfg.ccEffort) ? cfg.ccEffort : undefined
       const profiles = Array.isArray(cfg.apiProfiles) ? cfg.apiProfiles : []
       const active = profiles.find((p: any) => p.id === cfg.activeProfileId) || profiles[0]
       if (active) {
@@ -600,6 +603,8 @@ ${JSON.stringify(recentDigests)}`
           signal: controller.signal,
           body: JSON.stringify({
             generation_route: generationRoute,
+            cc_model: generationRoute === 'claude-code' && isCcModel(wakeSession?.ccModel) ? wakeSession.ccModel : undefined,
+            cc_effort: generationRoute === 'claude-code' ? ccEffort : undefined,
             turn_id: generationRoute === 'claude-code' ? wakeTurnId : undefined,
             messages: apiMessages, system: systemPrompt, model: modelOverride,
             api_profile: apiProfile, tools_enabled: true,

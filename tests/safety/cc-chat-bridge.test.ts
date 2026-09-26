@@ -65,6 +65,7 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
       body: {
         stream: true, session_id: 'conversation-1', turn_id: 'turn-1',
         cc_model: 'claude-opus-5-5',
+        cc_effort: 'max',
         _wake: true,
         messages: [{ id: 'turn-1', role: 'user', route: 'claude-code', content: '回来吗', images: [`data:image/jpeg;base64,${'x'.repeat(1_600_000)}`] }],
         bookmark_injections: 'shared summary',
@@ -86,6 +87,7 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
     assert.doesNotMatch(JSON.stringify(events), new RegExp(SESSION_ID))
     assert.equal(submitted.idempotency_key, 'lumbre:conversation-1:turn-1')
     assert.equal(submitted.model, 'claude-opus-5-5')
+    assert.equal(submitted.effort, 'max')
     assert.equal(submitted.context.messages[0].id, 'turn-1')
     assert.equal(submitted.context.messages[0].images, undefined)
     assert.match(submitted.context.messages[0].content, /view_foto[\s\S]*message_id=turn-1[\s\S]*image_index=i/)
@@ -101,12 +103,27 @@ test('Lumbre rejects an unknown CC model before contacting the gateway', async (
   let called = false
   try {
     const response = await createCcChatResponse({
-      body: { stream: true, session_id: 'conversation-1', turn_id: 'turn-1', cc_model: 'claude-opus-5' },
+      body: { stream: true, session_id: 'conversation-1', turn_id: 'turn-1', cc_model: 'claude-impossible-9' },
       system: '', volatileContext: '',
       fetchImpl: async () => { called = true; throw new Error('must not call') },
     })
     assert.equal(response.status, 400)
     assert.match(await response.text(), /CC 模型无效/)
+    assert.equal(called, false)
+  } finally { restore() }
+})
+
+test('Lumbre rejects an unknown CC effort before contacting the gateway', async () => {
+  const restore = configure()
+  let called = false
+  try {
+    const response = await createCcChatResponse({
+      body: { stream: true, session_id: 'conversation-1', turn_id: 'turn-1', cc_effort: 'impossible' },
+      system: '', volatileContext: '',
+      fetchImpl: async () => { called = true; throw new Error('must not call') },
+    })
+    assert.equal(response.status, 400)
+    assert.match(await response.text(), /CC 推理强度无效/)
     assert.equal(called, false)
   } finally { restore() }
 })

@@ -6,7 +6,7 @@ import { Check, ChevronDown } from 'lucide-react'
 import type { ApiProfile, ProviderModel } from '@/features/chat/state/types'
 import type { ChatRoute } from '@/lib/chat-route'
 import type { CcStatus } from '@/features/chat/api/client'
-import { CC_MODELS, type CcModelId } from '@/lib/cc-model'
+import { CC_EFFORTS, CC_MODELS, ccEffortsForModel, normalizeCcEffortForModel, type CcEffort, type CcModelId } from '@/lib/cc-model'
 
 type ModelChoice = { profile: ApiProfile; model: ProviderModel }
 
@@ -40,9 +40,11 @@ export function ChatRoutePicker({
   activeModelId,
   activeRoute,
   activeCcModel,
+  activeCcEffort,
   ccStatus,
   onSelectApiModel,
   onSelectCc,
+  onSelectCcEffort,
   onClose,
 }: {
   open: boolean
@@ -52,9 +54,11 @@ export function ChatRoutePicker({
   activeModelId: string
   activeRoute: ChatRoute
   activeCcModel: CcModelId
+  activeCcEffort: CcEffort
   ccStatus: CcStatus
   onSelectApiModel: (profileId: string, modelId: string) => void
   onSelectCc: (model: CcModelId) => void
+  onSelectCcEffort: (effort: CcEffort) => void
   onClose: () => void
 }) {
   const [providerFilter, setProviderFilter] = useState<string | null>(null)
@@ -62,6 +66,10 @@ export function ChatRoutePicker({
   const filtered = providerFilter
     ? choices.filter(({ profile }) => profile.name === providerFilter)
     : choices
+  const availableCcEfforts = ccEffortsForModel(activeCcModel)
+  const effectiveCcEffort = normalizeCcEffortForModel(activeCcModel, activeCcEffort)
+  const currentCcModel = CC_MODELS.find(model => model.id === activeCcModel)
+  const currentCcEffort = CC_EFFORTS.find(effort => effort.id === effectiveCcEffort)
 
   return (
     <AnimatePresence>
@@ -83,30 +91,43 @@ export function ChatRoutePicker({
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1">
-              <div className="mb-3 space-y-1">
-                {CC_MODELS.map(model => {
-                  const active = activeRoute === 'claude-code' && activeCcModel === model.id
-                  return (
-                    <button
-                      key={model.id}
-                      type="button"
+              <details className={`group mb-3 rounded-xl border ${isNight ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">Claude Code</div>
+                    <div className="truncate text-[10px] opacity-50">{currentCcModel?.name} · {currentCcEffort?.name || '自动'}</div>
+                  </div>
+                  <ChevronDown size={15} className="flex-shrink-0 opacity-45 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className={`space-y-3 border-t px-3 py-3 ${isNight ? 'border-night-border' : 'border-[#a73a32]/10'}`}>
+                  <label className="block text-[10px] opacity-60">
+                    模型
+                    <select
+                      value={activeCcModel}
                       disabled={!ccStatus.available}
-                      onClick={() => onSelectCc(model.id)}
-                      className={`w-full rounded-xl px-3 py-2.5 text-left transition ${active ? (isNight ? 'border border-night-muted/40 bg-night-muted/15' : 'chat-dialog-accent') : (isNight ? 'border border-night-border hover:bg-night-surface' : 'chat-dialog-card hover:bg-[#DBB9B3]/20')} ${ccStatus.available ? '' : 'cursor-not-allowed opacity-45'}`}
+                      onChange={event => onSelectCc(event.target.value as CcModelId)}
+                      className={`mt-1.5 w-full rounded-lg border px-2.5 py-2 text-xs outline-none ${isNight ? 'border-night-border bg-night-card text-night-text' : 'border-[#a73a32]/15 bg-[#fffaf5] text-[#3f2c29]'}`}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium">Claude Code · {model.name}</div>
-                          {(!ccStatus.available || !ccStatus.toolsAvailable) && <div className="mt-0.5 text-[10px] opacity-50">{ccStatus.available
-                            ? '文字聊天已接通 · 生活工具尚未接通'
-                            : ccStatus.configured ? '网关暂时无法连接' : '服务端尚未配置 CC 网关'}</div>}
-                        </div>
-                        {active && <Check size={16} className={`flex-shrink-0 ${isNight ? 'text-night-muted' : 'text-[#DBB9B3]'}`} />}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
+                      {CC_MODELS.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-[10px] opacity-60">
+                    推理强度
+                    <select
+                      value={effectiveCcEffort || ''}
+                      disabled={!ccStatus.available || !availableCcEfforts.length}
+                      onChange={event => onSelectCcEffort(event.target.value as CcEffort)}
+                      className={`mt-1.5 w-full rounded-lg border px-2.5 py-2 text-xs outline-none ${isNight ? 'border-night-border bg-night-card text-night-text' : 'border-[#a73a32]/15 bg-[#fffaf5] text-[#3f2c29]'}`}
+                    >
+                      {!availableCcEfforts.length && <option value="">该模型自动</option>}
+                      {CC_EFFORTS.filter(effort => availableCcEfforts.includes(effort.id)).map(effort => <option key={effort.id} value={effort.id}>{effort.name}</option>)}
+                    </select>
+                  </label>
+                  {(!ccStatus.available || !ccStatus.toolsAvailable) && <div className="text-[10px] opacity-50">{ccStatus.available
+                    ? '生活工具尚未接通'
+                    : ccStatus.configured ? '网关暂时无法连接' : '服务端尚未配置 CC 网关'}</div>}
+                </div>
+              </details>
               {filtered.map(({ profile, model }) => {
                 const active = activeRoute === 'api' && activeProfileId === profile.id && activeModelId === model.id
                 return (

@@ -3,7 +3,7 @@ import test from 'node:test'
 import { isRecoverableChatDisconnect, mergeConversationRoute, normalizeChatRoute } from '../../src/lib/chat-route'
 import { normalizeSettings } from '../../src/features/chat/migrations/browser-state'
 import { snapshotOfMessage } from '../../src/features/chat/sessions/messages'
-import { mergeCcModel } from '../../src/lib/cc-model'
+import { ccEffortsForModel, isCcModel, mergeCcModel, normalizeCcEffortForModel } from '../../src/lib/cc-model'
 
 test('old conversations and message versions normalize to the API route', () => {
   const settings = normalizeSettings({
@@ -39,6 +39,15 @@ test('a newer CC model selection wins independently from a newer message snapsho
     mergeCcModel(selected, { ccModel: 'claude-opus-5-5', ccModelUpdatedAt: 51 }),
     { ccModel: 'claude-opus-5-5', ccModelUpdatedAt: 51 },
   )
+})
+
+test('CC exposes current model families and only sends supported effort levels', () => {
+  assert.equal(isCcModel('claude-fable-5-1'), true)
+  assert.equal(isCcModel('claude-sonnet-5'), true)
+  assert.equal(isCcModel('claude-haiku-4-5-20251001'), true)
+  assert.equal(ccEffortsForModel('claude-opus-5-5').includes('xhigh'), true)
+  assert.equal(normalizeCcEffortForModel('claude-opus-4-6', 'xhigh'), 'high')
+  assert.equal(normalizeCcEffortForModel('claude-haiku-4-5-20251001', 'high'), undefined)
 })
 
 test('an iOS Load failed keeps only CC turns recoverable', () => {

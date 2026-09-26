@@ -48,6 +48,7 @@ export function buildProbeEnvironment(source = process.env) {
  * @typedef {object} ClaudeArgsOptions
  * @property {'json' | 'stream-json'} [outputFormat]
  * @property {string} [model]
+ * @property {'low' | 'medium' | 'high' | 'xhigh' | 'max'} [effort]
  * @property {string} [resumeSessionId]
  * @property {boolean} [forkSession]
  * @property {string} [mcpConfig]
@@ -60,6 +61,7 @@ export function buildProbeEnvironment(source = process.env) {
 export function buildClaudeArgs({
   outputFormat = 'json',
   model,
+  effort,
   resumeSessionId,
   forkSession = false,
   mcpConfig = '{"mcpServers":{}}',
@@ -81,6 +83,9 @@ export function buildClaudeArgs({
   if (!Number.isSafeInteger(maxTurns) || maxTurns < 1 || maxTurns > 30) throw new Error('maxTurns must be between 1 and 30')
   if (!Array.isArray(allowedTools) || allowedTools.some(name => typeof name !== 'string' || !/^mcp__[A-Za-z0-9_-]+__(?:\*|[A-Za-z0-9_-]+)$/.test(name))) {
     throw new Error('Only explicit MCP allowed tools are accepted')
+  }
+  if (effort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) {
+    throw new Error('Unsupported Claude effort level')
   }
   if (systemPrompt !== undefined && (
     typeof systemPrompt !== 'string' || !systemPrompt.trim() || systemPrompt.includes('\0') || Buffer.byteLength(systemPrompt) > 64_000
@@ -105,6 +110,7 @@ export function buildClaudeArgs({
     args.push('--verbose', '--include-partial-messages')
   }
   if (model) args.push('--model', model)
+  if (effort) args.push('--effort', effort)
   if (resumeSessionId) args.push('--resume', resumeSessionId)
   if (forkSession) args.push('--fork-session')
 

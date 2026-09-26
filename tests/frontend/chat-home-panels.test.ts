@@ -41,8 +41,20 @@ test('home rooms open separately from chat settings, not the home directory', ()
   assert.match(chat, />心跳唤醒<\/button>/)
   assert.match(chat, /roomPanel === 'memory' \? <MemoryView \/>/)
   assert.match(chat, />记忆<\/button>/)
+  assert.match(chat, /continueSession\(50\)[\s\S]*<PanelsTopLeft size=\{13\} \/> 换窗/)
+  assert.doesNotMatch(chat, /携带最近 50 条/)
   assert.doesNotMatch(chat, /搜索会话/)
   assert.match(chat, /roomPanel === 'timeline' \? <TimelineView \/>/)
+})
+
+test('CC controls stay compact until expanded', () => {
+  const picker = read('../../src/features/chat/components/ChatRoutePicker.tsx')
+
+  assert.match(picker, /<details/)
+  assert.match(picker, /<summary[\s\S]*Claude Code/)
+  assert.match(picker, /<select[\s\S]*CC_MODELS\.map/)
+  assert.match(picker, /<select[\s\S]*availableCcEfforts/)
+  assert.doesNotMatch(picker, /Claude Code · \{model\.name\}/)
 })
 
 test('night chat uses the ink blue paper palette', () => {

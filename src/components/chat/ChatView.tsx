@@ -7,7 +7,7 @@ import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Sun, MoreHorizontal,
-  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices,
+  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices, PanelsTopLeft,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -34,7 +34,7 @@ import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatVi
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
-import { DEFAULT_CC_MODEL, isCcModel } from '@/lib/cc-model'
+import { DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 import { IntimacyWheelModal } from './IntimacyWheelModal'
@@ -174,7 +174,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
   const {
     messages, settings,
-    addMessage, updateMessage, createSession, setActiveSession,
+    addMessage, updateMessage, createSession, setActiveSession, setSettings,
     renameSession, deleteSession, togglePinSession, setActiveModel,
     setGenerationRoute, setCcModel, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
   } = useChatStore()
@@ -494,6 +494,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       const res = await chatApi.stream({
         generation_route: route,
         cc_model: route === 'claude-code' ? selectedCcModel : undefined,
+        cc_effort: route === 'claude-code' ? normalizeCcEffortForModel(effectiveCcModel, settings.ccEffort) : undefined,
         turn_id: route === 'claude-code' ? turnId : undefined,
         cc_session_action: route === 'claude-code' ? sessionAction : undefined,
         messages: sendMessages,
@@ -1198,6 +1199,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         </div>
         <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`mt-1 w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>心跳唤醒</button>
         <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>记忆</button>
+        <button
+          type="button"
+          onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }}
+          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-xs font-medium ${n ? 'border-night-amber/30 bg-night-amber/10 text-night-amber' : 'border-[#DBB9B3]/70 bg-[#DBB9B3]/35 text-[#765953]'}`}
+        >
+          <PanelsTopLeft size={13} /> 换窗
+        </button>
       </div>
     </div>
   )
@@ -1606,6 +1614,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             activeModelId={settings.model}
             activeRoute={activeRoute}
             activeCcModel={activeCcModel}
+            activeCcEffort={settings.ccEffort}
             ccStatus={ccStatus}
             onSelectApiModel={(profileId, modelId) => {
               if (activeSession) setGenerationRoute(activeSession.id, 'api')
@@ -1617,8 +1626,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 setCcModel(activeSession.id, modelId)
                 setGenerationRoute(activeSession.id, 'claude-code')
               }
-              setModelPickerOpen(false)
             }}
+            onSelectCcEffort={(effort) => setSettings({ ccEffort: effort })}
             onClose={() => setModelPickerOpen(false)}
           />
 
