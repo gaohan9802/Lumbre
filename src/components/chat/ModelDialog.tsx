@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * ModelDialog — 模型 API 管理弹窗。
+ * ModelDialog — API 管理弹窗。
  * 添加/删除 API、模型切换、输入/输出/缓存价格，全平台同步（经 /api/sync config 合并）。
  */
 import { useState } from 'react'
@@ -165,7 +165,7 @@ export function ModelDialog({ open, onClose }: Props) {
             style={{ top: 'max(calc(env(safe-area-inset-top, 0px) + 10dvh), 10dvh)' }}
           >
             <div className="sticky top-0 z-10 px-6 py-4 flex items-center justify-between backdrop-blur-md bg-inherit border-b border-current/10">
-              <h3 className="text-lg font-medium">模型 API 管理</h3>
+              <h3 className="text-lg font-medium">API 管理</h3>
               <button onClick={onClose} className="p-1 opacity-60 hover:opacity-100"><X size={20} /></button>
             </div>
 

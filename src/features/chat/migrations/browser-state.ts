@@ -190,6 +190,7 @@ export function normalizeSettings(settings: any): ChatSettings {
           startAt: item.startAt || item.createdAt || Date.now(), endAt: item.endAt || item.createdAt || Date.now(),
           sourceSummaryIds: Array.isArray(item.sourceSummaryIds) ? item.sourceSummaryIds : [],
           title: String(item.title || '阶段摘要').trim(), content: String(item.content || item.overview || '').trim(),
+          locked: !!item.locked, needsCorrection: !!item.needsCorrection, editedAt: item.editedAt,
         })).filter((item: StageSummary) => item.content) : [],
         summaryConfig: {
           autoEnabled: session.summaryConfig?.autoEnabled !== false,

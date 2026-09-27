@@ -7,7 +7,7 @@ import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Sun, MoreHorizontal,
-  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices, PanelsTopLeft,
+  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -176,7 +176,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession, setSettings,
     renameSession, deleteSession, togglePinSession, setActiveModel,
-    setGenerationRoute, setCcModel, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary,
+    setGenerationRoute, setCcModel, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary, updateStageSummary,
   } = useChatStore()
   const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
@@ -717,6 +717,29 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     finally { setStageSummaryGenerating(false) }
   }, [addStageSummary, setStageSummaryGenerating, setSummaryError, stageSummaryGenerating])
 
+  const regenerateStageSummary = useCallback(async (stage: StageSummary) => {
+    const state = useChatStore.getState()
+    const session = state.settings.sessions.find(item => item.id === stage.sessionId)
+    if (!session || stage.locked || stageSummaryGenerating) return false
+    const ids = new Set(stage.sourceSummaryIds)
+    const batch = (session.summaries || []).filter(item => ids.has(item.id)).sort((a, b) => a.startAt - b.startAt)
+    if (!batch.length) return false
+    setSummaryError(''); setStageSummaryGenerating(true)
+    try {
+      const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
+      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
+      const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
+      const data = await chatApi.summarize({ kind: 'stage', summaries: batch.map(item => ({ content: item.eventSummary })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined })
+      if (!data.content) throw new Error('阶段摘要重新生成失败')
+      updateStageSummary(session.id, stage.id, { title: String(data.title || stage.title).trim(), content: String(data.content).trim(), needsCorrection: false, editedAt: Date.now() })
+      void syncChatNow()
+      return true
+    } catch (err: any) {
+      setSummaryError(err?.message || '阶段摘要重新生成失败。')
+      return false
+    } finally { setStageSummaryGenerating(false) }
+  }, [setStageSummaryGenerating, setSummaryError, stageSummaryGenerating, updateStageSummary])
+
   useEffect(() => {
     if (!activeSession || stageSummaryGenerating || activeSession.summaryConfig?.autoEnabled === false) return
     const timer = setTimeout(() => { void generateStageSummary() }, 1200)
@@ -1079,12 +1102,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {n ? <Sun size={17} strokeWidth={1.45}/> : <Moon size={17} strokeWidth={1.45}/>}
           </motion.button>
         </div>
-        <button
-          onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }}
-          className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm ${n ? 'bg-night-muted text-night-bg' : 'border border-[#a73a32]/30 bg-[#fffaf5]/65 text-[#9f302b]'}`}
-        >
-          <Plus size={13} /> 新对话
-        </button>
       </div>
       <div className="relative z-10 flex-1 overflow-y-auto p-2 space-y-1">
         {sessions.map((s) => {
@@ -1194,18 +1211,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           <button type="button" onClick={() => openChatSettings('star')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>SP</button>
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>摘要</button>
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>书签</button>
-          <button type="button" onClick={() => openChatSettings('models')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
           <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
         </div>
-        <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`mt-1 w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>心跳唤醒</button>
-        <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`w-full rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>记忆</button>
-        <button
-          type="button"
-          onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }}
-          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-xs font-medium ${n ? 'border-night-amber/30 bg-night-amber/10 text-night-amber' : 'border-[#DBB9B3]/70 bg-[#DBB9B3]/35 text-[#765953]'}`}
-        >
-          <PanelsTopLeft size={13} /> 换窗
-        </button>
+        <div className="grid grid-cols-3 gap-1 pt-1">
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>心跳唤醒</button>
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>记忆</button>
+          <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>换窗</button>
+        </div>
       </div>
     </div>
   )
@@ -1676,9 +1689,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onWishlist={() => setRoomPanel('wishlist')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} onModelPicker={() => setModelPickerOpen(true)} onModelManager={() => setModelDialogOpen(true)} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onWishlist={() => setRoomPanel('wishlist')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
-          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} />
+          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} onRegenerateStage={(stage) => { void regenerateStageSummary(stage) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
           <TimelineTimerModal open={timelineOpen} current={timelineCurrent} onClose={() => setTimelineOpen(false)} onChanged={() => refreshTimelineCurrent()} />
           <MessageReceiptDialog message={receiptMessage} settings={settings} night={n} onClose={() => setReceiptMessage(null)} />

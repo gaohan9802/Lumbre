@@ -107,6 +107,9 @@ export interface StageSummary {
   sourceSummaryIds: string[]
   title: string
   content: string
+  locked?: boolean
+  needsCorrection?: boolean
+  editedAt?: number
 }
 
 export interface SessionSummaryConfig {
