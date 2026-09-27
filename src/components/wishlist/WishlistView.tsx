@@ -292,20 +292,15 @@ function WishCard({
   }
 
   return (
-    <div className={`rounded-xl border p-3 ${cardCls} ${isDone ? 'opacity-70' : ''}`}>
-      <div className="flex items-start gap-2">
-        <button
-          onClick={toggleDone}
-          disabled={!isOwner}
-          title={isOwner ? (isDone ? '取消实现' : '标记为已实现') : ''}
-          className={`mt-0.5 shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition ${isDone
-            ? (night ? 'bg-night-amber/80 border-night-amber text-night-bg' : 'bg-[#DBB9B3] border-[#DBB9B3] text-white')
-            : (night ? 'border-night-border' : 'border-[#a73a32]/20')} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}
-        >
-          {isDone && <Check size={13} />}
-        </button>
-
-        <div className="flex-1 min-w-0">
+    <div className={`overflow-hidden rounded-xl border ${cardCls} ${isDone ? 'opacity-70' : ''}`}>
+      <button onClick={() => setExpanded(value => !value)} className="flex w-full items-center gap-2 px-3 py-3 text-left">
+        <span className={`min-w-0 flex-1 truncate text-sm font-medium ${night ? 'text-night-text' : 'text-day-text'} ${isDone ? 'line-through' : ''}`}>{w.title}</span>
+        {expanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
+      </button>
+      <AnimatePresence>{expanded && <motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:'auto'}} exit={{opacity:0,height:0}} className="overflow-hidden"><div className="border-t border-current/10 px-3 pb-3 pt-2">
+        <div className="flex items-start gap-2">
+          <button onClick={toggleDone} disabled={!isOwner} title={isOwner ? (isDone ? '取消实现' : '标记为已实现') : ''} className={`mt-0.5 shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition ${isDone ? (night ? 'bg-night-amber/80 border-night-amber text-night-bg' : 'bg-[#DBB9B3] border-[#DBB9B3] text-white') : (night ? 'border-night-border' : 'border-[#a73a32]/20')} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}>{isDone && <Check size={13}/>}</button>
+          <div className="min-w-0 flex-1">
           {editing && isOwner ? (
             <input
               value={titleDraft}
@@ -316,10 +311,7 @@ function WishCard({
               className={`no-frame w-full text-sm bg-transparent outline-none border-b ${night ? 'border-night-border' : 'chat-dialog-line'}`}
             />
           ) : (
-            <div
-              onClick={() => { if (isOwner && !isDone) { setTitleDraft(w.title); setEditing(true) } }}
-              className={`text-sm font-medium break-words ${night ? 'text-night-text' : 'text-day-text'} ${isDone ? 'line-through' : ''} ${isOwner && !isDone ? 'cursor-text' : ''}`}
-            >
+            <div onClick={() => { if (isOwner && !isDone) { setTitleDraft(w.title); setEditing(true) } }} className={`text-sm font-medium break-words ${night ? 'text-night-text' : 'text-day-text'} ${isDone ? 'line-through' : ''} ${isOwner && !isDone ? 'cursor-text' : ''}`}>
               {w.title}
             </div>
           )}
@@ -340,26 +332,8 @@ function WishCard({
               {STATUS[w.status].emoji} {STATUS[w.status].label}
             </button>
             <span className={`text-[11px] ${mutedCls}`}>{format(new Date(w.created_at), 'MM-dd')}</span>
-            {w.desc && (
-              <button onClick={() => setExpanded(v => !v)} className={`text-[11px] flex items-center gap-0.5 ${mutedCls}`}>
-                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                {expanded ? '收起' : '详情'}
-              </button>
-            )}
           </div>
-
-          <AnimatePresence>
-            {expanded && w.desc && (
-              <motion.p
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className={`text-xs mt-2 whitespace-pre-wrap break-words ${mutedCls}`}
-              >
-                {w.desc}
-              </motion.p>
-            )}
-          </AnimatePresence>
+          {w.desc && <p className={`text-xs mt-2 whitespace-pre-wrap break-words ${mutedCls}`}>{w.desc}</p>}
 
           <div className="flex items-center gap-3 mt-2">
             <button onClick={like} className={`flex items-center gap-1 text-[11px] ${liked ? accent : mutedCls}`}>
@@ -413,8 +387,9 @@ function WishCard({
               </motion.div>
             )}
           </AnimatePresence>
+          </div>
         </div>
-      </div>
+      </div></motion.div>}</AnimatePresence>
     </div>
   )
 }

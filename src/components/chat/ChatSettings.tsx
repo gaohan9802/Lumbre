@@ -5,14 +5,12 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTheme } from '@/lib/theme'
 import { useChatStore } from '@/lib/chatStore'
 
-export type ChatSettingsPanel = 'menu' | 'star' | 'settings' | 'models'
+export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
 interface Props {
   open: boolean
   onClose: () => void
   initialPanel?: ChatSettingsPanel
   onCoupons?: () => void
-  onModelPicker?: () => void
-  onModelManager?: () => void
   onTodo?: () => void
   onTimeline?: () => void
   onTesis?: () => void
@@ -73,8 +71,7 @@ export function ChatSettings(props: Props) {
   if (!open) return null
   const card = night ? 'bg-night-card' : 'chat-dialog-card'
   const button = `px-4 py-2.5 rounded-xl text-sm ${card}`
-  const profile = settings.apiProfiles.find(p => p.id === settings.activeProfileId)
-  const titles = { menu: '房间', star: 'SP', settings: '参数', models: '模型' }
+  const titles = { menu: '房间', star: 'SP', settings: '参数' }
   const navigate = (action?: () => void) => { onClose(); action?.() }
   const row = (label: string, action: () => void, detail?: string) => <button key={label} onClick={action} className={`min-h-[52px] w-full flex items-center gap-2 px-2 py-3 text-left ${night ? 'rounded-xl bg-night-card' : 'border-b chat-dialog-line'}`}>
     <span className="flex flex-1 min-w-0 items-baseline gap-2"><span className="text-sm">{label}</span>{detail && <span className="truncate text-xs opacity-50">{detail}</span>}</span><ChevronRight size={16}/>
@@ -83,7 +80,7 @@ export function ChatSettings(props: Props) {
   const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? (night ? 'bg-night-muted' : 'bg-[#DBB9B3]') : 'bg-gray-400/40'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
   return <>
     <div className="fixed inset-0 z-[70] bg-black/30" onClick={close}/>
-    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`fixed ${panel === 'star' ? 'inset-x-4 mx-auto top-[8dvh] h-[84dvh] max-w-[640px] rounded-2xl' : 'right-0 top-0 bottom-0 w-[86vw] max-w-[340px]'} z-[71] flex flex-col overflow-hidden outline-none ${night ? 'bg-night-surface text-night-text shadow-2xl' : 'chat-dialog border-y-0 border-r-0'}`}>
+    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`fixed ${panel !== 'menu' ? 'inset-x-4 mx-auto top-[8dvh] max-h-[84dvh] max-w-[640px] rounded-2xl' : 'right-0 top-0 bottom-0 w-[86vw] max-w-[340px]'} z-[71] flex flex-col overflow-hidden outline-none ${night ? 'bg-night-surface text-night-text shadow-2xl' : `chat-dialog ${panel === 'menu' ? 'border-y-0 border-r-0' : ''}`}`}>
       <div className={`relative z-10 flex items-center gap-3 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b ${night ? 'border-current/10' : 'chat-dialog-line'}`}>
         {panel !== 'menu' && <button aria-label={initialPanel === 'menu' ? '返回房间' : '关闭'} onClick={() => initialPanel === 'menu' ? confirm(() => setPanel('menu')) : close()} className="p-2"><ChevronLeft size={20}/></button>}
         <h2 id="chat-menu-title" className="flex-1 font-medium">{titles[panel]}</h2>
@@ -111,7 +108,6 @@ export function ChatSettings(props: Props) {
             setSettings({ systemPrompt: draft }); setEditing(false); setError('')
           }}>保存</button></div>}
         </>}
-        {panel === 'models' && <>{row('切换模型', () => navigate(props.onModelPicker), `${profile?.name || '未配置'} · ${settings.model}`)}{row('API 管理', () => navigate(props.onModelManager))}</>}
         {panel === 'settings' && <>
           {slider('温度', settings.temperature, v => setSettings({ temperature: v }), 0, 2, .05, settings.temperature.toFixed(2))}
           {slider('思考预算', settings.thinkingBudget, v => setSettings({ thinkingBudget: v }), 0, 32000, 1000, `${settings.thinkingBudget} tok`)}

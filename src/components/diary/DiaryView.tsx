@@ -268,7 +268,7 @@ export function DiaryView() {
             <ChevronLeft size={16} /> 返回
           </button>
         ) : (
-          <h2 className="text-base font-medium tracking-wide">📔 日记本</h2>
+          <h2 className="text-base font-medium tracking-wide">日记本</h2>
         )}
 
         <div className="flex items-center gap-2">
@@ -330,7 +330,7 @@ export function DiaryView() {
       {/* Body */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto relative">
         <NotebookBg isNight={isNight} />
-        <div className="relative z-10 px-5 py-4 pl-12">
+        <div className="relative z-10 px-4 py-3">
           <AnimatePresence mode="wait">
             {isWriting ? (
               /* ── Write Mode ── */
@@ -436,17 +436,17 @@ export function DiaryView() {
 
             ) : selected ? (
               /* ── Read Mode ── */
-              <motion.div key="read" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="max-w-lg mx-auto">
-                <div className={`flex items-center gap-2 text-xs flex-wrap mb-4 ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+              <motion.div key="read" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full">
+                <div className={`flex items-center gap-2 text-xs flex-wrap mb-2 ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
                   <span className="text-sm">{selected.author === 'star' ? '🐆' : '🦦'}</span>
                   <span>{friendlyDate(selected.date)}</span>
                   <span>{friendlyTime(selected.created_at)}</span>
                   {selected.visibility === 'private' && <Lock size={11} className="opacity-60" />}
                   {selected.visibility === 'timed' && <><Clock size={11} className="opacity-60" />{selected.reveal_at && <span className="opacity-50">{selected.reveal_at}</span>}</>}
                 </div>
-                <h3 className={`text-xl font-medium mb-1 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{displayTitle(selected)}</h3>
+                <h3 className={`text-lg font-medium mb-1 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{displayTitle(selected)}</h3>
                 {selected.tags && selected.tags.length > 0 && (
-                  <div className="flex gap-1.5 flex-wrap mb-5 mt-2">
+                  <div className="flex gap-1.5 flex-wrap mb-3 mt-2">
                     {selected.tags.map((tag: string) => (
                       <span key={tag} className={`text-[10px] px-2 py-0.5 rounded-full ${
                         isNight ? 'bg-night-amber/10 text-night-amber/70' : 'bg-[#DBB9B3]/20 text-[#765953]'
@@ -454,7 +454,7 @@ export function DiaryView() {
                     ))}
                   </div>
                 )}
-                <div className={`text-sm whitespace-pre-wrap mt-3 ${isNight ? 'text-night-text/85' : 'text-day-text'}`} style={{ lineHeight: '2rem' }}>
+                <div className={`text-sm whitespace-pre-wrap mt-2 text-justify ${isNight ? 'text-night-text/85' : 'text-day-text'}`} style={{ lineHeight: '1.65rem' }}>
                   {selected.content}
                 </div>
 
@@ -483,7 +483,7 @@ export function DiaryView() {
                 )}
 
                 {/* Comments */}
-                <div className={`mt-8 pt-5 space-y-4 border-t ${isNight ? 'border-night-border/30' : 'chat-dialog-line'}`}>
+                <div className={`mt-5 pt-3 space-y-3 border-t ${isNight ? 'border-night-border/30' : 'chat-dialog-line'}`}>
                   <div className={`flex items-center gap-2 text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
                     <MessageCircle size={13} />
                     <span>{selected.comments?.length || 0} 条留言</span>
@@ -548,35 +548,14 @@ export function DiaryView() {
                               }`}
                               whileTap={{ scale: 0.99 }}
                             >
-                              <div className="flex items-center justify-between mb-1.5">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs">{entry.author === 'star' ? '🐆' : '🦦'}</span>
-                                  <span className={`text-[11px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{friendlyTime(entry.created_at)}</span>
-                                </div>
+                              <div className="flex items-center justify-between gap-3">
+                                <h4 className={`min-w-0 flex-1 truncate text-sm font-medium ${isNight ? 'text-night-text' : 'text-day-text'}`}>{displayTitle(entry)}</h4>
                                 <div className="flex items-center gap-1.5">
                                   {entry.visibility === 'private' && <Lock size={11} className="opacity-30" />}
                                   {entry.visibility === 'timed' && <Clock size={11} className="opacity-30" />}
-                                  {entry.tags && entry.tags.length > 0 && (
-                                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
-                                      isNight ? 'bg-night-amber/10 text-night-amber/50' : 'bg-[#DBB9B3]/20 text-[#765953]'
-                                    }`}>#{entry.tags[0]}</span>
-                                  )}
-                                  {(entry.comments?.length || 0) > 0 && (
-                                    <span className={`text-[10px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>💬{entry.comments!.length}</span>
-                                  )}
+                                  <span className={`text-[10px] ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{friendlyTime(entry.created_at)}</span>
                                 </div>
                               </div>
-                              <h4 className={`text-sm font-medium mb-0.5 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{displayTitle(entry)}</h4>
-                              {entry.locked ? (
-                                <p className={`text-xs italic flex items-center gap-1 ${isNight ? 'text-night-muted/40' : 'text-day-disabled'}`}>
-                                  <Lock size={10} /> 需要密码解锁
-                                </p>
-                              ) : (
-                                <>
-                                  <p className={`text-xs line-clamp-2 leading-relaxed ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>{entry.content}</p>
-                                  <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); shareEntry(entry) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); shareEntry(entry) } }} className="mt-2 text-[10px] opacity-40 hover:opacity-100 flex items-center gap-1 cursor-pointer"><Share2 size={11}/> 分享到 Chat</span>
-                                </>
-                              )}
                             </motion.button>
                           ))}
                         </div>

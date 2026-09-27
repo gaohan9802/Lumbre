@@ -15,6 +15,8 @@ export interface SummaryBookmarkActions {
   addSummary: (sessionId: string, summary: ChatSummary) => void
   updateSummary: (sessionId: string, id: string, patch: Partial<ChatSummary>) => void
   addStageSummary: (sessionId: string, summary: StageSummary) => void
+  updateStageSummary: (sessionId: string, id: string, patch: Partial<StageSummary>) => void
+  deleteStageSummary: (sessionId: string, id: string) => void
   deleteSummary: (sessionId: string, id: string) => void
   updateSessionSummaryConfig: (sessionId: string, patch: Partial<SessionSummaryConfig>) => void
 }
@@ -65,6 +67,30 @@ export function createSummaryBookmarkActions(set: SetChatState): SummaryBookmark
       const settings = normalizeSettings(state.settings)
       const sessions = settings.sessions.map((session) => session.id === sessionId
         ? { ...session, stageSummaries: [...(session.stageSummaries || []), summary], summaryRevision: (session.summaryRevision || 0) + 1, updatedAt: Date.now() } : session)
+      const nextSettings = { ...settings, sessions }
+      return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+    }),
+
+    updateStageSummary: (sessionId, id, patch) => set((state) => {
+      const settings = normalizeSettings(state.settings)
+      const sessions = settings.sessions.map((session) => {
+        if (session.id !== sessionId) return session
+        const current = (session.stageSummaries || []).find(item => item.id === id)
+        if (!current || (current.locked && !(Object.keys(patch).length === 1 && patch.locked === false))) return session
+        return { ...session, stageSummaries: (session.stageSummaries || []).map(item => item.id === id ? { ...item, ...patch } : item), summaryRevision: (session.summaryRevision || 0) + 1, updatedAt: Date.now() }
+      })
+      const nextSettings = { ...settings, sessions }
+      return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
+    }),
+
+    deleteStageSummary: (sessionId, id) => set((state) => {
+      const settings = normalizeSettings(state.settings)
+      const sessions = settings.sessions.map((session) => {
+        if (session.id !== sessionId) return session
+        const target = (session.stageSummaries || []).find(item => item.id === id)
+        if (!target || target.locked) return session
+        return { ...session, stageSummaries: (session.stageSummaries || []).filter(item => item.id !== id), summaryRevision: (session.summaryRevision || 0) + 1, updatedAt: Date.now() }
+      })
       const nextSettings = { ...settings, sessions }
       return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
     }),

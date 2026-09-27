@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Check, Edit3, Heart, Pin, Plus, Trash2, X } from 'lucide-react'
+import { Check, Edit3, Heart, Pin, Plus, Trash2, X } from 'lucide-react'
 import { stories as api } from '@/lib/api'
 import { useTheme } from '@/lib/theme'
 
@@ -31,7 +31,7 @@ export function StoriesView() {
       const data = await api.list()
       const next = data.stories || []
       setList(next)
-      setSelected(current => current && next.some((item: Summary) => item.id === current) ? current : next[0]?.id || null)
+      setSelected(current => current && next.some((item: Summary) => item.id === current) ? current : null)
     } catch (cause: any) { setError(cause?.message || '故事集加载失败') }
   }, [])
   useEffect(() => { void loadList() }, [loadList])
@@ -46,9 +46,7 @@ export function StoriesView() {
   }, [loadList])
 
   const shown = useMemo(() => list.filter(item => item.shelf === shelf && (!favorites || item.favorite)), [list, shelf, favorites])
-  useEffect(() => {
-    if (shown.length && !shown.some(item => item.id === selected)) setSelected(shown[0].id)
-  }, [shown, selected])
+  useEffect(() => { if (selected && !shown.some(item => item.id === selected)) setSelected(null) }, [shown, selected])
   const body = story?.sections.map(section => section.text).join('\n\n') || ''
 
   const act = async (action: string, data: Record<string, unknown>) => {
@@ -89,35 +87,16 @@ export function StoriesView() {
           <button onClick={() => setFavorites(value => !value)} className={`ml-auto rounded-full px-3 py-2 text-xs ${favorites ? (night ? 'bg-[#a75f70] text-white' : 'chat-dialog-accent') : 'bg-current/5'}`}><Heart className="mr-1 inline" size={13} fill={favorites ? 'currentColor' : 'none'}/>收藏</button>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 md:grid-cols-[250px_minmax(0,1fr)] md:grid-rows-1">
-          <aside className={`max-h-36 min-h-0 overflow-y-auto rounded-3xl p-3 md:max-h-none ${night ? 'bg-white/[.035]' : 'chat-dialog-card'}`}>
+        <aside className={`min-h-0 flex-1 overflow-y-auto rounded-3xl p-3 ${night ? 'bg-white/[.035]' : 'chat-dialog-card'}`}>
             {!shown.length && <div className="py-16 text-center text-xs opacity-40">这一格书架还是空的。</div>}
             <div className="space-y-2">{shown.map(item => <button key={item.id} onClick={() => setSelected(item.id)} className={`w-full rounded-2xl px-4 py-3 text-left transition ${selected === item.id ? night ? 'bg-white/10' : 'bg-[#DBB9B3]/25' : 'hover:bg-current/5'}`}>
               <div className="flex items-start gap-2"><span className="min-w-0 flex-1 truncate font-serif text-sm">{item.pinned && '⌁ '}{item.title}</span>{item.favorite && <Heart size={11} fill="currentColor" className="mt-1 text-[#aa6271]"/>}</div>
-              <p className="mt-1 text-[10px] opacity-45">{item.status === 'draft' ? '写作中' : '已完成'} · 约 {Math.max(1, Math.ceil(item.char_count / 500))} 分钟</p>
             </button>)}</div>
-          </aside>
-
-          <main className={`min-h-0 overflow-y-auto rounded-[32px] border px-6 py-8 sm:px-12 ${night ? 'border-white/10 bg-[#1b1b24]' : 'chat-dialog-card'}`}>
-            {!story ? <div className="grid h-full place-items-center text-center opacity-35"><div><BookOpen className="mx-auto mb-3"/><p>选一本故事，或者写下第一篇。</p></div></div> : <article className="mx-auto max-w-2xl">
-              <div className="mb-8 flex items-start justify-between gap-3 border-b border-current/10 pb-5">
-                <div><p className="text-[10px] tracking-[.24em] opacity-45">{shelfName(story.shelf)} · {story.status === 'draft' ? '写作中' : '已完成'}</p><h2 className="mt-2 font-serif text-2xl leading-tight">{story.title}</h2><p className="mt-2 text-[11px] opacity-40">{date(story.created_at)} · {body.length.toLocaleString()} 字</p></div>
-                <div className="flex gap-1">
-                  <button aria-label="收藏" onClick={() => void act('update', { id: story.id, patch: { favorite: !story.favorite } })} className="rounded-full p-2 hover:bg-current/5"><Heart size={16} fill={story.favorite ? 'currentColor' : 'none'} className={story.favorite ? 'text-[#aa6271]' : ''}/></button>
-                  <button aria-label="置顶" onClick={() => void act('update', { id: story.id, patch: { pinned: !story.pinned } })} className="rounded-full p-2 hover:bg-current/5"><Pin size={16} fill={story.pinned ? 'currentColor' : 'none'}/></button>
-                  <button aria-label="编辑" onClick={() => openEdit()} className="rounded-full p-2 hover:bg-current/5"><Edit3 size={16}/></button>
-                </div>
-              </div>
-              {body ? <div className="whitespace-pre-wrap font-serif text-sm leading-7 tracking-[.015em]">{body}</div> : <p className="py-20 text-center font-serif opacity-35">纸页在等第一句话。</p>}
-              <footer className="mt-12 flex items-center justify-between border-t border-current/10 pt-5 text-xs">
-                <button disabled={!body || busy} onClick={() => void act('update', { id: story.id, patch: { status: story.status === 'complete' ? 'draft' : 'complete' } })} className="opacity-60 disabled:opacity-20"><Check className="mr-1 inline" size={14}/>{story.status === 'complete' ? '改回写作中' : '标记完成'}</button>
-                <button className="text-red-500/70" onClick={async () => { if (confirm('删除这篇故事？')) { await act('delete', { id: story.id }); setStory(null) } }}><Trash2 className="mr-1 inline" size={14}/>删除</button>
-              </footer>
-            </article>}
-          </main>
-        </div>
+        </aside>
         {error && <p className="mt-2 text-center text-xs text-red-500">{error}</p>}
       </div>
+
+      {story && selected && !editing && <div className="fixed inset-0 z-[115] grid place-items-center bg-black/55 p-4 backdrop-blur-sm" onClick={() => { setSelected(null); setStory(null) }}><article onClick={event=>event.stopPropagation()} className={`max-h-[88dvh] w-full max-w-3xl overflow-y-auto rounded-[28px] px-5 py-5 shadow-2xl sm:px-7 ${night ? 'bg-[#1b1b24]' : 'chat-dialog'}`}><div className="mb-4 flex items-start justify-between gap-3 border-b border-current/10 pb-3"><div><p className="text-[10px] tracking-[.24em] opacity-45">{shelfName(story.shelf)} · {story.status === 'draft' ? '写作中' : '已完成'}</p><h2 className="mt-1 font-serif text-xl leading-tight">{story.title}</h2><p className="mt-1 text-[10px] opacity-40">{date(story.created_at)} · {body.length.toLocaleString()} 字</p></div><div className="flex gap-1"><button aria-label="收藏" onClick={() => void act('update', { id: story.id, patch: { favorite: !story.favorite } })} className="rounded-full p-2 hover:bg-current/5"><Heart size={15} fill={story.favorite ? 'currentColor' : 'none'} className={story.favorite ? 'text-[#aa6271]' : ''}/></button><button aria-label="置顶" onClick={() => void act('update', { id: story.id, patch: { pinned: !story.pinned } })} className="rounded-full p-2 hover:bg-current/5"><Pin size={15} fill={story.pinned ? 'currentColor' : 'none'}/></button><button aria-label="编辑" onClick={() => openEdit()} className="rounded-full p-2 hover:bg-current/5"><Edit3 size={15}/></button><button aria-label="关闭" onClick={() => {setSelected(null);setStory(null)}} className="rounded-full p-2"><X size={16}/></button></div></div>{body ? <div className="space-y-3 font-serif text-sm leading-6 tracking-[.01em]">{story.sections.map(section=><p key={section.id} className="whitespace-pre-wrap">{section.text}</p>)}</div> : <p className="py-16 text-center font-serif opacity-35">纸页在等第一句话。</p>}<footer className="mt-6 flex items-center justify-between border-t border-current/10 pt-4 text-xs"><button disabled={!body || busy} onClick={() => void act('update', { id: story.id, patch: { status: story.status === 'complete' ? 'draft' : 'complete' } })} className="opacity-60 disabled:opacity-20"><Check className="mr-1 inline" size={14}/>{story.status === 'complete' ? '改回写作中' : '标记完成'}</button><button className="text-red-500/70" onClick={async () => { if (confirm('删除这篇故事？')) { await act('delete', { id: story.id }); setSelected(null); setStory(null) } }}><Trash2 className="mr-1 inline" size={14}/>删除</button></footer></article></div>}
 
       {editing && story && <div className="fixed inset-0 z-[120] grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
         <div className={`flex max-h-[92dvh] w-full max-w-3xl flex-col rounded-[28px] p-5 shadow-2xl ${night ? 'bg-[#20212b]' : 'chat-dialog'}`}>

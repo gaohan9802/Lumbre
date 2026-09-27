@@ -96,6 +96,8 @@ interface ChatStore {
   addSummary: (sessionId: string, summary: ChatSummary) => void
   updateSummary: (sessionId: string, id: string, patch: Partial<ChatSummary>) => void
   addStageSummary: (sessionId: string, summary: StageSummary) => void
+  updateStageSummary: (sessionId: string, id: string, patch: Partial<StageSummary>) => void
+  deleteStageSummary: (sessionId: string, id: string) => void
   deleteSummary: (sessionId: string, id: string) => void
   updateSessionSummaryConfig: (sessionId: string, patch: Partial<SessionSummaryConfig>) => void
 }

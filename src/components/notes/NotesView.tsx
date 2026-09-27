@@ -5,7 +5,7 @@ import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import { formatMadridShort } from '@/lib/madrid-time'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Send, Trash2, X } from 'lucide-react'
+import { Plus, Send, Share2, Trash2, X } from 'lucide-react'
 import { notes as notesApi } from '@/lib/api'
 import { shareToChat } from '@/lib/share'
 
@@ -196,16 +196,14 @@ export function NotesView() {
 
                   {/* Content */}
                   <p
-                    className={`text-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-4'}`}
+                    className={`text-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-1'}`}
                     style={{ color: isNight ? '#F2EEE7' : '#3f2c29' }}
                   >
                     {note.content}
                   </p>
 
-                  <button onClick={(e)=>{e.stopPropagation();shareNote()}} className="mt-2 text-[11px] opacity-40 hover:opacity-100 flex items-center gap-1">↗ 分享到 Chat</button>
-
                   {/* Replies */}
-                  {hasReplies && (
+                  {isExpanded && hasReplies && (
                     <div className="mt-3 pt-2 space-y-2" style={{
                       borderTop: `1px dashed ${isNight ? '#3A4853' : 'rgba(167,58,50,.14)'}`,
                     }}>
@@ -238,6 +236,7 @@ export function NotesView() {
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <button onClick={shareNote} aria-label="分享到 Chat" title="分享到 Chat" className="opacity-40 hover:opacity-100"><Share2 size={12}/></button>
                       {/* Reply input */}
                       {replyingTo === note.id ? (
                         <div className="flex gap-2 items-center">
