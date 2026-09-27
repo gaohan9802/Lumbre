@@ -549,6 +549,7 @@ export function DiaryView() {
                               whileTap={{ scale: 0.99 }}
                             >
                               <div className="flex items-center justify-between gap-3">
+                                <span className="shrink-0 text-sm">{entry.author === 'star' ? '🐆' : '🦦'}</span>
                                 <h4 className={`min-w-0 flex-1 truncate text-sm font-medium ${isNight ? 'text-night-text' : 'text-day-text'}`}>{displayTitle(entry)}</h4>
                                 <div className="flex items-center gap-1.5">
                                   {entry.visibility === 'private' && <Lock size={11} className="opacity-30" />}

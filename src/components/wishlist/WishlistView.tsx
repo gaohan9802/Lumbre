@@ -293,13 +293,15 @@ function WishCard({
 
   return (
     <div className={`overflow-hidden rounded-xl border ${cardCls} ${isDone ? 'opacity-70' : ''}`}>
-      <button onClick={() => setExpanded(value => !value)} className="flex w-full items-center gap-2 px-3 py-3 text-left">
-        <span className={`min-w-0 flex-1 truncate text-sm font-medium ${night ? 'text-night-text' : 'text-day-text'} ${isDone ? 'line-through' : ''}`}>{w.title}</span>
-        {expanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
-      </button>
+      <div className="flex items-center gap-2 px-3 py-3">
+        <button onClick={toggleDone} disabled={!isOwner} title={isOwner ? (isDone ? '取消实现' : '标记为已实现') : ''} className={`shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition ${isDone ? (night ? 'bg-night-amber/80 border-night-amber text-night-bg' : 'bg-[#DBB9B3] border-[#DBB9B3] text-white') : (night ? 'border-night-border' : 'border-[#a73a32]/20')} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}>{isDone && <Check size={13}/>}</button>
+        <button onClick={() => setExpanded(value => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <span className={`min-w-0 flex-1 truncate text-sm font-medium ${night ? 'text-night-text' : 'text-day-text'} ${isDone ? 'line-through' : ''}`}>{w.title}</span>
+          {expanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
+        </button>
+      </div>
       <AnimatePresence>{expanded && <motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:'auto'}} exit={{opacity:0,height:0}} className="overflow-hidden"><div className="border-t border-current/10 px-3 pb-3 pt-2">
         <div className="flex items-start gap-2">
-          <button onClick={toggleDone} disabled={!isOwner} title={isOwner ? (isDone ? '取消实现' : '标记为已实现') : ''} className={`mt-0.5 shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition ${isDone ? (night ? 'bg-night-amber/80 border-night-amber text-night-bg' : 'bg-[#DBB9B3] border-[#DBB9B3] text-white') : (night ? 'border-night-border' : 'border-[#a73a32]/20')} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}>{isDone && <Check size={13}/>}</button>
           <div className="min-w-0 flex-1">
           {editing && isOwner ? (
             <input

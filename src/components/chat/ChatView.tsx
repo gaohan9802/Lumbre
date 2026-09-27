@@ -1085,7 +1085,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={`relative h-full w-[86vw] max-w-[340px] flex flex-col overflow-hidden ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29]'} border-r`}>
-      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(1rem,env(safe-area-inset-top))]' : 'pt-4'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
+      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(1.75rem,env(safe-area-inset-top))]' : 'pt-7'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-base font-medium">会话</div>
@@ -1103,7 +1103,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </motion.button>
         </div>
       </div>
-      <div className="relative z-10 flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="relative z-10 flex-1 overflow-y-auto px-2 pb-2 pt-4 space-y-1">
         {sessions.map((s) => {
           const active = s.id === settings.activeSessionId
           return (
@@ -1207,17 +1207,19 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             </>
           )}
         </section>
-        <div className="grid grid-cols-5 gap-1 pt-1">
-          <button type="button" onClick={() => openChatSettings('star')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>SP</button>
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>摘要</button>
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>书签</button>
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
-          <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
-        </div>
-        <div className="grid grid-cols-3 gap-1 pt-1">
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>心跳唤醒</button>
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>记忆</button>
-          <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>换窗</button>
+        <div className="space-y-1 pt-1">
+          <div className="grid grid-cols-5 gap-1">
+            <button type="button" onClick={() => openChatSettings('star')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>SP</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>摘要</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>书签</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
+            <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>心跳唤醒</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>记忆</button>
+            <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>换窗</button>
+          </div>
         </div>
       </div>
     </div>
