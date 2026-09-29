@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import type { ContentBlock } from '@/features/chat/state/types'
+import { MarkdownText } from '@/components/chat/MarkdownText'
 
 interface StreamingReplyProps {
   blocks: ContentBlock[]
@@ -24,12 +25,12 @@ export function StreamingReply({
             const expanded = expandedThinking.has(key)
             return (
               <div key={index}>
-                <button onClick={() => onToggleThinking(key)} className={`ml-4 text-xs flex items-center gap-1 max-w-full ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+                <button onClick={() => onToggleThinking(key)} className={`ml-4 flex max-w-full items-center gap-1 text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
                   <span className="truncate">💭星星的小算盘{!expanded && isLast ? <span className="stream-cursor">…</span> : ''}</span>
                 </button>
                 {expanded && (
-                  <div className={`text-[13px] p-2 rounded-lg whitespace-pre-wrap ${isNight ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                    {block.content}{isLast ? <span className="stream-cursor">…</span> : ''}
+                  <div className={`ml-4 mt-1 max-w-[calc(88%_-_1rem)] text-left text-[13px] leading-relaxed ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+                    <MarkdownText content={block.content} cursor={isLast}/>
                   </div>
                 )}
               </div>
@@ -48,7 +49,7 @@ export function StreamingReply({
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
             return (
-              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className={`chat-ai-bubble relative block w-fit max-w-[88%] mr-auto whitespace-pre-wrap break-words px-4 py-3 text-justify [text-justify:inter-ideograph] text-[14px] leading-relaxed ${isNight ? 'text-night-text' : 'text-[#3f2c29]'}`}>
+              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className={`chat-ai-bubble relative mr-auto block w-fit max-w-[88%] whitespace-pre-wrap break-words px-4 py-3 text-left text-[14px] leading-relaxed ${isNight ? 'text-night-text' : 'text-[#3f2c29]'}`}>
                 {block.content}{isLast && <span className="stream-cursor">…</span>}
               </motion.div>
             )

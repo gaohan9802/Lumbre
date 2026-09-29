@@ -5,6 +5,7 @@ import { Check, ChevronDown, Dices, Edit3, Pin, Plus, RotateCcw, Send, Trash2, X
 import { intimacyWheel as api } from '@/lib/api'
 import { shareToChat } from '@/lib/share'
 import { useApp } from '@/lib/store'
+import { PaperActionDialog } from '@/components/PaperActionDialog'
 
 type Option = { id: string; text: string; enabled: boolean; created_by: 'fire' | 'star' }
 type Pool = { id: string; name: string; emoji: string; options: Option[] }
@@ -23,6 +24,9 @@ export function IntimacyWheelModal({ open, night, onClose }: { open: boolean; ni
   const [newText, setNewText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [editTarget, setEditTarget] = useState<{ poolId: string; option: Option } | null>(null)
+  const [editDraft, setEditDraft] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<{ poolId: string; option: Option } | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -68,8 +72,17 @@ export function IntimacyWheelModal({ open, night, onClose }: { open: boolean; ni
     onClose()
   }
 
+  const saveEdit = async () => {
+    if (!editTarget || !editDraft.trim()) return
+    if (await act('edit', { pool_id: editTarget.poolId, option_id: editTarget.option.id, text: editDraft.trim() })) setEditTarget(null)
+  }
+  const removeOption = async () => {
+    if (!deleteTarget) return
+    if (await act('delete', { pool_id: deleteTarget.poolId, option_id: deleteTarget.option.id })) setDeleteTarget(null)
+  }
+
   if (!open) return null
-  return <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/55 backdrop-blur-sm sm:items-center" onClick={onClose}>
+  return <><div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/55 backdrop-blur-sm sm:items-center" onClick={onClose}>
     <div role="dialog" aria-modal="true" aria-label="今天怎么操" onClick={event => event.stopPropagation()} className={`max-h-[92dvh] w-full overflow-hidden rounded-t-[30px] sm:w-[min(620px,calc(100vw-2rem))] sm:rounded-[30px] ${night ? 'border border-night-border bg-night-surface text-night-text shadow-2xl' : 'chat-dialog'}`}>
       <header className="flex items-center justify-between px-5 pb-3 pt-5"><div><h2 className="font-serif text-2xl">今天怎么操</h2><p className="text-xs opacity-50">把今晚交给一点运气</p></div><button aria-label="关闭" onClick={onClose} className="rounded-full p-2 hover:bg-black/5"><X size={19}/></button></header>
       <div className={`mx-5 flex rounded-xl p-1 text-xs ${night ? 'bg-night-bg/60' : 'bg-black/5'}`}><button onClick={() => setTab('spin')} className={`flex-1 rounded-lg py-2 ${tab === 'spin' ? night ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent shadow-sm' : 'opacity-50'}`}>转盘</button><button onClick={() => setTab('manage')} className={`flex-1 rounded-lg py-2 ${tab === 'manage' ? night ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent shadow-sm' : 'opacity-50'}`}>元素池</button></div>
@@ -82,14 +95,13 @@ export function IntimacyWheelModal({ open, night, onClose }: { open: boolean; ni
 
           {error && <p className="mt-3 text-center text-xs text-red-400">{error}</p>}
           <div className="mt-5 grid grid-cols-[1fr_auto] gap-2"><button disabled={busy || !chosen.length} onClick={() => void spin()} className={`rounded-2xl py-3.5 text-lg font-semibold shadow-sm disabled:opacity-30 ${night ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent'}`}>转</button><button disabled={!results.length} onClick={share} className="flex items-center gap-1 rounded-2xl border border-current/15 px-4 text-xs disabled:opacity-25"><Send size={15}/>发给星星</button></div>
-          {!!pinned.size && <p className="mt-2 text-center text-[10px] opacity-45">点结果可以固定；再点「转」只重转没固定的池</p>}
           {!!recent.length && <details className="mt-4 text-xs opacity-50"><summary className="cursor-pointer list-none">最近转过 · {recent.length}</summary><div className="mt-2 max-h-32 space-y-2 overflow-y-auto">{recent.slice(0, 10).map(item => <button key={item.id} onClick={() => { setResults(item.results); setPinned(new Set()) }} className={`block w-full rounded-xl px-3 py-2 text-left ${night ? 'bg-night-card' : 'chat-dialog-card'}`}><span>{new Date(item.at).toLocaleString('zh-CN', { timeZone: 'Europe/Madrid', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span><br/><span className="opacity-70">{item.results.map(result => result.text).join(' · ')}</span></button>)}</div></details>}
         </> : <div className="space-y-2">
           {pools.map(pool => <section key={pool.id} className={`overflow-hidden rounded-2xl ${night ? 'border border-night-border bg-night-card/45' : 'chat-dialog-card'}`}>
             <button onClick={() => setExpanded(expanded === pool.id ? null : pool.id)} className="flex w-full items-center justify-between px-4 py-3 text-sm"><span>{pool.emoji} {pool.name} <small className="opacity-40">{pool.options.filter(option => option.enabled).length}/{pool.options.length}</small></span><ChevronDown size={15} className={`transition ${expanded === pool.id ? 'rotate-180' : ''}`}/></button>
             {expanded === pool.id && <div className="border-t border-current/10 px-3 py-3">
               <div className="mb-3 flex gap-2"><input value={newText} onChange={event => setNewText(event.target.value)} placeholder="加一个新元素" className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm outline-none ${night ? 'border-night-border bg-transparent' : 'chat-dialog-field'}`}/><button disabled={!newText.trim() || busy} onClick={async () => { if (await act('add', { pool_id: pool.id, text: newText })) setNewText('') }} className={`rounded-xl px-3 ${night ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent'}`}><Plus size={16}/></button></div>
-              <div className="space-y-1">{pool.options.map(option => <div key={option.id} className={`flex items-center gap-2 rounded-xl px-2 py-2 text-sm ${option.enabled ? '' : 'opacity-35'}`}><button aria-label={option.enabled ? '停用' : '启用'} onClick={() => void act('edit', { pool_id: pool.id, option_id: option.id, enabled: !option.enabled })} className={`grid h-5 w-5 place-items-center rounded border ${option.enabled ? (night ? 'border-night-amber bg-night-amber text-night-bg' : 'border-[#ad596e] bg-[#ad596e] text-white') : 'border-current/30'}`}>{option.enabled && <Check size={12}/>}</button><span className="min-w-0 flex-1">{option.text}</span><button aria-label="修改元素" onClick={async () => { const text = window.prompt('修改元素', option.text); if (text !== null) await act('edit', { pool_id: pool.id, option_id: option.id, text }) }} className="p-1 opacity-45"><Edit3 size={13}/></button><button aria-label="删除元素" onClick={async () => { if (window.confirm(`删除“${option.text}”？`)) await act('delete', { pool_id: pool.id, option_id: option.id }) }} className="p-1 text-red-400 opacity-65"><Trash2 size={13}/></button></div>)}</div>
+              <div className="space-y-1">{pool.options.map(option => <div key={option.id} className={`flex items-center gap-2 rounded-xl px-2 py-2 text-sm ${option.enabled ? '' : 'opacity-35'}`}><button aria-label={option.enabled ? '停用' : '启用'} onClick={() => void act('edit', { pool_id: pool.id, option_id: option.id, enabled: !option.enabled })} className={`grid h-5 w-5 place-items-center rounded border ${option.enabled ? (night ? 'border-night-amber bg-night-amber text-night-bg' : 'border-[#ad596e] bg-[#ad596e] text-white') : 'border-current/30'}`}>{option.enabled && <Check size={12}/>}</button><span className="min-w-0 flex-1">{option.text}</span><button aria-label="修改元素" onClick={() => { setEditTarget({ poolId: pool.id, option }); setEditDraft(option.text) }} className="p-1 opacity-45"><Edit3 size={13}/></button><button aria-label="删除元素" onClick={() => setDeleteTarget({ poolId: pool.id, option })} className="p-1 text-red-400 opacity-65"><Trash2 size={13}/></button></div>)}</div>
             </div>}
           </section>)}
           {error && <p className="text-center text-xs text-red-400">{error}</p>}
@@ -97,4 +109,9 @@ export function IntimacyWheelModal({ open, night, onClose }: { open: boolean; ni
       </div>
     </div>
   </div>
+    <PaperActionDialog open={!!editTarget} title="修改元素" confirmLabel="保存" busy={busy} onClose={() => setEditTarget(null)} onConfirm={saveEdit}>
+      <input autoFocus value={editDraft} onChange={event => setEditDraft(event.target.value)} className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${night ? 'border-night-border bg-night-bg' : 'chat-dialog-field'}`}/>
+    </PaperActionDialog>
+    <PaperActionDialog open={!!deleteTarget} title={`删除“${deleteTarget?.option.text || ''}”？`} confirmLabel="删除" danger busy={busy} onClose={() => setDeleteTarget(null)} onConfirm={removeOption}/>
+  </>
 }

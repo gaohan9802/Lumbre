@@ -48,6 +48,7 @@ export function PhotosView() {
   const [hasPassword, setHasPassword] = useState(false)
   const [settingPassword, setSettingPassword] = useState(false)
   const [newPassword, setNewPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -122,12 +123,13 @@ export function PhotosView() {
   }
 
   const verifyPassword = async () => {
+    setPasswordError('')
     const r = await photosApi.password('verify', passwordInput)
     if (r.ok) {
       setUnlocked(true)
       setPasswordInput('')
     } else {
-      alert('密码错误')
+      setPasswordError('密码错误')
     }
   }
 
@@ -143,12 +145,11 @@ export function PhotosView() {
   const showPasswordGate = zone === 'locked' && !unlocked && hasPassword
 
   return (
-    <div className={`h-full overflow-y-auto ${isNight ? '' : 'chat-paper text-[#3f2c29]'}`}>
+    <div className={`h-full overflow-y-auto ${isNight ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       <div className="max-w-lg mx-auto px-6 py-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-medium">📷 照片墙</h2>
-            <p className={`text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>我们的日常碎片。</p>
+            <h2 className="flex items-center gap-2 text-2xl font-medium"><Camera size={18} strokeWidth={1.5}/>照片墙</h2>
           </div>
           <button onClick={onPick}
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs ${isNight ? 'bg-night-amber/20 text-night-amber' : 'chat-dialog-accent'}`}>
@@ -198,25 +199,15 @@ export function PhotosView() {
             <Lock size={32} className="mx-auto mb-4 opacity-20" />
             <p className="text-sm mb-4">上锁区需要密码查看</p>
             <div className="flex items-center gap-2 max-w-xs mx-auto">
-              <input value={passwordInput} onChange={e => setPasswordInput(e.target.value)} type="password" placeholder="输入密码"
+              <input value={passwordInput} onChange={e => { setPasswordInput(e.target.value); setPasswordError('') }} type="password" placeholder="输入密码"
                 onKeyDown={e => { if (e.key === 'Enter') verifyPassword() }}
                 className={`flex-1 text-sm p-2 rounded-lg outline-none ${isNight ? 'bg-night-card' : 'chat-dialog-field'}`} />
               <button onClick={verifyPassword} className={`px-4 py-2 rounded-lg text-xs ${isNight ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent'}`}>解锁</button>
             </div>
+            {passwordError && <p role="alert" className="mt-3 text-xs text-red-500">{passwordError}</p>}
           </motion.div>
         ) : (
           <>
-            {photos.length === 0 && !loading && (
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                className={`p-6 rounded-2xl text-center ${isNight ? 'bg-night-surface' : 'chat-dialog-card'}`}>
-                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${isNight ? 'bg-night-card' : 'bg-[#DBB9B3]/15'}`}>
-                  <Camera size={24} className="opacity-20" />
-                </div>
-                <p className={`text-sm mb-1 ${isNight ? 'text-night-text' : 'text-day-text'}`}>{zone === 'locked' ? '上锁区还没有照片' : '还没有照片'}</p>
-                <p className="text-[10px] opacity-30 mb-4">拍一张，或从相册选一张</p>
-              </motion.div>
-            )}
-
             <div className="grid grid-cols-2 gap-3">
               {photos.map((p) => (
                 <motion.button key={p.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -279,7 +270,7 @@ export function PhotosView() {
                     </div>
                   ) : (
                     <div className="flex items-start gap-2">
-                      <p className="flex-1 text-sm opacity-80">{active.caption || <span className="opacity-40">还没有说明…</span>}</p>
+                      <p className="flex-1 text-sm opacity-80">{active.caption}</p>
                       <button onClick={() => { setEditingCaption(true); setCaptionDraft(active.caption) }} className="p-1 opacity-50 hover:opacity-100"><Pencil size={14} /></button>
                     </div>
                   )}

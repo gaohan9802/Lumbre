@@ -6,6 +6,7 @@ import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, X, ChevronDown, ChevronRight, Pin, Check, Trash2, Edit3, Save, RefreshCw, Settings, Zap } from 'lucide-react'
 import { apiRequest } from '@/lib/api'
+import { PaperActionDialog } from '@/components/PaperActionDialog'
 
 // ─── Types ────────────────────────────────────────────────────
 interface Bucket {
@@ -98,6 +99,7 @@ export function MemoryView() {
   const [editForm, setEditForm] = useState<{name:string;importance:number;tags:string;domain:string;content:string}>({name:'',importance:5,tags:'',domain:'',content:''})
   const [batchMode, setBatchMode] = useState(false)
   const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set())
+  const [confirmAction, setConfirmAction] = useState<{kind:'archive';id:string}|{kind:'purge';ids:string[]}|null>(null)
 
   const fetchBuckets = useCallback(async (append = false) => {
     const cursor = append ? nextCursor : 0
@@ -160,7 +162,7 @@ export function MemoryView() {
   }, [])
 
   const doAction = useCallback(async (action: string, id: string) => {
-    if (action === 'delete' && !confirm('确认归档？')) return
+    if (action === 'delete') { setConfirmAction({kind:'archive',id}); return }
     await fetch(`/api/memory/bucket-${action}?id=${id}`, { method: 'POST' })
     fetchBuckets()
     setSelectedBucket(null)
@@ -186,16 +188,21 @@ export function MemoryView() {
 
   const doBatchPurge = useCallback(async () => {
     if (!batchSelected.size) return
-    if (!confirm(`永久删除 ${batchSelected.size} 个桶？不可恢复！`)) return
-    await fetch('/api/memory/bucket-purge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: Array.from(batchSelected) }),
-    })
-    setBatchMode(false)
-    setBatchSelected(new Set())
+    setConfirmAction({kind:'purge',ids:Array.from(batchSelected)})
+  }, [batchSelected])
+
+  const confirmDestructive = async () => {
+    if (!confirmAction) return
+    if (confirmAction.kind === 'archive') {
+      await fetch(`/api/memory/bucket-delete?id=${confirmAction.id}`, { method: 'POST' })
+      setSelectedBucket(null)
+    } else {
+      await fetch('/api/memory/bucket-purge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: confirmAction.ids }) })
+      setBatchMode(false); setBatchSelected(new Set())
+    }
+    setConfirmAction(null)
     fetchBuckets()
-  }, [batchSelected, fetchBuckets])
+  }
 
   const toggleBatch = (id: string) => {
     setBatchSelected(prev => {
@@ -235,7 +242,7 @@ export function MemoryView() {
   const visibleTabs = tabGroup === 'observe' ? TABS.slice(4, 6) : TABS.slice(0, 4)
 
   return (
-    <div className={`relative h-full flex flex-col ${isNight ? '' : 'chat-paper text-[#3f2c29]'}`}>
+    <div className={`relative h-full flex flex-col ${isNight ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Stats bar */}
       <div className={`px-4 pt-2 pb-1 text-[10px] ${c.muted} flex gap-3 items-center`}>
         <span>{stats.total} 桶</span><span>📌 {stats.pinned}</span>
@@ -420,6 +427,9 @@ export function MemoryView() {
           </motion.div>
         )}
       </AnimatePresence>
+      <PaperActionDialog open={!!confirmAction} title={confirmAction?.kind==='purge'?`永久删除 ${confirmAction.ids.length} 个桶？`:'确认归档？'} confirmLabel={confirmAction?.kind==='purge'?'永久删除':'归档'} danger onClose={()=>setConfirmAction(null)} onConfirm={confirmDestructive}>
+        {confirmAction?.kind==='purge'&&<p className="text-sm opacity-60">删除后不可恢复。</p>}
+      </PaperActionDialog>
     </div>
   )
 }

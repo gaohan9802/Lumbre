@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useCallback, useState } from 'react'
+import { Fragment, useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
@@ -187,6 +187,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const activeCcModel = selectedCcModel || (isCcModel(ccStatus?.model) ? ccStatus.model : DEFAULT_CC_MODEL)
   const effectiveCcModel = selectedCcModel || ccStatus.model || DEFAULT_CC_MODEL
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
+  const bottomedSessionRef = useRef<string | null>(null)
 
   const {
     input, setInput, isLoading, setIsLoading, sendStarting, setSendStarting,
@@ -312,6 +313,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     ? Math.max(0, Number(activeSession.messageCount || 0) - messages.length)
     : 0
   const visibleMessages = hiddenCount > 0 ? messages.slice(-visibleCount) : messages
+  useLayoutEffect(() => {
+    const sessionId = activeSession?.id
+    if (!mounted || !sessionId || bottomedSessionRef.current === sessionId) return
+    if (!visibleMessages.length && Number(activeSession.messageCount || 0) > 0) return
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    stickBottomRef.current = true
+    bottomedSessionRef.current = sessionId
+  }, [activeSession?.id, activeSession?.messageCount, mounted, visibleMessages.length])
   const nosePokeLine = (poke: { id: string; timestamp: number }) => (
     <motion.p
       key={poke.id}
@@ -1048,7 +1059,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   /* ── key handling ─────────────────────── */
 
   const toggleThinking = (id: string) => {
+    const el = scrollRef.current
+    const top = el?.scrollTop
+    stickBottomRef.current = false
     setExpandedThinking(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+    if (el && top != null) requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = top })
   }
   const toggleTools = (id: string) => {
     setExpandedTools(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
@@ -1085,7 +1100,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={`relative h-full w-[86vw] max-w-[340px] flex flex-col overflow-hidden ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29]'} border-r`}>
-      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(1.75rem,env(safe-area-inset-top))]' : 'pt-7'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
+      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(2.75rem,env(safe-area-inset-top))]' : 'pt-11'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-base font-medium">会话</div>
@@ -1207,18 +1222,18 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             </>
           )}
         </section>
-        <div className="space-y-1 pt-1">
-          <div className="grid grid-cols-5 gap-1">
+        <div className="space-y-1.5 pt-1">
+          <div className="grid grid-cols-4 gap-1.5">
             <button type="button" onClick={() => openChatSettings('star')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>SP</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>摘要</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>书签</button>
             <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
             <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
-          </div>
-          <div className="grid grid-cols-3 gap-1">
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>心跳唤醒</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>记忆</button>
             <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>换窗</button>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>摘要</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>书签</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>唤醒</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>记忆</button>
           </div>
         </div>
       </div>
@@ -1309,14 +1324,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               const isExp = expandedThinking.has(blockKey)
                               return (
                                 <div key={blockKey}>
-                                  <button onClick={() => toggleThinking(blockKey)} className={`ml-4 text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                                  <button onClick={() => toggleThinking(blockKey)} className={`ml-4 flex max-w-full items-center gap-1 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                     <span className="truncate">💭星星的小算盘</span>
                                   </button>
                                   <AnimatePresence>
                                     {isExp && (
                                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                                        className={`text-[13px] p-2 rounded-lg overflow-hidden whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                                        {block.content}
+                                        className={`ml-4 mt-1 max-w-[calc(88%_-_1rem)] overflow-hidden text-left text-[13px] leading-relaxed ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                                        <MarkdownText content={block.content}/>
                                       </motion.div>
                                     )}
                                   </AnimatePresence>
@@ -1358,7 +1373,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[88%] mr-auto break-words px-4 py-3 text-justify [text-justify:inter-ideograph] text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}>
+                                <div key={blockKey} className={`chat-ai-bubble relative mr-auto block w-fit max-w-[88%] break-words px-4 py-3 text-left text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {msg.images.map((src: string, ii: number) => (
@@ -1378,14 +1393,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           {/* Legacy: thinking above bubble */}
                           {msg.thinking && (
                             <>
-                              <button onClick={() => toggleThinking(msg.id)} className={`ml-4 text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                              <button onClick={() => toggleThinking(msg.id)} className={`ml-4 flex max-w-full items-center gap-1 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                 <span className="truncate">💭星星的小算盘</span>
                               </button>
                               <AnimatePresence>
                                 {expandedThinking.has(msg.id) && (
                                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                                    className={`text-[13px] p-2 rounded-lg overflow-hidden whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                                    {msg.thinking}
+                                    className={`ml-4 mt-1 max-w-[calc(88%_-_1rem)] overflow-hidden text-left text-[13px] leading-relaxed ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                                    <MarkdownText content={msg.thinking}/>
                                   </motion.div>
                                 )}
                               </AnimatePresence>
@@ -1443,7 +1458,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? `w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto ${n ? 'bg-night-amber/45 text-night-text' : 'bg-[#DBB9B3]/60 text-[#3f2c29]'}` : `w-fit max-w-[88%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? `ml-auto w-fit max-w-[74%] rounded-2xl rounded-br-md ${n ? 'bg-night-amber/45 text-night-text' : 'bg-[#DBB9B3]/60 text-[#3f2c29]'}` : `mr-auto w-fit max-w-[88%] text-left ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
@@ -1662,8 +1677,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               <>
                 <motion.button type="button" aria-label={`关闭 ${roomLabels[roomPanel]}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setRoomPanel(null)} className="fixed inset-0 z-[74] bg-black/35 backdrop-blur-[2px]" />
                 <motion.section role="dialog" aria-modal="true" aria-label={roomLabels[roomPanel]} initial={{ opacity: 0, scale: .97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .97, y: 8 }} className={`fixed inset-x-3 bottom-3 top-[max(.75rem,env(safe-area-inset-top))] z-[75] mx-auto flex max-w-6xl flex-col overflow-hidden rounded-[28px] ${n ? 'border border-night-border bg-night-surface text-night-text shadow-2xl' : 'chat-dialog'}`}>
-                  <header className={`flex items-center justify-between border-b px-5 py-3 ${n ? 'border-night-border' : 'chat-dialog-line'}`}>
-                    <h2 className="font-serif text-lg">{roomLabels[roomPanel]}</h2>
+                  <header className="flex justify-end px-3 py-1">
                     <button type="button" aria-label="关闭" onClick={() => setRoomPanel(null)} className="rounded-full p-2 opacity-55 hover:opacity-100"><X size={18}/></button>
                   </header>
                   <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>

@@ -13,6 +13,7 @@ import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { diary } from '@/lib/api'
 import { shareToChat } from '@/lib/share'
+import { PaperActionDialog } from '@/components/PaperActionDialog'
 
 interface Comment {
   commenter?: string
@@ -121,6 +122,7 @@ export function DiaryView() {
   const [commentText, setCommentText] = useState('')
   const [appendText, setAppendText] = useState('')
   const [showAppend, setShowAppend] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const [unlocking, setUnlocking] = useState<DiaryEntry | null>(null)
   const [unlockPwd, setUnlockPwd] = useState('')
@@ -228,8 +230,9 @@ export function DiaryView() {
   }
 
   const handleDelete = async () => {
-    if (!selected || !confirm('删掉这篇？')) return
+    if (!selected) return
     await diary.delete(selected.author, selected.date, selected.time_id)
+    setDeleteOpen(false)
     setSelected(null)
     loadEntries()
   }
@@ -253,7 +256,7 @@ export function DiaryView() {
   const noFrame = 'no-frame'
 
   return (
-    <div className={`h-full flex flex-col relative ${isNight ? 'bg-night-bg' : 'chat-paper text-[#3f2c29]'}`}>
+    <div className={`h-full flex flex-col relative ${isNight ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Header */}
       <div className={`relative z-10 px-5 pt-4 pb-3 flex items-center justify-between ${
         isNight ? 'border-b border-night-border/50' : 'border-b chat-dialog-line'
@@ -268,7 +271,7 @@ export function DiaryView() {
             <ChevronLeft size={16} /> 返回
           </button>
         ) : (
-          <h2 className="text-base font-medium tracking-wide">日记本</h2>
+          <h2 className="text-2xl font-medium tracking-wide">日记本</h2>
         )}
 
         <div className="flex items-center gap-2">
@@ -286,7 +289,7 @@ export function DiaryView() {
             <span role="button" tabIndex={0} onClick={() => shareEntry(selected)} className="p-2 rounded-xl opacity-50 hover:opacity-100 cursor-pointer" title="分享到 Chat"><Share2 size={15} /></span>
           )}
           {selected && canEdit && (
-            <button onClick={handleDelete} className="p-2 rounded-xl opacity-30 hover:opacity-100 hover:text-day-error dark:hover:text-night-error transition">
+            <button onClick={() => setDeleteOpen(true)} className="p-2 rounded-xl opacity-30 hover:opacity-100 hover:text-day-error dark:hover:text-night-error transition">
               <Trash2 size={15} />
             </button>
           )}
@@ -522,13 +525,7 @@ export function DiaryView() {
               <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 {loading ? (
                   <div className={`text-center py-16 text-sm ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>翻开日记本...</div>
-                ) : sortedDates.length === 0 ? (
-                  <div className="text-center py-16 space-y-3">
-                    <span className="text-4xl">📔</span>
-                    <p className={`text-sm ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>还没有日记</p>
-                    <p className={`text-xs ${isNight ? 'text-night-muted/50' : 'text-day-disabled'}`}>点右上角 + 写第一篇</p>
-                  </div>
-                ) : (
+                ) : sortedDates.length === 0 ? null : (
                   <div className="space-y-5">
                     {sortedDates.map((date: string) => (
                       <div key={date}>
@@ -602,6 +599,7 @@ export function DiaryView() {
           </motion.div>
         )}
       </AnimatePresence>
+      <PaperActionDialog open={deleteOpen} title="删掉这篇？" confirmLabel="删除" danger onClose={() => setDeleteOpen(false)} onConfirm={handleDelete}/>
     </div>
   )
 }

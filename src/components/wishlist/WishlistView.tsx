@@ -5,7 +5,7 @@ import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 import { wish as wishApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Heart, MessageCircle, Send, ChevronDown, ChevronUp, X, Check } from 'lucide-react'
+import { Plus, Trash2, Heart, MessageCircle, Send, ChevronDown, ChevronUp, X, Check, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 
 type Priority = 'want' | 'really' | 'dying'
@@ -64,13 +64,12 @@ export function WishlistView() {
   const fireWishes = wishes.filter(w => w.author === 'fire')
 
   return (
-    <div className={`h-full overflow-y-auto ${night ? '' : 'chat-paper text-[#3f2c29]'}`}>
+    <div className={`h-full overflow-y-auto ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="text-center mb-6">
-          <h1 className={`text-2xl font-semibold ${night ? 'text-night-text' : 'text-day-text'}`}>
-            🌠 2026 愿望清单
+          <h1 className={`flex items-center justify-center gap-2 text-2xl font-semibold ${night ? 'text-night-text' : 'text-day-text'}`}>
+            <Sparkles size={18} strokeWidth={1.5}/>2026 愿望清单
           </h1>
-          <p className={`text-sm mt-1 ${mutedCls}`}>想要的都写下来，慢慢实现。打勾不删除，留着当成就墙。</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -198,11 +197,7 @@ function WishColumn({
 
       {loading ? (
         <p className={`text-sm ${mutedCls} py-4 text-center`}>加载中…</p>
-      ) : active.length === 0 && done.length === 0 ? (
-        <p className={`text-sm ${mutedCls} py-6 text-center`}>
-          {canAdd ? '还没有愿望，点「许个愿」写一个吧。' : '这边还没有愿望。'}
-        </p>
-      ) : (
+      ) : active.length === 0 && done.length === 0 ? null : (
         <div className="space-y-2.5">
           {active.map(w => (
             <WishCard key={w.id} w={w} currentUser={currentUser} night={night} reload={reload} />

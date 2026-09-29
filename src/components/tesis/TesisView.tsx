@@ -87,7 +87,7 @@ export function TesisView() {
         {/* Header — overall progress */}
         <div className={`rounded-2xl border p-5 ${cardCls}`}>
           <div className="flex items-baseline justify-between">
-            <h1 className="text-lg font-semibold flex items-center gap-2">📄 论文进度</h1>
+            <h1 className="text-2xl font-semibold">论文进度</h1>
             <span className={`text-3xl font-bold ${accent}`}>{totals.percent}%</span>
           </div>
           <div className={`mt-1 text-sm ${mutedCls}`}>
@@ -151,9 +151,7 @@ export function TesisView() {
 
           {loading ? (
             <p className={`text-sm ${mutedCls}`}>加载中…</p>
-          ) : chapters.length === 0 ? (
-            <p className={`text-sm ${mutedCls}`}>还没有章节，点「新建章节」开始追踪。</p>
-          ) : (
+          ) : chapters.length === 0 ? null : (
             chapters.map(ch => (
               <ChapterCard
                 key={ch.id}
@@ -185,9 +183,7 @@ export function TesisView() {
             <button onClick={sendComment} className={`p-1.5 rounded-lg ${accent}`}><Send size={16} /></button>
           </div>
 
-          {comments.length === 0 ? (
-            <p className={`text-sm ${mutedCls}`}>还没有评论。星星查看进度后会在这里留言。</p>
-          ) : (
+          {comments.length === 0 ? null : (
             <div className="space-y-2">
               {[...comments].reverse().map(c => (
                 <div key={c.id} className={`rounded-xl border p-3 ${cardCls}`}>
@@ -284,7 +280,6 @@ function ProgressChart({ progress, night, accent }: { progress: ProgressPoint[];
     return (
       <div className={`rounded-2xl border p-5 ${cardCls}`}>
         <h2 className="text-sm font-medium mb-1">每日进度</h2>
-        <p className={`text-sm ${mutedCls}`}>还没有数据点。更新章节页数后，这里会画出折线图。</p>
       </div>
     )
   }
