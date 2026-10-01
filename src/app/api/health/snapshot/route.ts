@@ -12,7 +12,10 @@ function response(value: unknown, status = 200) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isTrustedHealthSyncRequest(request.headers.get('authorization'))) {
+  if (!isTrustedHealthSyncRequest(
+    request.headers.get('authorization'),
+    request.headers.get('x-lumbre-health-token'),
+  )) {
     return response({ error: 'unauthorized' }, 401)
   }
   const declared = Number(request.headers.get('content-length') || 0)

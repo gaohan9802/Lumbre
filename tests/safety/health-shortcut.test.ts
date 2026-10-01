@@ -35,6 +35,7 @@ test('health shortcut endpoint authenticates, validates and merges compact daily
   assert.equal(rejected.status, 401)
   assert.deepEqual((await rejected.json()).diagnostic, {
     header_received: true,
+    custom_header_received: false,
     bearer_prefix: true,
     character_length: 71,
     byte_length: 71,
@@ -43,6 +44,14 @@ test('health shortcut endpoint authenticates, validates and merges compact daily
   assert.equal((await route.POST(request({ date: '2026-10-01', steps: 1 }, 'wrong-secret-that-is-long-enough-000'))).status, 401)
   assert.equal((await route.POST(request(null))).status, 400)
   assert.equal((await route.POST(request({ date: 'not-a-date', steps: 1 }))).status, 400)
+
+  const customRequest = () => new NextRequest('http://lumbre.test/api/health/snapshot', {
+    method: 'POST',
+    headers: { 'x-lumbre-health-token': secret, 'content-type': 'application/json' },
+    body: JSON.stringify({ date: '2026-10-01', steps: 8642 }),
+  })
+  assert.equal((await middleware(customRequest())).headers.get('x-middleware-next'), '1')
+  assert.equal((await route.POST(customRequest())).status, 200)
 
   const steps = await route.POST(request({ date: '2026-10-01', steps: 8642 }))
   assert.equal(steps.status, 200)

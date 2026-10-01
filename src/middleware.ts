@@ -57,12 +57,14 @@ export async function middleware(request: NextRequest) {
   // endpoint with its own secret; the route repeats the check.
   if (pathname === '/api/health/snapshot') {
     const authorization = request.headers.get('authorization')
-    if (isTrustedHealthSyncRequest(authorization)) return securityHeaders(NextResponse.next())
-    const value = authorization || ''
+    const shortcutToken = request.headers.get('x-lumbre-health-token')
+    if (isTrustedHealthSyncRequest(authorization, shortcutToken)) return securityHeaders(NextResponse.next())
+    const value = authorization || shortcutToken || ''
     return securityHeaders(NextResponse.json({
       error: 'Unauthorized',
       diagnostic: {
         header_received: authorization !== null,
+        custom_header_received: shortcutToken !== null,
         bearer_prefix: value.startsWith('Bearer '),
         character_length: Array.from(value).length,
         byte_length: new TextEncoder().encode(value).length,
