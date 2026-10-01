@@ -37,10 +37,21 @@ function validStore(value: unknown): value is HealthStore {
 
 function metric(value: unknown, name: string, max: number): number | undefined {
   if (value === undefined) return undefined
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > max) {
-    throw new HealthInputError(`${name} must be an integer between 0 and ${max}`)
+  if (Array.isArray(value) && value.length === 1) return metric(value[0], name, max)
+
+  let number = value
+  if (typeof value === 'string') {
+    const text = value.trim().replace(/\s*(?:steps?|步)\s*$/i, '').trim()
+    if (/^\d+$/.test(text)) number = Number(text)
+    else if (/^\d{1,3}(?:[,.\s]\d{3})+$/.test(text)) number = Number(text.replace(/[,.\s]/g, ''))
+    else if (/^\d{4,}[,.]0+$/.test(text)) number = Number(text.replace(',', '.'))
   }
-  return value
+
+  if (typeof number !== 'number' || !Number.isInteger(number) || number < 0 || number > max) {
+    const received = Array.isArray(value) ? `array(${value.length})` : typeof value
+    throw new HealthInputError(`${name} must be an integer between 0 and ${max}; received ${received}`)
+  }
+  return number
 }
 
 export function saveHealthSnapshot(input: unknown, now = new Date()): HealthDay {

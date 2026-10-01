@@ -53,6 +53,10 @@ test('health shortcut endpoint authenticates, validates and merges compact daily
   assert.equal((await middleware(customRequest())).headers.get('x-middleware-next'), '1')
   assert.equal((await route.POST(customRequest())).status, 200)
 
+  const shortcutEncoded = await route.POST(request({ date: '2026-10-01', steps: ['8,642 步'] }))
+  assert.equal(shortcutEncoded.status, 200)
+  assert.equal((await shortcutEncoded.json()).day.steps, 8642)
+
   const steps = await route.POST(request({ date: '2026-10-01', steps: 8642 }))
   assert.equal(steps.status, 200)
   const sleep = await route.POST(request({ date: '2026-10-01', sleep_minutes: 438 }))
