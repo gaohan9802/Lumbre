@@ -1,4 +1,4 @@
-import { addMadridDays, madridDateKey } from '@/lib/madrid-time'
+import { addMadridDays, APP_TIME_ZONE, formatMadrid, madridDateKey } from '@/lib/madrid-time'
 import { getDataDir } from '../config'
 import { readJsonFile, updateJsonFile } from '../json-file'
 import { assertDateKey, resolveDataPath } from '../safe-path'
@@ -18,6 +18,14 @@ type HealthInput = { date?: unknown; steps?: unknown; sleep_minutes?: unknown }
 export type HealthRange = 'today' | 'yesterday' | 'week'
 
 export class HealthInputError extends Error {}
+
+function madridSyncTime(value: string): string {
+  return `${formatMadrid(value)} (${APP_TIME_ZONE})`
+}
+
+export function healthDayForDisplay(day: HealthDay) {
+  return { ...day, synced_at: madridSyncTime(day.synced_at) }
+}
 
 function emptyStore(): HealthStore {
   return { version: 1, days: [] }
@@ -101,13 +109,14 @@ export function readHealthSummary(range: HealthRange = 'week', now = new Date())
   const to = range === 'yesterday' ? from : today
   const store = readJsonFile(HEALTH_FILE, { fallback: emptyStore, validate: validStore })
   const days = store.days.filter(day => day.date >= from && day.date <= to)
+  const latest = days.reduce<string | null>((value, day) => (
+    !value || day.synced_at > value ? day.synced_at : value
+  ), null)
   return {
     range,
     from,
     to,
-    last_synced_at: days.reduce<string | null>((latest, day) => (
-      !latest || day.synced_at > latest ? day.synced_at : latest
-    ), null),
-    days,
+    last_synced_at: latest ? madridSyncTime(latest) : null,
+    days: days.map(healthDayForDisplay),
   }
 }

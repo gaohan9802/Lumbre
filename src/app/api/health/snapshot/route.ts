@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { HealthInputError, saveHealthSnapshot } from '@/server/data/repositories/health'
+import { healthDayForDisplay, HealthInputError, saveHealthSnapshot } from '@/server/data/repositories/health'
 import { isTrustedHealthSyncRequest } from '@/server/health-sync-auth'
 
 export const dynamic = 'force-dynamic'
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     const raw = await request.text()
     if (Buffer.byteLength(raw) > MAX_INPUT_BYTES) return response({ error: 'request_too_large' }, 413)
     const day = saveHealthSnapshot(JSON.parse(raw))
-    return response({ ok: true, day })
+    return response({ ok: true, day: healthDayForDisplay(day) })
   } catch (error) {
     if (error instanceof HealthInputError || error instanceof SyntaxError) {
       return response({ error: error.message }, 400)

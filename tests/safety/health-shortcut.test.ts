@@ -67,10 +67,11 @@ test('health shortcut endpoint authenticates, validates and merges compact daily
   assert.equal(saved.date, '2026-10-01')
   assert.equal(saved.steps, 8642)
   assert.equal(saved.sleep_minutes, 438)
-  assert.equal(typeof saved.synced_at, 'string')
+  assert.match(saved.synced_at, /^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2} \(Europe\/Madrid\)$/)
 
   const summary = health.readHealthSummary('today', new Date('2026-10-01T12:00:00Z'))
   assert.equal(summary.days.length, 1)
   assert.equal(summary.days[0].steps, 8642)
   assert.equal(summary.days[0].sleep_minutes, 438)
+  assert.match(summary.days[0].synced_at, /\(Europe\/Madrid\)$/)
 })
