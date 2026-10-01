@@ -12,11 +12,13 @@ process.env.LUMBRE_HEALTH_SYNC_SECRET = secret
 let NextRequest: typeof import('next/server').NextRequest
 let route: typeof import('../../src/app/api/health/snapshot/route')
 let health: typeof import('../../src/server/data/repositories/health')
+let middleware: typeof import('../../src/middleware').middleware
 
 before(async () => {
   ;({ NextRequest } = await import('next/server'))
   route = await import('../../src/app/api/health/snapshot/route')
   health = await import('../../src/server/data/repositories/health')
+  ;({ middleware } = await import('../../src/middleware'))
 })
 after(() => rmSync(root, { recursive: true, force: true }))
 
@@ -29,6 +31,15 @@ function request(body: unknown, token = secret) {
 }
 
 test('health shortcut endpoint authenticates, validates and merges compact daily summaries', async () => {
+  const rejected = await middleware(request({}, 'f'.repeat(64)))
+  assert.equal(rejected.status, 401)
+  assert.deepEqual((await rejected.json()).diagnostic, {
+    header_received: true,
+    bearer_prefix: true,
+    character_length: 71,
+    byte_length: 71,
+    token_shape: true,
+  })
   assert.equal((await route.POST(request({ date: '2026-10-01', steps: 1 }, 'wrong-secret-that-is-long-enough-000'))).status, 401)
   assert.equal((await route.POST(request(null))).status, 400)
   assert.equal((await route.POST(request({ date: 'not-a-date', steps: 1 }))).status, 400)

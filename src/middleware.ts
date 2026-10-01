@@ -55,8 +55,20 @@ export async function middleware(request: NextRequest) {
 
   // Apple Shortcuts has no browser cookie and can reach only this write-only
   // endpoint with its own secret; the route repeats the check.
-  if (pathname === '/api/health/snapshot' && isTrustedHealthSyncRequest(request.headers.get('authorization'))) {
-    return securityHeaders(NextResponse.next())
+  if (pathname === '/api/health/snapshot') {
+    const authorization = request.headers.get('authorization')
+    if (isTrustedHealthSyncRequest(authorization)) return securityHeaders(NextResponse.next())
+    const value = authorization || ''
+    return securityHeaders(NextResponse.json({
+      error: 'Unauthorized',
+      diagnostic: {
+        header_received: authorization !== null,
+        bearer_prefix: value.startsWith('Bearer '),
+        character_length: Array.from(value).length,
+        byte_length: new TextEncoder().encode(value).length,
+        token_shape: /^Bearer [0-9a-f]{64}$/.test(value),
+      },
+    }, { status: 401, headers: { 'Cache-Control': 'no-store' } }))
   }
 
   if (!isAuthConfigured()) {
