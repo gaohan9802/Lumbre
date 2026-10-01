@@ -1,6 +1,13 @@
 import { formatMadrid } from '@/lib/madrid-time'
 
 const REDACTED_CONFIRMATION_TOKEN = /"token":"[^"]+",?/
+const MAX_TOOL_RESULT_CHARS = 16_000
+const TRUNCATED_SUFFIX = '\n…(truncated)'
+
+function limitToolResult(result: string, max = MAX_TOOL_RESULT_CHARS): string {
+  if (result.length <= max) return result
+  return result.slice(0, max - TRUNCATED_SUFFIX.length) + TRUNCATED_SUFFIX
+}
 
 export function localizeToolTimes(result: string): string {
   return result.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})/g, iso => {
@@ -13,16 +20,16 @@ export function toolResultForHistory(name: string, result: string): string {
   if (name === 'read_foto') {
     try {
       const list = JSON.parse(result)
-      if (Array.isArray(list)) return JSON.stringify(list.map(({ url: _url, ...rest }: any) => rest)).slice(0, 4000)
+      if (Array.isArray(list)) return limitToolResult(JSON.stringify(list.map(({ url: _url, ...rest }: any) => rest)))
     } catch {}
   }
   if (name === 'view_foto') {
     try {
       const { url: _url, ...rest } = JSON.parse(result)
-      return JSON.stringify(rest).slice(0, 4000)
+      return limitToolResult(JSON.stringify(rest))
     } catch {}
   }
-  return result.slice(0, 4000)
+  return limitToolResult(result)
 }
 
 export function toolResultText(name: string, result: string): string {
@@ -31,20 +38,13 @@ export function toolResultText(name: string, result: string): string {
       const payload = JSON.parse(result)
       if (payload?.confirmation) {
         const { token: _token, ...confirmation } = payload.confirmation
-        return JSON.stringify({ ...payload, confirmation }).slice(0, 2000)
+        return limitToolResult(JSON.stringify({ ...payload, confirmation }), 2000)
       }
     } catch {}
-    return result.replace(REDACTED_CONFIRMATION_TOKEN, '').slice(0, 2000)
+    return limitToolResult(result.replace(REDACTED_CONFIRMATION_TOKEN, ''), 2000)
   }
-  if (['search_web', 'fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json'].includes(name)) return result.slice(0, 6000)
-  if (name === 'read_detroit' || name === 'play_detroit') return result.slice(0, 6000)
-  if (name === 'read_stories' || name === 'read_research') return result.slice(0, 14000)
-  if (name === 'read_emails' || name === 'search_emails') return result.slice(0, 8000)
-  if (name === 'read_email_detail') return result.slice(0, 14000)
-  if (name === 'gmail_status') return result.slice(0, 2000)
   if (name === 'read_foto' || name === 'view_foto') return toolResultForHistory(name, result)
-  if (result.length <= 300) return result
-  return result.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').slice(0, 300) + '…(truncated)'
+  return limitToolResult(result)
 }
 
 export function toolResultContent(name: string, result: string): Array<Record<string, unknown>> {

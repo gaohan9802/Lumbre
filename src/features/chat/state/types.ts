@@ -7,9 +7,11 @@ import type { MessageRequestAudit } from '@/lib/chat-receipt'
 export interface ContentBlock {
   type: 'thinking' | 'text' | 'tool_call'
   content?: string
+  callId?: string
   name?: string
   input?: Record<string, any>
   result?: string
+  pending?: boolean
 }
 
 export interface BubbleSegment {

@@ -460,6 +460,24 @@ export const LIFE_TOOL_DEFINITIONS = [
     }
   },
   {
+    "name": "read_health_summary",
+    "description": "查看小火从Apple健康同步来的步数和睡眠时长日汇总。range可选today、yesterday或week；默认week。数据可能不是实时的，不能用于医疗诊断。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "range": {
+          "type": "string",
+          "enum": [
+            "today",
+            "yesterday",
+            "week"
+          ],
+          "description": "today=今天，yesterday=昨天，week=最近7天"
+        }
+      }
+    }
+  },
+  {
     "name": "read_bookmarks",
     "description": "查看世界书/书签的全部字段。名称只用于管理；内容会按关键词、扫描深度、优先级、常驻、启用状态和注入位置触发。",
     "input_schema": {

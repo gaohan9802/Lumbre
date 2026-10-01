@@ -221,9 +221,10 @@ test('Lumbre forwards durable CC tool events through the existing chat tool UI p
     if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}/events`)) {
       return new Response([
         `data: ${JSON.stringify({ id: 1, type: 'queued' })}`,
-        `data: ${JSON.stringify({ id: 2, type: 'tool_call', name: 'read_period', input: {}, result: '{"ok":true}', error: false })}`,
-        `data: ${JSON.stringify({ id: 3, type: 'text', content: '我看过啦' })}`,
-        `data: ${JSON.stringify({ id: 4, type: 'completed' })}`,
+        `data: ${JSON.stringify({ id: 2, type: 'tool_start', callId: 'call-1', name: 'read_period', input: {} })}`,
+        `data: ${JSON.stringify({ id: 3, type: 'tool_call', callId: 'call-1', name: 'read_period', input: {}, result: '{"ok":true}', error: false })}`,
+        `data: ${JSON.stringify({ id: 4, type: 'text', content: '我看过啦' })}`,
+        `data: ${JSON.stringify({ id: 5, type: 'completed' })}`,
         '',
       ].join('\n\n'))
     }
@@ -242,8 +243,10 @@ test('Lumbre forwards durable CC tool events through the existing chat tool UI p
     })
     const events = []
     for await (const event of readChatEventStream(response)) events.push(event)
-    assert.deepEqual(events.map(event => event.type), ['attempt', 'tool_call', 'text', 'done'])
+    assert.deepEqual(events.map(event => event.type), ['attempt', 'tool_start', 'tool_call', 'text', 'done'])
     assert.equal(events[1].name, 'read_period')
+    assert.equal(events[1].call_id, 'call-1')
+    assert.equal(events[2].call_id, 'call-1')
   } finally { restore() }
 })
 

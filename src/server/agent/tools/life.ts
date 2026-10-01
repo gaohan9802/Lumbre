@@ -29,6 +29,7 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'get_location', domain: 'context', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'update_period', domain: 'period', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_period', domain: 'period', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_health_summary', domain: 'health', level: 'green', allowedSources: ALL_SAFE_SOURCES },
 
   { name: 'read_bookmarks', domain: 'bookmarks', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'add_bookmark', domain: 'bookmarks', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },

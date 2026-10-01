@@ -31,6 +31,7 @@ import { timeline as timelineApi } from '@/lib/api'
 import { loadEarlierChat, syncChatNow } from '@/features/chat/sync/ChatSync'
 import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
+import { toolDisplayLabel } from '@/features/chat/tool-display'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
@@ -447,7 +448,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     // error (desktop tolerates it, mobile doesn't). Streaming keeps bytes
     // flowing so the connection stays alive on mobile. `live` only controls
     // whether the UI renders progressively; when off we just show loading dots.
-    const live = settings.streamEnabled
+    const live = route === 'claude-code' || settings.streamEnabled
     setStreamText('')
     setStreamThinking('')
     setStreamBlocks([])
@@ -560,12 +561,35 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           const chunk = String(evt.content || '')
           fullThinking += chunk
           appendContentBlock({ type: 'thinking', content: chunk })
+        } else if (evt.type === 'tool_start') {
+          if (evt.name === 'view_foto' && typeof (evt.input as any)?.message_id === 'string') continue
+          appendContentBlock({
+            type: 'tool_call',
+            callId: String(evt.call_id || ''),
+            name: String(evt.name || ''),
+            input: evt.input && typeof evt.input === 'object' ? evt.input : {},
+            pending: true,
+          })
         } else if (evt.type === 'tool_call') {
           const resolved = await resolveConfirmation(evt)
           if (resolved.name === 'view_foto' && typeof resolved.input?.message_id === 'string') continue
           toolCalls.push(resolved)
-          appendContentBlock({ type: 'tool_call', name: resolved.name, input: resolved.input, result: resolved.result })
+          const callId = String(resolved.call_id || '')
+          const pendingIndex = callId
+            ? contentBlocks.findIndex(block => block.type === 'tool_call' && block.pending && block.callId === callId)
+            : -1
+          const completed: ContentBlock = {
+            type: 'tool_call', callId, name: resolved.name, input: resolved.input,
+            result: resolved.result, pending: false,
+          }
+          if (pendingIndex >= 0) {
+            contentBlocks[pendingIndex] = completed
+            scheduleStreamPaint()
+          } else appendContentBlock(completed)
         } else if (evt.type === 'error') {
+          contentBlocks = contentBlocks.map(block => block.pending
+            ? { ...block, pending: false, result: '工具调用中断' }
+            : block)
           const errorText = (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
           fullText += errorText
           appendContentBlock({ type: 'text', content: errorText })
@@ -1344,7 +1368,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                                 <div key={blockKey} className={`w-fit max-w-[87%] mr-auto rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
                                   <button onClick={() => toggleTools(blockKey)} className={`w-full flex items-center gap-2 px-3 py-2 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                     <span className={`${n ? 'text-night-muted' : 'text-day-pink'}`}>🔧</span>
-                                    <span>调用工具: <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{block.name}</span></span>
+                                    <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{toolDisplayLabel(block.name)}</span>
                                     <ChevronDown size={12} className={`ml-auto transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
                                   </button>
                                   <AnimatePresence>
@@ -1412,7 +1436,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             <div className="w-fit max-w-[87%] mr-auto">
                               <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-muted' : 'text-day-pink/70'}`}>
                                 <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? '' : '-rotate-90'}`} />
-                                🔧 {msg.tool_calls.map((tc: any) => tc.name).join(', ')}
+                                🔧 {msg.tool_calls.map((tc: any) => toolDisplayLabel(tc.name)).join('、')}
                               </button>
                               <AnimatePresence>
                                 {expandedTools.has(msg.id) && (
@@ -1421,7 +1445,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                                       {msg.tool_calls.map((tc: any, i: number) => (
                                         <div key={i} className={`p-2 rounded-lg space-y-1.5 ${n ? 'bg-night-card' : 'bg-white'}`}>
                                           <div>
-                                            <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{tc.name}</span>
+                                            <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{toolDisplayLabel(tc.name)}</span>
                                           </div>
                                           {tc.input && Object.keys(tc.input).length > 0 && (
                                             <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
@@ -1548,6 +1572,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 blocks={streamBlocks}
                 expandedThinking={expandedThinking}
                 onToggleThinking={toggleThinking}
+                expandedTools={expandedTools}
+                onToggleTools={toggleTools}
                 isNight={n}
               />
             )}

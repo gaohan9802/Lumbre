@@ -224,11 +224,15 @@ export class AttemptLedger {
   appendToolCall(id, toolCall) {
     return this.update(id, attempt => {
       if (attempt.status !== 'running') return attempt
-      this.appendEvent(attempt, 'tool_call', {
+      const started = toolCall?.phase === 'start'
+      this.appendEvent(attempt, started ? 'tool_start' : 'tool_call', {
+        callId: String(toolCall?.callId || '').slice(0, 120),
         name: String(toolCall?.name || '').slice(0, 120),
         input: toolCall?.input && typeof toolCall.input === 'object' ? toolCall.input : {},
-        result: String(toolCall?.result || '').slice(0, 16_000),
-        error: toolCall?.error === true,
+        ...(!started ? {
+          result: String(toolCall?.result || '').slice(0, 16_000),
+          error: toolCall?.error === true,
+        } : {}),
       })
       return attempt
     })

@@ -265,10 +265,18 @@ export async function createCcChatResponse({
                 send({ type: 'text', content: String(event.content || '') })
               } else if (event.type === 'thinking') {
                 send({ type: 'thinking', content: String(event.content || '') })
+              } else if (event.type === 'tool_start') {
+                send({
+                  type: 'tool_start',
+                  call_id: String(event.callId || ''),
+                  name: String(event.name || ''),
+                  input: event.input && typeof event.input === 'object' ? event.input : {},
+                })
               } else if (event.type === 'tool_call') {
                 toolResults.push({ name: event.name, input: event.input, result: event.result })
                 send({
                   type: 'tool_call',
+                  call_id: String(event.callId || ''),
                   name: String(event.name || ''),
                   input: event.input && typeof event.input === 'object' ? event.input : {},
                   result: String(event.result || ''),

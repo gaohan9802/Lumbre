@@ -34,9 +34,11 @@ function normalizeContentBlock(block: any): ContentBlock | null {
   return {
     type: block.type,
     content: block.content == null ? undefined : safeText(block.content),
+    callId: block.callId == null ? undefined : safeText(block.callId),
     name: block.name == null ? undefined : safeText(block.name),
     input: block.input && typeof block.input === 'object' ? block.input : undefined,
     result: block.result == null ? undefined : safeText(block.result),
+    pending: block.pending === true || undefined,
   }
 }
 
@@ -65,8 +67,10 @@ function normalizeMessage(message: any): ChatMessage | null {
   const blocksValid = !message.content_blocks || (Array.isArray(message.content_blocks) && message.content_blocks.every((block: any) =>
     block && ['thinking', 'text', 'tool_call'].includes(block.type) &&
     (block.content == null || typeof block.content === 'string') &&
+    (block.callId == null || typeof block.callId === 'string') &&
     (block.name == null || typeof block.name === 'string') &&
-    (block.result == null || typeof block.result === 'string')))
+    (block.result == null || typeof block.result === 'string') &&
+    (block.pending == null || typeof block.pending === 'boolean')))
   const versionsValid = !message.versions || (Array.isArray(message.versions) && message.versions.every((version: any) =>
     version && (version.route === 'api' || version.route === 'claude-code') && typeof version.content === 'string' && (version.thinking == null || typeof version.thinking === 'string') &&
     (!version.bubbleLayout || (Array.isArray(version.bubbleLayout.segments) && normalizeBubbleLayout(version.bubbleLayout)?.segments.length === version.bubbleLayout.segments.length))))

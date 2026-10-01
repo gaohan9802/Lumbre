@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authCookie, isAuthConfigured, verifySessionToken } from './lib/auth'
 import { shouldBlockDebugApi } from './server/safety-baseline'
 import { isTrustedCcToolBridgeRequest } from './server/chat/cc-tool-bridge-auth'
+import { isTrustedHealthSyncRequest } from './server/health-sync-auth'
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -49,6 +50,12 @@ export async function middleware(request: NextRequest) {
   // The isolated CC gateway has no browser cookie. It can reach exactly this
   // endpoint with a separate bridge secret; the route repeats the check.
   if (pathname === '/api/internal/cc-tools' && isTrustedCcToolBridgeRequest(request.headers.get('authorization'))) {
+    return securityHeaders(NextResponse.next())
+  }
+
+  // Apple Shortcuts has no browser cookie and can reach only this write-only
+  // endpoint with its own secret; the route repeats the check.
+  if (pathname === '/api/health/snapshot' && isTrustedHealthSyncRequest(request.headers.get('authorization'))) {
     return securityHeaders(NextResponse.next())
   }
 

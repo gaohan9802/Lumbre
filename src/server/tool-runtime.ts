@@ -32,6 +32,7 @@ import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { scheduleWake } from './autowake'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
+import { readHealthSummary, type HealthRange } from './data/repositories/health'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
 import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
 import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
@@ -100,6 +101,10 @@ export async function executeRegisteredToolHandler(
         }
       }
       return JSON.stringify(result)
+    }
+    if (name === 'read_health_summary') {
+      const range: HealthRange = input.range === 'today' || input.range === 'yesterday' ? input.range : 'week'
+      return JSON.stringify(readHealthSummary(range))
     }
 
 

@@ -4,16 +4,19 @@ import { motion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import type { ContentBlock } from '@/features/chat/state/types'
 import { MarkdownText } from '@/components/chat/MarkdownText'
+import { toolDisplayLabel } from '@/features/chat/tool-display'
 
 interface StreamingReplyProps {
   blocks: ContentBlock[]
   expandedThinking: Set<string>
   onToggleThinking: (id: string) => void
+  expandedTools: Set<string>
+  onToggleTools: (id: string) => void
   isNight: boolean
 }
 
 export function StreamingReply({
-  blocks, expandedThinking, onToggleThinking, isNight,
+  blocks, expandedThinking, onToggleThinking, expandedTools, onToggleTools, isNight,
 }: StreamingReplyProps) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
@@ -37,13 +40,31 @@ export function StreamingReply({
             )
           }
           if (block.type === 'tool_call' && block.name) {
+            const key = `stream-tool-${block.callId || index}`
+            const expanded = expandedTools.has(key)
             return (
-              <div key={index} className={`w-fit max-w-[87%] mr-auto rounded-xl border ${isNight ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
-                <div className={`flex items-center gap-2 px-3 py-2 text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-                  <span className={isNight ? 'text-night-muted' : 'text-day-pink'}>🔧</span>
-                  <span>调用工具: <span className={`font-medium ${isNight ? 'text-night-muted' : 'text-day-pink'}`}>{block.name}</span></span>
-                  <ChevronDown size={12} className="ml-auto -rotate-90" />
-                </div>
+              <div key={key} className={`w-fit max-w-[87%] mr-auto rounded-xl border ${isNight ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
+                <button onClick={() => onToggleTools(key)} className={`w-full flex items-center gap-2 px-3 py-2 text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
+                  <span className={`${block.pending ? 'animate-pulse' : ''} ${isNight ? 'text-night-muted' : 'text-day-pink'}`}>🔧</span>
+                  <span className={`font-medium ${isNight ? 'text-night-muted' : 'text-day-pink'}`}>{toolDisplayLabel(block.name)}</span>
+                  {block.pending && <span className="text-[10px] opacity-45">进行中</span>}
+                  <ChevronDown size={12} className={`ml-auto transition-transform flex-shrink-0 ${expanded ? '' : '-rotate-90'}`} />
+                </button>
+                {expanded && (
+                  <div className="px-3 pb-2 text-xs space-y-1.5">
+                    {block.input && Object.keys(block.input).length > 0 && (
+                      <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${isNight ? 'bg-night-card text-night-muted' : 'bg-white text-day-muted'}`}>
+                        {JSON.stringify(block.input, null, 2)}
+                      </pre>
+                    )}
+                    <div className={`pt-1 border-t ${isNight ? 'border-night-border' : 'border-gray-200'}`}>
+                      <span className="text-[10px] opacity-40 block mb-1">返回结果</span>
+                      <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded max-h-[200px] overflow-y-auto ${isNight ? 'bg-night-card text-night-muted' : 'bg-white text-day-muted'}`}>
+                        {block.pending ? '等待返回…' : block.result || '（无返回内容）'}
+                      </pre>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           }
