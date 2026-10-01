@@ -56,6 +56,8 @@ test('health shortcut endpoint authenticates, validates and merges compact daily
   const shortcutEncoded = await route.POST(request({ date: '2026-10-01', steps: ['8,642 步'] }))
   assert.equal(shortcutEncoded.status, 200)
   assert.equal((await shortcutEncoded.json()).day.steps, 8642)
+  assert.equal((await route.POST(request({ date: '2026-10-01', steps: '8.642,0 count' }))).status, 200)
+  assert.equal((await route.POST(request({ date: '2026-10-01', steps: '\u200e８，６４２\u200f 步' }))).status, 200)
 
   const steps = await route.POST(request({ date: '2026-10-01', steps: 8642 }))
   assert.equal(steps.status, 200)

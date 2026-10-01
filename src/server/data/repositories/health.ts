@@ -41,15 +41,23 @@ function metric(value: unknown, name: string, max: number): number | undefined {
 
   let number = value
   if (typeof value === 'string') {
-    const text = value.trim().replace(/\s*(?:steps?|步)\s*$/i, '').trim()
-    if (/^\d+$/.test(text)) number = Number(text)
-    else if (/^\d{1,3}(?:[,.\s]\d{3})+$/.test(text)) number = Number(text.replace(/[,.\s]/g, ''))
-    else if (/^\d{4,}[,.]0+$/.test(text)) number = Number(text.replace(',', '.'))
+    const text = value.normalize('NFKC').replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '').trim()
+    const match = text.match(/\d[\d,.\s\u00a0\u202f]*/)?.[0].trim()
+    if (match) {
+      let formatted = match
+      const decimal = /([,.])(0+)$/.exec(formatted)
+      if (decimal && (decimal[2].length !== 3 || formatted.slice(0, decimal.index).includes(decimal[1] === '.' ? ',' : '.'))) {
+        formatted = formatted.slice(0, decimal.index)
+      }
+      const digits = formatted.replace(/[^\d]/g, '')
+      if (digits) number = Number(digits)
+    }
   }
 
   if (typeof number !== 'number' || !Number.isInteger(number) || number < 0 || number > max) {
     const received = Array.isArray(value) ? `array(${value.length})` : typeof value
-    throw new HealthInputError(`${name} must be an integer between 0 and ${max}; received ${received}`)
+    const preview = typeof value === 'string' ? `: ${JSON.stringify(value.slice(0, 80))}` : ''
+    throw new HealthInputError(`${name} must be an integer between 0 and ${max}; received ${received}${preview}`)
   }
   return number
 }
