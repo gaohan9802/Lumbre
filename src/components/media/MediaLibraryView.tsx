@@ -46,9 +46,13 @@ export function MediaLibraryView() {
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const [library, timeline] = await Promise.all([api.list(tab === 'coread' ? { coread: true } : { kind: kind || undefined, status: status || undefined }), api.timeline()])
-      setWorks(Array.isArray(library.works) ? library.works : [])
-      setEvents(Array.isArray(timeline.events) ? timeline.events : [])
+      if (tab === 'timeline') {
+        const timeline = await api.timeline()
+        setEvents(Array.isArray(timeline.events) ? timeline.events : [])
+      } else {
+        const library = await api.list(tab === 'coread' ? { coread: true } : { kind: kind || undefined, status: status || undefined })
+        setWorks(Array.isArray(library.works) ? library.works : [])
+      }
       if (selected) {
         const detail = await api.detail(selected.id)
         setSelected(detail.work)
@@ -61,8 +65,6 @@ export function MediaLibraryView() {
 
   const panel = night ? 'border-night-border bg-night-card' : 'border-[#a73a32]/15 bg-[#fffaf5]/80'
   const muted = night ? 'text-night-muted' : 'text-day-muted'
-  const accent = night ? 'text-night-amber' : 'text-[#9c6e69]'
-
   if (selected) return <MediaDetail work={selected} actor={currentUser} night={night} onBack={() => setSelected(null)} onChanged={load}/>
 
   return <div className={`relative h-full overflow-y-auto ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
@@ -80,14 +82,23 @@ export function MediaLibraryView() {
           <span className={`my-1 w-px shrink-0 ${night ? 'bg-night-border' : 'bg-[#a73a32]/15'}`}/>
           <Filter value={status} setValue={value => setStatus(value as MediaStatus | '')} values={[['', '全部状态'], ['planned', '想读/看'], ['in_progress', '进行中'], ['completed', '已完成']]} night={night}/>
         </div>
-        {loading ? <p className={`py-16 text-center text-sm ${muted}`}>翻找书架中…</p> : works.length ? <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">{works.map(work => <WorkCard key={work.id} work={work} night={night} onClick={() => setSelected(work)}/>)}</div> : <Empty onAdd={() => setAddOpen(true)} muted={muted}/>}
+        {loading
+          ? <p className={`py-16 text-center text-sm ${muted}`}>翻找书架中…</p>
+          : works.length
+            ? <Shelf works={works} night={night} onSelect={setSelected}/>
+            : <Empty onAdd={() => setAddOpen(true)} muted={muted}/>
+        }
       </>}
-      {tab === 'coread' && (loading ? <p className={`py-16 text-center text-sm ${muted}`}>翻找共读书架中…</p> : works.length ? <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">{works.map(work => <WorkCard key={work.id} work={work} night={night} onClick={() => setSelected(work)}/>)}</div> : <div className={`flex min-h-56 flex-col items-center justify-center gap-3 text-center text-sm ${muted}`}><UsersRound size={34} strokeWidth={1.2}/><span>这里只放真正想一起读的书。<br/>可以由你开启，也可以等星星提出想读。</span></div>)}
+      {tab === 'coread' && (loading ? <p className={`py-16 text-center text-sm ${muted}`}>翻找共读书架中…</p> : works.length ? <Shelf works={works} night={night} onSelect={setSelected}/> : <div className={`flex min-h-56 flex-col items-center justify-center gap-3 text-center text-sm ${muted}`}><UsersRound size={34} strokeWidth={1.2}/><span>这里只放真正想一起读的书。<br/>可以由你开启，也可以等星星提出想读。</span></div>)}
       {tab === 'timeline' && <div className="mt-4 space-y-3">{loading ? <p className={`py-16 text-center text-sm ${muted}`}>整理共同动态中…</p> : events.length ? events.map(item => <EventCard key={item.id} item={item} actor={currentUser} night={night} onChanged={load}/>) : <p className={`py-16 text-center text-sm ${muted}`}>第一条书影动态还没发生。</p>}</div>}
       {error && <p role="alert" className="mt-4 text-sm text-red-500">{error}</p>}
     </div>
     {addOpen && <AddDialog actor={currentUser} night={night} onClose={() => setAddOpen(false)} onSaved={() => { setAddOpen(false); void load() }}/>}
   </div>
+}
+
+function Shelf({ works, night, onSelect }: { works: MediaWork[]; night: boolean; onSelect: (work: MediaWork) => void }) {
+  return <div className="mt-4 grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">{works.map(work => <WorkCard key={work.id} work={work} night={night} onClick={() => onSelect(work)}/>)}</div>
 }
 
 function Filter({ value, setValue, values, night }: { value: string; setValue: (value: string) => void; values: [string, string][]; night: boolean }) {
@@ -99,14 +110,13 @@ function Empty({ onAdd, muted }: { onAdd: () => void; muted: string }) {
 }
 
 function WorkCard({ work, night, onClick }: { work: MediaWork; night: boolean; onClick: () => void }) {
-  const panel = night ? 'border-night-border bg-night-card' : 'border-[#a73a32]/15 bg-[#fffaf5]/80'
   const statuses = (['fire', 'star'] as MediaActor[]).filter(actor => work.records[actor])
   const progress = (actor: MediaActor) => work.coread?.paragraph_count && work.coread_progress?.[actor]
     ? Math.round(work.coread_progress[actor]!.paragraph_idx / Math.max(1, work.coread.paragraph_count - 1) * 100)
     : 0
-  return <button onClick={onClick} className={`overflow-hidden rounded-2xl border text-left ${panel}`}>
-    <div className="relative"><Cover work={work}/>{work.coread && <span className="absolute right-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[9px] text-white">{work.coread.status === 'ready' ? '共读中' : '等文件'}</span>}</div>
-    <div className="p-3"><p className="line-clamp-2 text-sm font-medium leading-5">{work.title}</p><p className="mt-1 truncate text-[11px] opacity-50">{work.creators.join(' / ') || KIND[work.kind].label}</p>{work.coread?.status === 'ready' ? <div className="mt-3 space-y-1 text-[10px] opacity-65"><p>🦦 小火 {progress('fire')}%</p><p>🐆 星星 {progress('star')}%</p></div> : <div className="mt-3 flex flex-wrap gap-1">{statuses.map(actor => <span key={actor} className={`rounded-md px-1.5 py-0.5 text-[10px] ${night ? 'bg-night-surface' : 'bg-[#DBB9B3]/15'}`}>{icon(actor)} {STATUS[work.records[actor]!.status].split(' / ')[0]}{work.records[actor]!.rating ? ` · ${work.records[actor]!.rating}★` : ''}</span>)}</div>}</div>
+  return <button onClick={onClick} className="group min-w-0 text-left outline-none" aria-label={`打开《${work.title}》`}>
+    <div className={`relative overflow-hidden rounded-xl border shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md group-focus-visible:ring-2 ${night ? 'border-night-border bg-night-card ring-night-amber/50' : 'border-[#a73a32]/15 bg-[#fffaf5]/80 ring-[#a73a32]/25'}`}><Cover work={work}/>{work.coread && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[8px] tracking-wide text-white">{work.coread.status === 'ready' ? '共读中' : '等文件'}</span>}</div>
+    <div className="px-0.5 pt-2"><p className="line-clamp-2 text-xs font-medium leading-4">{work.title}</p><p className="mt-0.5 truncate text-[10px] opacity-45">{work.creators.join(' / ') || KIND[work.kind].label}</p>{work.coread?.status === 'ready' ? <p className="mt-1 truncate text-[9px] opacity-60">🦦 {progress('fire')}% · 🐆 {progress('star')}%</p> : statuses.length > 0 && <p className="mt-1 truncate text-[9px] opacity-55">{statuses.map(actor => `${icon(actor)} ${STATUS[work.records[actor]!.status].split(' / ')[0]}${work.records[actor]!.rating ? ` ${work.records[actor]!.rating}★` : ''}`).join(' · ')}</p>}</div>
   </button>
 }
 
@@ -227,12 +237,13 @@ function CoreadPanel({ work, actor, night, onChanged, onOpen }: { work: MediaWor
   }
   const upload = async (file?: File) => {
     if (!file) return
+    if (file.size > 30 * 1024 * 1024) { setMessage('文件不能超过 30MB'); return }
     setBusy(true); setMessage('正在整理正文，这可能需要一点时间…')
     try { await api.uploadCoread(actor, work.id, file); setMessage('已经放进共读书架'); await onChanged() }
     catch (err: any) { setMessage(err?.message || '文件读取失败') }
     setBusy(false)
   }
-  return <section className={`mt-4 rounded-2xl border p-4 ${panel}`}><div className="flex items-center gap-2"><UsersRound size={16}/><h2 className="text-sm font-medium">和星星一起读</h2></div>{!work.coread ? <><p className="mt-2 text-xs leading-5 opacity-60">大部分书仍然只是收藏。只有真正想一起读的书，才会出现在轻量共读书架。</p><button disabled={busy} onClick={() => void request()} className={`mt-3 rounded-xl px-4 py-2 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>放进共读书架</button></> : work.coread.status === 'ready' ? <><div className="mt-2 flex flex-wrap gap-2 text-xs opacity-60"><span>{work.coread.format?.toUpperCase()}</span><span>·</span><span>{work.coread.chapter_count} 章</span><span>·</span><span>{work.coread.paragraph_count} 段</span></div><button onClick={onOpen} className={`mt-3 w-full rounded-xl py-2.5 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>继续共读</button></> : <><p className="mt-2 text-xs leading-5 opacity-60">{work.coread.requested_by === 'star' ? '星星想读这本书，等你帮他把文件带回来。' : '共读位置已经留好，把书拖进来就可以开始。'}{work.coread.request_note ? ` ${work.coread.request_note}` : ''}</p><input ref={fileRef} type="file" hidden accept=".epub,.pdf,.txt,application/epub+zip,application/pdf,text/plain" onChange={event => void upload(event.target.files?.[0])}/><button disabled={busy} onClick={() => fileRef.current?.click()} onDragEnter={event => { event.preventDefault(); setDragging(true) }} onDragOver={event => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); void upload(event.dataTransfer.files?.[0]) }} className={`mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-xs ${dragging ? 'border-current bg-current/5' : 'border-current/20'}`}><FileUp size={20}/>{busy ? '正在整理正文…' : '拖入或选择 EPUB、PDF、TXT（最大 30MB）'}</button></>}{message && <p role="status" className={`mt-2 text-xs ${message.includes('失败') ? 'text-red-500' : 'opacity-60'}`}>{message}</p>}</section>
+  return <section className={`mt-4 rounded-2xl border p-4 ${panel}`}><div className="flex items-center gap-2"><UsersRound size={16}/><h2 className="text-sm font-medium">和星星一起读</h2></div>{!work.coread ? <><p className="mt-2 text-xs leading-5 opacity-60">大部分书仍然只是收藏。只有真正想一起读的书，才会出现在轻量共读书架。</p><button disabled={busy} onClick={() => void request()} className={`mt-3 rounded-xl px-4 py-2 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>放进共读书架</button></> : work.coread.status === 'ready' ? <><div className="mt-2 flex flex-wrap gap-2 text-xs opacity-60"><span>{work.coread.format?.toUpperCase()}</span><span>·</span><span>{work.coread.chapter_count} 章</span><span>·</span><span>{work.coread.paragraph_count} 段</span></div><button onClick={onOpen} className={`mt-3 w-full rounded-xl py-2.5 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>继续共读</button></> : <><p className="mt-2 text-xs leading-5 opacity-60">{work.coread.requested_by === 'star' ? '星星想读这本书，等你帮他把文件带回来。' : '共读位置已经留好，把书拖进来就可以开始。'}{work.coread.request_note ? ` ${work.coread.request_note}` : ''}</p><input ref={fileRef} type="file" hidden accept=".epub,.pdf,.txt,application/epub+zip,application/pdf,text/plain" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file) }}/><button disabled={busy} onClick={() => fileRef.current?.click()} onDragEnter={event => { event.preventDefault(); setDragging(true) }} onDragOver={event => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); void upload(event.dataTransfer.files?.[0]) }} className={`mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-xs ${dragging ? 'border-current bg-current/5' : 'border-current/20'}`}><FileUp size={20}/>{busy ? '正在整理正文…' : '拖入或选择 EPUB、PDF、TXT（最大 30MB）'}</button></>}{message && <p role="status" className={`mt-2 text-xs ${message.includes('失败') || message.includes('不能') ? 'text-red-500' : 'opacity-60'}`}>{message}</p>}</section>
 }
 
 function EventCard({ item, actor, night, onChanged }: { item: MediaTimelineItem; actor: MediaActor; night: boolean; onChanged: () => Promise<void> | void }) {

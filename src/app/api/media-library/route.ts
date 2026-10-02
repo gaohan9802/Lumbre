@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
       const form = await req.formData()
       const upload = form.get('file')
       if (!(upload instanceof File)) return NextResponse.json({ error: 'file required' }, { status: 400 })
+      if (upload.size > 30 * 1024 * 1024) return NextResponse.json({ error: '文件必须小于 30MB' }, { status: 413 })
       const who = actor(form.get('actor'))
       const book = await importCoreadDocument(who, String(form.get('work_id') || ''), { name: upload.name, bytes: Buffer.from(await upload.arrayBuffer()) })
       return NextResponse.json({ ok: true, book: { file_name: book.file_name, format: book.format, chapters: book.chapters, paragraph_count: book.paragraphs.length } })

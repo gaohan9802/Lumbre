@@ -126,6 +126,7 @@ test('chat rooms keep the night palette and compact reading type', () => {
   assert.doesNotMatch(tesis, /📄 论文进度/)
   assert.match(media, /shareToChat\([\s\S]*kind: 'media'/)
   assert.match(media, /aria-label="分享到 Chat"/)
+  assert.match(media, /grid-cols-3[\s\S]*sm:grid-cols-4[\s\S]*lg:grid-cols-6/)
   for (const room of [notes, diary, photos, poems, stories, research, wishlist, media, timeline, tesis, dreams, memory]) assert.match(room, /bg-night-bg/)
   assert.match(notes, /<Pin[^>]*\/>[\s\S]*留言板/)
   assert.match(photos, /<Camera[^>]*\/>照片墙/)

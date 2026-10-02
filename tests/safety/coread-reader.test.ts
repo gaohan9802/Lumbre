@@ -30,6 +30,7 @@ test('EPUB import keeps independent progress and actor-owned annotations', async
   assert.equal(work.coread?.status, 'requested')
   const book = await coread.importCoreadDocument('fire', work.id, { name: '一起读.epub', bytes: epub() })
   assert.equal(book.chapters[0].title, '第一章')
+  assert.equal(book.paragraphs.filter(item => item.text === '第一章').length, 1)
   assert.match(book.paragraphs.map(item => item.text).join('\n'), /风从窗外吹进来/)
 
   coread.updateCoreadProgress('fire', work.id, 1)

@@ -40,6 +40,7 @@ function htmlToText(html: string): { title?: string; text: string } {
   const titleMatch = /<(?:h1|h2|title)\b[^>]*>([\s\S]*?)<\/(?:h1|h2|title)>/i.exec(html)
   const strip = (value: string) => decodeEntities(value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
   const text = decodeEntities(html
+    .replace(/<head\b[\s\S]*?<\/head>/gi, '')
     .replace(/<script\b[\s\S]*?<\/script>/gi, '')
     .replace(/<style\b[\s\S]*?<\/style>/gi, '')
     .replace(/<(?:br|hr)\s*\/?>/gi, '\n')
@@ -109,7 +110,11 @@ export function parseEpubSections(bytes: Buffer): { title: string; text: string 
     const id = attribute(match[0], 'id')
     const href = attribute(match[0], 'href')
     const mediaType = attribute(match[0], 'media-type')
-    if (id && href && /xhtml|html/i.test(mediaType)) manifest.set(id, path.posix.normalize(path.posix.join(base, decodeURIComponent(href))))
+    if (id && href && /xhtml|html/i.test(mediaType)) {
+      let decoded = href.split('#')[0]
+      try { decoded = decodeURIComponent(decoded) } catch {}
+      manifest.set(id, path.posix.normalize(path.posix.join(base, decoded)))
+    }
   }
   const sections: { title: string; text: string }[] = []
   for (const match of Array.from(opf.matchAll(/<itemref\b[^>]*>/gi))) {
