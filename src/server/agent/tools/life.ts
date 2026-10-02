@@ -43,4 +43,9 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'void_coupon', domain: 'coupons', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'confirm_void_coupon', domain: 'coupons', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '作废券' },
   { name: 'bite_otter_nape', domain: 'wake', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_media_library', domain: 'media', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'save_media_entry', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'write_media_note', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'comment_media_event', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'delete_media_content', domain: 'media', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除书影内容' },
 ]

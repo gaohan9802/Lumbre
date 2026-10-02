@@ -142,6 +142,23 @@ export const wish = {
     post('/api/wish/comment', { id, author, content }),
 }
 
+// ── Private book & screen log ───────────────────────────
+export const mediaLibrary = {
+  list: (params: { kind?: string; status?: string; owner?: string; q?: string } = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => !!value) as [string, string][])
+    const suffix = query.toString()
+    return get(`/api/media-library${suffix ? `?${suffix}` : ''}`)
+  },
+  timeline: () => get('/api/media-library?mode=timeline'),
+  detail: (id: string) => get(`/api/media-library?mode=detail&id=${encodeURIComponent(id)}`),
+  search: (kind: string, q: string) => get(`/api/media-library?mode=search&kind=${encodeURIComponent(kind)}&q=${encodeURIComponent(q)}`),
+  catalogDetail: (kind: string, id: string) => get(`/api/media-library?mode=catalog-detail&kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}`),
+  save: (actor: string, entry: Record<string, unknown>) => post('/api/media-library', { action: 'save', actor, entry }),
+  note: (actor: string, work_id: string, note: Record<string, unknown>) => post('/api/media-library', { action: 'note', actor, work_id, note }),
+  comment: (actor: string, work_id: string, event_id: string, content: string) => post('/api/media-library', { action: 'comment', actor, work_id, event_id, content }),
+  remove: (actor: string, target: Record<string, unknown>) => post('/api/media-library', { action: 'delete', actor, target }),
+}
+
 
 // ── Period tracking ───────────────────────────────────
 export const period = {

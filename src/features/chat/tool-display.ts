@@ -78,6 +78,11 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   bite_otter_nape: '咬一口小水獭的后颈',
   read_detroit: '查看底特律进度',
   play_detroit: '继续玩底特律',
+  read_media_library: '翻了翻我们的书影记录',
+  save_media_entry: '更新了书影记录',
+  write_media_note: '写下了一则书影笔记',
+  comment_media_event: '回应了一条书影动态',
+  delete_media_content: '删除了自己的书影内容',
 }
 
 export function toolDisplayLabel(name: string): string {

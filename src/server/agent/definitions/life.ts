@@ -706,5 +706,87 @@ export const LIFE_TOOL_DEFINITIONS = [
       "type": "object",
       "properties": {}
     }
+  },
+  {
+    "name": "read_media_library",
+    "description": "查看小火和星星的私人书影记录。可按作品类型、状态或关键词筛选；传 work_id 查看一部作品的双方状态、评分、评价、笔记、摘抄、动态与评论；timeline=true 查看交叉时间线。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "work_id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["book", "movie", "tv"] },
+        "status": { "type": "string", "enum": ["planned", "in_progress", "completed"] },
+        "query": { "type": "string" },
+        "timeline": { "type": "boolean" }
+      }
+    }
+  },
+  {
+    "name": "save_media_entry",
+    "description": "把书、电影或剧集加入星星的书影记录，或更新星星在已有作品上的状态、1到5星评分和评价。更新已有作品时传 work_id；新建时必须传 kind 和 title。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "work_id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["book", "movie", "tv"] },
+        "title": { "type": "string" },
+        "original_title": { "type": "string" },
+        "creators": { "type": "array", "items": { "type": "string" } },
+        "cover_url": { "type": "string" },
+        "summary": { "type": "string" },
+        "publisher": { "type": "string" },
+        "published_date": { "type": "string" },
+        "page_count": { "type": "integer" },
+        "isbn": { "type": "string" },
+        "release_date": { "type": "string" },
+        "runtime_minutes": { "type": "integer" },
+        "status": { "type": "string", "enum": ["planned", "in_progress", "completed"] },
+        "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "review": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "write_media_note",
+    "description": "给一部作品写读书/观影笔记或摘抄；传 note_id 可修改星星自己已有的笔记。locator 可写页码、集数或时间点。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "work_id": { "type": "string" },
+        "note_id": { "type": "string" },
+        "type": { "type": "string", "enum": ["note", "quote"] },
+        "content": { "type": "string" },
+        "locator": { "type": "string" }
+      },
+      "required": ["work_id", "content"]
+    }
+  },
+  {
+    "name": "comment_media_event",
+    "description": "评论书影时间线上的一条动态。先用 read_media_library 的 timeline 获取 work_id 和 event_id。评论身份固定为星星。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "work_id": { "type": "string" },
+        "event_id": { "type": "string" },
+        "content": { "type": "string" }
+      },
+      "required": ["work_id", "event_id", "content"]
+    }
+  },
+  {
+    "name": "delete_media_content",
+    "description": "删除星星自己的书影记录、笔记、评论或仅含星星内容的作品。删除 record 会同时删除星星在该作品下的笔记和相关动态；不会删除小火的内容。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["record", "note", "comment", "work"] },
+        "work_id": { "type": "string" },
+        "note_id": { "type": "string" },
+        "event_id": { "type": "string" },
+        "comment_id": { "type": "string" }
+      },
+      "required": ["type", "work_id"]
+    }
   }
 ] satisfies ToolDef[]
