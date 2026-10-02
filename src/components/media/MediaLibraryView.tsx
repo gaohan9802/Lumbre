@@ -18,6 +18,14 @@ const EVENT: Record<MediaEvent['type'], string> = {
 const person = (actor: MediaActor) => actor === 'fire' ? '小火' : '星星'
 const icon = (actor: MediaActor) => actor === 'fire' ? '🦦' : '🐆'
 const when = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Europe/Madrid', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+const coverUrl = (work: Pick<MediaWork, 'cover_url' | 'source'>) => {
+  if (!work.cover_url || work.source?.provider !== 'douban-book') return work.cover_url
+  try {
+    const url = new URL(work.cover_url)
+    if (url.protocol === 'https:' && url.hostname.endsWith('.doubanio.com')) return `/api/media-library?mode=douban-cover&id=${encodeURIComponent(work.source.id)}&url=${encodeURIComponent(url.toString())}`
+  } catch {}
+  return work.cover_url
+}
 
 export function MediaLibraryView() {
   const { currentUser } = useApp()
@@ -96,10 +104,11 @@ function WorkCard({ work, night, onClick }: { work: MediaWork; night: boolean; o
   </button>
 }
 
-function Cover({ work }: { work: Pick<MediaWork, 'title' | 'cover_url' | 'kind'> }) {
+function Cover({ work }: { work: Pick<MediaWork, 'title' | 'cover_url' | 'kind' | 'source'> }) {
   const [failed, setFailed] = useState(false)
   const Icon = KIND[work.kind].icon
-  return <div className="aspect-[2/3] w-full bg-black/5">{work.cover_url && !failed ? <img src={work.cover_url} alt={`${work.title}封面`} onError={() => setFailed(true)} className="h-full w-full object-cover" referrerPolicy="no-referrer"/> : <div className="flex h-full items-center justify-center opacity-30"><Icon size={38} strokeWidth={1.2}/></div>}</div>
+  const src = coverUrl(work)
+  return <div className="aspect-[2/3] w-full bg-black/5">{src && !failed ? <img src={src} alt={`${work.title}封面`} onError={() => setFailed(true)} className="h-full w-full object-cover" referrerPolicy="no-referrer"/> : <div className="flex h-full items-center justify-center opacity-30"><Icon size={38} strokeWidth={1.2}/></div>}</div>
 }
 
 function AddDialog({ actor, night, onClose, onSaved }: { actor: MediaActor; night: boolean; onClose: () => void; onSaved: () => void }) {
@@ -177,7 +186,7 @@ function MediaDetail({ work, actor, night, onBack, onChanged }: { work: MediaWor
     kind: 'media', title: `${work.kind === 'book' ? '📚' : '🎬'} ${work.title}`,
     subtitle: [work.creators.join(' / '), work.publisher, work.published_date || work.release_date].filter(Boolean).join(' · '),
     body: [work.summary, ...(['fire', 'star'] as MediaActor[]).map(who => { const record = work.records[who]; return record ? `${person(who)}：${STATUS[record.status]}${record.rating ? ` · ${record.rating}★` : ''}${record.review ? `\n${record.review}` : ''}` : '' }).filter(Boolean), ...work.notes.slice(-3).map(item => `${person(item.author)}的${item.type === 'quote' ? '摘抄' : '笔记'}${item.locator ? `（${item.locator}）` : ''}：${item.content}`)].filter(Boolean).join('\n\n').slice(0, 6000),
-    imageUrl: work.cover_url,
+    imageUrl: coverUrl(work),
     metadata: { id: work.id, kind: work.kind, source: work.source, fire_status: work.records.fire?.status, star_status: work.records.star?.status },
   })
   return <div className={`relative h-full overflow-y-auto ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>

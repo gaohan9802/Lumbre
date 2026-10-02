@@ -1,4 +1,9 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { MediaCatalogItem, MediaKind } from '@/lib/media-library'
+import { getDataDir } from '@/server/data/config'
+import { resolveDataPath } from '@/server/data/safe-path'
 
 const clean = (value: unknown, max = 2000) => typeof value === 'string' ? value.trim().slice(0, max) : ''
 const strings = (value: unknown, max = 20) => Array.isArray(value) ? value.map(item => clean(item, 160)).filter(Boolean).slice(0, max) : []
@@ -23,6 +28,16 @@ export function parseDoubanBookUrl(value: string): { id: string; url: URL } {
   }
   url.search = ''; url.hash = ''
   return { id: match[1], url }
+}
+
+export function parseDoubanCoverUrl(value: string): URL {
+  let url: URL
+  try { url = new URL(value.trim()) } catch { throw new Error('豆瓣封面链接无效') }
+  if (url.protocol !== 'https:' || !url.hostname.endsWith('.doubanio.com') || !url.pathname.startsWith('/view/subject/') || url.username || url.password) {
+    throw new Error('豆瓣封面链接无效')
+  }
+  url.search = ''; url.hash = ''
+  return url
 }
 
 const meta = (html: string, property: string) => {
@@ -56,10 +71,10 @@ export function parseDoubanBookHtml(html: string, id: string, sourceUrl = `https
   }
 }
 
-async function readBoundedText(response: Response, maxBytes = 512 * 1024): Promise<string> {
+async function readBoundedBytes(response: Response, maxBytes: number, errorMessage: string): Promise<Uint8Array> {
   const length = Number(response.headers.get('content-length') || 0)
-  if (length > maxBytes) throw new Error('豆瓣页面过大，无法导入')
-  if (!response.body) return ''
+  if (length > maxBytes) throw new Error(errorMessage)
+  if (!response.body) return new Uint8Array()
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
   let total = 0
@@ -67,13 +82,47 @@ async function readBoundedText(response: Response, maxBytes = 512 * 1024): Promi
     const { done, value } = await reader.read()
     if (done) break
     total += value.byteLength
-    if (total > maxBytes) { await reader.cancel(); throw new Error('豆瓣页面过大，无法导入') }
+    if (total > maxBytes) { await reader.cancel(); throw new Error(errorMessage) }
     chunks.push(value)
   }
   const bytes = new Uint8Array(total)
   let offset = 0
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
-  return new TextDecoder().decode(bytes)
+  return bytes
+}
+
+const readBoundedText = async (response: Response) => new TextDecoder().decode(await readBoundedBytes(response, 512 * 1024, '豆瓣页面过大，无法导入'))
+
+function imageMime(bytes: Uint8Array): string | undefined {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png'
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp'
+}
+
+export async function readDoubanCover(idValue: string, urlValue: string): Promise<{ bytes: Uint8Array; type: string }> {
+  const id = clean(idValue, 40)
+  if (!/^\d+$/.test(id)) throw new Error('豆瓣书籍编号无效')
+  const url = parseDoubanCoverUrl(urlValue)
+  const file = resolveDataPath(getDataDir(), 'media-library', 'covers', `douban-${id}.img`)
+  try {
+    const bytes = new Uint8Array(await readFile(file))
+    const type = imageMime(bytes)
+    if (type) return { bytes, type }
+  } catch (error: any) { if (error?.code !== 'ENOENT') throw error }
+
+  const response = await fetch(url, {
+    redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(8000),
+    headers: { Accept: 'image/avif,image/webp,image/png,image/jpeg', Referer: `https://book.douban.com/subject/${id}/`, 'User-Agent': 'Mozilla/5.0 (Lumbre private library)' },
+  })
+  if (!response.ok) throw new Error(`豆瓣封面读取失败（${response.status}）`)
+  const bytes = await readBoundedBytes(response, 2 * 1024 * 1024, '豆瓣封面过大，无法保存')
+  const type = imageMime(bytes)
+  if (!type) throw new Error('豆瓣返回了无法识别的封面格式')
+  await mkdir(dirname(file), { recursive: true })
+  const temporary = `${file}.${randomUUID()}.tmp`
+  await writeFile(temporary, bytes)
+  await rename(temporary, file)
+  return { bytes, type }
 }
 
 export async function importDoubanBook(value: string): Promise<MediaCatalogItem> {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MEDIA_KINDS, MEDIA_STATUSES, type MediaActor, type MediaKind, type MediaStatus } from '@/lib/media-library'
-import { importDoubanBook, readTmdbDetails, searchMediaCatalog } from '@/server/media-catalog'
+import { importDoubanBook, readDoubanCover, readTmdbDetails, searchMediaCatalog } from '@/server/media-catalog'
 import {
   commentMediaEvent, deleteMediaContent, getMediaWork, listMediaLibrary, listMediaTimeline,
   saveMediaEntry, writeMediaNote, type DeleteMediaTarget,
@@ -24,6 +24,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(await searchMediaCatalog(kind, search.get('q') || ''))
     }
     if (mode === 'import-url') return NextResponse.json({ item: await importDoubanBook(search.get('url') || '') })
+    if (mode === 'douban-cover') {
+      const cover = await readDoubanCover(search.get('id') || '', search.get('url') || '')
+      const body = cover.bytes.buffer.slice(cover.bytes.byteOffset, cover.bytes.byteOffset + cover.bytes.byteLength) as ArrayBuffer
+      return new NextResponse(body, { headers: { 'Content-Type': cover.type, 'Cache-Control': 'private, max-age=31536000, immutable' } })
+    }
     if (mode === 'catalog-detail') {
       const kind = search.get('kind')
       if (kind !== 'movie' && kind !== 'tv') return NextResponse.json({ error: 'invalid kind' }, { status: 400 })

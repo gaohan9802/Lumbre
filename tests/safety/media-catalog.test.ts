@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseDoubanBookHtml, parseDoubanBookUrl } from '../../src/server/media-catalog'
+import { parseDoubanBookHtml, parseDoubanBookUrl, parseDoubanCoverUrl } from '../../src/server/media-catalog'
 
 test('Douban book import accepts only subject URLs and extracts editable metadata', () => {
   assert.throws(() => parseDoubanBookUrl('https://example.com/subject/1061118/'))
   assert.throws(() => parseDoubanBookUrl('http://book.douban.com/subject/1061118/'))
+  assert.throws(() => parseDoubanCoverUrl('https://example.com/view/subject/l/public/cover.jpg'))
+  assert.equal(parseDoubanCoverUrl('https://img3.doubanio.com/view/subject/l/public/cover.jpg').hostname, 'img3.doubanio.com')
   assert.equal(parseDoubanBookUrl('https://book.douban.com/subject/1061118/?from=foo').url.toString(), 'https://book.douban.com/subject/1061118/')
 
   const item = parseDoubanBookHtml(`
