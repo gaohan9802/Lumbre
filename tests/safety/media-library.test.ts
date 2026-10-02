@@ -29,4 +29,16 @@ test('two people keep separate records while sharing notes and timeline', () => 
   assert.equal(remaining.records.fire, undefined)
   assert.equal(remaining.records.star?.status, 'planned')
   assert.equal(remaining.notes.length, 0)
+  assert.equal(remaining.events.find(item => item.id === noteEvent.id)?.comments[0].author, 'star')
+})
+
+test('the same catalog source becomes one shared work', () => {
+  const source = { provider: 'douban-book', id: '123456', url: 'https://book.douban.com/subject/123456/' }
+  const first = store.saveMediaEntry('fire', { kind: 'book', title: '同一本书', source, status: 'in_progress' })
+  const second = store.saveMediaEntry('star', { kind: 'book', title: '同一本书', source, status: 'planned' })
+
+  assert.equal(second.id, first.id)
+  assert.equal(store.listMediaLibrary().works.filter(work => work.source?.provider === source.provider && work.source.id === source.id).length, 1)
+  assert.equal(second.records.fire?.status, 'in_progress')
+  assert.equal(second.records.star?.status, 'planned')
 })

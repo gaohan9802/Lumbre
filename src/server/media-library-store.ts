@@ -109,14 +109,19 @@ export function saveMediaEntry(actorValue: unknown, input: SaveMediaInput): Medi
   const actor = actorOf(actorValue)
   return mutate(state => {
     const now = new Date().toISOString()
-    let work = input.work_id ? state.works.find(item => item.id === input.work_id) : undefined
+    const sourceProvider = text(input.source?.provider, 40)
+    const sourceId = text(input.source?.id, 180)
+    let work = input.work_id
+      ? state.works.find(item => item.id === input.work_id)
+      : sourceProvider && sourceId
+        ? state.works.find(item => item.source?.provider === sourceProvider && item.source.id === sourceId)
+        : undefined
+    if (input.work_id && !work) throw new Error('work not found')
     const isNew = !work
     if (!work) {
       const kind = MEDIA_KINDS.includes(input.kind as MediaKind) ? input.kind as MediaKind : 'book'
       const title = text(input.title, 200)
       if (!title) throw new Error('title required')
-      const sourceProvider = text(input.source?.provider, 40)
-      const sourceId = text(input.source?.id, 180)
       work = {
         id: randomUUID(), kind, title, original_title: text(input.original_title, 200) || undefined,
         creators: textList(input.creators), cover_url: text(input.cover_url, 1000) || undefined,
@@ -265,7 +270,9 @@ export function deleteMediaContent(actorValue: unknown, target: DeleteMediaTarge
       if (!work.records[actor]) return { result: 'not_found' as const, write: false }
       delete work.records[actor]
       work.notes = work.notes.filter(note => note.author !== actor)
-      work.events = work.events.filter(item => item.actor !== actor).map(item => ({ ...item, comments: item.comments.filter(comment => comment.author !== actor) }))
+      work.events = work.events
+        .map(item => ({ ...item, comments: item.comments.filter(comment => comment.author !== actor) }))
+        .filter(item => item.actor !== actor || item.comments.length > 0)
       if (!workHasOtherContent(work, actor) && work.created_by === actor) state.works.splice(workIndex, 1)
       else work.updated_at = new Date().toISOString()
       return { result: 'ok' as const, write: true }
