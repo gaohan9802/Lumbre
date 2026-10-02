@@ -1,9 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { BookOpen, ChevronLeft, Clapperboard, MessageCircle, Plus, Search, Star, Trash2, Tv, X } from 'lucide-react'
+import { BookOpen, ChevronLeft, Clapperboard, MessageCircle, Plus, Search, Share2, Star, Trash2, Tv, X } from 'lucide-react'
 import { mediaLibrary as api } from '@/lib/api'
 import type { MediaActor, MediaCatalogItem, MediaEvent, MediaKind, MediaNoteType, MediaStatus, MediaTimelineItem, MediaWork } from '@/lib/media-library'
+import { shareToChat } from '@/lib/share'
 import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 
@@ -163,10 +164,17 @@ function MediaDetail({ work, actor, night, onBack, onChanged }: { work: MediaWor
   const saveRecord = async () => { setBusy(true); await api.save(actor, { work_id: work.id, status, rating: rating || null, review }); await onChanged(); setBusy(false) }
   const saveNote = async () => { if (!note.trim()) return; setBusy(true); await api.note(actor, work.id, { type: noteType, content: note, locator }); setNote(''); setLocator(''); await onChanged(); setBusy(false) }
   const removeRecord = async () => { await api.remove(actor, { type: 'record', work_id: work.id }); setPendingDelete(null); onBack(); await onChanged() }
+  const shareWork = () => shareToChat({
+    kind: 'media', title: `${work.kind === 'book' ? '📚' : '🎬'} ${work.title}`,
+    subtitle: [work.creators.join(' / '), work.publisher, work.published_date || work.release_date].filter(Boolean).join(' · '),
+    body: [work.summary, ...(['fire', 'star'] as MediaActor[]).map(who => { const record = work.records[who]; return record ? `${person(who)}：${STATUS[record.status]}${record.rating ? ` · ${record.rating}★` : ''}${record.review ? `\n${record.review}` : ''}` : '' }).filter(Boolean), ...work.notes.slice(-3).map(item => `${person(item.author)}的${item.type === 'quote' ? '摘抄' : '笔记'}${item.locator ? `（${item.locator}）` : ''}：${item.content}`)].filter(Boolean).join('\n\n').slice(0, 6000),
+    imageUrl: work.cover_url,
+    metadata: { id: work.id, kind: work.kind, source: work.source, fire_status: work.records.fire?.status, star_status: work.records.star?.status },
+  })
   return <div className={`relative h-full overflow-y-auto ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
     <div className="mx-auto max-w-4xl px-4 pb-24 pt-2">
       <button onClick={onBack} className="flex items-center gap-1 py-2 text-sm opacity-60"><ChevronLeft size={17}/>返回书影库</button>
-      <div className={`mt-2 flex gap-4 rounded-2xl border p-4 ${panel}`}><div className="w-24 shrink-0 overflow-hidden rounded-xl"><Cover work={work}/></div><div className="min-w-0"><p className="text-lg font-semibold">{work.title}</p>{work.original_title && <p className={`mt-1 text-xs ${muted}`}>{work.original_title}</p>}<p className={`mt-2 text-xs leading-5 ${muted}`}>{[work.creators.join(' / '), work.publisher, work.published_date || work.release_date, work.page_count ? `${work.page_count} 页` : '', work.runtime_minutes ? `${work.runtime_minutes} 分钟` : ''].filter(Boolean).join(' · ')}</p>{work.summary && <p className="mt-3 line-clamp-4 text-xs leading-5 opacity-70">{work.summary}</p>}</div></div>
+      <div className={`mt-2 flex gap-4 rounded-2xl border p-4 ${panel}`}><div className="w-24 shrink-0 overflow-hidden rounded-xl"><Cover work={work}/></div><div className="relative min-w-0 flex-1 pr-8"><button onClick={shareWork} aria-label="分享到 Chat" title="分享到 Chat" className="absolute right-0 top-0 rounded-full p-1.5 opacity-40 hover:bg-current/5 hover:opacity-80"><Share2 size={14}/></button><p className="text-lg font-semibold">{work.title}</p>{work.original_title && <p className={`mt-1 text-xs ${muted}`}>{work.original_title}</p>}<p className={`mt-2 text-xs leading-5 ${muted}`}>{[work.creators.join(' / '), work.publisher, work.published_date || work.release_date, work.page_count ? `${work.page_count} 页` : '', work.runtime_minutes ? `${work.runtime_minutes} 分钟` : ''].filter(Boolean).join(' · ')}</p>{work.summary && <p className="mt-3 line-clamp-4 text-xs leading-5 opacity-70">{work.summary}</p>}</div></div>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <section className={`rounded-2xl border p-4 ${panel}`}><div className="flex items-center justify-between"><h2 className="text-sm font-medium">{icon(actor)} 我的记录</h2>{mine && <button aria-label="删除我的记录" onClick={() => setPendingDelete({ label: '删除你的记录、笔记和相关动态？另一人的内容不会受影响。', run: removeRecord })} className="p-1.5 opacity-45"><Trash2 size={15}/></button>}</div><select value={status} onChange={event => setStatus(event.target.value as MediaStatus)} className={`${input} mt-3`}>{Object.entries(STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><div className="mt-3 flex gap-1" aria-label="评分">{[1,2,3,4,5].map(value => <button key={value} onClick={() => setRating(value === rating ? 0 : value)} aria-label={`${value}星`}><Star size={22} className={value <= rating ? 'fill-current text-[#c27a58]' : 'opacity-20'}/></button>)}</div><textarea value={review} onChange={event => setReview(event.target.value)} placeholder="写一句评价…" rows={4} className={`${input} mt-3 resize-none`}/><button disabled={busy} onClick={saveRecord} className={`mt-3 w-full rounded-xl py-2 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>保存我的记录</button></section>
         <section className={`rounded-2xl border p-4 ${panel}`}><h2 className="text-sm font-medium">两个人的状态</h2><div className="mt-3 space-y-3">{(['fire','star'] as MediaActor[]).map(who => { const record = work.records[who]; return <div key={who} className="flex items-start justify-between gap-3 text-sm"><span>{icon(who)} {person(who)}</span><span className={`text-right text-xs ${muted}`}>{record ? <>{STATUS[record.status]}{record.rating ? ` · ${record.rating}★` : ''}{record.review && <span className="mt-1 block max-w-48">“{record.review}”</span>}</> : '还没有记录'}</span></div>})}</div></section>
