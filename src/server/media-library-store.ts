@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type {
-  MediaActor, MediaComment, MediaEvent, MediaEventType, MediaKind, MediaNote,
+  CoreadInfo, MediaActor, MediaComment, MediaEvent, MediaEventType, MediaKind, MediaNote,
   MediaNoteType, MediaStatus, MediaTimelineItem, MediaWork,
 } from '@/lib/media-library'
 import { MEDIA_KINDS, MEDIA_STATUSES } from '@/lib/media-library'
@@ -29,6 +29,8 @@ export interface SaveMediaInput {
   status?: MediaStatus
   rating?: number | null
   review?: string
+  coread_request?: boolean
+  coread_note?: string
 }
 export type DeleteMediaTarget =
   | { type: 'record'; work_id: string }
@@ -76,12 +78,13 @@ function statusEvent(status: MediaStatus): MediaEventType {
   return status === 'in_progress' ? 'started' : status === 'completed' ? 'finished' : 'planned'
 }
 
-export function listMediaLibrary(filters: { kind?: MediaKind; status?: MediaStatus; owner?: MediaActor; query?: string } = {}) {
+export function listMediaLibrary(filters: { kind?: MediaKind; status?: MediaStatus; owner?: MediaActor; query?: string; coread?: boolean } = {}) {
   const query = text(filters.query, 160).toLocaleLowerCase()
   const works = readState().works.filter(work => {
     if (filters.kind && work.kind !== filters.kind) return false
     if (filters.owner && !work.records[filters.owner]) return false
     if (filters.status && !Object.values(work.records).some(record => record?.status === filters.status)) return false
+    if (filters.coread && !work.coread) return false
     if (query && ![work.title, work.original_title, ...work.creators].filter(Boolean).join(' ').toLocaleLowerCase().includes(query)) return false
     return true
   }).sort((a, b) => b.updated_at.localeCompare(a.updated_at))
@@ -153,8 +156,57 @@ export function saveMediaEntry(actorValue: unknown, input: SaveMediaInput): Medi
     if (!prior || prior.status !== status) work.events.push(event(actor, statusEvent(status)))
     if (rating !== prior?.rating && rating) work.events.push(event(actor, 'rated', `${rating} 星`))
     if (review !== prior?.review && review) work.events.push(event(actor, 'reviewed', review.slice(0, 160)))
+    if (input.coread_request && work.kind === 'book' && !work.coread) {
+      work.coread = {
+        status: 'requested', requested_by: actor, request_note: text(input.coread_note, 500) || undefined,
+        requested_at: now,
+      }
+      work.events.push(event(actor, 'coread_requested', work.coread.request_note))
+    }
     work.updated_at = now
     return { result: work, write: true }
+  })
+}
+
+export function setCoreadReady(actorValue: unknown, workId: string, document: Omit<CoreadInfo, 'status' | 'requested_by' | 'requested_at'>): MediaWork {
+  const actor = actorOf(actorValue)
+  return mutate(state => {
+    const work = state.works.find(item => item.id === workId)
+    if (!work || work.kind !== 'book') throw new Error('book not found')
+    const now = new Date().toISOString()
+    work.coread = {
+      ...work.coread,
+      status: 'ready',
+      requested_by: work.coread?.requested_by || actor,
+      requested_at: work.coread?.requested_at || now,
+      ...document,
+      uploaded_at: now,
+    }
+    work.events.push(event(actor, 'coread_ready', document.file_name))
+    work.updated_at = now
+    return { result: work, write: true }
+  })
+}
+
+export function addCoreadEvent(actorValue: unknown, workId: string, detail: string, targetId: string): void {
+  const actor = actorOf(actorValue)
+  mutate(state => {
+    const work = state.works.find(item => item.id === workId)
+    if (!work) throw new Error('work not found')
+    work.events.push(event(actor, 'coread_annotation', detail, targetId))
+    work.updated_at = new Date().toISOString()
+    return { result: undefined, write: true }
+  })
+}
+
+export function removeCoreadEvent(workId: string, targetId: string): void {
+  mutate(state => {
+    const work = state.works.find(item => item.id === workId)
+    if (!work) return { result: undefined, write: false }
+    const before = work.events.length
+    work.events = work.events.filter(item => item.target_id !== targetId)
+    if (before !== work.events.length) work.updated_at = new Date().toISOString()
+    return { result: undefined, write: before !== work.events.length }
   })
 }
 

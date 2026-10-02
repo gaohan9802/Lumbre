@@ -2,6 +2,19 @@ export type MediaActor = 'fire' | 'star'
 export type MediaKind = 'book' | 'movie' | 'tv'
 export type MediaStatus = 'planned' | 'in_progress' | 'completed'
 export type MediaNoteType = 'note' | 'quote'
+export type CoreadFormat = 'epub' | 'pdf' | 'txt'
+
+export interface CoreadInfo {
+  status: 'requested' | 'ready'
+  requested_by: MediaActor
+  request_note?: string
+  requested_at: string
+  file_name?: string
+  format?: CoreadFormat
+  paragraph_count?: number
+  chapter_count?: number
+  uploaded_at?: string
+}
 
 export interface MediaComment {
   id: string
@@ -29,7 +42,7 @@ export interface MediaNote {
   updated_at: string
 }
 
-export type MediaEventType = 'added' | 'planned' | 'started' | 'finished' | 'rated' | 'reviewed' | 'note' | 'quote'
+export type MediaEventType = 'added' | 'planned' | 'started' | 'finished' | 'rated' | 'reviewed' | 'note' | 'quote' | 'coread_requested' | 'coread_ready' | 'coread_annotation'
 
 export interface MediaEvent {
   id: string
@@ -59,6 +72,8 @@ export interface MediaWork {
   release_date?: string
   runtime_minutes?: number
   source?: { provider: string; id: string; url?: string }
+  coread?: CoreadInfo
+  coread_progress?: Partial<Record<MediaActor, { paragraph_idx: number; offset: number; updated_at: string }>>
   records: Partial<Record<MediaActor, MediaRecord>>
   notes: MediaNote[]
   events: MediaEvent[]

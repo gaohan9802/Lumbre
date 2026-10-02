@@ -144,8 +144,8 @@ export const wish = {
 
 // ── Private book & screen log ───────────────────────────
 export const mediaLibrary = {
-  list: (params: { kind?: string; status?: string; owner?: string; q?: string } = {}) => {
-    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => !!value) as [string, string][])
+  list: (params: { kind?: string; status?: string; owner?: string; q?: string; coread?: boolean } = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => !!value).map(([key, value]) => [key, value === true ? '1' : String(value)]))
     const suffix = query.toString()
     return get(`/api/media-library${suffix ? `?${suffix}` : ''}`)
   },
@@ -157,6 +157,20 @@ export const mediaLibrary = {
   save: (actor: string, entry: Record<string, unknown>) => post('/api/media-library', { action: 'save', actor, entry }),
   note: (actor: string, work_id: string, note: Record<string, unknown>) => post('/api/media-library', { action: 'note', actor, work_id, note }),
   comment: (actor: string, work_id: string, event_id: string, content: string) => post('/api/media-library', { action: 'comment', actor, work_id, event_id, content }),
+  coread: (work_id: string, actor: string, params: { start?: number; chapter_id?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams({ mode: 'coread', work_id, actor })
+    if (params.start !== undefined) query.set('start', String(params.start))
+    if (params.chapter_id) query.set('chapter_id', params.chapter_id)
+    if (params.limit) query.set('limit', String(params.limit))
+    return get(`/api/media-library?${query}`)
+  },
+  uploadCoread: (actor: string, work_id: string, file: File) => {
+    const form = new FormData(); form.set('actor', actor); form.set('work_id', work_id); form.set('file', file)
+    return apiRequest('/api/media-library?mode=coread-upload', { method: 'POST', body: form }, 120000)
+  },
+  progress: (actor: string, work_id: string, paragraph_idx: number, offset = 0) => post('/api/media-library', { action: 'coread_progress', actor, work_id, paragraph_idx, offset }),
+  annotate: (actor: string, work_id: string, annotation: Record<string, unknown>) => post('/api/media-library', { action: 'coread_annotation', actor, work_id, annotation }),
+  removeAnnotation: (actor: string, work_id: string, annotation_id: string) => post('/api/media-library', { action: 'coread_delete_annotation', actor, work_id, annotation_id }),
   remove: (actor: string, target: Record<string, unknown>) => post('/api/media-library', { action: 'delete', actor, target }),
 }
 

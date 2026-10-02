@@ -709,7 +709,7 @@ export const LIFE_TOOL_DEFINITIONS = [
   },
   {
     "name": "read_media_library",
-    "description": "查看小火和星星的私人书影记录。可按作品类型、状态或关键词筛选；传 work_id 查看一部作品的双方状态、评分、评价、笔记、摘抄、动态与评论；timeline=true 查看交叉时间线。",
+    "description": "查看小火和星星的私人书影记录。可按作品类型、状态或关键词筛选；coread=true 只看共读书；传 work_id 查看一部作品的双方状态、评分、评价、笔记、摘抄、动态与评论；timeline=true 查看交叉时间线。",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -717,13 +717,14 @@ export const LIFE_TOOL_DEFINITIONS = [
         "kind": { "type": "string", "enum": ["book", "movie", "tv"] },
         "status": { "type": "string", "enum": ["planned", "in_progress", "completed"] },
         "query": { "type": "string" },
-        "timeline": { "type": "boolean" }
+        "timeline": { "type": "boolean" },
+        "coread": { "type": "boolean", "description": "只看共读请求和共读中的书" }
       }
     }
   },
   {
     "name": "save_media_entry",
-    "description": "把书、电影或剧集加入星星的书影记录，或更新星星在已有作品上的状态、1到5星评分和评价。更新已有作品时传 work_id；新建时必须传 kind 和 title。",
+    "description": "把书、电影或剧集加入星星的书影记录，或更新星星在已有作品上的状态、1到5星评分和评价。更新已有作品时传 work_id；新建时必须传 kind 和 title。星星想和小火共读一本书时可传 coread_request=true，小火会负责上传文件。",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -742,8 +743,54 @@ export const LIFE_TOOL_DEFINITIONS = [
         "runtime_minutes": { "type": "integer" },
         "status": { "type": "string", "enum": ["planned", "in_progress", "completed"] },
         "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "review": { "type": "string" }
+        "review": { "type": "string" },
+        "coread_request": { "type": "boolean", "description": "想和小火共读这本书；文件仍由小火上传" },
+        "coread_note": { "type": "string", "description": "给小火的找书提示，可选" }
       }
+    }
+  },
+  {
+    "name": "read_coread_text",
+    "description": "阅读共读书架里已经由小火上传的书。返回稳定的段落编号、正文、双方进度和附近批注；可按章节或 start 分段读取，不要一次读取整本书。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "work_id": { "type": "string" },
+        "chapter_id": { "type": "string" },
+        "start": { "type": "integer", "minimum": 0 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 20 }
+      },
+      "required": ["work_id"]
+    }
+  },
+  {
+    "name": "write_coread_annotation",
+    "description": "在共读正文上划线、写批注或回复。新批注需要段落编号和字符起止位置；回复已有批注时传 reply_to 和 content。传 annotation_id 可修改星星自己的批注。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "work_id": { "type": "string" },
+        "annotation_id": { "type": "string" },
+        "paragraph_idx": { "type": "integer", "minimum": 0 },
+        "start_offset": { "type": "integer", "minimum": 0 },
+        "end_offset": { "type": "integer", "minimum": 1 },
+        "content": { "type": "string" },
+        "reply_to": { "type": "string" }
+      },
+      "required": ["work_id"]
+    }
+  },
+  {
+    "name": "update_coread_progress",
+    "description": "保存星星自己在共读书中的阅读位置，不会改变小火的进度。paragraph_idx 来自 read_coread_text。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "work_id": { "type": "string" },
+        "paragraph_idx": { "type": "integer", "minimum": 0 },
+        "offset": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["work_id", "paragraph_idx"]
     }
   },
   {
@@ -776,15 +823,16 @@ export const LIFE_TOOL_DEFINITIONS = [
   },
   {
     "name": "delete_media_content",
-    "description": "删除星星自己的书影记录、笔记、评论或仅含星星内容的作品。删除 record 会同时删除星星在该作品下的笔记和相关动态；不会删除小火的内容。",
+    "description": "删除星星自己的书影记录、笔记、评论、共读批注或仅含星星内容的作品。删除 record 会同时删除星星在该作品下的笔记和相关动态；不会删除小火的内容。",
     "input_schema": {
       "type": "object",
       "properties": {
-        "type": { "type": "string", "enum": ["record", "note", "comment", "work"] },
+        "type": { "type": "string", "enum": ["record", "note", "comment", "annotation", "work"] },
         "work_id": { "type": "string" },
         "note_id": { "type": "string" },
         "event_id": { "type": "string" },
-        "comment_id": { "type": "string" }
+        "comment_id": { "type": "string" },
+        "annotation_id": { "type": "string" }
       },
       "required": ["type", "work_id"]
     }

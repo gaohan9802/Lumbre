@@ -24,14 +24,14 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 84)
-  assert.equal(registry.ALL_TOOLS.length, 84)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 84)
+  assert.equal(registry.registeredToolCount(), 87)
+  assert.equal(registry.ALL_TOOLS.length, 87)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 87)
   assert.deepEqual(registry.ALL_TOOLS.slice(0, 6).map(tool => tool.name), ['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-5).map(tool => tool.name), ['read_media_library', 'save_media_entry', 'write_media_note', 'comment_media_event', 'delete_media_content'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-8).map(tool => tool.name), ['read_media_library', 'save_media_entry', 'read_coread_text', 'write_coread_annotation', 'update_coread_progress', 'write_media_note', 'comment_media_event', 'delete_media_content'])
 })
 
 test('green, yellow, red, and black policy decisions fail closed', () => {
