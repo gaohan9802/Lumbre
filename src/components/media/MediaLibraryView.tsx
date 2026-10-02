@@ -105,6 +105,7 @@ function Cover({ work }: { work: Pick<MediaWork, 'title' | 'cover_url' | 'kind'>
 function AddDialog({ actor, night, onClose, onSaved }: { actor: MediaActor; night: boolean; onClose: () => void; onSaved: () => void }) {
   const [kind, setKind] = useState<MediaKind>('book')
   const [query, setQuery] = useState('')
+  const [doubanUrl, setDoubanUrl] = useState('')
   const [results, setResults] = useState<MediaCatalogItem[]>([])
   const [draft, setDraft] = useState<Partial<MediaCatalogItem> & { kind: MediaKind; title: string; creators: string[] }>({ kind: 'book', title: '', creators: [] })
   const [status, setStatus] = useState<MediaStatus>('planned')
@@ -127,6 +128,13 @@ function AddDialog({ actor, night, onClose, onSaved }: { actor: MediaActor; nigh
     } catch { setDraft(item) }
     setBusy(false); setResults([])
   }
+  const importDouban = async () => {
+    if (!doubanUrl.trim()) return
+    setBusy(true); setMessage('')
+    try { const data = await api.importUrl(doubanUrl.trim()); setDraft(data.item); setResults([]); setMessage('已从豆瓣读取，请确认后保存') }
+    catch (err: any) { setMessage(err?.message || '豆瓣链接读取失败，可以手动填写') }
+    setBusy(false)
+  }
   const save = async () => {
     if (!draft.title.trim()) { setMessage('请先填写标题'); return }
     setBusy(true)
@@ -136,12 +144,13 @@ function AddDialog({ actor, night, onClose, onSaved }: { actor: MediaActor; nigh
   return <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 p-3 sm:items-center" role="dialog" aria-modal="true" aria-label="添加书影记录">
     <div className={`max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-[26px] border p-4 shadow-2xl ${panel}`}>
       <div className="flex items-center justify-between"><h2 className="font-medium">放进书影库</h2><button aria-label="关闭" onClick={onClose} className="p-2 opacity-60"><X size={18}/></button></div>
-      <div className="mt-3 flex gap-2">{(['book', 'movie', 'tv'] as MediaKind[]).map(value => <button key={value} onClick={() => { setKind(value); setDraft({ kind: value, title: '', creators: [] }); setResults([]) }} className={`rounded-lg px-3 py-1.5 text-xs ${kind === value ? (night ? 'bg-night-card text-night-amber' : 'bg-[#DBB9B3]/25') : 'opacity-55'}`}>{KIND[value].label}</button>)}</div>
+      <div className="mt-3 flex gap-2">{(['book', 'movie', 'tv'] as MediaKind[]).map(value => <button key={value} onClick={() => { setKind(value); setDraft({ kind: value, title: '', creators: [] }); setResults([]); setMessage('') }} className={`rounded-lg px-3 py-1.5 text-xs ${kind === value ? (night ? 'bg-night-card text-night-amber' : 'bg-[#DBB9B3]/25') : 'opacity-55'}`}>{KIND[value].label}</button>)}</div>
+      {kind === 'book' && <div className="mt-3 flex gap-2"><input value={doubanUrl} onChange={event => setDoubanUrl(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void importDouban() }} placeholder="粘贴豆瓣读书链接" inputMode="url" className={input}/><button disabled={busy || !doubanUrl.trim()} onClick={importDouban} className="shrink-0 rounded-xl border px-3 text-xs">导入</button></div>}
       <div className="mt-3 flex gap-2"><input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void search() }} placeholder={kind === 'book' ? '书名 / 作者 / ISBN（中文也可以）' : '片名'} className={input}/><button disabled={busy} onClick={search} className="rounded-xl border px-3"><Search size={17}/></button></div>
       {message && <p className="mt-2 text-xs opacity-60">{message}</p>}
       {results.length > 0 && <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">{results.map(item => <button key={item.key} onClick={() => void choose(item)} className={`flex w-full gap-3 rounded-xl border p-2 text-left ${night ? 'border-night-border bg-night-card' : 'border-[#a73a32]/15 bg-white/50'}`}>{item.cover_url ? <img src={item.cover_url} alt="" className="h-16 w-11 rounded object-cover" referrerPolicy="no-referrer"/> : <div className="h-16 w-11 rounded bg-black/5"/>}<span className="min-w-0"><span className="block text-sm font-medium">{item.title}</span><span className="mt-1 block truncate text-xs opacity-55">{item.creators.join(' / ') || item.publisher || item.release_date || '暂无详细资料'}</span></span></button>)}</div>}
       <div className="my-4 flex items-center gap-3 text-[11px] opacity-45"><span className="h-px flex-1 bg-current"/>搜索不到也可以手动填<span className="h-px flex-1 bg-current"/></div>
-      <div className="grid gap-2 sm:grid-cols-2"><input value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} placeholder="标题 *" className={input}/><input value={draft.creators.join('、')} onChange={event => setDraft({ ...draft, creators: event.target.value.split(/[、,，]/).map(value => value.trim()).filter(Boolean) })} placeholder={kind === 'book' ? '作者' : '导演 / 主创'} className={input}/>{kind === 'book' && <><input value={draft.publisher || ''} onChange={event => setDraft({ ...draft, publisher: event.target.value })} placeholder="出版社" className={input}/><input value={draft.isbn || ''} onChange={event => setDraft({ ...draft, isbn: event.target.value })} placeholder="ISBN" className={input}/></>}<input value={draft.cover_url || ''} onChange={event => setDraft({ ...draft, cover_url: event.target.value })} placeholder="封面链接（可选）" className={`${input} sm:col-span-2`}/></div>
+      <div className="grid gap-2 sm:grid-cols-2"><input value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} placeholder="标题 *" className={input}/><input value={draft.creators.join('、')} onChange={event => setDraft({ ...draft, creators: event.target.value.split(/[、,，]/).map(value => value.trim()).filter(Boolean) })} placeholder={kind === 'book' ? '作者' : '导演 / 主创'} className={input}/>{kind === 'book' && <><input value={draft.publisher || ''} onChange={event => setDraft({ ...draft, publisher: event.target.value })} placeholder="出版社" className={input}/><input value={draft.isbn || ''} onChange={event => setDraft({ ...draft, isbn: event.target.value })} placeholder="ISBN" className={input}/><input value={draft.published_date || ''} onChange={event => setDraft({ ...draft, published_date: event.target.value })} placeholder="出版日期" className={input}/><input type="number" min="1" value={draft.page_count || ''} onChange={event => setDraft({ ...draft, page_count: event.target.value ? Number(event.target.value) : undefined })} placeholder="页数" className={input}/></>}<textarea value={draft.summary || ''} onChange={event => setDraft({ ...draft, summary: event.target.value })} placeholder="简介（可选）" rows={3} className={`${input} resize-none sm:col-span-2`}/><input value={draft.cover_url || ''} onChange={event => setDraft({ ...draft, cover_url: event.target.value })} placeholder="封面链接（可选）" className={`${input} sm:col-span-2`}/></div>
       <label className="mt-3 block text-xs opacity-60">我的状态</label><select value={status} onChange={event => setStatus(event.target.value as MediaStatus)} className={`${input} mt-1`}>{Object.entries(STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       <div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm opacity-60">取消</button><button disabled={busy} onClick={save} className={`rounded-xl px-4 py-2 text-sm ${night ? 'bg-night-card text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>{busy ? '处理中…' : '收进书影库'}</button></div>
     </div>

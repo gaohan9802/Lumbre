@@ -152,6 +152,7 @@ export const mediaLibrary = {
   timeline: () => get('/api/media-library?mode=timeline'),
   detail: (id: string) => get(`/api/media-library?mode=detail&id=${encodeURIComponent(id)}`),
   search: (kind: string, q: string) => get(`/api/media-library?mode=search&kind=${encodeURIComponent(kind)}&q=${encodeURIComponent(q)}`),
+  importUrl: (url: string) => get(`/api/media-library?mode=import-url&url=${encodeURIComponent(url)}`),
   catalogDetail: (kind: string, id: string) => get(`/api/media-library?mode=catalog-detail&kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}`),
   save: (actor: string, entry: Record<string, unknown>) => post('/api/media-library', { action: 'save', actor, entry }),
   note: (actor: string, work_id: string, note: Record<string, unknown>) => post('/api/media-library', { action: 'note', actor, work_id, note }),

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MEDIA_KINDS, MEDIA_STATUSES, type MediaActor, type MediaKind, type MediaStatus } from '@/lib/media-library'
-import { readTmdbDetails, searchMediaCatalog } from '@/server/media-catalog'
+import { importDoubanBook, readTmdbDetails, searchMediaCatalog } from '@/server/media-catalog'
 import {
   commentMediaEvent, deleteMediaContent, getMediaWork, listMediaLibrary, listMediaTimeline,
   saveMediaEntry, writeMediaNote, type DeleteMediaTarget,
@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
       const kind = MEDIA_KINDS.includes(search.get('kind') as MediaKind) ? search.get('kind') as MediaKind : 'book'
       return NextResponse.json(await searchMediaCatalog(kind, search.get('q') || ''))
     }
+    if (mode === 'import-url') return NextResponse.json({ item: await importDoubanBook(search.get('url') || '') })
     if (mode === 'catalog-detail') {
       const kind = search.get('kind')
       if (kind !== 'movie' && kind !== 'tv') return NextResponse.json({ error: 'invalid kind' }, { status: 400 })

@@ -4,6 +4,89 @@ const clean = (value: unknown, max = 2000) => typeof value === 'string' ? value.
 const strings = (value: unknown, max = 20) => Array.isArray(value) ? value.map(item => clean(item, 160)).filter(Boolean).slice(0, max) : []
 const integer = (value: unknown) => Number.isInteger(value) && Number(value) > 0 ? Number(value) : undefined
 
+const decodeEntities = (value: string) => value
+  .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number(code)))
+  .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCodePoint(parseInt(code, 16)))
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+
+const htmlText = (value: string) => decodeEntities(value
+  .replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
+  .replace(/<br\s*\/?\s*>|<\/p>/gi, '\n').replace(/<[^>]+>/g, ' '))
+  .replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+
+export function parseDoubanBookUrl(value: string): { id: string; url: URL } {
+  let url: URL
+  try { url = new URL(value.trim()) } catch { throw new Error('请粘贴有效的豆瓣读书链接') }
+  const match = /^\/subject\/(\d+)\/?$/.exec(url.pathname)
+  if (url.protocol !== 'https:' || url.hostname !== 'book.douban.com' || !match || url.username || url.password) {
+    throw new Error('只支持 https://book.douban.com/subject/数字/ 格式的链接')
+  }
+  url.search = ''; url.hash = ''
+  return { id: match[1], url }
+}
+
+const meta = (html: string, property: string) => {
+  const tag = html.match(new RegExp(`<meta[^>]+property=["']${property.replace(':', '\\:')}["'][^>]*>`, 'i'))?.[0] || ''
+  return clean(decodeEntities(tag.match(/content=["']([^"']*)["']/i)?.[1] || ''), 4000)
+}
+
+export function parseDoubanBookHtml(html: string, id: string, sourceUrl = `https://book.douban.com/subject/${id}/`): MediaCatalogItem {
+  const jsonLd = Array.from(html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi))
+    .map(match => { try { return JSON.parse(match[1]) } catch { return null } })
+    .find(value => value?.['@type'] === 'Book')
+  const title = clean(jsonLd?.name || meta(html, 'og:title'), 200)
+  if (!title) throw new Error('没有从豆瓣页面读到书籍资料')
+  const info = htmlText(html.match(/<div[^>]+id=["']info["'][^>]*>([\s\S]*?)<\/div>/i)?.[1] || '')
+  const field = (label: string, max = 200) => clean(info.match(new RegExp(`${label}\\s*:\\s*([^\\n]+)`, 'i'))?.[1], max) || undefined
+  const authors = Array.isArray(jsonLd?.author) ? strings(jsonLd.author.map((value: any) => value?.name)) : []
+  const summaryHtml = html.slice(Math.max(0, html.search(/id=["']link-report["']/i))).match(/<div[^>]+class=["'][^"']*intro[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1] || ''
+  const cover = meta(html, 'og:image')
+  let coverUrl: string | undefined
+  try {
+    const parsed = new URL(cover)
+    if (parsed.protocol === 'https:' && parsed.hostname.endsWith('.doubanio.com')) coverUrl = parsed.toString()
+  } catch {}
+  return {
+    key: `douban-book:${id}`, kind: 'book', title,
+    creators: authors.length ? authors : field('作者')?.split(/[\/、]/).map(value => value.trim()).filter(Boolean) || [],
+    cover_url: coverUrl, summary: clean(htmlText(summaryHtml) || meta(html, 'og:description'), 4000) || undefined,
+    publisher: field('出版社'), published_date: field('出版年', 40), page_count: integer(Number(field('页数', 20)?.match(/\d+/)?.[0])),
+    isbn: clean(jsonLd?.isbn || field('ISBN', 32), 32) || undefined,
+    source: { provider: 'douban-book', id, url: sourceUrl },
+  }
+}
+
+async function readBoundedText(response: Response, maxBytes = 512 * 1024): Promise<string> {
+  const length = Number(response.headers.get('content-length') || 0)
+  if (length > maxBytes) throw new Error('豆瓣页面过大，无法导入')
+  if (!response.body) return ''
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > maxBytes) { await reader.cancel(); throw new Error('豆瓣页面过大，无法导入') }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
+  return new TextDecoder().decode(bytes)
+}
+
+export async function importDoubanBook(value: string): Promise<MediaCatalogItem> {
+  const { id, url } = parseDoubanBookUrl(value)
+  const response = await fetch(url, {
+    redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(8000),
+    headers: { Accept: 'text/html', 'Accept-Language': 'zh-CN,zh;q=0.9', 'User-Agent': 'Mozilla/5.0 (Lumbre private library)' },
+  })
+  if (!response.ok) throw new Error(`豆瓣页面读取失败（${response.status}）`)
+  if (!response.headers.get('content-type')?.toLowerCase().includes('text/html')) throw new Error('豆瓣返回了无法识别的内容')
+  return parseDoubanBookHtml(await readBoundedText(response), id, url.toString())
+}
+
 async function json(url: URL, headers?: HeadersInit): Promise<any> {
   const response = await fetch(url, { headers, signal: AbortSignal.timeout(8000), cache: 'no-store' })
   if (!response.ok) throw new Error(`catalog request failed (${response.status})`)
