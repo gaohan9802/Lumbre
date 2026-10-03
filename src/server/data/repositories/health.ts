@@ -10,11 +10,12 @@ export type HealthDay = {
   date: string
   steps?: number
   sleep_minutes?: number
+  resting_heart_rate_bpm?: number
   synced_at: string
 }
 
 type HealthStore = { version: 1; days: HealthDay[] }
-type HealthInput = { date?: unknown; steps?: unknown; sleep_minutes?: unknown }
+type HealthInput = { date?: unknown; steps?: unknown; sleep_minutes?: unknown; resting_heart_rate_bpm?: unknown }
 export type HealthRange = 'today' | 'yesterday' | 'week'
 
 export class HealthInputError extends Error {}
@@ -40,6 +41,7 @@ function validStore(value: unknown): value is HealthStore {
     && typeof day.synced_at === 'string'
     && (day.steps === undefined || Number.isInteger(day.steps))
     && (day.sleep_minutes === undefined || Number.isInteger(day.sleep_minutes))
+    && (day.resting_heart_rate_bpm === undefined || Number.isInteger(day.resting_heart_rate_bpm))
   ))
 }
 
@@ -83,8 +85,9 @@ export function saveHealthSnapshot(input: unknown, now = new Date()): HealthDay 
   }
   const steps = metric(values.steps, 'steps', 200_000)
   const sleepMinutes = metric(values.sleep_minutes, 'sleep_minutes', 1_440)
-  if (steps === undefined && sleepMinutes === undefined) {
-    throw new HealthInputError('steps or sleep_minutes is required')
+  const restingHeartRate = metric(values.resting_heart_rate_bpm, 'resting_heart_rate_bpm', 300)
+  if (steps === undefined && sleepMinutes === undefined && restingHeartRate === undefined) {
+    throw new HealthInputError('steps, sleep_minutes or resting_heart_rate_bpm is required')
   }
 
   let saved!: HealthDay
@@ -93,6 +96,7 @@ export function saveHealthSnapshot(input: unknown, now = new Date()): HealthDay 
     saved = { ...previous, date, synced_at: now.toISOString() }
     if (steps !== undefined) saved.steps = steps
     if (sleepMinutes !== undefined) saved.sleep_minutes = sleepMinutes
+    if (restingHeartRate !== undefined) saved.resting_heart_rate_bpm = restingHeartRate
     return {
       version: 1 as const,
       days: [...store.days.filter(day => day.date !== date), saved]

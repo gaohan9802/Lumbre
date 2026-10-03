@@ -63,15 +63,19 @@ test('health shortcut endpoint authenticates, validates and merges compact daily
   assert.equal(steps.status, 200)
   const sleep = await route.POST(request({ date: '2026-10-01', sleep_minutes: 438 }))
   assert.equal(sleep.status, 200)
-  const saved = (await sleep.json()).day
+  const heartRate = await route.POST(request({ date: '2026-10-01', resting_heart_rate_bpm: ['58 BPM'] }))
+  assert.equal(heartRate.status, 200)
+  const saved = (await heartRate.json()).day
   assert.equal(saved.date, '2026-10-01')
   assert.equal(saved.steps, 8642)
   assert.equal(saved.sleep_minutes, 438)
+  assert.equal(saved.resting_heart_rate_bpm, 58)
   assert.match(saved.synced_at, /^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2} \(Europe\/Madrid\)$/)
 
   const summary = health.readHealthSummary('today', new Date('2026-10-01T12:00:00Z'))
   assert.equal(summary.days.length, 1)
   assert.equal(summary.days[0].steps, 8642)
   assert.equal(summary.days[0].sleep_minutes, 438)
+  assert.equal(summary.days[0].resting_heart_rate_bpm, 58)
   assert.match(summary.days[0].synced_at, /\(Europe\/Madrid\)$/)
 })
