@@ -79,7 +79,9 @@ function validStore(value: unknown): value is HealthStore {
 
 function metric(value: unknown, name: NumericMetricName): number | undefined {
   if (value === undefined) return undefined
+  if (Array.isArray(value) && value.length === 0) return undefined
   if (Array.isArray(value) && value.length === 1) return metric(value[0], name)
+  if (typeof value === 'string' && value.trim() === '') return undefined
 
   let number = value
   if (typeof value === 'string') {
@@ -128,7 +130,9 @@ function metric(value: unknown, name: NumericMetricName): number | undefined {
 
 function booleanMetric(value: unknown): boolean | undefined {
   if (value === undefined) return undefined
+  if (Array.isArray(value) && value.length === 0) return undefined
   if (Array.isArray(value) && value.length === 1) return booleanMetric(value[0])
+  if (typeof value === 'string' && value.trim() === '') return undefined
   if (value === true || value === 1 || value === '1') return true
   if (value === false || value === 0 || value === '0') return false
   throw new HealthInputError('menstruating must be true, false, 1 or 0')
@@ -136,7 +140,9 @@ function booleanMetric(value: unknown): boolean | undefined {
 
 function menstrualFlowMetric(value: unknown): MenstrualFlow | undefined {
   if (value === undefined) return undefined
+  if (Array.isArray(value) && value.length === 0) return undefined
   if (Array.isArray(value) && value.length === 1) return menstrualFlowMetric(value[0])
+  if (typeof value === 'string' && value.trim() === '') return undefined
   const flow = typeof value === 'string' ? value.trim().toLowerCase() : ''
   if (flow === 'none' || flow === 'unspecified' || flow === 'light' || flow === 'medium' || flow === 'heavy') return flow
   throw new HealthInputError('menstrual_flow must be none, unspecified, light, medium or heavy')
