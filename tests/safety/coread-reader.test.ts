@@ -47,3 +47,11 @@ test('EPUB import keeps independent progress and actor-owned annotations', async
   assert.equal(coread.deleteCoreadAnnotation('star', work.id, reply.id), 'ok')
   assert.equal(coread.deleteCoreadAnnotation('fire', work.id, note.id), 'ok')
 })
+
+test('PDF uploads are rejected without loading a server PDF renderer', async () => {
+  const work = media.saveMediaEntry('fire', { kind: 'book', title: 'PDF', status: 'planned', coread_request: true })
+  await assert.rejects(
+    coread.importCoreadDocument('fire', work.id, { name: 'book.pdf', bytes: Buffer.from('%PDF-1.7') }),
+    /只支持 EPUB 或 TXT 文件/,
+  )
+})
