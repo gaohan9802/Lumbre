@@ -461,7 +461,7 @@ export const LIFE_TOOL_DEFINITIONS = [
   },
   {
     "name": "read_health_summary",
-    "description": "查看小火从Apple健康同步来的步数、睡眠时长和静息心率日汇总。range可选today、yesterday或week；默认week。数据可能不是实时的，不能用于医疗诊断。",
+    "description": "查看小火从Apple健康同步来的日汇总，包括步数、睡眠、活动、心肺与生命体征、身体测量和经期状态。range可选today、yesterday或week；默认week。数据可能缺项或不是实时的，不能用于医疗诊断。",
     "input_schema": {
       "type": "object",
       "properties": {
