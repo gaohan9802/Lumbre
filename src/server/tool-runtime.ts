@@ -32,6 +32,7 @@ import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { commentMediaEvent, deleteMediaContent, getMediaWork, listMediaLibrary, listMediaTimeline, saveMediaEntry, writeMediaNote } from './media-library-store'
 import { deleteCoreadAnnotation, readCoread, updateCoreadProgress, writeCoreadAnnotation } from './coread-store'
+import { deleteGuestbookMessage, readGuestbook, writeGuestbookMessage } from './guestbook-store'
 import { scheduleWake } from './autowake'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { readHealthSummary, type HealthRange } from './data/repositories/health'
@@ -233,6 +234,9 @@ export async function executeRegisteredToolHandler(
         const r = deleteNote(input.note_id, input.author)
         return r === 'ok' ? '🗑️ 纸条已删除' : r
       }
+      case 'read_guestbook': return JSON.stringify(readGuestbook(input.limit || 100))
+      case 'write_guestbook': return JSON.stringify({ ok: true, message: writeGuestbookMessage('star', input.content, input.reply_to) })
+      case 'delete_guestbook_message': return JSON.stringify({ result: deleteGuestbookMessage('star', input.message_id, input.reply_id) })
 
       // Photos → local store
       case 'read_foto': {

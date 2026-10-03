@@ -15,6 +15,9 @@ export const JOURNAL_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'read_notes', domain: 'notes', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'reply_note', domain: 'notes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'delete_note', domain: 'notes', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除纸条' },
+  { name: 'read_guestbook', domain: 'notes', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'write_guestbook', domain: 'notes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'delete_guestbook_message', domain: 'notes', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除告状簿留言' },
 
   { name: 'read_foto', domain: 'photos', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'view_foto', domain: 'photos', level: 'green', allowedSources: ALL_SAFE_SOURCES },

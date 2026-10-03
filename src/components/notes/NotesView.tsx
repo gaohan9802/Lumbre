@@ -5,10 +5,11 @@ import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import { formatMadridShort } from '@/lib/madrid-time'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Pin, Plus, Send, Share2, Trash2, X } from 'lucide-react'
+import { MessageSquareWarning, Pin, Plus, Send, Share2, Trash2, X } from 'lucide-react'
 import { notes as notesApi } from '@/lib/api'
 import { shareToChat } from '@/lib/share'
 import { PaperActionDialog } from '@/components/PaperActionDialog'
+import { GuestbookBoard } from './GuestbookBoard'
 
 interface Note {
   id: string
@@ -40,6 +41,7 @@ export function NotesView() {
   const [loading, setLoading] = useState(true)
   const [expandedNote, setExpandedNote] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [section, setSection] = useState<'notes' | 'guestbook'>('notes')
 
   const isNight = theme === 'night'
 
@@ -88,24 +90,26 @@ export function NotesView() {
     <div className={`h-full flex flex-col ${isNight ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Header */}
       <div className={`px-6 py-4 flex items-center justify-between flex-shrink-0 border-b ${isNight ? 'border-night-border' : 'chat-dialog-line'}`}>
-        <h2 className="flex items-center gap-2 text-2xl font-medium">
-          <Pin size={18} strokeWidth={1.5}/><span>留言板</span>
-          <span className={`ml-2 text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-            {notesList.length} 张纸条
-          </span>
-        </h2>
-        <button
-          onClick={() => setIsWriting(true)}
-          className={`p-2.5 rounded-xl transition ${
-            isNight ? 'hover:bg-night-surface text-night-amber' : 'chat-dialog-accent'
-          }`}
-        >
-          <Plus size={20} />
-        </button>
+        <div role="tablist" aria-label="留言板分类" className="flex items-center gap-1 rounded-xl bg-black/5 p-1 dark:bg-white/5">
+          <button role="tab" aria-selected={section === 'notes'} onClick={() => setSection('notes')} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition ${section === 'notes' ? (isNight ? 'bg-night-surface text-night-amber' : 'bg-white text-[#765953] shadow-sm') : 'opacity-45'}`}>
+            <Pin size={14}/><span>小纸条</span>
+          </button>
+          <button role="tab" aria-selected={section === 'guestbook'} onClick={() => setSection('guestbook')} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition ${section === 'guestbook' ? (isNight ? 'bg-night-surface text-night-amber' : 'bg-white text-[#765953] shadow-sm') : 'opacity-45'}`}>
+            <MessageSquareWarning size={14}/><span>告状簿</span>
+          </button>
+        </div>
+        {section === 'notes' && (
+          <button onClick={() => setIsWriting(true)} aria-label="贴一张小纸条" className={`p-2.5 rounded-xl transition ${isNight ? 'hover:bg-night-surface text-night-amber' : 'chat-dialog-accent'}`}>
+            <Plus size={20} />
+          </button>
+        )}
       </div>
 
-      {/* Fridge door surface */}
-      <div className="flex-1 overflow-y-auto px-4 pb-6">
+      {section === 'guestbook' ? (
+        <div className="min-h-0 flex-1"><GuestbookBoard actor={currentUser} endpoint="/api/guestbook" /></div>
+      ) : <>
+        {/* Fridge door surface */}
+        <div className="flex-1 overflow-y-auto px-4 pb-6">
         {/* Write new note - floating card */}
         <AnimatePresence>
           {isWriting && (
@@ -294,8 +298,9 @@ export function NotesView() {
             })}
           </div>
         )}
-      </div>
-      <PaperActionDialog open={!!deleteTarget} title="撕掉这张纸条？" confirmLabel="撕掉" danger onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}/>
+        </div>
+        <PaperActionDialog open={!!deleteTarget} title="撕掉这张纸条？" confirmLabel="撕掉" danger onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}/>
+      </>}
     </div>
   )
 }

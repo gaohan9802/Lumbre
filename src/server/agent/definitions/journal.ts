@@ -401,5 +401,39 @@ export const JOURNAL_TOOL_DEFINITIONS = [
         "content"
       ]
     }
+  },
+  {
+    "name": "read_guestbook",
+    "description": "查看告状簿里小火、星星和访客的留言与回复。访客昵称会随结果返回。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
+      }
+    }
+  },
+  {
+    "name": "write_guestbook",
+    "description": "以星星自己的身份在告状簿留言或回复。回复某条留言时传 reply_to；不能冒充小火或访客。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "content": { "type": "string" },
+        "reply_to": { "type": "string", "description": "要回复的顶层留言 id，可选" }
+      },
+      "required": ["content"]
+    }
+  },
+  {
+    "name": "delete_guestbook_message",
+    "description": "删除星星自己在告状簿留下的留言或回复。删除回复时同时传顶层 message_id 和 reply_id。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "message_id": { "type": "string" },
+        "reply_id": { "type": "string" }
+      },
+      "required": ["message_id"]
+    }
   }
 ] satisfies ToolDef[]

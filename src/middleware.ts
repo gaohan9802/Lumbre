@@ -27,7 +27,10 @@ function securityHeaders(response: NextResponse): NextResponse {
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl
-  const isPublic = PUBLIC_PATHS.has(pathname) || pathname.startsWith('/_next/')
+  const isPublic = PUBLIC_PATHS.has(pathname)
+    || pathname === '/guestbook'
+    || pathname.startsWith('/api/guestbook/public/')
+    || pathname.startsWith('/_next/')
 
   if (isPublic) return securityHeaders(NextResponse.next())
 
