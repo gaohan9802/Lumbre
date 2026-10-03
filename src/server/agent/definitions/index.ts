@@ -34,6 +34,7 @@ const TOOL_ORDER = [
   'read_stories', 'write_story', 'read_research', 'write_research',
   'bite_otter_nape',
   'read_detroit', 'play_detroit',
+  'read_media_library', 'save_media_entry', 'read_coread_text', 'write_coread_annotation', 'update_coread_progress', 'write_media_note', 'comment_media_event', 'delete_media_content',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

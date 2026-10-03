@@ -21,6 +21,7 @@ interface Props {
   onStories?: () => void
   onResearch?: () => void
   onWishlist?: () => void
+  onMedia?: () => void
 }
 
 export function ChatSettings(props: Props) {
@@ -96,6 +97,7 @@ export function ChatSettings(props: Props) {
           {row('枕边集', () => navigate(props.onStories))}
           {row('星野手记', () => navigate(props.onResearch))}
           {row('愿望清单', () => navigate(props.onWishlist))}
+          {row('书影记录', () => navigate(props.onMedia))}
           {row('Timeline', () => navigate(props.onTimeline))}
           {row('Tesis', () => navigate(props.onTesis))}
         </>}
