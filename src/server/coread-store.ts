@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import AdmZip from 'adm-zip'
-import { PDFParse } from 'pdf-parse'
 import type { CoreadAnnotation, CoreadBook, CoreadChapter, CoreadParagraph, CoreadState } from '@/lib/coread'
 import type { CoreadFormat, MediaActor } from '@/lib/media-library'
 import { addCoreadEvent, getMediaWork, removeCoreadEvent, setCoreadReady } from './media-library-store'
@@ -138,23 +137,15 @@ function parseTxt(bytes: Buffer): string {
   return new TextDecoder('utf-8', { fatal: false }).decode(bytes)
 }
 
-async function parseSections(format: CoreadFormat, bytes: Buffer): Promise<{ title: string; text: string }[]> {
+function parseSections(format: CoreadFormat, bytes: Buffer): { title: string; text: string }[] {
   if (format === 'txt') return [{ title: '正文', text: parseTxt(bytes) }]
-  if (format === 'epub') return parseEpubSections(bytes)
-  const parser = new PDFParse({ data: new Uint8Array(bytes) })
-  try {
-    const result = await parser.getText()
-    if (result.total > 3000) throw new Error('PDF 页数过多')
-    return result.pages.map(page => ({ title: `第 ${page.num} 页`, text: page.text }))
-  } finally {
-    await parser.destroy()
-  }
+  return parseEpubSections(bytes)
 }
 
 function formatOf(fileName: string): CoreadFormat {
   const extension = path.extname(fileName).toLowerCase().slice(1)
-  if (extension === 'epub' || extension === 'pdf' || extension === 'txt') return extension
-  throw new Error('只支持 EPUB、PDF 或 TXT 文件')
+  if (extension === 'epub' || extension === 'txt') return extension
+  throw new Error('只支持 EPUB 或 TXT 文件')
 }
 
 function writeSource(workId: string, format: CoreadFormat, bytes: Buffer): void {
@@ -172,9 +163,8 @@ export async function importCoreadDocument(actor: MediaActor, workId: string, fi
   if (file.bytes.length < 1 || file.bytes.length > MAX_FILE_BYTES) throw new Error('文件必须小于 30MB')
   if (fs.existsSync(bookFile(workId))) throw new Error('这本书已经有共读文件')
   const format = formatOf(file.name)
-  if (format === 'pdf' && file.bytes.subarray(0, 5).toString('ascii') !== '%PDF-') throw new Error('不是有效的 PDF 文件')
   const checksum = createHash('sha256').update(file.bytes).digest('hex')
-  const book = buildBook(workId, path.basename(file.name).slice(0, 240), format, await parseSections(format, file.bytes), checksum)
+  const book = buildBook(workId, path.basename(file.name).slice(0, 240), format, parseSections(format, file.bytes), checksum)
   writeSource(workId, format, file.bytes)
   writeJsonFile(bookFile(workId), book)
   writeJsonFile(stateFile(workId), emptyState())
