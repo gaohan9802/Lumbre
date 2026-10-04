@@ -22,16 +22,19 @@ export interface GuestbookMessage extends GuestbookReply {
 interface GuestbookData {
   guest_name: string | null
   messages: GuestbookMessage[]
+  seen_ids?: Partial<Record<GuestbookActor, string[]>>
 }
 
 const FILE = resolveDataPath(getDataDir(), 'guestbook', 'board.json')
-const fallback = (): GuestbookData => ({ guest_name: null, messages: [] })
+const fallback = (): GuestbookData => ({ guest_name: null, messages: [], seen_ids: {} })
 
 function isData(value: unknown): value is GuestbookData {
   const data = value as Partial<GuestbookData> | null
   return !!data && typeof data === 'object'
     && (data.guest_name === null || typeof data.guest_name === 'string')
     && Array.isArray(data.messages)
+    && (data.seen_ids === undefined || (!!data.seen_ids && typeof data.seen_ids === 'object'
+      && Object.values(data.seen_ids).every(ids => Array.isArray(ids) && ids.every(id => typeof id === 'string'))))
 }
 
 function read(): GuestbookData {
@@ -77,6 +80,27 @@ export function readGuestbook(limit = 100): { guest_name: string | null; message
   const data = read()
   const count = Number.isFinite(limit) ? Math.max(1, Math.min(200, Math.floor(limit))) : 100
   return { guest_name: data.guest_name, messages: data.messages.slice(-count).reverse() }
+}
+
+function itemIds(data: GuestbookData): string[] {
+  return data.messages.flatMap(message => [message.id, ...message.replies.map(reply => reply.id)])
+}
+
+export function guestbookUnreadCount(viewerValue: unknown): number {
+  const viewer = actor(viewerValue)
+  const data = read()
+  const seenSet = new Set(data.seen_ids?.[viewer] || [])
+  return data.messages.reduce((count, message) => count
+    + (message.author !== viewer && !seenSet.has(message.id) ? 1 : 0)
+    + message.replies.filter(reply => reply.author !== viewer && !seenSet.has(reply.id)).length, 0)
+}
+
+export function markGuestbookRead(viewerValue: unknown): void {
+  const viewer = actor(viewerValue)
+  updateJsonFile<GuestbookData>(FILE, { fallback, fallbackOnInvalid: true, validate: isData }, data => ({
+    ...data,
+    seen_ids: { ...data.seen_ids, [viewer]: itemIds(data) },
+  }))
 }
 
 export function writeGuestbookMessage(authorValue: unknown, contentValue: unknown, replyTo?: unknown, replyToReply?: unknown): GuestbookMessage | GuestbookReply {

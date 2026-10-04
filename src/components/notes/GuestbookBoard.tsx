@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Send, Trash2 } from 'lucide-react'
+import { Send, Share2, Trash2 } from 'lucide-react'
 import { apiRequest } from '@/lib/api'
 import { formatMadridShort } from '@/lib/madrid-time'
+import { shareToChat } from '@/lib/share'
 import { useTheme } from '@/lib/theme'
 import { PaperActionDialog } from '@/components/PaperActionDialog'
 
@@ -15,7 +16,7 @@ interface ReplyTarget { messageId: string; replyId?: string; label: string }
 
 const EMPTY: Board = { guest_name: null, messages: [] }
 
-export function GuestbookBoard({ actor, endpoint }: { actor: Actor; endpoint: string }) {
+export function GuestbookBoard({ actor, endpoint, onLoaded }: { actor: Actor; endpoint: string; onLoaded?: () => void }) {
   const { theme } = useTheme()
   const night = theme === 'night'
   const [board, setBoard] = useState<Board>(EMPTY)
@@ -27,7 +28,7 @@ export function GuestbookBoard({ actor, endpoint }: { actor: Actor; endpoint: st
   const [deleteTarget, setDeleteTarget] = useState<{ message_id: string; reply_id?: string } | null>(null)
 
   const load = async () => {
-    try { setBoard(await apiRequest(endpoint)); setMessage('') }
+    try { setBoard(await apiRequest(endpoint)); setMessage(''); onLoaded?.() }
     catch (error: any) { setMessage(error?.message || '告状簿加载失败') }
   }
 
@@ -125,7 +126,10 @@ export function GuestbookBoard({ actor, endpoint }: { actor: Actor; endpoint: st
                         </div>
                         {replyItem.reply_to_author && <p className="text-[10px] opacity-40">回复 {icon(replyItem.reply_to_author)} {name(replyItem.reply_to_author)}</p>}
                         <p className="whitespace-pre-wrap opacity-75">{replyItem.content}</p>
-                        <button onClick={() => setReplyingTo({ messageId: item.id, replyId: replyItem.id, label: name(replyItem.author) })} className="mt-1 opacity-35 hover:opacity-70">回复</button>
+                        <div className="mt-1 flex items-center gap-2 opacity-35">
+                          <button onClick={() => setReplyingTo({ messageId: item.id, replyId: replyItem.id, label: name(replyItem.author) })} className="hover:opacity-70">回复</button>
+                          <button onClick={() => shareToChat({ kind: 'guestbook', title: '📌 告状簿回复', subtitle: `${icon(replyItem.author)} ${name(replyItem.author)} · ${formatMadridShort(replyItem.created_at)}`, body: replyItem.content, metadata: { ...replyItem, message_id: item.id, guest_name: board.guest_name } })} aria-label="分享到 Chat" title="分享到 Chat" className="hover:opacity-70"><Share2 size={10}/></button>
+                        </div>
                       </div>
                       {canDelete(replyItem.author) && (
                         <button aria-label="删除回复" onClick={() => setDeleteTarget({ message_id: item.id, reply_id: replyItem.id })} className="self-start p-1 opacity-35 transition sm:opacity-0 sm:group-hover:opacity-35 sm:focus:opacity-60"><Trash2 size={11}/></button>
@@ -137,6 +141,7 @@ export function GuestbookBoard({ actor, endpoint }: { actor: Actor; endpoint: st
 
               <div className="mt-3 flex items-center gap-3 text-[11px]">
                 <button onClick={() => setReplyingTo({ messageId: item.id, label: name(item.author) })} className="opacity-45 hover:opacity-80">回复</button>
+                <button onClick={() => shareToChat({ kind: 'guestbook', title: '📌 告状簿', subtitle: `${icon(item.author)} ${name(item.author)} · ${formatMadridShort(item.created_at)}`, body: item.content, metadata: { ...item, guest_name: board.guest_name } })} aria-label="分享到 Chat" title="分享到 Chat" className="opacity-35 hover:opacity-70"><Share2 size={11}/></button>
                 {canDelete(item.author) && <button onClick={() => setDeleteTarget({ message_id: item.id })} className="flex items-center gap-1 opacity-35 hover:opacity-70"><Trash2 size={10}/> 撕掉</button>}
               </div>
 

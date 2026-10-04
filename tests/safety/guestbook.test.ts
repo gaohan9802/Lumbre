@@ -53,6 +53,28 @@ test('the first guest nickname is permanent and all three identities stay distin
   assert.equal(store.readGuestbook().messages.length, 0)
 })
 
+test('private unread count tracks only new messages from other people', async () => {
+  const first = await privateRoute.GET(new NextRequest('https://xsidereal.beer/api/guestbook?mode=unread'))
+  assert.equal((await first.json()).unread, 0)
+
+  const fire = store.writeGuestbookMessage('fire', '我自己写的')
+  const star = store.writeGuestbookMessage('star', '星星的新留言')
+  const guest = store.writeGuestbookMessage('guest', '访客的新留言')
+  const unread = await privateRoute.GET(new NextRequest('https://xsidereal.beer/api/guestbook?mode=unread'))
+  assert.equal((await unread.json()).unread, 2)
+
+  const marked = await privateRoute.POST(new NextRequest('https://xsidereal.beer/api/guestbook', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'mark_read' }),
+  }))
+  assert.equal((await marked.json()).unread, 0)
+  const after = await privateRoute.GET(new NextRequest('https://xsidereal.beer/api/guestbook?mode=unread'))
+  assert.equal((await after.json()).unread, 0)
+
+  assert.equal(store.deleteGuestbookMessage('fire', fire.id), 'ok')
+  assert.equal(store.deleteGuestbookMessage('star', star.id), 'ok')
+  assert.equal(store.deleteGuestbookMessage('guest', guest.id), 'ok')
+})
+
 test('each HTTP channel owns one fixed identity regardless of submitted actor', async () => {
   const guest = store.writeGuestbookMessage('guest', '访客的纸条')
   const fireWrite = await privateRoute.POST(new NextRequest('https://xsidereal.beer/api/guestbook', {

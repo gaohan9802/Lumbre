@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { deleteGuestbookMessage, readGuestbook, writeGuestbookMessage } from '@/server/guestbook-store'
+import { deleteGuestbookMessage, guestbookUnreadCount, markGuestbookRead, readGuestbook, writeGuestbookMessage } from '@/server/guestbook-store'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  return NextResponse.json(readGuestbook(), { headers: { 'Cache-Control': 'no-store' } })
+export async function GET(request: NextRequest) {
+  if (request.nextUrl.searchParams.get('mode') === 'unread') {
+    return NextResponse.json({ unread: guestbookUnreadCount('fire') }, { headers: { 'Cache-Control': 'no-store' } })
+  }
+  const board = readGuestbook()
+  if (request.nextUrl.searchParams.get('mark_read') === '1') markGuestbookRead('fire')
+  return NextResponse.json(board, { headers: { 'Cache-Control': 'no-store' } })
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    if (body.action === 'mark_read') {
+      markGuestbookRead('fire')
+      return NextResponse.json({ ok: true, unread: 0 })
+    }
     if (body.action === 'delete') {
       const result = deleteGuestbookMessage('fire', body.message_id, body.reply_id)
       if (result === 'not_found') return NextResponse.json({ error: '找不到这条留言' }, { status: 404 })

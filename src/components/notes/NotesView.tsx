@@ -106,7 +106,7 @@ export function NotesView() {
       </div>
 
       {section === 'guestbook' ? (
-        <div className="min-h-0 flex-1"><GuestbookBoard actor="fire" endpoint="/api/guestbook" /></div>
+        <div className="min-h-0 flex-1"><GuestbookBoard actor="fire" endpoint="/api/guestbook?mark_read=1" onLoaded={() => window.dispatchEvent(new CustomEvent('lumbre-guestbook-read'))} /></div>
       ) : <>
         {/* Fridge door surface */}
         <div className="flex-1 overflow-y-auto px-4 pb-6">
