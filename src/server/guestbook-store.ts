@@ -10,6 +10,8 @@ export interface GuestbookReply {
   author: GuestbookActor
   content: string
   created_at: string
+  reply_to?: string
+  reply_to_author?: GuestbookActor
   deleted?: boolean
 }
 
@@ -33,7 +35,15 @@ function isData(value: unknown): value is GuestbookData {
 }
 
 function read(): GuestbookData {
-  return readJsonFile(FILE, { fallback, fallbackOnInvalid: true, validate: isData })
+  const options = { fallback, fallbackOnInvalid: true, validate: isData }
+  const data = readJsonFile(FILE, options)
+  if (!data.messages.some(message => message.deleted || message.replies.some(reply => reply.deleted))) return data
+  return updateJsonFile<GuestbookData>(FILE, options, current => ({
+    ...current,
+    messages: current.messages
+      .filter(message => !message.deleted)
+      .map(message => ({ ...message, replies: message.replies.filter(reply => !reply.deleted) })),
+  }))
 }
 
 function actor(value: unknown): GuestbookActor {
@@ -69,7 +79,7 @@ export function readGuestbook(limit = 100): { guest_name: string | null; message
   return { guest_name: data.guest_name, messages: data.messages.slice(-count).reverse() }
 }
 
-export function writeGuestbookMessage(authorValue: unknown, contentValue: unknown, replyTo?: unknown): GuestbookMessage | GuestbookReply {
+export function writeGuestbookMessage(authorValue: unknown, contentValue: unknown, replyTo?: unknown, replyToReply?: unknown): GuestbookMessage | GuestbookReply {
   const author = actor(authorValue)
   const content = text(contentValue, '留言', 2000)
   const created_at = new Date().toISOString()
@@ -79,8 +89,13 @@ export function writeGuestbookMessage(authorValue: unknown, contentValue: unknow
     if (replyTo) {
       const message = data.messages.find(item => item.id === replyTo)
       if (!message) throw new Error('找不到要回复的留言')
-      if (message.deleted) throw new Error('这条留言已经被撕掉了')
-      const reply: GuestbookReply = { id: randomUUID(), author, content, created_at }
+      const target = replyToReply ? message.replies.find(item => item.id === replyToReply) : message
+      if (!target) throw new Error('找不到要回复的这句话')
+      const reply: GuestbookReply = {
+        id: randomUUID(), author, content, created_at,
+        reply_to: target.id,
+        reply_to_author: target.author,
+      }
       message.replies.push(reply)
       saved = reply
     } else {
@@ -100,18 +115,23 @@ export function deleteGuestbookMessage(authorValue: unknown, messageId: unknown,
   let result: 'ok' | 'not_found' | 'forbidden' = 'not_found'
 
   updateJsonFile<GuestbookData>(FILE, { fallback, fallbackOnInvalid: true, validate: isData }, data => {
-    const message = data.messages.find(item => item.id === messageId)
-    if (!message) return data
-    const target = typeof replyId === 'string' && replyId
-      ? message.replies.find(item => item.id === replyId)
-      : message
-    if (!target) return data
-    if (author !== 'fire' && target.author !== author) {
+    const messageIndex = data.messages.findIndex(item => item.id === messageId)
+    if (messageIndex < 0) return data
+    const message = data.messages[messageIndex]
+    if (typeof replyId === 'string' && replyId) {
+      const replyIndex = message.replies.findIndex(item => item.id === replyId)
+      if (replyIndex < 0) return data
+      if (message.replies[replyIndex].author !== author) {
+        result = 'forbidden'
+        return data
+      }
+      message.replies.splice(replyIndex, 1)
+    } else if (message.author !== author) {
       result = 'forbidden'
       return data
+    } else {
+      data.messages.splice(messageIndex, 1)
     }
-    target.content = ''
-    target.deleted = true
     result = 'ok'
     return data
   })

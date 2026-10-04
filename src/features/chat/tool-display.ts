@@ -19,6 +19,7 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   delete_note: '撕掉了纸条',
   read_guestbook: '翻开了告状簿',
   write_guestbook: '在告状簿贴了张纸条',
+  reply_guestbook: '在告状簿回了句话',
   delete_guestbook_message: '撕掉了自己的告状纸',
   read_foto: '逛了逛照片墙',
   view_foto: '仔细看了张照片',

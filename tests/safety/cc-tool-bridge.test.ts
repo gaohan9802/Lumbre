@@ -39,9 +39,10 @@ test('internal bridge exposes only registered Lumbre chat tools behind its own s
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('cache-control'), 'no-store')
   const body = await response.json()
-  assert.equal(body.tools.length, 90)
+  assert.equal(body.tools.length, 91)
   assert.equal(body.tools.some((tool: any) => ['Bash', 'Shell', 'Read', 'Write', 'Edit'].includes(tool.name)), false)
   assert.equal(body.tools.some((tool: any) => tool.name === 'read_diary'), true)
+  assert.equal(body.tools.some((tool: any) => tool.name === 'reply_guestbook'), true)
 })
 
 test('bridge reuses Lumbre policy, hides confirmation tokens from Claude and keeps them for the UI', async () => {

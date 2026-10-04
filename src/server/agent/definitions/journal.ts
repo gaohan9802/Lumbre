@@ -414,14 +414,26 @@ export const JOURNAL_TOOL_DEFINITIONS = [
   },
   {
     "name": "write_guestbook",
-    "description": "以星星自己的身份在告状簿留言或回复。回复某条留言时传 reply_to；不能冒充小火或访客。",
+    "description": "以星星自己的身份在告状簿贴一张新留言。不能冒充小火或访客。",
     "input_schema": {
       "type": "object",
       "properties": {
-        "content": { "type": "string" },
-        "reply_to": { "type": "string", "description": "要回复的顶层留言 id，可选" }
+        "content": { "type": "string" }
       },
       "required": ["content"]
+    }
+  },
+  {
+    "name": "reply_guestbook",
+    "description": "以星星的身份回复告状簿中的某个人。回复顶层留言时传 message_id；回复某句回复时再传 reply_id。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "message_id": { "type": "string", "description": "顶层留言 id" },
+        "reply_id": { "type": "string", "description": "要回复的某句回复 id，可选" },
+        "content": { "type": "string" }
+      },
+      "required": ["message_id", "content"]
     }
   },
   {

@@ -8,6 +8,7 @@ const PUBLIC_PATHS = new Set([
   '/login',
   '/api/auth/login',
   '/manifest.json',
+  '/guestbook-manifest.webmanifest',
   '/sw.js',
   '/favicon.png',
   '/logo-pwa.jpg',

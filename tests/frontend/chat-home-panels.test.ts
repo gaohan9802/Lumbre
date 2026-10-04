@@ -133,7 +133,7 @@ test('chat rooms keep the night palette and compact reading type', () => {
   for (const room of [notes, diary, photos, poems, stories, research, wishlist, media, timeline, tesis, dreams, memory]) assert.match(room, /bg-night-bg/)
   assert.match(notes, /<Pin[^>]*\/>[\s\S]*小纸条/)
   assert.match(notes, /<MessageSquareWarning[^>]*\/>[\s\S]*告状簿/)
-  assert.match(notes, /<GuestbookBoard actor=\{currentUser\} endpoint="\/api\/guestbook"/)
+  assert.match(notes, /<GuestbookBoard actor="fire" endpoint="\/api\/guestbook"/)
   assert.match(photos, /<Camera[^>]*\/>照片墙/)
   assert.doesNotMatch(dreams, /💓|🔥|📝|☀️|🌙|🎲|🍂/)
 })

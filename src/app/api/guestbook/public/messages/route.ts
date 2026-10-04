@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       if (result === 'forbidden') return NextResponse.json({ error: '只能删除自己的留言' }, { status: 403 })
       return NextResponse.json({ ok: true })
     }
-    return NextResponse.json({ ok: true, message: writeGuestbookMessage('guest', body.content, body.reply_to) })
+    return NextResponse.json({ ok: true, message: writeGuestbookMessage('guest', body.content, body.reply_to, body.reply_to_reply) })
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || '留言失败' }, { status: 400 })
   }

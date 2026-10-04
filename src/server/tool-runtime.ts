@@ -235,7 +235,8 @@ export async function executeRegisteredToolHandler(
         return r === 'ok' ? '🗑️ 纸条已删除' : r
       }
       case 'read_guestbook': return JSON.stringify(readGuestbook(input.limit || 100))
-      case 'write_guestbook': return JSON.stringify({ ok: true, message: writeGuestbookMessage('star', input.content, input.reply_to) })
+      case 'write_guestbook': return JSON.stringify({ ok: true, message: writeGuestbookMessage('star', input.content) })
+      case 'reply_guestbook': return JSON.stringify({ ok: true, reply: writeGuestbookMessage('star', input.content, input.message_id, input.reply_id) })
       case 'delete_guestbook_message': return JSON.stringify({ result: deleteGuestbookMessage('star', input.message_id, input.reply_id) })
 
       // Photos → local store
