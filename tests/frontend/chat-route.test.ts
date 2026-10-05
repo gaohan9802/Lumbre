@@ -4,6 +4,7 @@ import { isRecoverableChatDisconnect, mergeConversationRoute, normalizeChatRoute
 import { normalizeSettings } from '../../src/features/chat/migrations/browser-state'
 import { snapshotOfMessage } from '../../src/features/chat/sessions/messages'
 import { ccEffortsForModel, isCcModel, mergeCcModel, normalizeCcEffortForModel } from '../../src/lib/cc-model'
+import { chatMessageContentForModel, isSupportedChatFile } from '../../src/lib/chat-message-sync'
 
 test('old conversations and message versions normalize to the API route', () => {
   const settings = normalizeSettings({
@@ -54,6 +55,19 @@ test('an iOS Load failed keeps only CC turns recoverable', () => {
   assert.equal(isRecoverableChatDisconnect('claude-code', false, 'TypeError'), true)
   assert.equal(isRecoverableChatDisconnect('api', false, 'TypeError'), false)
   assert.equal(isRecoverableChatDisconnect('claude-code', true, 'AbortError'), false)
+})
+
+test('text files become stable model context without changing chat routing', () => {
+  const message = {
+    content: '看看这个',
+    attachments: [{ name: 'notes.md', type: 'text/markdown', size: 12, text: '# 星星\n你好' }],
+  }
+  const content = chatMessageContentForModel(message)
+  assert.equal(content, chatMessageContentForModel(message))
+  assert.match(content, /\[文件：notes\.md｜text\/markdown\]/)
+  assert.match(content, /# 星星\n你好/)
+  assert.equal(isSupportedChatFile('notes.md', ''), true)
+  assert.equal(isSupportedChatFile('archive.zip', 'application/zip'), false)
 })
 
 test('route persists through store continuation, stale sync and message versions', async () => {

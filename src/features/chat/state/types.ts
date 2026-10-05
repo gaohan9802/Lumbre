@@ -51,10 +51,18 @@ export interface MessageVersion {
   modelId?: string
 }
 
+export interface ChatAttachment {
+  name: string
+  type: string
+  size: number
+  text: string
+}
+
 export interface ChatMessage extends MessageVersion {
   id: string
   role: 'user' | 'assistant'
   images?: string[]
+  attachments?: ChatAttachment[]
   sharedCard?: SharedCard
   versions?: MessageVersion[]
   versionIndex?: number

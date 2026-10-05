@@ -7,7 +7,7 @@ import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Sun, MoreHorizontal,
-  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices,
+  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Paperclip, Clock3, Square, Dices,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -36,7 +36,7 @@ import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
 import { DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
-import { chatMessageContentForModel } from '@/lib/chat-message-sync'
+import { chatMessageContentForModel, isSupportedChatFile, MAX_CHAT_ATTACHMENTS, MAX_CHAT_ATTACHMENT_BYTES } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 import { IntimacyWheelModal } from './IntimacyWheelModal'
 import { TodoView } from '@/components/todo/TodoView'
@@ -204,10 +204,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
     copiedId, setCopiedId, mounted, setMounted,
-    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,
+    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingAttachments, setPendingAttachments, pendingShare, setPendingShare,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
-    messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
+    messagesEndRef, inputRef, imgInputRef, fileInputRef, scrollRef, stickBottomRef, abortControllerRef,
     activeGenerationRef, explicitStopRef, recoveredTurnsRef, sendLockRef,
     confirmState, ask, answer,
   } = useChatViewState()
@@ -385,6 +385,30 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     }
     reader.onerror = () => setUploadingImg(false)
     reader.readAsDataURL(file)
+  }
+
+  const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!files.length) return
+    const available = MAX_CHAT_ATTACHMENTS - pendingAttachments.length
+    if (available <= 0) return window.alert(`一条消息最多带 ${MAX_CHAT_ATTACHMENTS} 个文件。`)
+    const selected = files.slice(0, available)
+    const unsupported = selected.find(file => !isSupportedChatFile(file.name, file.type))
+    if (unsupported) return window.alert('目前支持 TXT、Markdown、CSV、JSON、YAML、XML、RTF 和常见代码文件；PDF、Word 等二进制文件暂不支持。')
+    const oversized = selected.find(file => file.size > MAX_CHAT_ATTACHMENT_BYTES)
+    if (oversized) return window.alert(`单个文件不能超过 ${Math.round(MAX_CHAT_ATTACHMENT_BYTES / 1024)} KB。`)
+    try {
+      const attachments = await Promise.all(selected.map(async file => ({
+        name: file.name.replace(/[\r\n]/g, ' ').trim().slice(0, 180),
+        type: file.type || 'text/plain',
+        size: file.size,
+        text: await file.text(),
+      })))
+      setPendingAttachments(previous => [...previous, ...attachments])
+    } catch {
+      window.alert('文件读取失败，请重新选择。')
+    }
   }
 
   const handlePhotoPromptChoice = async (choice: 'public' | 'locked' | 'no') => {
@@ -812,7 +836,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   }, [])
 
   const sendMessage = async () => {
-    if ((!input.trim() && pendingImages.length === 0 && !pendingShare) || isLoading) return
+    if ((!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare) || isLoading) return
     if (!await ensureCcAvailable(activeRoute)) return
     const profile = getActiveProfile(settings)
     const model = settings.model
@@ -825,6 +849,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       content: input.trim(),
       timestamp: now,
       images: pendingImages.length ? pendingImages : undefined,
+      attachments: pendingAttachments.length ? pendingAttachments : undefined,
       sharedCard: pendingShare || undefined,
       ccGenerationState: activeRoute === 'claude-code' ? 'pending' : undefined,
       providerId: activeRoute === 'claude-code' ? 'claude-code' : profile?.id,
@@ -832,12 +857,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     }
     stickBottomRef.current = true
     await durableAppend(activeSession, userMsg)
-    if (activeRoute === 'claude-code' && userMsg.images?.length) await flushChatOutbox()
+    if (activeRoute === 'claude-code' && (userMsg.images?.length || userMsg.attachments?.length)) await flushChatOutbox()
     addMessage(userMsg, activeSession?.id)
     if (userMsg.images?.length) setPhotoPrompt({ messageId: userMsg.id, images: [...userMsg.images] })
     onTurn?.('user', userMsg.content)
     setInput('')
     setPendingImages([])
+    setPendingAttachments([])
     setPendingShare(null)
     setIsLoading(true)
 
@@ -1482,7 +1508,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             <button onClick={finishEditMsg} className={`text-xs font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>保存</button>
                           </div>
                         </div>
-                      ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
+                      ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard)) ? (
                         <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? `ml-auto w-fit max-w-[74%] rounded-2xl rounded-br-md ${n ? 'bg-night-amber/45 text-night-text' : 'bg-[#DBB9B3]/60 text-[#3f2c29]'}` : `mr-auto w-fit max-w-[88%] text-left ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
@@ -1496,6 +1522,17 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               {msg.images.map((src, i) => (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img key={i} src={src} alt="" className="max-w-[180px] max-h-[180px] rounded-lg object-cover" />
+                              ))}
+                            </div>
+                          )}
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="mb-1.5 flex flex-col gap-1.5">
+                              {msg.attachments.map((file, index) => (
+                                <div key={`${file.name}-${index}`} className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs ${n ? 'border-night-muted/25 bg-night-surface/60' : 'border-[#a73a32]/15 bg-white/55'}`}>
+                                  <Paperclip size={14} className="shrink-0 opacity-60" />
+                                  <span className="min-w-0 truncate">{file.name}</span>
+                                  <span className="shrink-0 opacity-45">{Math.max(1, Math.ceil(file.size / 1024))} KB</span>
+                                </div>
                               ))}
                             </div>
                           )}
@@ -1614,6 +1651,18 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 ))}
               </div>
             )}
+            {pendingAttachments.length > 0 && (
+              <div className="mb-2 flex flex-col gap-1.5 px-1">
+                {pendingAttachments.map((file, index) => (
+                  <div key={`${file.name}-${index}`} className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${n ? 'border-night-muted/25 bg-night-surface' : 'border-[#a73a32]/20 bg-white/80'}`}>
+                    <Paperclip size={14} className="shrink-0 opacity-60" />
+                    <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                    <span className="opacity-45">{Math.max(1, Math.ceil(file.size / 1024))} KB</span>
+                    <button type="button" aria-label={`移除 ${file.name}`} onClick={() => setPendingAttachments(previous => previous.filter((_, itemIndex) => itemIndex !== index))} className="opacity-50"><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="chat-compose-shell relative">
               <div className={`chat-input-tray rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-amber/40 shadow-[0_8px_24px_rgba(3,10,16,0.26)] focus-within:border-night-amber/70' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29] focus-within:border-[#a73a32]/45'}`}>
@@ -1621,8 +1670,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
                   className={`no-frame block min-h-10 w-full resize-none bg-transparent px-1 py-1 text-base outline-none max-h-40 md:text-sm ${n ? 'text-night-text placeholder:text-night-muted' : 'text-[#3f2c29] placeholder:text-[#9a766d]'}`} />
                 <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
+                <input ref={fileInputRef} type="file" multiple accept="text/*,.md,.markdown,.csv,.json,.yaml,.yml,.xml,.rtf,.js,.jsx,.ts,.tsx,.py,.css,.scss,.sql,.sh,.log,.java,.c,.cc,.cpp,.h,.hpp,.go,.rs,.swift,.kt,.kts" hidden onChange={handleUploadFile} />
                 <div className={`mt-1 flex items-center gap-0.5 ${n ? 'text-night-amber/85' : 'text-[#a73a32]/55'}`}>
                   <button type="button" aria-label={uploadingImg ? '正在处理照片' : '上传照片'} title="照片" disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full disabled:opacity-35"><ImagePlus size={17}/></button>
+                  <button type="button" aria-label="添加文件" title="文件" onClick={() => fileInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full"><Paperclip size={17}/></button>
                   <button type="button" aria-label="打开 Timeline" title={timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'} onClick={() => setTimelineOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-full"><Clock3 size={17}/>{timelineCurrent && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#DBB9B3]"/>}</button>
                   <motion.button type="button" aria-label="戳豹子鼻子" title="戳豹子鼻子" disabled={nosePokeBusy} onPointerDown={event => event.preventDefault()} onClick={() => void pokeLeopardNose()} whileTap={{ scale: .9 }} className="grid h-8 w-8 place-items-center rounded-full text-[18px] leading-none disabled:opacity-35">
                     <span aria-hidden="true">🐆</span>
@@ -1635,8 +1686,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       <Square size={14} fill="currentColor" />
                     </button>
                   ) : (
-                    <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && !pendingShare)}
-                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#DBB9B3] text-white hover:bg-[#DBB9B3]/80') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
+                    <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare)}
+                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingAttachments.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#DBB9B3] text-white hover:bg-[#DBB9B3]/80') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
                       <Send size={15} />
                     </button>
                   )}

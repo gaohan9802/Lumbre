@@ -1,7 +1,7 @@
 import { normalizeReplyMode } from '@/lib/chat-reply-mode'
 import { DEFAULT_CC_EFFORT, isCcEffort, isCcModel } from '@/lib/cc-model'
 import { normalizeChatRoute } from '@/lib/chat-route'
-import { mergeChatMessages, normalizeMessageTombstones } from '@/lib/chat-message-sync'
+import { mergeChatMessages, normalizeChatAttachments, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import type {
   ApiProfile, ApiProvider, BubbleLayout, ChatMessage, ChatSettings, ChatSummary, ContentBlock,
@@ -76,11 +76,14 @@ function normalizeMessage(message: any): ChatMessage | null {
     (!version.bubbleLayout || (Array.isArray(version.bubbleLayout.segments) && normalizeBubbleLayout(version.bubbleLayout)?.segments.length === version.bubbleLayout.segments.length))))
   const layoutValid = !message.bubbleLayout || (Array.isArray(message.bubbleLayout.segments) && normalizeBubbleLayout(message.bubbleLayout)?.segments.length === message.bubbleLayout.segments.length)
   const imagesValid = !message.images || (Array.isArray(message.images) && message.images.every((image: any) => typeof image === 'string'))
+  const attachments = normalizeChatAttachments(message.attachments)
+  const attachmentsValid = !message.attachments || (!!attachments && attachments.length === message.attachments.length && attachments.every((file, index) =>
+    file.name === message.attachments[index].name && file.type === message.attachments[index].type && file.size === message.attachments[index].size && file.text === message.attachments[index].text))
   const routeValid = message.route === 'api' || message.route === 'claude-code'
   // Keep object identity on the normal path; this runs for every store update.
   if (typeof message.id === 'string' && typeof message.content === 'string' &&
       (message.thinking == null || typeof message.thinking === 'string') &&
-      routeValid && blocksValid && versionsValid && layoutValid && imagesValid) return message as ChatMessage
+      routeValid && blocksValid && versionsValid && layoutValid && imagesValid && attachmentsValid) return message as ChatMessage
   const normalized = normalizeVersion(message)
   const versions = Array.isArray(message.versions) ? message.versions.map(normalizeVersion) : undefined
   return {
@@ -89,6 +92,7 @@ function normalizeMessage(message: any): ChatMessage | null {
     id: safeText(message.id) || makeId('message'),
     role: message.role,
     images: Array.isArray(message.images) ? message.images.filter((image: any) => typeof image === 'string') : undefined,
+    attachments,
     sharedCard: message.sharedCard && typeof message.sharedCard === 'object' ? message.sharedCard : undefined,
     versions,
     versionIndex: versions?.length ? Math.max(0, Math.min(Number(message.versionIndex) || 0, versions.length - 1)) : undefined,
