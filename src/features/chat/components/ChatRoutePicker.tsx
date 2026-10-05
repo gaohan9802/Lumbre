@@ -123,6 +123,12 @@ export function ChatRoutePicker({
                       {CC_EFFORTS.filter(effort => availableCcEfforts.includes(effort.id)).map(effort => <option key={effort.id} value={effort.id}>{effort.name}</option>)}
                     </select>
                   </label>
+                  {activeRoute !== 'claude-code' && <button
+                    type="button"
+                    disabled={!ccStatus.available}
+                    onClick={() => { onSelectCc(activeCcModel); onClose() }}
+                    className={`w-full rounded-lg py-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 ${isNight ? 'bg-night-muted/20 text-night-muted' : 'bg-[#DBB9B3]/40 text-[#765953]'}`}
+                  >使用 Claude Code</button>}
                   {(!ccStatus.available || !ccStatus.toolsAvailable) && <div className="text-[10px] opacity-50">{ccStatus.available
                     ? '生活工具尚未接通'
                     : ccStatus.configured ? '网关暂时无法连接' : '服务端尚未配置 CC 网关'}</div>}

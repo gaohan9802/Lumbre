@@ -60,6 +60,7 @@ test('CC controls stay compact until expanded', () => {
   assert.match(picker, /<summary[\s\S]*Claude Code/)
   assert.match(picker, /<select[\s\S]*CC_MODELS\.map/)
   assert.match(picker, /<select[\s\S]*availableCcEfforts/)
+  assert.match(picker, /activeRoute !== 'claude-code'[\s\S]*onSelectCc\(activeCcModel\)[\s\S]*使用 Claude Code/)
   assert.doesNotMatch(picker, /Claude Code · \{model\.name\}/)
 })
 
