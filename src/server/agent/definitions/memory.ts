@@ -173,5 +173,23 @@ export const MEMORY_TOOL_DEFINITIONS = [
       },
       "required": ["query"]
     }
+  },
+  {
+    "name": "lock_memory",
+    "description": "给新记忆库中的正式记忆加上或解除你的个人锁。你只能解除自己加的锁；小火加锁的记忆不能由你修改或解锁。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "memory_id": {
+          "type": "string",
+          "description": "正式记忆 ID"
+        },
+        "locked": {
+          "type": "boolean",
+          "description": "true 加锁，false 解锁"
+        }
+      },
+      "required": ["memory_id", "locked"]
+    }
   }
 ] satisfies ToolDef[]

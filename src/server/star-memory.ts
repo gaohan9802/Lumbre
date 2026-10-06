@@ -47,6 +47,7 @@ export interface MemoryCandidate extends MemoryDraft {
   updatedAt: string
   memoryId?: string
   suggestedFamilyIds: string[]
+  lockOwner?: 'fire' | 'star'
 }
 
 export interface CanonicalMemory extends MemoryDraft {
@@ -55,6 +56,7 @@ export interface CanonicalMemory extends MemoryDraft {
   approvedBy: 'fire' | 'star'
   createdAt: string
   status: 'active'
+  lockOwner?: 'fire' | 'star'
 }
 
 export interface MemoryFamily {
@@ -102,6 +104,7 @@ function getDb(): Database.Database {
       inference INTEGER NOT NULL DEFAULT 0 CHECK (inference IN (0, 1)),
       confidence REAL CHECK (confidence BETWEEN 0 AND 1),
       locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1)),
+      lock_owner TEXT CHECK (lock_owner IN ('fire', 'star')),
       status TEXT NOT NULL, owner TEXT NOT NULL, created_by TEXT NOT NULL,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL, memory_id TEXT UNIQUE
     );
@@ -113,6 +116,7 @@ function getDb(): Database.Database {
       inference INTEGER NOT NULL DEFAULT 0 CHECK (inference IN (0, 1)),
       confidence REAL CHECK (confidence BETWEEN 0 AND 1),
       locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1)),
+      lock_owner TEXT CHECK (lock_owner IN ('fire', 'star')),
       created_by TEXT NOT NULL, approved_by TEXT NOT NULL, created_at TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'active'
     );
@@ -157,8 +161,25 @@ function getDb(): Database.Database {
       id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL,
       target_id TEXT NOT NULL, created_at TEXT NOT NULL
     );
-    PRAGMA user_version = 1;
   `)
+  const hasColumn = (table: string, column: string) => (database!.pragma(`table_info(${table})`) as Row[]).some(row => row.name === column)
+  if (!hasColumn('candidates', 'lock_owner')) database.exec("ALTER TABLE candidates ADD COLUMN lock_owner TEXT CHECK (lock_owner IN ('fire', 'star'))")
+  if (!hasColumn('memories', 'lock_owner')) database.exec("ALTER TABLE memories ADD COLUMN lock_owner TEXT CHECK (lock_owner IN ('fire', 'star'))")
+  database.exec(`
+    UPDATE candidates SET lock_owner = 'fire'
+      WHERE locked = 1 AND lock_owner IS NULL AND created_by = 'fire' AND EXISTS (
+        SELECT 1 FROM source_refs WHERE target_type = 'candidate' AND target_id = candidates.id AND kind = 'manual' AND actor = 'fire'
+      );
+    UPDATE candidates SET lock_owner = created_by
+      WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
+    UPDATE memories SET lock_owner = 'fire'
+      WHERE locked = 1 AND lock_owner IS NULL AND created_by = 'fire' AND EXISTS (
+        SELECT 1 FROM source_refs WHERE target_type = 'memory' AND target_id = memories.id AND kind = 'manual' AND actor = 'fire'
+      );
+    UPDATE memories SET lock_owner = created_by
+      WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
+  `)
+  database.pragma('user_version = 2')
   return database
 }
 
@@ -305,11 +326,11 @@ function common(row: Row, target: Target): MemoryDraft {
 
 function candidateFromRow(row: Row): MemoryCandidate {
   const suggestedFamilyIds = (getDb().prepare('SELECT family_id FROM candidate_family_suggestions WHERE candidate_id = ?').all(row.id) as Row[]).map(item => item.family_id)
-  return { ...common(row, 'candidate'), id: row.id, status: row.status, owner: row.owner, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at, memoryId: row.memory_id || undefined, suggestedFamilyIds }
+  return { ...common(row, 'candidate'), id: row.id, status: row.status, owner: row.owner, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at, memoryId: row.memory_id || undefined, suggestedFamilyIds, lockOwner: row.lock_owner || undefined }
 }
 
 function memoryFromRow(row: Row): CanonicalMemory {
-  return { ...common(row, 'memory'), id: row.id, createdBy: row.created_by, approvedBy: row.approved_by, createdAt: row.created_at, status: 'active' }
+  return { ...common(row, 'memory'), id: row.id, createdBy: row.created_by, approvedBy: row.approved_by, createdAt: row.created_at, status: 'active', lockOwner: row.lock_owner || undefined }
 }
 
 function familyFromRow(row: Row): MemoryFamily {
@@ -353,9 +374,9 @@ export function createMemoryCandidate(input: unknown, createdByValue: unknown, o
       if (!getDb().prepare('SELECT 1 FROM families WHERE id = ?').get(familyId)) throw new Error(`family not found: ${familyId}`)
     }
     getDb().prepare(`INSERT INTO candidates
-      (id, type, summary, details, why_important, star_feeling, current_understanding, occurred_at, valid_from, valid_to, importance, inference, confidence, locked, status, owner, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(id, ...draftValues(value), owner === 'fire' ? 'pending_fire' : 'pending_star', owner, createdBy, now, now)
+      (id, type, summary, details, why_important, star_feeling, current_understanding, occurred_at, valid_from, valid_to, importance, inference, confidence, locked, lock_owner, status, owner, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, ...draftValues(value), value.locked && createdBy !== 'system' ? createdBy : undefined, owner === 'fire' ? 'pending_fire' : 'pending_star', owner, createdBy, now, now)
     writeSources('candidate', id, value.sources)
     writeQuotes('candidate', id, value.quotes)
     const suggest = getDb().prepare('INSERT INTO candidate_family_suggestions (candidate_id, family_id) VALUES (?, ?)')
@@ -451,11 +472,13 @@ export function reviewMemoryCandidate(idValue: unknown, decision: CandidateDecis
       if (!getDb().prepare('SELECT 1 FROM families WHERE id = ?').get(familyId)) throw new Error(`family not found: ${familyId}`)
     }
     const memoryId = randomUUID()
-    const locked = current.sources.some(source => source.kind === 'manual' && source.actor === 'fire') || !!current.locked
+    const manualByFire = current.createdBy === 'fire' && current.sources.some(source => source.kind === 'manual' && source.actor === 'fire')
+    const lockOwner = manualByFire ? 'fire' : current.locked ? (current.lockOwner || (current.createdBy === 'system' ? approvedBy : current.createdBy)) : undefined
+    const locked = !!lockOwner
     getDb().prepare(`INSERT INTO memories
-      (id, type, summary, details, why_important, star_feeling, current_understanding, occurred_at, valid_from, valid_to, importance, inference, confidence, locked, created_by, approved_by, created_at, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`)
-      .run(memoryId, ...draftValues({ ...current, locked }), current.createdBy, approvedBy, now)
+      (id, type, summary, details, why_important, star_feeling, current_understanding, occurred_at, valid_from, valid_to, importance, inference, confidence, locked, lock_owner, created_by, approved_by, created_at, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`)
+      .run(memoryId, ...draftValues({ ...current, locked }), lockOwner, current.createdBy, approvedBy, now)
     writeSources('memory', memoryId, current.sources)
     writeQuotes('memory', memoryId, current.quotes)
     getDb().prepare("UPDATE candidates SET status = 'approved', memory_id = ?, updated_at = ? WHERE id = ?").run(memoryId, now, id)
@@ -467,6 +490,41 @@ export function reviewMemoryCandidate(idValue: unknown, decision: CandidateDecis
       candidate: candidateFromRow(getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row),
       memory: memoryFromRow(getDb().prepare('SELECT * FROM memories WHERE id = ?').get(memoryId) as Row),
     }
+  })()
+}
+
+function writableMemory(id: string, actorValue: 'fire' | 'star'): Row {
+  const row = getDb().prepare('SELECT * FROM memories WHERE id = ?').get(id) as Row | undefined
+  if (!row) throw new Error('memory not found')
+  if (row.lock_owner && row.lock_owner !== actorValue) throw new Error(`memory is locked by ${row.lock_owner}`)
+  return row
+}
+
+export function updateCanonicalMemory(idValue: unknown, patchValue: unknown, actorValue: unknown): CanonicalMemory {
+  const id = text(idValue, 'memory id', 100, true)!
+  const updatedBy = reviewer(actorValue)
+  if (!patchValue || typeof patchValue !== 'object') throw new Error('memory patch is required')
+  return getDb().transaction(() => {
+    const current = memoryFromRow(writableMemory(id, updatedBy))
+    const next = draft({ ...current, ...(patchValue as object), sources: current.sources, quotes: current.quotes, locked: current.locked })
+    getDb().prepare(`UPDATE memories SET type = ?, summary = ?, details = ?, why_important = ?, star_feeling = ?, current_understanding = ?,
+      occurred_at = ?, valid_from = ?, valid_to = ?, importance = ?, inference = ?, confidence = ? WHERE id = ?`)
+      .run(...draftValues({ ...next, locked: false }).slice(0, 12), id)
+    recordChange(updatedBy, 'memory.updated', id, new Date().toISOString())
+    return memoryFromRow(getDb().prepare('SELECT * FROM memories WHERE id = ?').get(id) as Row)
+  })()
+}
+
+export function setCanonicalMemoryLock(idValue: unknown, lockedValue: unknown, actorValue: unknown): CanonicalMemory {
+  const id = text(idValue, 'memory id', 100, true)!
+  const lockActor = reviewer(actorValue)
+  if (typeof lockedValue !== 'boolean') throw new Error('locked must be a boolean')
+  const locked = lockedValue
+  return getDb().transaction(() => {
+    writableMemory(id, lockActor)
+    getDb().prepare('UPDATE memories SET locked = ?, lock_owner = ? WHERE id = ?').run(locked ? 1 : 0, locked ? lockActor : null, id)
+    recordChange(lockActor, locked ? 'memory.locked' : 'memory.unlocked', id, new Date().toISOString())
+    return memoryFromRow(getDb().prepare('SELECT * FROM memories WHERE id = ?').get(id) as Row)
   })()
 }
 

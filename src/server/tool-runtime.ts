@@ -44,7 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
-import { recallStarMemories } from './star-memory'
+import { recallStarMemories, setCanonicalMemoryLock } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -77,10 +77,15 @@ export async function executeRegisteredToolHandler(
         occurred_at: hit.memory.occurredAt,
         current: hit.current,
         importance: hit.memory.importance,
+        locked_by: hit.memory.lockOwner,
         families: hit.families.map(family => ({ id: family.id, name: family.name })),
         recall_reason: hit.match === 'family' ? '家族摘要与当前问题相关' : '记忆内容与当前问题相关',
         score: hit.score,
       })))
+    }
+
+    if (name === 'lock_memory') {
+      return JSON.stringify({ ok: true, memory: setCanonicalMemoryLock(input.memory_id, input.locked, 'star') })
     }
 
     // Context tools

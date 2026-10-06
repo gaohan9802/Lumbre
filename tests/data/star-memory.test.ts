@@ -10,11 +10,15 @@ process.env.DATA_DIR = root
 let memory: typeof import('../../src/server/star-memory')
 let chat: typeof import('../../src/server/data/repositories/chat')
 let runtime: typeof import('../../src/server/tool-runtime')
+let route: typeof import('../../src/app/api/star-memory/route')
+let NextRequest: typeof import('next/server').NextRequest
 
 before(async () => {
   memory = await import('../../src/server/star-memory')
   chat = await import('../../src/server/data/repositories/chat')
   runtime = await import('../../src/server/tool-runtime')
+  route = await import('../../src/app/api/star-memory/route')
+  ;({ NextRequest } = await import('next/server'))
 })
 
 after(() => {
@@ -78,6 +82,8 @@ test('manual memories added by fire lock automatically and invalid review cannot
   }, 'fire', 'star')
   const approved = memory.reviewMemoryCandidate(candidate.id, 'approve', 'star')
   assert.equal(approved.memory?.locked, true)
+  assert.equal(approved.memory?.lockOwner, 'fire')
+  assert.throws(() => memory.updateCanonicalMemory(approved.memory!.id, { summary: '星星不能改。' }, 'star'), /locked by fire/)
 
   const bad = memory.createMemoryCandidate({
     type: 'shared_event',
@@ -90,4 +96,31 @@ test('manual memories added by fire lock automatically and invalid review cannot
   const header = readFileSync(path.join(root, 'star-memory', 'star-memory.sqlite')).subarray(0, 16).toString()
   assert.equal(header, 'SQLite format 3\0')
   assert.equal(memory.getStarMemoryStatus().memories, 2)
+})
+
+test('a personal lock can only be changed or bypassed by its owner', async () => {
+  const candidate = memory.createMemoryCandidate({
+    type: 'self_event',
+    summary: '星星决定长期保留的一段自我认识。',
+    sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+    locked: true,
+  }, 'star', 'star')
+  const approved = memory.reviewMemoryCandidate(candidate.id, 'approve', 'star').memory!
+  assert.equal(approved.lockOwner, 'star')
+  assert.throws(() => memory.setCanonicalMemoryLock(approved.id, undefined, 'star'), /locked must be a boolean/)
+  assert.throws(() => memory.updateCanonicalMemory(approved.id, { summary: '小火不能改。' }, 'fire'), /locked by star/)
+  assert.throws(() => memory.setCanonicalMemoryLock(approved.id, false, 'fire'), /locked by star/)
+  const forged = await route.POST(new NextRequest('http://lumbre.test/api/star-memory', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'set_memory_lock', id: approved.id, locked: false, actor: 'star' }),
+  }))
+  assert.equal(forged.status, 400)
+
+  const updated = memory.updateCanonicalMemory(approved.id, { summary: '星星自己修改后的版本。' }, 'star')
+  assert.equal(updated.summary, '星星自己修改后的版本。')
+  const unlocked = JSON.parse(await runtime.executeRegisteredToolHandler('lock_memory', { memory_id: approved.id, locked: false }))
+  assert.equal(unlocked.memory.locked, false)
+  assert.equal(unlocked.memory.lockOwner, undefined)
+  assert.equal(memory.updateCanonicalMemory(approved.id, { summary: '解锁后小火可以修改。' }, 'fire').summary, '解锁后小火可以修改。')
 })
