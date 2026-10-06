@@ -361,6 +361,13 @@ export function listMemoryCandidates(status?: CandidateStatus): MemoryCandidate[
   return (rows as Row[]).map(candidateFromRow)
 }
 
+export function listCanonicalMemories(): Array<CanonicalMemory & { familyIds: string[] }> {
+  return (getDb().prepare('SELECT * FROM memories ORDER BY COALESCE(occurred_at, created_at) DESC').all() as Row[]).map(row => ({
+    ...memoryFromRow(row),
+    familyIds: (getDb().prepare('SELECT family_id FROM family_memberships WHERE memory_id = ? ORDER BY created_at').all(row.id) as Row[]).map(item => item.family_id),
+  }))
+}
+
 export function createMemoryCandidate(input: unknown, createdByValue: unknown, ownerValue: unknown = 'star'): MemoryCandidate {
   const createdBy = actor(createdByValue)
   const owner = reviewer(ownerValue)

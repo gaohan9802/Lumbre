@@ -52,6 +52,28 @@ interface StarFamily {
   memberCount: number
 }
 
+interface StarMemory {
+  id: string
+  type: string
+  summary: string
+  details?: string
+  whyImportant?: string
+  currentUnderstanding?: string
+  occurredAt?: string
+  validFrom?: string
+  validTo?: string
+  importance?: number
+  approvedBy: 'fire' | 'star'
+  lockOwner?: 'fire' | 'star'
+  familyIds: string[]
+}
+
+interface ResolvedStarSource {
+  source: { kind: string; label?: string }
+  resolved: Array<{ id?: string; role?: string; content?: string }>
+  missing?: boolean
+}
+
 // ─── Tab definitions ──────────────────────────────────────────
 type TabKey = 'clusters' | 'nodes' | 'lines' | 'evolution' | 'star' | 'breath' | 'network' | 'admin'
 const TABS: { key: TabKey; label: string }[] = [
@@ -454,7 +476,9 @@ export function MemoryView() {
 function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [status, setStatus] = useState<any>(null)
   const [candidates, setCandidates] = useState<StarCandidate[]>([])
+  const [memories, setMemories] = useState<StarMemory[]>([])
   const [families, setFamilies] = useState<StarFamily[]>([])
+  const [resolvedSources, setResolvedSources] = useState<Record<string, ResolvedStarSource[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState('')
@@ -464,13 +488,15 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     setLoading(true)
     setError('')
     try {
-      const [nextStatus, nextCandidates, nextFamilies] = await Promise.all([
+      const [nextStatus, nextCandidates, nextMemories, nextFamilies] = await Promise.all([
         apiRequest('/api/star-memory?view=status'),
         apiRequest('/api/star-memory?view=candidates'),
+        apiRequest('/api/star-memory?view=memories'),
         apiRequest('/api/star-memory?view=families'),
       ])
       setStatus(nextStatus)
       setCandidates(Array.isArray(nextCandidates) ? nextCandidates : [])
+      setMemories(Array.isArray(nextMemories) ? nextMemories : [])
       setFamilies(Array.isArray(nextFamilies) ? nextFamilies : [])
     } catch (loadError: any) {
       setError(loadError?.message || '新记忆库加载失败')
@@ -478,6 +504,20 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       setLoading(false)
     }
   }, [])
+
+  const loadSources = async (id: string) => {
+    if (resolvedSources[id]) return
+    setBusyId(id)
+    setError('')
+    try {
+      const sources = await apiRequest(`/api/star-memory?view=sources&id=${encodeURIComponent(id)}`)
+      setResolvedSources(current => ({ ...current, [id]: Array.isArray(sources) ? sources : [] }))
+    } catch (sourceError: any) {
+      setError(sourceError?.message || '来源加载失败')
+    } finally {
+      setBusyId('')
+    }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -550,6 +590,32 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                   <button disabled={busyId === candidate.id} onClick={() => review(candidate.id, 'approve')} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>批准</button>
                   <button disabled={busyId === candidate.id} onClick={() => review(candidate.id, 'reject')} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>不保留</button>
                 </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>正式记忆</div>
+        {memories.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无正式记忆</div> : (
+          <div className="space-y-2">
+            {memories.map(item => (
+              <article key={item.id} className={`rounded-xl border ${c.border} p-3`}>
+                <div className={`text-[10px] ${c.muted}`}>{item.type} · 重要度 {item.importance || 5} · {item.approvedBy === 'star' ? '星星确认' : '小火确认'}{item.lockOwner ? ` · 🔒 ${item.lockOwner === 'star' ? '星星' : '小火'}` : ''}</div>
+                <p className="mt-1 text-xs leading-5">{item.summary}</p>
+                {item.familyIds.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{item.familyIds.map(id => <span key={id} className={`rounded px-1.5 py-0.5 text-[9px] ${c.accentBg} ${c.accent}`}>{familyNames.get(id) || '未知家族'}</span>)}</div>}
+                <details className="mt-2">
+                  <summary className={`cursor-pointer text-[10px] ${c.muted}`}>详情与来源</summary>
+                  <div className={`mt-2 space-y-2 border-l pl-2 text-[10px] leading-4 ${c.border} ${c.muted}`}>
+                    {item.whyImportant && <p>为什么重要：{item.whyImportant}</p>}
+                    {item.details && <p>{item.details}</p>}
+                    {item.currentUnderstanding && <p>当前理解：{item.currentUnderstanding}</p>}
+                    <p>有效时间：{item.validFrom?.slice(0, 10) || '未限定'} → {item.validTo?.slice(0, 10) || '仍有效'}{item.occurredAt ? ` · 发生于 ${item.occurredAt.slice(0, 10)}` : ''}</p>
+                    <button disabled={busyId === item.id} onClick={() => loadSources(item.id)} className={`rounded px-2 py-1 ${c.surface} disabled:opacity-40`}>{resolvedSources[item.id] ? '来源已展开' : '查看原始来源'}</button>
+                    {resolvedSources[item.id]?.map((group, index) => <div key={`${item.id}-resolved-${index}`} className={`rounded-lg p-2 ${c.surface}`}><div>{group.source.label || group.source.kind}{group.missing ? ' · 有来源缺失' : ''}</div>{group.resolved.map((message, messageIndex) => <p key={message.id || messageIndex} className="mt-1 whitespace-pre-wrap opacity-80">{message.role === 'user' ? '小火' : message.role === 'assistant' ? '星星' : '来源'}：{message.content}</p>)}</div>)}
+                  </div>
+                </details>
               </article>
             ))}
           </div>

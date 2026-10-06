@@ -6,6 +6,7 @@ import {
   createMemoryFamily,
   getMemoryFamily,
   getStarMemoryStatus,
+  listCanonicalMemories,
   listMemoryCandidates,
   listMemoryFamilies,
   recallStarMemories,
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
     const view = req.nextUrl.searchParams.get('view') || 'status'
     if (view === 'status') return NextResponse.json(getStarMemoryStatus())
     if (view === 'candidates') return NextResponse.json(listMemoryCandidates((req.nextUrl.searchParams.get('status') || undefined) as CandidateStatus | undefined))
+    if (view === 'memories') return NextResponse.json(listCanonicalMemories())
     if (view === 'families') return NextResponse.json(listMemoryFamilies())
     if (view === 'family') return NextResponse.json(getMemoryFamily(req.nextUrl.searchParams.get('id') || ''))
     if (view === 'recall') return NextResponse.json(recallStarMemories(req.nextUrl.searchParams.get('q') || '', req.nextUrl.searchParams.get('limit')))

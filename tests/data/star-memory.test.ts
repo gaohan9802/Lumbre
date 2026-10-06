@@ -54,6 +54,7 @@ test('a sourced candidate becomes one memory shared by multiple families and tra
   assert.equal(memory.getMemoryFamily(life.id)?.memories.length, 1)
   assert.equal(memory.getMemoryFamily(work.id)?.memories.length, 1)
   assert.equal(memory.getMemoryFamily(life.id)?.memories[0].id, memory.getMemoryFamily(work.id)?.memories[0].id)
+  assert.deepEqual(memory.listCanonicalMemories().find(item => item.id === approved.memory?.id)?.familyIds.sort(), [life.id, work.id].sort())
 
   const hits = memory.recallStarMemories('一起设计记忆库')
   assert.equal(hits.length, 1)
