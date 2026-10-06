@@ -246,12 +246,13 @@ export const MEMORY_TOOL_DEFINITIONS = [
   },
   {
     "name": "manage_memory_family",
-    "description": "管理新记忆库的家族。可以列出、读取、创建或更新家族，调整正式记忆的家族归属与角色，使用你的个人锁，或结束家族并只保留关键节点、关键事实和未完事项。不要用归档冒充删除；删除要等回收区能力开放。",
+    "description": "管理新记忆库的家族。可以列出、读取、创建或更新家族，调整正式记忆的家族归属与角色，使用你的个人锁，结束家族并只保留关键骨架，或把无子家族的家族移入二十四小时回收区并恢复。回收家族只解除聚合关系，不删除正式记忆正文。",
     "input_schema": {
       "type": "object",
       "properties": {
-        "action": { "type": "string", "enum": ["list", "get", "create", "update", "lock", "add_memory", "remove_memory", "end"] },
+        "action": { "type": "string", "enum": ["list", "get", "create", "update", "lock", "add_memory", "remove_memory", "end", "list_trash", "recycle", "restore"] },
         "family_id": { "type": "string" },
+        "recycle_id": { "type": "string" },
         "memory_id": { "type": "string" },
         "name": { "type": "string" },
         "title": { "type": "string" },

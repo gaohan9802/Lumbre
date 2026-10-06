@@ -10,6 +10,7 @@ import {
   listCanonicalMemories,
   listMemoryCandidates,
   listMemoryFamilies,
+  listRecycledFamilies,
   listWorkingMemories,
   recallStarMemories,
   resolveMemorySources,
@@ -20,6 +21,8 @@ import {
   setMemoryFamilyLock,
   setMemoryFamilyMembership,
   removeMemoryFamilyMembership,
+  recycleMemoryFamily,
+  restoreMemoryFamily,
   updateCanonicalMemory,
   updateMemoryFamily,
   type CandidateDecision,
@@ -40,6 +43,7 @@ export async function GET(req: NextRequest) {
     if (view === 'memories') return NextResponse.json(listCanonicalMemories())
     if (view === 'working') return NextResponse.json(listWorkingMemories((req.nextUrl.searchParams.get('status') || undefined) as WorkingMemoryStatus | undefined))
     if (view === 'families') return NextResponse.json(listMemoryFamilies())
+    if (view === 'family_trash') return NextResponse.json(listRecycledFamilies())
     if (view === 'family') return NextResponse.json(getMemoryFamily(req.nextUrl.searchParams.get('id') || ''))
     if (view === 'recall') return NextResponse.json(recallStarMemories(req.nextUrl.searchParams.get('q') || '', req.nextUrl.searchParams.get('limit')))
     if (view === 'sources') return NextResponse.json(resolveMemorySources(req.nextUrl.searchParams.get('id') || ''))
@@ -66,6 +70,8 @@ export async function POST(req: NextRequest) {
     if (body.action === 'set_family_member') return NextResponse.json(setMemoryFamilyMembership(body.id, body.memoryId, body.role, body.reason, 'fire'))
     if (body.action === 'remove_family_member') return NextResponse.json({ removed: removeMemoryFamilyMembership(body.id, body.memoryId, 'fire') })
     if (body.action === 'end_family') return NextResponse.json(endMemoryFamily(body.id, 'fire'))
+    if (body.action === 'recycle_family') return NextResponse.json(recycleMemoryFamily(body.id, 'fire'))
+    if (body.action === 'restore_family') return NextResponse.json(restoreMemoryFamily(body.recycleId, 'fire'))
     return NextResponse.json({ error: 'unknown_action' }, { status: 400 })
   } catch (error) {
     return failure(error)

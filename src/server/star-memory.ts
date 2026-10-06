@@ -95,6 +95,15 @@ export interface FamilyMembership {
   createdAt: string
 }
 
+export interface RecycledFamily {
+  id: string
+  familyId: string
+  name: string
+  deletedBy: 'fire' | 'star'
+  deletedAt: string
+  purgeAfter: string
+}
+
 type Row = Record<string, any>
 type Target = 'candidate' | 'memory'
 
@@ -192,6 +201,11 @@ function getDb(): Database.Database {
       id TEXT PRIMARY KEY, family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
       summary TEXT, reason TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS family_recycle_bin (
+      id TEXT PRIMARY KEY, family_id TEXT NOT NULL UNIQUE, name TEXT NOT NULL, payload_json TEXT NOT NULL,
+      deleted_by TEXT NOT NULL CHECK (deleted_by IN ('fire', 'star')),
+      deleted_at TEXT NOT NULL, purge_after TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS changes (
       id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL,
       target_id TEXT NOT NULL, created_at TEXT NOT NULL
@@ -220,7 +234,7 @@ function getDb(): Database.Database {
     UPDATE families SET lock_owner = created_by
       WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
   `)
-  database.pragma('user_version = 5')
+  database.pragma('user_version = 6')
   return database
 }
 
@@ -748,6 +762,80 @@ export function endMemoryFamily(idValue: unknown, actorValue: unknown): { family
     recordChange(endedBy, 'family.ended', id, now)
     return { family: familyFromRow(getDb().prepare('SELECT * FROM families WHERE id = ?').get(id) as Row), removedOrdinaryMembers }
   })()
+}
+
+function recycledFamilyFromRow(row: Row): RecycledFamily {
+  return { id: row.id, familyId: row.family_id, name: row.name, deletedBy: row.deleted_by, deletedAt: row.deleted_at, purgeAfter: row.purge_after }
+}
+
+export function listRecycledFamilies(nowValue: unknown = new Date().toISOString()): RecycledFamily[] {
+  purgeExpiredFamilyRecycleBin(nowValue)
+  return (getDb().prepare('SELECT * FROM family_recycle_bin ORDER BY deleted_at DESC').all() as Row[]).map(recycledFamilyFromRow)
+}
+
+export function recycleMemoryFamily(idValue: unknown, actorValue: unknown, nowValue: unknown = new Date().toISOString()): RecycledFamily {
+  const id = text(idValue, 'family id', 100, true)!
+  const deletedBy = reviewer(actorValue)
+  const now = iso(nowValue, 'now')!
+  const purgeAfter = new Date(new Date(now).getTime() + 24 * 60 * 60 * 1000).toISOString()
+  return getDb().transaction(() => {
+    const family = writableFamily(id, deletedBy)
+    if (getDb().prepare('SELECT 1 FROM families WHERE parent_id = ? LIMIT 1').get(id)) throw new Error('move or recycle child families first')
+    const memberships = getDb().prepare('SELECT * FROM family_memberships WHERE family_id = ?').all(id) as Row[]
+    const revisions = getDb().prepare('SELECT * FROM family_summary_revisions WHERE family_id = ?').all(id) as Row[]
+    const candidateIds = (getDb().prepare('SELECT candidate_id FROM candidate_family_suggestions WHERE family_id = ?').all(id) as Row[]).map(row => row.candidate_id)
+    const workingRows = getDb().prepare("SELECT id, family_ids_json FROM working_memories WHERE status IN ('active', 'due')").all() as Row[]
+    const workingIds = workingRows.filter(row => (JSON.parse(row.family_ids_json) as string[]).includes(id)).map(row => row.id)
+    candidateIds.forEach(candidateId => getDb().prepare('DELETE FROM candidate_family_suggestions WHERE candidate_id = ? AND family_id = ?').run(candidateId, id))
+    workingRows.forEach(row => {
+      const familyIds = JSON.parse(row.family_ids_json) as string[]
+      if (familyIds.includes(id)) getDb().prepare('UPDATE working_memories SET family_ids_json = ? WHERE id = ?').run(JSON.stringify(familyIds.filter(familyId => familyId !== id)), row.id)
+    })
+    const recycleId = randomUUID()
+    getDb().prepare('INSERT INTO family_recycle_bin (id, family_id, name, payload_json, deleted_by, deleted_at, purge_after) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(recycleId, id, family.name, JSON.stringify({ family, memberships, revisions, candidateIds, workingIds }), deletedBy, now, purgeAfter)
+    getDb().prepare('DELETE FROM families WHERE id = ?').run(id)
+    recordChange(deletedBy, 'family.recycled', id, now)
+    return recycledFamilyFromRow(getDb().prepare('SELECT * FROM family_recycle_bin WHERE id = ?').get(recycleId) as Row)
+  })()
+}
+
+export function restoreMemoryFamily(recycleIdValue: unknown, actorValue: unknown): MemoryFamily {
+  const recycleId = text(recycleIdValue, 'recycle id', 100, true)!
+  const restoredBy = reviewer(actorValue)
+  return getDb().transaction(() => {
+    const recycled = getDb().prepare('SELECT * FROM family_recycle_bin WHERE id = ?').get(recycleId) as Row | undefined
+    if (!recycled) throw new Error('recycled family not found')
+    const payload = JSON.parse(recycled.payload_json) as { family: Row; memberships: Row[]; revisions: Row[]; candidateIds: string[]; workingIds: string[] }
+    const family = payload.family
+    getDb().prepare(`INSERT INTO families (id, name, title, summary, status, parent_id, locked, lock_owner, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(family.id, family.name, family.title, family.summary, family.status, family.parent_id, family.locked, family.lock_owner, family.created_by, family.created_at, family.updated_at)
+    const addMembership = getDb().prepare('INSERT INTO family_memberships (family_id, memory_id, role, reason, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    payload.memberships.forEach(link => {
+      if (getDb().prepare('SELECT 1 FROM memories WHERE id = ?').get(link.memory_id)) addMembership.run(family.id, link.memory_id, link.role, link.reason, link.added_by, link.created_at)
+    })
+    const addRevision = getDb().prepare('INSERT INTO family_summary_revisions (id, family_id, summary, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    payload.revisions.forEach(revision => addRevision.run(revision.id, family.id, revision.summary, revision.reason, revision.created_by, revision.created_at))
+    const addSuggestion = getDb().prepare('INSERT OR IGNORE INTO candidate_family_suggestions (candidate_id, family_id) VALUES (?, ?)')
+    payload.candidateIds.forEach(candidateId => {
+      if (getDb().prepare('SELECT 1 FROM candidates WHERE id = ?').get(candidateId)) addSuggestion.run(candidateId, family.id)
+    })
+    payload.workingIds.forEach(workingId => {
+      const row = getDb().prepare('SELECT family_ids_json FROM working_memories WHERE id = ?').get(workingId) as Row | undefined
+      if (!row) return
+      const familyIds = JSON.parse(row.family_ids_json) as string[]
+      if (!familyIds.includes(family.id)) getDb().prepare('UPDATE working_memories SET family_ids_json = ? WHERE id = ?').run(JSON.stringify([...familyIds, family.id]), workingId)
+    })
+    getDb().prepare('DELETE FROM family_recycle_bin WHERE id = ?').run(recycleId)
+    recordChange(restoredBy, 'family.restored', family.id, new Date().toISOString())
+    return familyFromRow(getDb().prepare('SELECT * FROM families WHERE id = ?').get(family.id) as Row)
+  })()
+}
+
+export function purgeExpiredFamilyRecycleBin(nowValue: unknown = new Date().toISOString()): number {
+  const now = iso(nowValue, 'now')!
+  return getDb().prepare('DELETE FROM family_recycle_bin WHERE purge_after <= ?').run(now).changes
 }
 
 export type CandidateDecision = 'approve' | 'reject' | 'observe' | 'assign_fire' | 'assign_star'

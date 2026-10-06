@@ -56,6 +56,15 @@ interface StarFamily {
   memberCount: number
 }
 
+interface RecycledStarFamily {
+  id: string
+  familyId: string
+  name: string
+  deletedBy: 'fire' | 'star'
+  deletedAt: string
+  purgeAfter: string
+}
+
 interface StarMemory {
   id: string
   type: string
@@ -494,6 +503,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [memories, setMemories] = useState<StarMemory[]>([])
   const [working, setWorking] = useState<StarWorkingMemory[]>([])
   const [families, setFamilies] = useState<StarFamily[]>([])
+  const [familyTrash, setFamilyTrash] = useState<RecycledStarFamily[]>([])
   const [resolvedSources, setResolvedSources] = useState<Record<string, ResolvedStarSource[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -504,18 +514,20 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     setLoading(true)
     setError('')
     try {
-      const [nextStatus, nextCandidates, nextMemories, nextWorking, nextFamilies] = await Promise.all([
+      const [nextStatus, nextCandidates, nextMemories, nextWorking, nextFamilies, nextFamilyTrash] = await Promise.all([
         apiRequest('/api/star-memory?view=status'),
         apiRequest('/api/star-memory?view=candidates'),
         apiRequest('/api/star-memory?view=memories'),
         apiRequest('/api/star-memory?view=working'),
         apiRequest('/api/star-memory?view=families'),
+        apiRequest('/api/star-memory?view=family_trash'),
       ])
       setStatus(nextStatus)
       setCandidates(Array.isArray(nextCandidates) ? nextCandidates : [])
       setMemories(Array.isArray(nextMemories) ? nextMemories : [])
       setWorking(Array.isArray(nextWorking) ? nextWorking : [])
       setFamilies(Array.isArray(nextFamilies) ? nextFamilies : [])
+      setFamilyTrash(Array.isArray(nextFamilyTrash) ? nextFamilyTrash : [])
     } catch (loadError: any) {
       setError(loadError?.message || '新记忆库加载失败')
     } finally {
@@ -577,10 +589,11 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     }
   }
 
-  const manageFamily = async (family: StarFamily, action: 'update_family' | 'set_family_lock' | 'end_family') => {
+  const manageFamily = async (family: StarFamily, action: 'update_family' | 'set_family_lock' | 'end_family' | 'recycle_family') => {
     const summary = action === 'update_family' ? prompt('更新家族短摘要', family.summary || '') : null
     if (action === 'update_family' && summary === null) return
     if (action === 'end_family' && !confirm('结束后会移除普通成员归属，只保留关键节点、关键事实与未完事项。继续吗？')) return
+    if (action === 'recycle_family' && !confirm('家族会进入 24 小时回收区；共享记忆正文不会删除。继续吗？')) return
     setBusyId(family.id)
     setError('')
     try {
@@ -598,6 +611,24 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       await load()
     } catch (familyError: any) {
       setError(familyError?.message || '家族更新失败')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  const restoreFamily = async (recycleId: string) => {
+    setBusyId(recycleId)
+    setError('')
+    try {
+      const response = await fetch('/api/star-memory', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'restore_family', recycleId }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || '恢复家族失败')
+      await load()
+    } catch (restoreError: any) {
+      setError(restoreError?.message || '恢复家族失败')
     } finally {
       setBusyId('')
     }
@@ -714,14 +745,20 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
             <div className="flex items-center justify-between gap-2"><span className="text-xs">{family.name}{family.lockOwner ? ` · 🔒${family.lockOwner === 'star' ? '星星' : '小火'}` : ''}</span><span className={`text-[9px] ${c.muted}`}>{family.memberCount} 条 · {family.status === 'active' ? '发展中' : family.status === 'paused' ? '搁置' : family.status === 'ended' ? '已结束' : '已归档'}</span></div>
             {family.summary && <p className={`mt-1 line-clamp-3 text-[10px] leading-4 ${c.muted}`}>{family.summary}</p>}
             <div className="mt-3 flex flex-wrap gap-2">
-              <button disabled={busyId === family.id} onClick={() => manageFamily(family, 'update_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>改摘要</button>
-              <button disabled={busyId === family.id} onClick={() => manageFamily(family, 'set_family_lock')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{family.lockOwner ? '解锁' : '加锁'}</button>
-              {!['ended', 'archived'].includes(family.status) && <button disabled={busyId === family.id} onClick={() => manageFamily(family, 'end_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>结束并压缩</button>}
+              <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'update_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>改摘要</button>
+              <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'set_family_lock')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{family.lockOwner === 'star' ? '星星锁定' : family.lockOwner ? '解锁' : '加锁'}</button>
+              {!['ended', 'archived'].includes(family.status) && <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'end_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>结束并压缩</button>}
+              <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'recycle_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>移入回收区</button>
             </div>
           </div>)}
           {families.length === 0 && <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无家族</div>}
         </div>
       </div>
+
+      {familyTrash.length > 0 && <div>
+        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>家族回收区</div>
+        <div className="space-y-2">{familyTrash.map(item => <div key={item.id} className={`flex items-center justify-between gap-3 rounded-xl border ${c.border} p-3`}><div><div className="text-xs">{item.name}</div><div className={`mt-1 text-[9px] ${c.muted}`}>24 小时后清除 · {item.purgeAfter.slice(0, 16).replace('T', ' ')}</div></div><button disabled={busyId === item.id} onClick={() => restoreFamily(item.id)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>恢复</button></div>)}</div>
+      </div>}
     </div>
   )
 }

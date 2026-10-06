@@ -97,8 +97,23 @@ test('family roles, major revisions, compression, and personal locks stay consis
 
   memory.setMemoryFamilyLock(family.id, true, 'star')
   assert.throws(() => memory.updateMemoryFamily(family.id, { summary: '小火不能覆盖。' }, 'fire'), /locked by star/)
+  assert.throws(() => memory.recycleMemoryFamily(family.id, 'fire'), /locked by star/)
   const toolFamily = JSON.parse(await runtime.executeRegisteredToolHandler('manage_memory_family', { action: 'get', family_id: family.id }))
   assert.equal(toolFamily.lockOwner, 'star')
+
+  memory.setMemoryFamilyLock(family.id, false, 'star')
+  const recycled = memory.recycleMemoryFamily(family.id, 'fire', '2026-10-06T10:00:00.000Z')
+  assert.equal(memory.getMemoryFamily(family.id), null)
+  assert.equal(memory.listCanonicalMemories().some(item => item.id === key.id), true)
+  assert.equal(memory.listRecycledFamilies('2026-10-06T11:00:00.000Z')[0].id, recycled.id)
+  const restored = memory.restoreMemoryFamily(recycled.id, 'fire')
+  assert.equal(restored.id, family.id)
+  assert.deepEqual(memory.getMemoryFamily(family.id)?.memberships.map(item => item.memoryId), [key.id])
+
+  memory.recycleMemoryFamily(family.id, 'star', '2026-10-06T12:00:00.000Z')
+  assert.equal(memory.purgeExpiredFamilyRecycleBin('2026-10-07T11:59:59.000Z'), 0)
+  assert.equal(memory.purgeExpiredFamilyRecycleBin('2026-10-07T12:00:00.000Z'), 1)
+  assert.equal(memory.listRecycledFamilies('2026-10-07T12:00:01.000Z').length, 0)
 })
 
 test('manual memories added by fire lock automatically and invalid review cannot partially write', () => {
