@@ -155,5 +155,23 @@ export const MEMORY_TOOL_DEFINITIONS = [
       "type": "object",
       "properties": {}
     }
+  },
+  {
+    "name": "recall_memory",
+    "description": "查询新的星星记忆库。只返回已批准的正式记忆，包含摘要、所属家族、当前有效性和召回解释；结果为空时应诚实说不记得，不要猜。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "当前问题或想查找的内容"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "返回数量，默认 5，最多 10"
+        }
+      },
+      "required": ["query"]
+    }
   }
 ] satisfies ToolDef[]

@@ -44,6 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
+import { recallStarMemories } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -66,6 +67,20 @@ export async function executeRegisteredToolHandler(
     // Memory → local Brain engine
     if (BRAIN_TOOLS.has(name)) {
       return executeMemoryTool(name, input)
+    }
+
+    if (name === 'recall_memory') {
+      const hits = recallStarMemories(input.query, Math.min(10, Number(input.limit) || 5))
+      return JSON.stringify(hits.map(hit => ({
+        id: hit.memory.id,
+        summary: hit.memory.summary,
+        occurred_at: hit.memory.occurredAt,
+        current: hit.current,
+        importance: hit.memory.importance,
+        families: hit.families.map(family => ({ id: family.id, name: family.name })),
+        recall_reason: hit.match === 'family' ? '家族摘要与当前问题相关' : '记忆内容与当前问题相关',
+        score: hit.score,
+      })))
     }
 
     // Context tools

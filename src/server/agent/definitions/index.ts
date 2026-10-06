@@ -15,7 +15,7 @@ const DEFINITIONS = [
 // Keep the pre-refactor order stable because tool schema order participates in
 // provider prompt caching even though names and schemas are otherwise identical.
 const TOOL_ORDER = [
-  'breath', 'hold', 'grow', 'trace', 'pulse', 'dream',
+  'breath', 'hold', 'grow', 'trace', 'pulse', 'dream', 'recall_memory',
   'write_diary', 'read_diary', 'comment_diary', 'update_diary', 'delete_diary', 'unlock_diary', 'set_password', 'timeline',
   'write_note', 'read_notes', 'reply_note', 'delete_note',
   'read_foto', 'view_foto', 'edit_foto', 'delete_foto', 'comment_foto',

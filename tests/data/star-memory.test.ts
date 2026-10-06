@@ -9,10 +9,12 @@ process.env.DATA_DIR = root
 
 let memory: typeof import('../../src/server/star-memory')
 let chat: typeof import('../../src/server/data/repositories/chat')
+let runtime: typeof import('../../src/server/tool-runtime')
 
 before(async () => {
   memory = await import('../../src/server/star-memory')
   chat = await import('../../src/server/data/repositories/chat')
+  runtime = await import('../../src/server/tool-runtime')
 })
 
 after(() => {
@@ -20,7 +22,7 @@ after(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-test('a sourced candidate becomes one memory shared by multiple families and traces back to chat', () => {
+test('a sourced candidate becomes one memory shared by multiple families and traces back to chat', async () => {
   chat.writeChatSession('session-1', {
     id: 'session-1',
     messages: [
@@ -52,6 +54,11 @@ test('a sourced candidate becomes one memory shared by multiple families and tra
   assert.equal(hits[0].families.length, 2)
   const traced = memory.resolveMemorySources(approved.memory!.id)
   assert.deepEqual(traced[0].resolved.map((item: { id?: string }) => item.id), ['m1', 'm2'])
+
+  const toolHits = JSON.parse(await runtime.executeRegisteredToolHandler('recall_memory', { query: '一起设计记忆库' }))
+  assert.equal(toolHits.length, 1)
+  assert.equal(toolHits[0].summary, approved.memory?.summary)
+  assert.equal(toolHits[0].recall_reason, '记忆内容与当前问题相关')
 })
 
 test('family nesting stops at three levels', () => {
