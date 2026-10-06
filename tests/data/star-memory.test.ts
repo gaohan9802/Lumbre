@@ -161,4 +161,45 @@ test('star can remember from the current chat and choose who reviews it', async 
   assert.equal(approved.memory.lockOwner, 'star')
   assert.equal(memory.getMemoryFamily(family.id)?.memories[0].id, approved.memory.id)
   assert.deepEqual(memory.resolveMemorySources(approved.memory.id)[0].resolved.map((item: { id: string }) => item.id), ['remember-user', 'remember-star'])
+
+  const short = JSON.parse(await runtime.executeRegisteredToolHandler('remember', {
+    type: 'current_state',
+    summary: '小火今天在继续设计记忆库。',
+    retention_days: 1,
+    decision: 'short_term',
+  }, context))
+  assert.equal(short.working.retentionDays, 1)
+  assert.equal(short.working.status, 'active')
+  const recalled = JSON.parse(await runtime.executeRegisteredToolHandler('recall_memory', { query: '今天继续设计记忆库' }))
+  assert.equal(recalled.some((item: any) => item.id === short.working.id && item.memory_kind === 'short_term'), true)
+})
+
+test('short-term memory expires without renewal and can be promoted exactly once', () => {
+  const input = {
+    type: 'current_state',
+    summary: '小火最近有点累。',
+    sources: [{ kind: 'manual' as const, actor: 'star' as const, label: '星星手动加入' }],
+    importance: 4,
+  }
+  const first = memory.createWorkingMemory(input, 'star', 7, '2026-10-01T10:00:00.000Z')
+  const repeated = memory.createWorkingMemory(input, 'star', 7, '2026-10-03T10:00:00.000Z')
+  assert.equal(repeated.id, first.id)
+  assert.equal(repeated.expiresAt, '2026-10-08T10:00:00.000Z')
+  assert.equal(memory.recallWorkingMemories('最近有点累', 5, '2026-10-07T10:00:00.000Z')[0].memory.id, first.id)
+
+  assert.equal(memory.processWorkingMemoryExpiry('2026-10-08T10:00:00.000Z') >= 1, true)
+  assert.equal(memory.processWorkingMemoryExpiry('2026-10-08T10:00:00.000Z'), 0)
+  assert.equal(memory.recallWorkingMemories('最近有点累', 5, '2026-10-08T10:00:00.000Z').length, 0)
+
+  const observed = memory.reviewWorkingMemory(first.id, 'observe', 'star', '2026-10-08T10:00:01.000Z').working
+  assert.equal(observed.retentionDays, 14)
+  assert.equal(observed.expiresAt, '2026-10-15T10:00:00.000Z')
+  memory.processWorkingMemoryExpiry('2026-10-15T10:00:00.000Z')
+  assert.throws(() => memory.reviewWorkingMemory(first.id, 'observe', 'star', '2026-10-15T10:00:01.000Z'), /fourteen days/)
+
+  const promoted = memory.reviewWorkingMemory(first.id, 'promote', 'star', '2026-10-15T10:00:01.000Z', '小火有一段持续疲惫的时期。')
+  const repeatedPromotion = memory.reviewWorkingMemory(first.id, 'promote', 'star', '2026-10-15T10:00:02.000Z')
+  assert.equal(promoted.memory?.summary, '小火有一段持续疲惫的时期。')
+  assert.equal(repeatedPromotion.memory?.id, promoted.memory?.id)
+  assert.equal(memory.listWorkingMemories().find(item => item.id === first.id)?.status, 'promoted')
 })

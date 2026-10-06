@@ -158,7 +158,7 @@ export const MEMORY_TOOL_DEFINITIONS = [
   },
   {
     "name": "recall_memory",
-    "description": "查询新的星星记忆库。只返回已批准的正式记忆，包含摘要、所属家族、当前有效性和召回解释；结果为空时应诚实说不记得，不要猜。",
+    "description": "查询新的星星记忆库。返回仍活跃的短期记忆和已批准的正式记忆，包含期限、家族、当前有效性和召回解释；结果为空时应诚实说不记得，不要猜。",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -176,7 +176,7 @@ export const MEMORY_TOOL_DEFINITIONS = [
   },
   {
     "name": "remember",
-    "description": "把当前对话中的内容写入新的星星记忆库。decision=approve 时由你立即批准为正式记忆；ask_fire 时交给小火审核；later 时留在你的候选箱。当前会话会自动记录为来源。",
+    "description": "把当前对话中的内容写入新的星星记忆库。decision=short_term 写入近期活跃记忆；approve 立即批准为正式记忆；ask_fire 交给小火审核；later 留在你的候选箱。当前会话会自动记录为来源。",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -196,17 +196,34 @@ export const MEMORY_TOOL_DEFINITIONS = [
         "inference": { "type": "boolean", "description": "是否属于推断或观察" },
         "confidence": { "type": "number", "description": "推断置信度 0-1" },
         "locked": { "type": "boolean", "description": "是否同时加上你的个人锁" },
+        "retention_days": { "type": "integer", "enum": [1, 7, 14], "description": "短期记忆保留 1、7 或 14 天；只用于 short_term，默认 7" },
         "family_ids": { "type": "array", "items": { "type": "string" }, "description": "建议归属的现有家族 ID" },
         "source_message_ids": { "type": "array", "items": { "type": "string" }, "description": "可选；只引用当前会话中的这些消息。省略时自动引用最近几轮。" },
         "fire_quote": { "type": "string", "description": "需要保留的小火原话，可省略" },
         "star_quote": { "type": "string", "description": "需要保留的你的原话，可省略" },
         "decision": {
           "type": "string",
-          "enum": ["approve", "ask_fire", "later"],
-          "description": "立即自审通过、交给小火、或留给自己稍后处理"
+          "enum": ["short_term", "approve", "ask_fire", "later"],
+          "description": "近期保留、立即自审通过、交给小火、或留给自己稍后处理"
         }
       },
       "required": ["type", "summary", "decision"]
+    }
+  },
+  {
+    "name": "review_memory",
+    "description": "整理到期或仍活跃的短期记忆。list_due 查看待整理项；dismiss 让它退出活跃记忆但保留原始聊天；observe 最多延长到创建后 14 天；promote 由你升格为正式记忆；ask_fire 交给小火审核。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["list_due", "dismiss", "observe", "promote", "ask_fire"]
+        },
+        "working_memory_id": { "type": "string", "description": "除 list_due 外必填" },
+        "summary": { "type": "string", "description": "升格时可选的更精炼摘要" }
+      },
+      "required": ["action"]
     }
   },
   {

@@ -14,5 +14,6 @@ export const MEMORY_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'dream', domain: 'memory', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'recall_memory', domain: 'memory', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'remember', domain: 'memory', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'review_memory', domain: 'memory', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'lock_memory', domain: 'memory', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
 ]

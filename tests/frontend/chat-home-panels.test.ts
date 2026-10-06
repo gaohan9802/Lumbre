@@ -109,6 +109,8 @@ test('memory room exposes the isolated star memory review inbox', () => {
   assert.match(memory, /key: 'star', label: '新库'/)
   assert.match(memory, /\/api\/star-memory\?view=candidates/)
   assert.match(memory, /\/api\/star-memory\?view=memories/)
+  assert.match(memory, /\/api\/star-memory\?view=working/)
+  assert.match(memory, /退出活跃/)
   assert.match(memory, /查看原始来源/)
   assert.match(memory, /candidate\.lockOwner/)
   assert.match(memory, /action: 'review_candidate'/)

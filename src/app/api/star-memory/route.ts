@@ -9,13 +9,18 @@ import {
   listCanonicalMemories,
   listMemoryCandidates,
   listMemoryFamilies,
+  listWorkingMemories,
   recallStarMemories,
   resolveMemorySources,
+  resolveWorkingMemorySources,
   reviewMemoryCandidate,
+  reviewWorkingMemory,
   setCanonicalMemoryLock,
   updateCanonicalMemory,
   type CandidateDecision,
   type CandidateStatus,
+  type WorkingMemoryDecision,
+  type WorkingMemoryStatus,
 } from '@/server/star-memory'
 
 function failure(error: unknown) {
@@ -28,10 +33,12 @@ export async function GET(req: NextRequest) {
     if (view === 'status') return NextResponse.json(getStarMemoryStatus())
     if (view === 'candidates') return NextResponse.json(listMemoryCandidates((req.nextUrl.searchParams.get('status') || undefined) as CandidateStatus | undefined))
     if (view === 'memories') return NextResponse.json(listCanonicalMemories())
+    if (view === 'working') return NextResponse.json(listWorkingMemories((req.nextUrl.searchParams.get('status') || undefined) as WorkingMemoryStatus | undefined))
     if (view === 'families') return NextResponse.json(listMemoryFamilies())
     if (view === 'family') return NextResponse.json(getMemoryFamily(req.nextUrl.searchParams.get('id') || ''))
     if (view === 'recall') return NextResponse.json(recallStarMemories(req.nextUrl.searchParams.get('q') || '', req.nextUrl.searchParams.get('limit')))
     if (view === 'sources') return NextResponse.json(resolveMemorySources(req.nextUrl.searchParams.get('id') || ''))
+    if (view === 'working_sources') return NextResponse.json(resolveWorkingMemorySources(req.nextUrl.searchParams.get('id') || ''))
     return NextResponse.json({ error: 'unknown_view' }, { status: 400 })
   } catch (error) {
     return failure(error)
@@ -48,6 +55,7 @@ export async function POST(req: NextRequest) {
     }
     if (body.action === 'update_memory') return NextResponse.json(updateCanonicalMemory(body.id, body.patch, 'fire'))
     if (body.action === 'set_memory_lock') return NextResponse.json(setCanonicalMemoryLock(body.id, body.locked, 'fire'))
+    if (body.action === 'review_working') return NextResponse.json(reviewWorkingMemory(body.id, body.decision as WorkingMemoryDecision, 'fire', new Date().toISOString(), body.summary))
     return NextResponse.json({ error: 'unknown_action' }, { status: 400 })
   } catch (error) {
     return failure(error)

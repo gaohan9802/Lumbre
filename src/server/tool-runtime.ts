@@ -44,7 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
-import { createMemoryCandidate, recallStarMemories, reviewMemoryCandidate, setCanonicalMemoryLock } from './star-memory'
+import { createMemoryCandidate, createWorkingMemory, listWorkingMemories, recallStarMemories, recallWorkingMemories, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -70,9 +70,10 @@ export async function executeRegisteredToolHandler(
     }
 
     if (name === 'recall_memory') {
-      const hits = recallStarMemories(input.query, Math.min(10, Number(input.limit) || 5))
-      return JSON.stringify(hits.map(hit => ({
+      const limit = Math.min(10, Number(input.limit) || 5)
+      const formal = recallStarMemories(input.query, limit).map(hit => ({
         id: hit.memory.id,
+        memory_kind: 'formal',
         summary: hit.memory.summary,
         occurred_at: hit.memory.occurredAt,
         current: hit.current,
@@ -81,12 +82,25 @@ export async function executeRegisteredToolHandler(
         families: hit.families.map(family => ({ id: family.id, name: family.name })),
         recall_reason: hit.match === 'family' ? '家族摘要与当前问题相关' : '记忆内容与当前问题相关',
         score: hit.score,
-      })))
+      }))
+      const working = recallWorkingMemories(input.query, limit).map(hit => ({
+        id: hit.memory.id,
+        memory_kind: 'short_term',
+        summary: hit.memory.summary,
+        occurred_at: hit.memory.occurredAt,
+        current: true,
+        importance: hit.memory.importance,
+        expires_at: hit.memory.expiresAt,
+        families: hit.memory.suggestedFamilyIds,
+        recall_reason: '仍在有效期内的近期记忆',
+        score: hit.score,
+      }))
+      return JSON.stringify([...formal, ...working].sort((a, b) => b.score - a.score).slice(0, limit))
     }
 
     if (name === 'remember') {
       const decision = String(input.decision || '')
-      if (!['approve', 'ask_fire', 'later'].includes(decision)) throw new Error('decision must be approve, ask_fire, or later')
+      if (!['short_term', 'approve', 'ask_fire', 'later'].includes(decision)) throw new Error('decision must be short_term, approve, ask_fire, or later')
       const session = context?.sessionId ? loadSyncSessions([context.sessionId])[0] : undefined
       const messages = Array.isArray(session?.messages)
         ? session.messages.filter((message: any) => typeof message?.id === 'string' && ['user', 'assistant'].includes(message.role))
@@ -103,7 +117,7 @@ export async function executeRegisteredToolHandler(
         typeof input.fire_quote === 'string' && input.fire_quote.trim() ? { actor: 'fire' as const, text: input.fire_quote } : null,
         typeof input.star_quote === 'string' && input.star_quote.trim() ? { actor: 'star' as const, text: input.star_quote } : null,
       ].filter((quote): quote is { actor: 'fire' | 'star'; text: string } => !!quote)
-      const candidate = createMemoryCandidate({
+      const memoryInput = {
         type: input.type,
         summary: input.summary,
         details: input.details,
@@ -120,11 +134,20 @@ export async function executeRegisteredToolHandler(
         familyIds: input.family_ids,
         sources,
         quotes,
-      }, 'star', decision === 'ask_fire' ? 'fire' : 'star')
+      }
+      if (decision === 'short_term') {
+        return JSON.stringify({ ok: true, working: createWorkingMemory(memoryInput, 'star', input.retention_days || 7) })
+      }
+      const candidate = createMemoryCandidate(memoryInput, 'star', decision === 'ask_fire' ? 'fire' : 'star')
       const result = decision === 'approve'
         ? reviewMemoryCandidate(candidate.id, 'approve', 'star')
         : { candidate }
       return JSON.stringify({ ok: true, ...result })
+    }
+
+    if (name === 'review_memory') {
+      if (input.action === 'list_due') return JSON.stringify(listWorkingMemories('due'))
+      return JSON.stringify({ ok: true, ...reviewWorkingMemory(input.working_memory_id, input.action, 'star', new Date().toISOString(), input.summary) })
     }
 
     if (name === 'lock_memory') {

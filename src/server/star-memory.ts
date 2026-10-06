@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
@@ -10,6 +10,7 @@ export type MemoryActor = 'fire' | 'star' | 'system'
 export type MemoryType = 'shared_event' | 'durable_fact' | 'agreement' | 'current_state' | 'observation' | 'self_event' | 'unresolved'
 export type CandidateStatus = 'pending_star' | 'pending_fire' | 'observing' | 'approved' | 'rejected'
 export type FamilyStatus = 'active' | 'paused' | 'ended' | 'archived'
+export type WorkingMemoryStatus = 'active' | 'due' | 'dismissed' | 'promoted'
 
 export interface SourceRef {
   kind: 'chat' | 'manual' | 'image' | 'journal' | 'health'
@@ -59,6 +60,18 @@ export interface CanonicalMemory extends MemoryDraft {
   lockOwner?: 'fire' | 'star'
 }
 
+export interface WorkingMemory extends MemoryDraft {
+  id: string
+  retentionDays: 1 | 7 | 14
+  expiresAt: string
+  status: WorkingMemoryStatus
+  createdBy: 'fire' | 'star'
+  createdAt: string
+  updatedAt: string
+  candidateId?: string
+  suggestedFamilyIds: string[]
+}
+
 export interface MemoryFamily {
   id: string
   name: string
@@ -87,6 +100,8 @@ type Target = 'candidate' | 'memory'
 const DB_FILE = resolveDataPath(getDataDir(), 'star-memory', 'star-memory.sqlite')
 const MEMORY_TYPES = new Set<MemoryType>(['shared_event', 'durable_fact', 'agreement', 'current_state', 'observation', 'self_event', 'unresolved'])
 const FAMILY_STATUSES = new Set<FamilyStatus>(['active', 'paused', 'ended', 'archived'])
+const WORKING_STATUSES = new Set<WorkingMemoryStatus>(['active', 'due', 'dismissed', 'promoted'])
+const WORKING_DECISIONS = new Set<WorkingMemoryDecision>(['dismiss', 'observe', 'promote', 'ask_fire'])
 let database: Database.Database | undefined
 
 function getDb(): Database.Database {
@@ -120,6 +135,19 @@ function getDb(): Database.Database {
       created_by TEXT NOT NULL, approved_by TEXT NOT NULL, created_at TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'active'
     );
+    CREATE TABLE IF NOT EXISTS working_memories (
+      id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, type TEXT NOT NULL, summary TEXT NOT NULL,
+      details TEXT, why_important TEXT, star_feeling TEXT, current_understanding TEXT,
+      occurred_at TEXT, valid_from TEXT, importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 10),
+      inference INTEGER NOT NULL DEFAULT 0 CHECK (inference IN (0, 1)), confidence REAL CHECK (confidence BETWEEN 0 AND 1),
+      sources_json TEXT NOT NULL, quotes_json TEXT NOT NULL, family_ids_json TEXT NOT NULL,
+      retention_days INTEGER NOT NULL CHECK (retention_days IN (1, 7, 14)), expires_at TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('active', 'due', 'dismissed', 'promoted')),
+      created_by TEXT NOT NULL CHECK (created_by IN ('fire', 'star')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      candidate_id TEXT REFERENCES candidates(id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS working_active_fingerprint
+      ON working_memories(fingerprint) WHERE status IN ('active', 'due');
     CREATE TABLE IF NOT EXISTS source_refs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       target_type TEXT NOT NULL CHECK (target_type IN ('candidate', 'memory')),
@@ -179,7 +207,7 @@ function getDb(): Database.Database {
     UPDATE memories SET lock_owner = created_by
       WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
   `)
-  database.pragma('user_version = 2')
+  database.pragma('user_version = 3')
   return database
 }
 
@@ -333,6 +361,34 @@ function memoryFromRow(row: Row): CanonicalMemory {
   return { ...common(row, 'memory'), id: row.id, createdBy: row.created_by, approvedBy: row.approved_by, createdAt: row.created_at, status: 'active', lockOwner: row.lock_owner || undefined }
 }
 
+function workingFromRow(row: Row): WorkingMemory {
+  return {
+    type: row.type,
+    summary: row.summary,
+    details: row.details || undefined,
+    whyImportant: row.why_important || undefined,
+    sources: JSON.parse(row.sources_json),
+    quotes: JSON.parse(row.quotes_json),
+    starFeeling: row.star_feeling || undefined,
+    currentUnderstanding: row.current_understanding || undefined,
+    occurredAt: row.occurred_at || undefined,
+    validFrom: row.valid_from || undefined,
+    importance: row.importance,
+    inference: !!row.inference,
+    confidence: row.confidence ?? undefined,
+    locked: false,
+    id: row.id,
+    retentionDays: row.retention_days,
+    expiresAt: row.expires_at,
+    status: row.status,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    candidateId: row.candidate_id || undefined,
+    suggestedFamilyIds: JSON.parse(row.family_ids_json),
+  }
+}
+
 function familyFromRow(row: Row): MemoryFamily {
   return { id: row.id, name: row.name, title: row.title || undefined, summary: row.summary || undefined, status: row.status, parentId: row.parent_id || undefined, locked: !!row.locked, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at }
 }
@@ -342,6 +398,7 @@ function recordChange(actorValue: MemoryActor, action: string, targetId: string,
 }
 
 export function getStarMemoryStatus() {
+  processWorkingMemoryExpiry()
   const db = getDb()
   const count = (sql: string) => (db.prepare(sql).get() as Row).count as number
   return {
@@ -351,6 +408,8 @@ export function getStarMemoryStatus() {
     pendingFire: count("SELECT COUNT(*) AS count FROM candidates WHERE status = 'pending_fire'"),
     memories: count('SELECT COUNT(*) AS count FROM memories'),
     families: count('SELECT COUNT(*) AS count FROM families'),
+    workingActive: count("SELECT COUNT(*) AS count FROM working_memories WHERE status = 'active'"),
+    workingDue: count("SELECT COUNT(*) AS count FROM working_memories WHERE status = 'due'"),
   }
 }
 
@@ -366,6 +425,103 @@ export function listCanonicalMemories(): Array<CanonicalMemory & { familyIds: st
     ...memoryFromRow(row),
     familyIds: (getDb().prepare('SELECT family_id FROM family_memberships WHERE memory_id = ? ORDER BY created_at').all(row.id) as Row[]).map(item => item.family_id),
   }))
+}
+
+export function processWorkingMemoryExpiry(nowValue: unknown = new Date().toISOString()): number {
+  const now = iso(nowValue, 'now')!
+  return getDb().transaction(() => {
+    const due = getDb().prepare("SELECT id FROM working_memories WHERE status = 'active' AND expires_at <= ?").all(now) as Row[]
+    if (!due.length) return 0
+    getDb().prepare("UPDATE working_memories SET status = 'due', updated_at = ? WHERE status = 'active' AND expires_at <= ?").run(now, now)
+    due.forEach(row => recordChange('system', 'working.due', row.id, now))
+    return due.length
+  })()
+}
+
+export function listWorkingMemories(statusValue?: WorkingMemoryStatus, nowValue: unknown = new Date().toISOString()): WorkingMemory[] {
+  if (statusValue && !WORKING_STATUSES.has(statusValue)) throw new Error('working memory status is invalid')
+  processWorkingMemoryExpiry(nowValue)
+  const rows = statusValue
+    ? getDb().prepare('SELECT * FROM working_memories WHERE status = ? ORDER BY expires_at').all(statusValue)
+    : getDb().prepare('SELECT * FROM working_memories ORDER BY expires_at').all()
+  return (rows as Row[]).map(workingFromRow)
+}
+
+export function createWorkingMemory(input: unknown, createdByValue: unknown, retentionDaysValue: unknown = 7, nowValue: unknown = new Date().toISOString()): WorkingMemory {
+  const createdBy = reviewer(createdByValue)
+  const raw = input as MemoryDraft & { familyIds?: unknown[] }
+  if (raw?.locked) throw new Error('short-term memory cannot be locked; promote it first')
+  const value = draft({ ...raw, locked: false, validTo: undefined })
+  const retentionDays = Number(retentionDaysValue)
+  if (![1, 7, 14].includes(retentionDays)) throw new Error('retention days must be 1, 7, or 14')
+  const suggestedFamilyIds = Array.isArray(raw.familyIds) ? Array.from(new Set(raw.familyIds.map(id => text(id, 'familyId', 100, true)!))) : []
+  const now = iso(nowValue, 'now')!
+  const expiresAt = new Date(new Date(now).getTime() + retentionDays * 86_400_000).toISOString()
+  const fingerprint = createHash('sha256').update(`${value.type}\0${normalized(value.summary)}`).digest('hex')
+  processWorkingMemoryExpiry(now)
+  return getDb().transaction(() => {
+    const existing = getDb().prepare("SELECT * FROM working_memories WHERE fingerprint = ? AND status IN ('active', 'due')").get(fingerprint) as Row | undefined
+    if (existing) return workingFromRow(existing)
+    for (const familyId of suggestedFamilyIds) {
+      if (!getDb().prepare('SELECT 1 FROM families WHERE id = ?').get(familyId)) throw new Error(`family not found: ${familyId}`)
+    }
+    const id = randomUUID()
+    getDb().prepare(`INSERT INTO working_memories
+      (id, fingerprint, type, summary, details, why_important, star_feeling, current_understanding, occurred_at, valid_from,
+       importance, inference, confidence, sources_json, quotes_json, family_ids_json, retention_days, expires_at,
+       status, created_by, created_at, updated_at, candidate_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, NULL)`)
+      .run(id, fingerprint, value.type, value.summary, value.details, value.whyImportant, value.starFeeling, value.currentUnderstanding,
+        value.occurredAt, value.validFrom, value.importance, value.inference ? 1 : 0, value.confidence,
+        JSON.stringify(value.sources), JSON.stringify(value.quotes || []), JSON.stringify(suggestedFamilyIds), retentionDays,
+        expiresAt, createdBy, now, now)
+    recordChange(createdBy, 'working.created', id, now)
+    return workingFromRow(getDb().prepare('SELECT * FROM working_memories WHERE id = ?').get(id) as Row)
+  })()
+}
+
+export type WorkingMemoryDecision = 'dismiss' | 'observe' | 'promote' | 'ask_fire'
+
+export function reviewWorkingMemory(idValue: unknown, decision: WorkingMemoryDecision, reviewerValue: unknown, nowValue: unknown = new Date().toISOString(), summaryValue?: unknown) {
+  const id = text(idValue, 'working memory id', 100, true)!
+  const reviewedBy = reviewer(reviewerValue)
+  if (!WORKING_DECISIONS.has(decision)) throw new Error('working memory decision is invalid')
+  const now = iso(nowValue, 'now')!
+  processWorkingMemoryExpiry(now)
+  return getDb().transaction(() => {
+    const row = getDb().prepare('SELECT * FROM working_memories WHERE id = ?').get(id) as Row | undefined
+    if (!row) throw new Error('working memory not found')
+    const current = workingFromRow(row)
+    if (current.status === 'promoted' && current.candidateId) {
+      const candidateRow = getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(current.candidateId) as Row
+      const memoryRow = candidateRow?.memory_id ? getDb().prepare('SELECT * FROM memories WHERE id = ?').get(candidateRow.memory_id) as Row : undefined
+      return { working: current, candidate: candidateRow ? candidateFromRow(candidateRow) : undefined, memory: memoryRow ? memoryFromRow(memoryRow) : undefined }
+    }
+    if (current.status === 'dismissed') return { working: current }
+    if (decision === 'dismiss') {
+      getDb().prepare("UPDATE working_memories SET status = 'dismissed', updated_at = ? WHERE id = ?").run(now, id)
+      recordChange(reviewedBy, 'working.dismissed', id, now)
+      return { working: workingFromRow(getDb().prepare('SELECT * FROM working_memories WHERE id = ?').get(id) as Row) }
+    }
+    if (decision === 'observe') {
+      if (current.retentionDays >= 14) throw new Error('short-term memory cannot exceed fourteen days')
+      const expiresAt = new Date(new Date(current.createdAt).getTime() + 14 * 86_400_000).toISOString()
+      if (expiresAt <= now) throw new Error('the fourteen-day maximum has already passed')
+      getDb().prepare("UPDATE working_memories SET retention_days = 14, expires_at = ?, status = 'active', updated_at = ? WHERE id = ?").run(expiresAt, now, id)
+      recordChange(reviewedBy, 'working.observed', id, now)
+      return { working: workingFromRow(getDb().prepare('SELECT * FROM working_memories WHERE id = ?').get(id) as Row) }
+    }
+    const candidate = createMemoryCandidate({
+      ...current,
+      summary: summaryValue === undefined ? current.summary : text(summaryValue, 'summary', 1_000, true),
+      locked: false,
+      familyIds: current.suggestedFamilyIds,
+    }, current.createdBy, decision === 'ask_fire' ? 'fire' : reviewedBy)
+    const reviewed = decision === 'promote' ? reviewMemoryCandidate(candidate.id, 'approve', reviewedBy) : { candidate }
+    getDb().prepare("UPDATE working_memories SET status = 'promoted', candidate_id = ?, updated_at = ? WHERE id = ?").run(candidate.id, now, id)
+    recordChange(reviewedBy, decision === 'promote' ? 'working.promoted' : 'working.assigned_fire', id, now)
+    return { working: workingFromRow(getDb().prepare('SELECT * FROM working_memories WHERE id = ?').get(id) as Row), ...reviewed }
+  })()
 }
 
 export function createMemoryCandidate(input: unknown, createdByValue: unknown, ownerValue: unknown = 'star'): MemoryCandidate {
@@ -560,6 +716,17 @@ function relevance(haystack: string, query: string): number {
   return (matches / queryGrams.size) * 70
 }
 
+export function recallWorkingMemories(queryValue: unknown, limitValue: unknown = 10, nowValue: unknown = new Date().toISOString()) {
+  const query = text(queryValue, 'query', 500, true)!
+  const limit = Math.max(1, Math.min(20, Number(limitValue) || 10))
+  return listWorkingMemories('active', nowValue).map(memory => {
+    const memoryText = [memory.summary, memory.details, memory.whyImportant, memory.currentUnderstanding, ...(memory.quotes || []).map(item => item.text)].filter(Boolean).join(' ')
+    const base = relevance(memoryText, query)
+    const score = base > 0 ? base + (memory.importance || 5) * 2 + 10 : 0
+    return { memory, score: Number(score.toFixed(2)) }
+  }).filter(item => item.score >= 25).sort((a, b) => b.score - a.score).slice(0, limit)
+}
+
 export function recallStarMemories(queryValue: unknown, limitValue: unknown = 10) {
   const query = text(queryValue, 'query', 500, true)!
   const limit = Math.max(1, Math.min(20, Number(limitValue) || 10))
@@ -584,7 +751,18 @@ export function resolveMemorySources(memoryIdValue: unknown) {
   const memoryId = text(memoryIdValue, 'memory id', 100, true)!
   const row = getDb().prepare('SELECT * FROM memories WHERE id = ?').get(memoryId) as Row | undefined
   if (!row) throw new Error('memory not found')
-  return memoryFromRow(row).sources.map(source => {
+  return resolveSources(memoryFromRow(row).sources)
+}
+
+export function resolveWorkingMemorySources(memoryIdValue: unknown) {
+  const memoryId = text(memoryIdValue, 'working memory id', 100, true)!
+  const row = getDb().prepare('SELECT * FROM working_memories WHERE id = ?').get(memoryId) as Row | undefined
+  if (!row) throw new Error('working memory not found')
+  return resolveSources(workingFromRow(row).sources)
+}
+
+function resolveSources(values: SourceRef[]) {
+  return values.map(source => {
     if (source.kind !== 'chat' || !source.sessionId) return { source, resolved: source.excerpt ? [{ content: source.excerpt }] : [] }
     const session = readChatSession(source.sessionId) as any
     const wanted = new Set(source.messageIds || [])

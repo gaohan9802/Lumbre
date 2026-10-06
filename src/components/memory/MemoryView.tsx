@@ -68,6 +68,17 @@ interface StarMemory {
   familyIds: string[]
 }
 
+interface StarWorkingMemory {
+  id: string
+  type: string
+  summary: string
+  importance?: number
+  retentionDays: 1 | 7 | 14
+  expiresAt: string
+  status: 'active' | 'due' | 'dismissed' | 'promoted'
+  suggestedFamilyIds: string[]
+}
+
 interface ResolvedStarSource {
   source: { kind: string; label?: string }
   resolved: Array<{ id?: string; role?: string; content?: string }>
@@ -477,6 +488,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [status, setStatus] = useState<any>(null)
   const [candidates, setCandidates] = useState<StarCandidate[]>([])
   const [memories, setMemories] = useState<StarMemory[]>([])
+  const [working, setWorking] = useState<StarWorkingMemory[]>([])
   const [families, setFamilies] = useState<StarFamily[]>([])
   const [resolvedSources, setResolvedSources] = useState<Record<string, ResolvedStarSource[]>>({})
   const [loading, setLoading] = useState(true)
@@ -488,15 +500,17 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     setLoading(true)
     setError('')
     try {
-      const [nextStatus, nextCandidates, nextMemories, nextFamilies] = await Promise.all([
+      const [nextStatus, nextCandidates, nextMemories, nextWorking, nextFamilies] = await Promise.all([
         apiRequest('/api/star-memory?view=status'),
         apiRequest('/api/star-memory?view=candidates'),
         apiRequest('/api/star-memory?view=memories'),
+        apiRequest('/api/star-memory?view=working'),
         apiRequest('/api/star-memory?view=families'),
       ])
       setStatus(nextStatus)
       setCandidates(Array.isArray(nextCandidates) ? nextCandidates : [])
       setMemories(Array.isArray(nextMemories) ? nextMemories : [])
+      setWorking(Array.isArray(nextWorking) ? nextWorking : [])
       setFamilies(Array.isArray(nextFamilies) ? nextFamilies : [])
     } catch (loadError: any) {
       setError(loadError?.message || '新记忆库加载失败')
@@ -540,6 +554,25 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     }
   }
 
+  const reviewWorking = async (id: string, decision: 'dismiss' | 'observe' | 'promote' | 'ask_fire') => {
+    setBusyId(id)
+    setError('')
+    try {
+      const response = await fetch('/api/star-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'review_working', id, decision }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || '短期记忆整理失败')
+      await load()
+    } catch (reviewError: any) {
+      setError(reviewError?.message || '短期记忆整理失败')
+    } finally {
+      setBusyId('')
+    }
+  }
+
   if (loading) return <div className={`text-center py-12 text-sm ${c.muted}`}>加载新记忆库…</div>
   const openCandidates = candidates.filter(item => !['approved', 'rejected'].includes(item.status))
   const familyNames = new Map(families.map(family => [family.id, family.name]))
@@ -554,14 +587,36 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
           </div>
           <button onClick={load} aria-label="刷新新记忆库" className={`rounded-lg p-2 ${c.surface} ${c.muted}`}><RefreshCw size={13} /></button>
         </div>
-        <div className={`mt-3 grid grid-cols-3 gap-2 text-center text-[10px] ${c.muted}`}>
+        <div className={`mt-3 grid grid-cols-4 gap-2 text-center text-[10px] ${c.muted}`}>
+          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.workingActive || 0}</div>近期</div>
+          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.workingDue || 0}</div>待整理</div>
           <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.pendingFire || 0}</div>等小火</div>
           <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.memories || 0}</div>正式记忆</div>
-          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.families || 0}</div>家族</div>
         </div>
       </div>
 
       {error && <div className="rounded-xl bg-red-500/10 px-3 py-2 text-[11px] text-red-500">{error}</div>}
+
+      <div>
+        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>短期活跃记忆</div>
+        {working.filter(item => ['active', 'due'].includes(item.status)).length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无近期内容</div> : (
+          <div className="space-y-2">
+            {working.filter(item => ['active', 'due'].includes(item.status)).map(item => (
+              <article key={item.id} className={`rounded-xl border ${c.border} p-3`}>
+                <div className={`text-[10px] ${c.muted}`}>{item.type} · {item.retentionDays} 天 · {item.status === 'due' ? '待整理' : `到期 ${item.expiresAt.slice(0, 10)}`}</div>
+                <p className="mt-1 text-xs leading-5">{item.summary}</p>
+                {item.suggestedFamilyIds.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{item.suggestedFamilyIds.map(id => <span key={id} className={`rounded px-1.5 py-0.5 text-[9px] ${c.accentBg} ${c.accent}`}>{familyNames.get(id) || '未知家族'}</span>)}</div>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button disabled={busyId === item.id} onClick={() => reviewWorking(item.id, 'promote')} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>升格</button>
+                  {item.status === 'due' && item.retentionDays < 14 && <button disabled={busyId === item.id} onClick={() => reviewWorking(item.id, 'observe')} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>观察到14天</button>}
+                  <button disabled={busyId === item.id} onClick={() => reviewWorking(item.id, 'ask_fire')} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>交给小火</button>
+                  <button disabled={busyId === item.id} onClick={() => reviewWorking(item.id, 'dismiss')} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>退出活跃</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div>
         <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>候选收件箱</div>
