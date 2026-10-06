@@ -10,12 +10,17 @@ const root = mkdtempSync(path.join(tmpdir(), 'lumbre-wake-storage-'))
 process.env.DATA_DIR = root
 let wake: typeof import('../../src/server/autowake')
 let repository: typeof import('../../src/server/data/repositories/wake')
+let memory: typeof import('../../src/server/star-memory')
 
 before(async () => {
   wake = await import('../../src/server/autowake')
   repository = await import('../../src/server/data/repositories/wake')
+  memory = await import('../../src/server/star-memory')
 })
-after(() => rmSync(root, { recursive: true, force: true }))
+after(() => {
+  memory.closeStarMemoryDatabase()
+  rmSync(root, { recursive: true, force: true })
+})
 
 test('wake configuration preserves behavior and serializes settings', () => {
   assert.equal(wake.loadWakeConfig().enabled, false)
@@ -130,4 +135,23 @@ test('wake configuration keeps all alarms from concurrent processes', async () =
   const saved = JSON.parse(readFileSync(path.join(childRoot, 'wake-config.json'), 'utf8'))
   assert.equal(saved.alarms.length, 40)
   assert.equal(new Set(saved.alarms.map((alarm: any) => alarm.note)).size, 40)
+})
+
+test('wake maintenance reuses web push and respects the 24-hour review reminder window', async () => {
+  memory.createMemoryCandidate({
+    type: 'durable_fact',
+    summary: '一条等待小火审核的候选。',
+    sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+  }, 'star', 'fire')
+  const deliveries: string[][] = []
+  const deliver = async (messages: string[]) => {
+    deliveries.push(messages)
+    return { sent: 1, failed: 0, subscriptions: 1, errors: [] }
+  }
+  const first = await wake.runStarMemoryMaintenance(deliver as any, Date.parse('2026-10-06T10:00:00.000Z'))
+  const second = await wake.runStarMemoryMaintenance(deliver as any, Date.parse('2026-10-06T10:01:00.000Z'))
+  assert.equal(first.reminded, true)
+  assert.equal(second.reminded, false)
+  assert.equal(deliveries.length, 1)
+  assert.match(deliveries[0][0], /1 条候选记忆/)
 })

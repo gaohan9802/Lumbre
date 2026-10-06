@@ -189,6 +189,9 @@ function getDb(): Database.Database {
       id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL,
       target_id TEXT NOT NULL, created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS reminder_state (
+      kind TEXT PRIMARY KEY, last_sent_at TEXT, last_attempt_at TEXT
+    );
   `)
   const hasColumn = (table: string, column: string) => (database!.pragma(`table_info(${table})`) as Row[]).some(row => row.name === column)
   if (!hasColumn('candidates', 'lock_owner')) database.exec("ALTER TABLE candidates ADD COLUMN lock_owner TEXT CHECK (lock_owner IN ('fire', 'star'))")
@@ -207,7 +210,7 @@ function getDb(): Database.Database {
     UPDATE memories SET lock_owner = created_by
       WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
   `)
-  database.pragma('user_version = 3')
+  database.pragma('user_version = 4')
   return database
 }
 
@@ -411,6 +414,36 @@ export function getStarMemoryStatus() {
     workingActive: count("SELECT COUNT(*) AS count FROM working_memories WHERE status = 'active'"),
     workingDue: count("SELECT COUNT(*) AS count FROM working_memories WHERE status = 'due'"),
   }
+}
+
+export function claimPendingFireReminder(nowValue: unknown = new Date().toISOString()) {
+  const now = iso(nowValue, 'now')!
+  const nowMs = new Date(now).getTime()
+  return getDb().transaction(() => {
+    const candidates = getDb().prepare("SELECT id, summary FROM candidates WHERE status = 'pending_fire' ORDER BY importance DESC, created_at LIMIT 2").all() as Row[]
+    const count = (getDb().prepare("SELECT COUNT(*) AS count FROM candidates WHERE status = 'pending_fire'").get() as Row).count as number
+    if (!count) return null
+    const state = getDb().prepare("SELECT * FROM reminder_state WHERE kind = 'pending_fire'").get() as Row | undefined
+    const sentMs = state?.last_sent_at ? new Date(state.last_sent_at).getTime() : 0
+    const attemptMs = state?.last_attempt_at ? new Date(state.last_attempt_at).getTime() : 0
+    if (sentMs && nowMs - sentMs < 24 * 60 * 60 * 1000) return null
+    if (attemptMs && nowMs - attemptMs < 60 * 60 * 1000) return null
+    getDb().prepare(`INSERT INTO reminder_state (kind, last_sent_at, last_attempt_at) VALUES ('pending_fire', ?, ?)
+      ON CONFLICT(kind) DO UPDATE SET last_attempt_at = excluded.last_attempt_at`).run(state?.last_sent_at || null, now)
+    return { attemptedAt: now, count, summaries: candidates.map(item => String(item.summary)) }
+  })()
+}
+
+export function finishPendingFireReminder(attemptedAtValue: unknown, deliveredValue: unknown, finishedAtValue: unknown = new Date().toISOString()): boolean {
+  const attemptedAt = iso(attemptedAtValue, 'attemptedAt')!
+  const finishedAt = iso(finishedAtValue, 'finishedAt')!
+  const delivered = deliveredValue === true
+  return getDb().transaction(() => {
+    const state = getDb().prepare("SELECT * FROM reminder_state WHERE kind = 'pending_fire'").get() as Row | undefined
+    if (!state || state.last_attempt_at !== attemptedAt) return false
+    if (delivered) getDb().prepare("UPDATE reminder_state SET last_sent_at = ? WHERE kind = 'pending_fire'").run(finishedAt)
+    return true
+  })()
 }
 
 export function listMemoryCandidates(status?: CandidateStatus): MemoryCandidate[] {

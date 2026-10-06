@@ -203,3 +203,21 @@ test('short-term memory expires without renewal and can be promoted exactly once
   assert.equal(repeatedPromotion.memory?.id, promoted.memory?.id)
   assert.equal(memory.listWorkingMemories().find(item => item.id === first.id)?.status, 'promoted')
 })
+
+test('pending-fire reminder is silent without candidates and repeats only after 24 hours', () => {
+  const first = memory.claimPendingFireReminder('2026-10-20T10:00:00.000Z')
+  assert.ok(first)
+  assert.equal(first!.count >= 1, true)
+  assert.equal(memory.claimPendingFireReminder('2026-10-20T10:30:00.000Z'), null)
+  assert.equal(memory.finishPendingFireReminder(first!.attemptedAt, false, '2026-10-20T10:30:00.000Z'), true)
+  assert.equal(memory.claimPendingFireReminder('2026-10-20T10:59:59.000Z'), null)
+
+  const retry = memory.claimPendingFireReminder('2026-10-20T11:00:00.000Z')!
+  assert.ok(retry)
+  assert.equal(memory.finishPendingFireReminder(retry.attemptedAt, true, '2026-10-20T11:00:00.000Z'), true)
+  assert.equal(memory.claimPendingFireReminder('2026-10-21T10:59:59.000Z'), null)
+  assert.ok(memory.claimPendingFireReminder('2026-10-21T11:00:00.000Z'))
+
+  memory.listMemoryCandidates('pending_fire').forEach(candidate => memory.reviewMemoryCandidate(candidate.id, 'reject', 'star'))
+  assert.equal(memory.claimPendingFireReminder('2026-10-22T12:00:00.000Z'), null)
+})

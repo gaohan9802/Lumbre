@@ -26,6 +26,7 @@ import {
 } from './data/repositories/wake'
 import { getCurrentActivity } from './timeline-store'
 import { sendPushMessages } from './push'
+import { claimPendingFireReminder, finishPendingFireReminder, processWorkingMemoryExpiry } from './star-memory'
 import { isApiGenerationBusy } from './chat/generation-activity'
 import { isCcGatewayBusy, readCcStatus, warmCcSession } from './chat/cc-gateway'
 
@@ -864,6 +865,8 @@ async function warmCacheTick(config: WakeConfig, now: number) {
 }
 
 async function wakeTick() {
+  const maintenance = await runStarMemoryMaintenance()
+  if (maintenance.error) console.error('[StarMemory] Maintenance error:', maintenance.error)
   const config = refreshWakeSchedule()
   const decision = decideWake(config)
   if (wakeInFlight) {
@@ -888,6 +891,23 @@ async function wakeTick() {
   } finally {
     wakeInFlight = false
     releaseWakeLease(lease)
+  }
+}
+
+export async function runStarMemoryMaintenance(deliver: typeof sendPushMessages = sendPushMessages, now = Date.now()) {
+  const nowIso = new Date(now).toISOString()
+  const expired = processWorkingMemoryExpiry(nowIso)
+  const reminder = claimPendingFireReminder(nowIso)
+  if (!reminder) return { expired, reminded: false }
+  try {
+    const preview = reminder.summaries.length ? `：${reminder.summaries.join('；')}` : ''
+    const result = await deliver([`有 ${reminder.count} 条候选记忆等你审核${preview}`], '星星记忆库')
+    const delivered = result.sent > 0
+    finishPendingFireReminder(reminder.attemptedAt, delivered, nowIso)
+    return { expired, reminded: delivered, result }
+  } catch (error) {
+    finishPendingFireReminder(reminder.attemptedAt, false, nowIso)
+    return { expired, reminded: false, error: error instanceof Error ? error.message : String(error) }
   }
 }
 
