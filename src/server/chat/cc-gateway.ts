@@ -87,6 +87,20 @@ async function gatewayFetch(config: CcGatewayConfig, pathname: string, init: Req
   }
 }
 
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+async function retryGatewayFetch(config: CcGatewayConfig, pathname: string, init: RequestInit, fetchImpl: FetchLike, timeoutMs = 15_000) {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await gatewayFetch(config, pathname, init, fetchImpl, timeoutMs) }
+    catch (error) {
+      lastError = error
+      if (attempt < 2) await wait(250 * 2 ** attempt)
+    }
+  }
+  throw lastError
+}
+
 async function safeJson(response: Response) {
   const text = await response.text()
   try { return text ? JSON.parse(text) : {} } catch { return {} }
@@ -125,7 +139,7 @@ function canonicalContextMessages(body: any, sessionId: string, turnId: string) 
 async function submitAttempt(config: CcGatewayConfig, body: any, system: string, volatileContext: string, model: string, effort: string | undefined, fetchImpl: FetchLike) {
   const { sessionId, turnId } = validateTurn(body.session_id, body.turn_id)
   const messages = canonicalContextMessages(body, sessionId, turnId)
-  const response = await gatewayFetch(config, '/v1/attempts', {
+  const response = await retryGatewayFetch(config, '/v1/attempts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -255,6 +269,7 @@ export async function createCcChatResponse({
       let reconnectFailures = 0
       try {
         while (!terminal && !clientClosed) {
+          let progressed = false
           try {
             const suffix = lastEventId ? `?after=${lastEventId}` : ''
             const upstream = await gatewayFetch(config, `/v1/attempts/${encodeURIComponent(submitted.id)}/events${suffix}`, {}, fetchImpl, 0)
@@ -306,13 +321,15 @@ export async function createCcChatResponse({
                 terminal = true
               }
               if (Number.isSafeInteger(event.id) && event.id > lastEventId) lastEventId = event.id
+              progressed = true
               if (terminal) break
             }
-            if (!terminal) reconnectFailures++
+            if (!terminal) reconnectFailures = progressed ? 0 : reconnectFailures + 1
           } catch {
             reconnectFailures++
           }
-          if (reconnectFailures >= 4) break
+          if (reconnectFailures >= 6) break
+          if (!terminal && !clientClosed && reconnectFailures > 0) await wait(Math.min(4_000, 250 * 2 ** (reconnectFailures - 1)))
         }
         if (!terminal && !clientClosed) {
           send({ type: 'recoverable_disconnect', content: 'CC 仍可能在后台运行，稍后会按同一轮取回。' })

@@ -211,6 +211,40 @@ test('Lumbre reconnects a prematurely closed gateway stream from its last durabl
   } finally { restore() }
 })
 
+test('Lumbre retries one transient gateway connection failure with the same turn', async () => {
+  const restore = configure()
+  let submissions = 0
+  const fakeFetch: typeof fetch = async (input) => {
+    const url = String(input)
+    if (url.endsWith('/v1/attempts')) {
+      submissions++
+      if (submissions === 1) throw new TypeError('fetch failed')
+      return Response.json({ attempt: { id: ATTEMPT_ID, status: 'queued', sessionMode: 'resume', sessionReason: 'ordinary_delta' } }, { status: 202 })
+    }
+    if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}/events`)) {
+      return new Response(`data: ${JSON.stringify({ id: 1, type: 'completed' })}\n\n`)
+    }
+    if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}`)) {
+      return Response.json({ attempt: {
+        id: ATTEMPT_ID, status: 'completed', sessionMode: 'resume', sessionReason: 'ordinary_delta',
+        result: { text: 'ok', sessionId: SESSION_ID, usage: { output_tokens: 1 } },
+      } })
+    }
+    throw new Error(`unexpected fetch ${url}`)
+  }
+  try {
+    const response = await createCcChatResponse({
+      body: { stream: true, session_id: 'conversation-retry', turn_id: 'turn-retry', messages: [{ id: 'turn-retry', role: 'user', content: '在吗' }] },
+      system: 'system', volatileContext: '', fetchImpl: fakeFetch,
+    })
+    const events = []
+    for await (const event of readChatEventStream(response)) events.push(event)
+    assert.equal(response.status, 200)
+    assert.equal(submissions, 2)
+    assert.equal(events.at(-1)?.type, 'done')
+  } finally { restore() }
+})
+
 test('Lumbre forwards durable CC tool events through the existing chat tool UI protocol', async () => {
   const restore = configure()
   const fakeFetch: typeof fetch = async (input) => {

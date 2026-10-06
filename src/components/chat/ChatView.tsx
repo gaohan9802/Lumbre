@@ -189,6 +189,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const activeCcModel = selectedCcModel || (isCcModel(ccStatus?.model) ? ccStatus.model : DEFAULT_CC_MODEL)
   const effectiveCcModel = selectedCcModel || ccStatus.model || DEFAULT_CC_MODEL
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
+  const [ccRecoveryTick, setCcRecoveryTick] = useState(0)
   const bottomedSessionRef = useRef<string | null>(null)
 
   const {
@@ -249,29 +250,52 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       setNosePokeBusy(false)
     }
   }
-  const refreshCcStatus = useCallback(async () => {
-    setCcRefreshing(true)
-    try { setCcStatus(await chatApi.ccStatus(activeSession?.id)) }
-    catch { setCcStatus(current => ({ ...current, available: false })) }
-    finally { setCcRefreshing(false) }
+  const readCcStatus = useCallback(async () => {
+    const status = await chatApi.ccStatus(activeSession?.id)
+    setCcStatus(current => ({
+      ...status,
+      quota: status.quota.available ? status.quota : current.quota.available ? { ...current.quota, stale: true } : status.quota,
+    }))
+    return status
   }, [activeSession?.id])
+  const refreshCcStatus = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setCcRefreshing(true)
+    try { await readCcStatus() }
+    catch {
+      setCcStatus(current => ({
+        ...current, available: false, toolsAvailable: false,
+        quota: current.quota.available ? { ...current.quota, stale: true } : current.quota,
+      }))
+    }
+    finally { if (showSpinner) setCcRefreshing(false) }
+  }, [readCcStatus])
   const ensureCcAvailable = useCallback(async (route: ChatRoute, notify = true) => {
     if (route !== 'claude-code') return true
-    try {
-      const status = await chatApi.ccStatus()
-      setCcStatus(current => ({ ...status, quota: current.quota, context: current.context }))
-      if (status.available) return true
-    } catch {
-      setCcStatus(current => ({ ...current, available: false }))
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { if ((await readCcStatus()).available) return true } catch {}
+      if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)))
     }
+    setCcStatus(current => ({ ...current, available: false }))
     if (notify) {
-      window.alert('CC 网关现在没有连上；本轮不会自动改走 API。')
+      window.alert('CC 网关暂时没有连上，消息已留在原对话里；恢复后会自动重试，不会改走 API。')
       setModelPickerOpen(true)
     }
     return false
-  }, [activeSession?.id, setModelPickerOpen])
+  }, [readCcStatus, setModelPickerOpen])
   useEffect(() => { void refreshCcStatus() }, [refreshCcStatus])
   useEffect(() => { if (modelPickerOpen) void refreshCcStatus() }, [modelPickerOpen, refreshCcStatus])
+  useEffect(() => {
+    if (activeRoute !== 'claude-code') return
+    const refresh = () => { if (document.visibilityState === 'visible') void refreshCcStatus(false) }
+    const timer = setInterval(refresh, !ccStatus.available ? 5_000 : !ccStatus.quota.available ? 30_000 : 60_000)
+    window.addEventListener('online', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('online', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [activeRoute, ccStatus.available, ccStatus.quota.available, refreshCcStatus])
   useEffect(() => {
     const accept = (detail: SharedCard | string) => {
       if (typeof detail === 'string') setInput((v) => v ? v + '\n\n' + detail : detail)
@@ -666,6 +690,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         setStreamText('')
         setStreamThinking('')
         setStreamBlocks([])
+        recoveredTurnsRef.current.delete(`${activeSession?.id}:${turnId}`)
+        setTimeout(() => setCcRecoveryTick(current => current + 1), 2_000)
       } else {
         const failure = '\n\n⚠️ ' + (err?.message || '连接失败了…')
         await onDone({ content: fullText + failure, thinking: fullThinking || undefined, content_blocks: [...contentBlocks, { type: 'text', content: failure }], tool_calls: toolCalls.length ? toolCalls : undefined, error: true, stopped: true })
@@ -837,7 +863,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   const sendMessage = async () => {
     if ((!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare) || isLoading) return
-    if (!await ensureCcAvailable(activeRoute)) return
+    if (activeRoute === 'claude-code') await ensureCcAvailable(activeRoute, false)
     const profile = getActiveProfile(settings)
     const model = settings.model
     const now = Date.now()
@@ -1054,7 +1080,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     void handleRetry(pending, true, true)
     // Recovery is keyed to the durable turn, not ordinary streaming renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, activeSession?.id, ccStatus.available, isLoading, sendStarting, messages.at(-1)?.id, messages.at(-1)?.ccGenerationState])
+  }, [mounted, activeSession?.id, ccStatus.available, ccRecoveryTick, isLoading, sendStarting, messages.at(-1)?.id, messages.at(-1)?.ccGenerationState])
 
   /* ── delete message ───────────────────── */
 
