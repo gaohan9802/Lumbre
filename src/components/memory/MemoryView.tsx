@@ -29,13 +29,36 @@ interface Bucket {
   content_preview: string
 }
 
+interface StarCandidate {
+  id: string
+  type: string
+  summary: string
+  details?: string
+  whyImportant?: string
+  status: 'pending_star' | 'pending_fire' | 'observing' | 'approved' | 'rejected'
+  owner: 'fire' | 'star'
+  importance?: number
+  occurredAt?: string
+  validTo?: string
+  suggestedFamilyIds: string[]
+  sources: Array<{ actor: string; label?: string; excerpt?: string }>
+}
+
+interface StarFamily {
+  id: string
+  name: string
+  summary?: string
+  memberCount: number
+}
+
 // ─── Tab definitions ──────────────────────────────────────────
-type TabKey = 'clusters' | 'nodes' | 'lines' | 'evolution' | 'breath' | 'network' | 'admin'
+type TabKey = 'clusters' | 'nodes' | 'lines' | 'evolution' | 'star' | 'breath' | 'network' | 'admin'
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'clusters', label: '团块' },
   { key: 'nodes', label: '端点' },
   { key: 'lines', label: '连线' },
   { key: 'evolution', label: '演变' },
+  { key: 'star', label: '新库' },
   { key: 'breath', label: '呼吸' },
   { key: 'network', label: '网络' },
   { key: 'admin', label: '⚙' },
@@ -232,12 +255,14 @@ export function MemoryView() {
     border: isNight ? 'border-night-border' : 'border-[#a73a32]/15',
   }
   const tabGroup = activeTab === 'admin' ? 'admin' : ['breath', 'network'].includes(activeTab) ? 'observe' : 'memory'
-  const visibleTabs = tabGroup === 'observe' ? TABS.slice(4, 6) : TABS.slice(0, 4)
+  const visibleTabs = tabGroup === 'observe'
+    ? TABS.filter(tab => ['breath', 'network'].includes(tab.key))
+    : TABS.filter(tab => ['clusters', 'nodes', 'lines', 'evolution', 'star'].includes(tab.key))
 
   return (
     <div className={`relative h-full flex flex-col ${isNight ? '' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Stats bar */}
-      <div className={`px-4 pt-2 pb-1 text-[10px] ${c.muted} flex gap-3 items-center`}>
+      {activeTab !== 'star' && <div className={`px-4 pt-2 pb-1 text-[10px] ${c.muted} flex gap-3 items-center`}>
         <span>{stats.total} 桶</span><span>📌 {stats.pinned}</span>
         <span>🫧 {stats.feel}</span><span>✅ {stats.resolved}</span>
         <div className="flex-1" />
@@ -250,7 +275,7 @@ export function MemoryView() {
         {batchMode && batchSelected.size > 0 && (
           <button onClick={doBatchPurge} className="px-2 py-0.5 rounded text-[10px] bg-red-500/15 text-red-500">删除</button>
         )}
-      </div>
+      </div>}
 
       {/* Tab groups */}
       <div className={`mx-4 mb-1 grid grid-cols-3 gap-1 rounded-xl p-1 ${c.surface}`}>
@@ -292,7 +317,7 @@ export function MemoryView() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        {loading && buckets.length === 0 && !['breath','network','admin'].includes(activeTab) ? (
+        {loading && buckets.length === 0 && !['star','breath','network','admin'].includes(activeTab) ? (
           <div className={`text-center py-12 text-sm ${c.muted}`}>加载中...</div>
         ) : (
           <AnimatePresence mode="wait">
@@ -301,6 +326,7 @@ export function MemoryView() {
               {activeTab === 'nodes' && <NodesTab buckets={filtered} isNight={isNight} onSelect={openDetail} batchMode={batchMode} batchSelected={batchSelected} toggleBatch={toggleBatch} />}
               {activeTab === 'lines' && <LinesTab buckets={filtered} isNight={isNight} onSelect={openDetail} />}
               {activeTab === 'evolution' && <EvolutionTab buckets={filtered} isNight={isNight} onSelect={openDetail} batchMode={batchMode} batchSelected={batchSelected} toggleBatch={toggleBatch} />}
+              {activeTab === 'star' && <StarMemoryTab isNight={isNight} />}
               {activeTab === 'breath' && <BreathTab isNight={isNight} />}
               {activeTab === 'network' && <NetworkTab isNight={isNight} />}
               {activeTab === 'admin' && <AdminTab isNight={isNight} onRefresh={() => fetchBuckets(false)} />}
@@ -420,6 +446,122 @@ export function MemoryView() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+function StarMemoryTab({ isNight }: { isNight: boolean }) {
+  const [status, setStatus] = useState<any>(null)
+  const [candidates, setCandidates] = useState<StarCandidate[]>([])
+  const [families, setFamilies] = useState<StarFamily[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState('')
+  const c = useColors(isNight)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const [nextStatus, nextCandidates, nextFamilies] = await Promise.all([
+        apiRequest('/api/star-memory?view=status'),
+        apiRequest('/api/star-memory?view=candidates'),
+        apiRequest('/api/star-memory?view=families'),
+      ])
+      setStatus(nextStatus)
+      setCandidates(Array.isArray(nextCandidates) ? nextCandidates : [])
+      setFamilies(Array.isArray(nextFamilies) ? nextFamilies : [])
+    } catch (loadError: any) {
+      setError(loadError?.message || '新记忆库加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const review = async (id: string, decision: 'approve' | 'reject') => {
+    setBusyId(id)
+    setError('')
+    try {
+      const response = await fetch('/api/star-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'review_candidate', id, decision, actor: 'fire' }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || '审核失败')
+      await load()
+    } catch (reviewError: any) {
+      setError(reviewError?.message || '审核失败')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  if (loading) return <div className={`text-center py-12 text-sm ${c.muted}`}>加载新记忆库…</div>
+  const openCandidates = candidates.filter(item => !['approved', 'rejected'].includes(item.status))
+  const familyNames = new Map(families.map(family => [family.id, family.name]))
+
+  return (
+    <div className="space-y-3 pt-2">
+      <div className={`rounded-xl border ${c.border} p-3`}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className={`text-xs font-medium ${c.accent}`}>星星记忆库</div>
+            <div className={`mt-1 text-[10px] ${c.muted}`}>新库独立运行，旧 Ombre 记忆仍未停用</div>
+          </div>
+          <button onClick={load} aria-label="刷新新记忆库" className={`rounded-lg p-2 ${c.surface} ${c.muted}`}><RefreshCw size={13} /></button>
+        </div>
+        <div className={`mt-3 grid grid-cols-3 gap-2 text-center text-[10px] ${c.muted}`}>
+          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.pendingFire || 0}</div>等小火</div>
+          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.memories || 0}</div>正式记忆</div>
+          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.families || 0}</div>家族</div>
+        </div>
+      </div>
+
+      {error && <div className="rounded-xl bg-red-500/10 px-3 py-2 text-[11px] text-red-500">{error}</div>}
+
+      <div>
+        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>候选收件箱</div>
+        {openCandidates.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无待审核候选</div> : (
+          <div className="space-y-2">
+            {openCandidates.map(candidate => (
+              <article key={candidate.id} className={`rounded-xl border ${c.border} p-3`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className={`text-[10px] ${c.muted}`}>{candidate.type} · 重要度 {candidate.importance || 5} · {candidate.owner === 'fire' ? '等小火' : '等星星'}</div>
+                    <p className="mt-1 text-xs leading-5">{candidate.summary}</p>
+                  </div>
+                </div>
+                {candidate.suggestedFamilyIds.length > 0 && <div className="mt-2 flex flex-wrap gap-1">
+                  {candidate.suggestedFamilyIds.map(id => <span key={id} className={`rounded px-1.5 py-0.5 text-[9px] ${c.accentBg} ${c.accent}`}>{familyNames.get(id) || '未知家族'}</span>)}
+                </div>}
+                {(candidate.whyImportant || candidate.details || candidate.sources.length > 0) && <details className="mt-2">
+                  <summary className={`cursor-pointer text-[10px] ${c.muted}`}>依据与细节</summary>
+                  <div className={`mt-2 space-y-2 border-l pl-2 text-[10px] leading-4 ${c.border} ${c.muted}`}>
+                    {candidate.whyImportant && <p>为什么重要：{candidate.whyImportant}</p>}
+                    {candidate.details && <p>{candidate.details}</p>}
+                    {candidate.sources.map((source, index) => <div key={`${candidate.id}-source-${index}`}><div>{source.label || `${source.actor} 提供`}</div>{source.excerpt && <p className="mt-1 whitespace-pre-wrap opacity-80">{source.excerpt}</p>}</div>)}
+                  </div>
+                </details>}
+                <div className="mt-3 flex gap-2">
+                  <button disabled={busyId === candidate.id} onClick={() => review(candidate.id, 'approve')} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>批准</button>
+                  <button disabled={busyId === candidate.id} onClick={() => review(candidate.id, 'reject')} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>不保留</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>记忆家族</div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {families.map(family => <div key={family.id} className={`rounded-xl border ${c.border} p-3`}><div className="flex items-center justify-between gap-2"><span className="text-xs">{family.name}</span><span className={`text-[9px] ${c.muted}`}>{family.memberCount} 条</span></div>{family.summary && <p className={`mt-1 line-clamp-2 text-[10px] leading-4 ${c.muted}`}>{family.summary}</p>}</div>)}
+          {families.length === 0 && <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无家族</div>}
+        </div>
+      </div>
     </div>
   )
 }

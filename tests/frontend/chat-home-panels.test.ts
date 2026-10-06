@@ -102,3 +102,13 @@ test('compact rooms reveal details on demand', () => {
   assert.match(summaries, /deleteStageSummary/)
   assert.match(summaries, /onRegenerateStage/)
 })
+
+test('memory room exposes the isolated star memory review inbox', () => {
+  const memory = read('../../src/components/memory/MemoryView.tsx')
+
+  assert.match(memory, /key: 'star', label: '新库'/)
+  assert.match(memory, /\/api\/star-memory\?view=candidates/)
+  assert.match(memory, /action: 'review_candidate'/)
+  assert.match(memory, />候选收件箱</)
+  assert.match(memory, />批准</)
+})
