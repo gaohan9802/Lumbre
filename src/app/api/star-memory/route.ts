@@ -12,6 +12,7 @@ import {
   listMemoryCandidates,
   listMemoryFamilies,
   listRecycledFamilies,
+  listRecycledMemories,
   listWorkingMemories,
   mergeMemoryFamilies,
   recallStarMemories,
@@ -25,7 +26,9 @@ import {
   splitMemoryFamily,
   removeMemoryFamilyMembership,
   recycleMemoryFamily,
+  recycleCanonicalMemory,
   restoreMemoryFamily,
+  restoreCanonicalMemory,
   updateCanonicalMemory,
   updateMemoryFamily,
   type CandidateDecision,
@@ -47,6 +50,7 @@ export async function GET(req: NextRequest) {
     if (view === 'working') return NextResponse.json(listWorkingMemories((req.nextUrl.searchParams.get('status') || undefined) as WorkingMemoryStatus | undefined))
     if (view === 'families') return NextResponse.json(listMemoryFamilies())
     if (view === 'family_trash') return NextResponse.json(listRecycledFamilies())
+    if (view === 'memory_trash') return NextResponse.json(listRecycledMemories())
     if (view === 'family') {
       const level = req.nextUrl.searchParams.get('level')
       return NextResponse.json(level ? getMemoryFamilyLevel(req.nextUrl.searchParams.get('id') || '', level) : getMemoryFamily(req.nextUrl.searchParams.get('id') || ''))
@@ -80,6 +84,8 @@ export async function POST(req: NextRequest) {
     if (body.action === 'restore_family') return NextResponse.json(restoreMemoryFamily(body.recycleId, 'fire'))
     if (body.action === 'merge_families') return NextResponse.json(mergeMemoryFamilies(body.sourceId, body.targetId, body.summary, 'fire'))
     if (body.action === 'split_family') return NextResponse.json(splitMemoryFamily(body.sourceId, body.family, body.memoryIds, 'fire'))
+    if (body.action === 'recycle_memory') return NextResponse.json(recycleCanonicalMemory(body.id, 'fire'))
+    if (body.action === 'restore_memory') return NextResponse.json(restoreCanonicalMemory(body.recycleId, 'fire'))
     return NextResponse.json({ error: 'unknown_action' }, { status: 400 })
   } catch (error) {
     return failure(error)

@@ -104,6 +104,15 @@ export interface RecycledFamily {
   purgeAfter: string
 }
 
+export interface RecycledMemory {
+  id: string
+  memoryId: string
+  summary: string
+  deletedBy: 'fire' | 'star'
+  deletedAt: string
+  purgeAfter: string
+}
+
 type Row = Record<string, any>
 type Target = 'candidate' | 'memory'
 
@@ -206,6 +215,11 @@ function getDb(): Database.Database {
       deleted_by TEXT NOT NULL CHECK (deleted_by IN ('fire', 'star')),
       deleted_at TEXT NOT NULL, purge_after TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS memory_recycle_bin (
+      id TEXT PRIMARY KEY, memory_id TEXT NOT NULL UNIQUE, summary TEXT NOT NULL, payload_json TEXT NOT NULL,
+      deleted_by TEXT NOT NULL CHECK (deleted_by IN ('fire', 'star')),
+      deleted_at TEXT NOT NULL, purge_after TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS changes (
       id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL,
       target_id TEXT NOT NULL, created_at TEXT NOT NULL
@@ -234,7 +248,7 @@ function getDb(): Database.Database {
     UPDATE families SET lock_owner = created_by
       WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
   `)
-  database.pragma('user_version = 6')
+  database.pragma('user_version = 7')
   return database
 }
 
@@ -1005,6 +1019,63 @@ export function setCanonicalMemoryLock(idValue: unknown, lockedValue: unknown, a
     recordChange(lockActor, locked ? 'memory.locked' : 'memory.unlocked', id, new Date().toISOString())
     return memoryFromRow(getDb().prepare('SELECT * FROM memories WHERE id = ?').get(id) as Row)
   })()
+}
+
+function recycledMemoryFromRow(row: Row): RecycledMemory {
+  return { id: row.id, memoryId: row.memory_id, summary: row.summary, deletedBy: row.deleted_by, deletedAt: row.deleted_at, purgeAfter: row.purge_after }
+}
+
+export function listRecycledMemories(nowValue: unknown = new Date().toISOString()): RecycledMemory[] {
+  purgeExpiredMemoryRecycleBin(nowValue)
+  return (getDb().prepare('SELECT * FROM memory_recycle_bin ORDER BY deleted_at DESC').all() as Row[]).map(recycledMemoryFromRow)
+}
+
+export function recycleCanonicalMemory(idValue: unknown, actorValue: unknown, nowValue: unknown = new Date().toISOString()): RecycledMemory {
+  const id = text(idValue, 'memory id', 100, true)!
+  const deletedBy = reviewer(actorValue)
+  const now = iso(nowValue, 'now')!
+  const purgeAfter = new Date(new Date(now).getTime() + 24 * 60 * 60 * 1000).toISOString()
+  return getDb().transaction(() => {
+    const memory = memoryFromRow(writableMemory(id, deletedBy))
+    const memberships = getDb().prepare('SELECT * FROM family_memberships WHERE memory_id = ?').all(id) as Row[]
+    const recycleId = randomUUID()
+    getDb().prepare('INSERT INTO memory_recycle_bin (id, memory_id, summary, payload_json, deleted_by, deleted_at, purge_after) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(recycleId, id, memory.summary, JSON.stringify({ memory, memberships }), deletedBy, now, purgeAfter)
+    getDb().prepare("DELETE FROM source_refs WHERE target_type = 'memory' AND target_id = ?").run(id)
+    getDb().prepare("DELETE FROM quotes WHERE target_type = 'memory' AND target_id = ?").run(id)
+    getDb().prepare('DELETE FROM memories WHERE id = ?').run(id)
+    recordChange(deletedBy, 'memory.recycled', id, now)
+    return recycledMemoryFromRow(getDb().prepare('SELECT * FROM memory_recycle_bin WHERE id = ?').get(recycleId) as Row)
+  })()
+}
+
+export function restoreCanonicalMemory(recycleIdValue: unknown, actorValue: unknown): CanonicalMemory {
+  const recycleId = text(recycleIdValue, 'recycle id', 100, true)!
+  const restoredBy = reviewer(actorValue)
+  return getDb().transaction(() => {
+    const recycled = getDb().prepare('SELECT * FROM memory_recycle_bin WHERE id = ?').get(recycleId) as Row | undefined
+    if (!recycled) throw new Error('recycled memory not found')
+    const payload = JSON.parse(recycled.payload_json) as { memory: CanonicalMemory; memberships: Row[] }
+    const memory = payload.memory
+    getDb().prepare(`INSERT INTO memories
+      (id, type, summary, details, why_important, star_feeling, current_understanding, occurred_at, valid_from, valid_to, importance, inference, confidence, locked, lock_owner, created_by, approved_by, created_at, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`)
+      .run(memory.id, ...draftValues(memory), memory.lockOwner, memory.createdBy, memory.approvedBy, memory.createdAt)
+    writeSources('memory', memory.id, memory.sources)
+    writeQuotes('memory', memory.id, memory.quotes)
+    const addMembership = getDb().prepare('INSERT INTO family_memberships (family_id, memory_id, role, reason, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    payload.memberships.forEach(link => {
+      if (getDb().prepare('SELECT 1 FROM families WHERE id = ?').get(link.family_id)) addMembership.run(link.family_id, memory.id, link.role, link.reason, link.added_by, link.created_at)
+    })
+    getDb().prepare('DELETE FROM memory_recycle_bin WHERE id = ?').run(recycleId)
+    recordChange(restoredBy, 'memory.restored', memory.id, new Date().toISOString())
+    return memoryFromRow(getDb().prepare('SELECT * FROM memories WHERE id = ?').get(memory.id) as Row)
+  })()
+}
+
+export function purgeExpiredMemoryRecycleBin(nowValue: unknown = new Date().toISOString()): number {
+  const now = iso(nowValue, 'now')!
+  return getDb().prepare('DELETE FROM memory_recycle_bin WHERE purge_after <= ?').run(now).changes
 }
 
 function normalized(value: string): string {

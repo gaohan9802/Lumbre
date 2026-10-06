@@ -245,6 +245,23 @@ export const MEMORY_TOOL_DEFINITIONS = [
     }
   },
   {
+    "name": "manage_formal_memory",
+    "description": "管理新记忆库中的正式硬记忆。可以修改正文、移入二十四小时回收区、查看回收区或恢复；回收时来源、原话和家族关系会一起保存，锁定记忆只能由锁的主人操作。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["update", "list_trash", "recycle", "restore"] },
+        "memory_id": { "type": "string" },
+        "recycle_id": { "type": "string" },
+        "patch": {
+          "type": "object",
+          "description": "update 时传需要修改的字段，例如 summary、details、whyImportant、currentUnderstanding、validFrom、validTo、importance、inference 或 confidence"
+        }
+      },
+      "required": ["action"]
+    }
+  },
+  {
     "name": "manage_memory_family",
     "description": "管理新记忆库的家族。get 默认只读短摘要，level 2 看结构、3 看关键节点、4 才展开全部。也可以创建、更新、调整成员、锁定、结束压缩、回收/恢复，以及审核后合并或按指定记忆拆分；任何操作都不复制或删除正式记忆正文。",
     "input_schema": {

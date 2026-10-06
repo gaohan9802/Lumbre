@@ -44,7 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
-import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryFamilies, listRecycledFamilies, listWorkingMemories, mergeMemoryFamilies, recallStarMemories, recallWorkingMemories, recycleMemoryFamily, removeMemoryFamilyMembership, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateMemoryFamily } from './star-memory'
+import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemories, recallWorkingMemories, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -152,6 +152,14 @@ export async function executeRegisteredToolHandler(
 
     if (name === 'lock_memory') {
       return JSON.stringify({ ok: true, memory: setCanonicalMemoryLock(input.memory_id, input.locked, 'star') })
+    }
+
+    if (name === 'manage_formal_memory') {
+      if (input.action === 'update') return JSON.stringify({ ok: true, memory: updateCanonicalMemory(input.memory_id, input.patch, 'star') })
+      if (input.action === 'list_trash') return JSON.stringify(listRecycledMemories())
+      if (input.action === 'recycle') return JSON.stringify({ ok: true, recycled: recycleCanonicalMemory(input.memory_id, 'star') })
+      if (input.action === 'restore') return JSON.stringify({ ok: true, memory: restoreCanonicalMemory(input.recycle_id, 'star') })
+      throw new Error('formal memory action is invalid')
     }
 
     if (name === 'manage_memory_family') {

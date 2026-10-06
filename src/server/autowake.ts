@@ -26,7 +26,7 @@ import {
 } from './data/repositories/wake'
 import { getCurrentActivity } from './timeline-store'
 import { sendPushMessages } from './push'
-import { claimPendingFireReminder, finishPendingFireReminder, processWorkingMemoryExpiry, purgeExpiredFamilyRecycleBin } from './star-memory'
+import { claimPendingFireReminder, finishPendingFireReminder, processWorkingMemoryExpiry, purgeExpiredFamilyRecycleBin, purgeExpiredMemoryRecycleBin } from './star-memory'
 import { isApiGenerationBusy } from './chat/generation-activity'
 import { isCcGatewayBusy, readCcStatus, warmCcSession } from './chat/cc-gateway'
 
@@ -897,7 +897,7 @@ async function wakeTick() {
 export async function runStarMemoryMaintenance(deliver: typeof sendPushMessages = sendPushMessages, now = Date.now()) {
   const nowIso = new Date(now).toISOString()
   const expired = processWorkingMemoryExpiry(nowIso)
-  const purged = purgeExpiredFamilyRecycleBin(nowIso)
+  const purged = purgeExpiredFamilyRecycleBin(nowIso) + purgeExpiredMemoryRecycleBin(nowIso)
   const reminder = claimPendingFireReminder(nowIso)
   if (!reminder) return { expired, purged, reminded: false }
   try {

@@ -201,6 +201,40 @@ test('a personal lock can only be changed or bypassed by its owner', async () =>
   assert.equal(memory.updateCanonicalMemory(approved.id, { summary: '解锁后小火可以修改。' }, 'fire').summary, '解锁后小火可以修改。')
 })
 
+test('formal memory recycle restores evidence and family links before purging at 24 hours', async () => {
+  const family = memory.createMemoryFamily({ name: '回收测试' }, 'fire')
+  const approved = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'shared_event',
+    summary: '一条可以完整恢复的正式记忆。',
+    details: '必要细节也应恢复。',
+    sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入', excerpt: '原始依据' }],
+    quotes: [{ actor: 'fire', text: '请把证据一起保存。' }],
+    familyIds: [family.id],
+  }, 'star').id, 'approve', 'star').memory!
+
+  const recycled = memory.recycleCanonicalMemory(approved.id, 'fire', '2026-10-06T10:00:00.000Z')
+  assert.equal(memory.listCanonicalMemories().some(item => item.id === approved.id), false)
+  assert.equal(memory.getMemoryFamily(family.id)?.memories.length, 0)
+  assert.throws(() => memory.resolveMemorySources(approved.id), /memory not found/)
+  assert.equal(memory.listRecycledMemories('2026-10-06T11:00:00.000Z')[0].id, recycled.id)
+
+  const restored = memory.restoreCanonicalMemory(recycled.id, 'fire')
+  assert.equal(restored.details, '必要细节也应恢复。')
+  assert.equal(restored.sources[0].excerpt, '原始依据')
+  assert.equal(restored.quotes?.[0].text, '请把证据一起保存。')
+  assert.deepEqual(memory.getMemoryFamily(family.id)?.memories.map(item => item.id), [approved.id])
+
+  memory.setCanonicalMemoryLock(approved.id, true, 'star')
+  assert.throws(() => memory.recycleCanonicalMemory(approved.id, 'fire'), /locked by star/)
+  memory.setCanonicalMemoryLock(approved.id, false, 'star')
+  const recycledAgain = memory.recycleCanonicalMemory(approved.id, 'star', '2026-10-06T12:00:00.000Z')
+  const toolTrash = JSON.parse(await runtime.executeRegisteredToolHandler('manage_formal_memory', { action: 'list_trash' }))
+  assert.equal(toolTrash.some((item: any) => item.id === recycledAgain.id), true)
+  assert.equal(memory.purgeExpiredMemoryRecycleBin('2026-10-07T11:59:59.000Z'), 0)
+  assert.equal(memory.purgeExpiredMemoryRecycleBin('2026-10-07T12:00:00.000Z'), 1)
+  assert.throws(() => memory.restoreCanonicalMemory(recycledAgain.id, 'star'), /not found/)
+})
+
 test('star can remember from the current chat and choose who reviews it', async () => {
   chatSync.upsertSyncSessionMessage('session-remember', {
     id: 'remember-user', role: 'user', content: '我想让星星自己决定哪些记忆交给我审核。', timestamp: 1,

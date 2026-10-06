@@ -65,6 +65,15 @@ interface RecycledStarFamily {
   purgeAfter: string
 }
 
+interface RecycledStarMemory {
+  id: string
+  memoryId: string
+  summary: string
+  deletedBy: 'fire' | 'star'
+  deletedAt: string
+  purgeAfter: string
+}
+
 interface StarMemory {
   id: string
   type: string
@@ -504,6 +513,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [working, setWorking] = useState<StarWorkingMemory[]>([])
   const [families, setFamilies] = useState<StarFamily[]>([])
   const [familyTrash, setFamilyTrash] = useState<RecycledStarFamily[]>([])
+  const [memoryTrash, setMemoryTrash] = useState<RecycledStarMemory[]>([])
   const [resolvedSources, setResolvedSources] = useState<Record<string, ResolvedStarSource[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -514,13 +524,14 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     setLoading(true)
     setError('')
     try {
-      const [nextStatus, nextCandidates, nextMemories, nextWorking, nextFamilies, nextFamilyTrash] = await Promise.all([
+      const [nextStatus, nextCandidates, nextMemories, nextWorking, nextFamilies, nextFamilyTrash, nextMemoryTrash] = await Promise.all([
         apiRequest('/api/star-memory?view=status'),
         apiRequest('/api/star-memory?view=candidates'),
         apiRequest('/api/star-memory?view=memories'),
         apiRequest('/api/star-memory?view=working'),
         apiRequest('/api/star-memory?view=families'),
         apiRequest('/api/star-memory?view=family_trash'),
+        apiRequest('/api/star-memory?view=memory_trash'),
       ])
       setStatus(nextStatus)
       setCandidates(Array.isArray(nextCandidates) ? nextCandidates : [])
@@ -528,6 +539,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       setWorking(Array.isArray(nextWorking) ? nextWorking : [])
       setFamilies(Array.isArray(nextFamilies) ? nextFamilies : [])
       setFamilyTrash(Array.isArray(nextFamilyTrash) ? nextFamilyTrash : [])
+      setMemoryTrash(Array.isArray(nextMemoryTrash) ? nextMemoryTrash : [])
     } catch (loadError: any) {
       setError(loadError?.message || '新记忆库加载失败')
     } finally {
@@ -634,6 +646,43 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     }
   }
 
+  const recycleMemory = async (memory: StarMemory) => {
+    if (!confirm('正式记忆、来源、原话和家族关系会进入 24 小时回收区。继续吗？')) return
+    setBusyId(memory.id)
+    setError('')
+    try {
+      const response = await fetch('/api/star-memory', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'recycle_memory', id: memory.id }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || '删除正式记忆失败')
+      await load()
+    } catch (recycleError: any) {
+      setError(recycleError?.message || '删除正式记忆失败')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  const restoreMemory = async (recycleId: string) => {
+    setBusyId(recycleId)
+    setError('')
+    try {
+      const response = await fetch('/api/star-memory', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'restore_memory', recycleId }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || '恢复正式记忆失败')
+      await load()
+    } catch (restoreError: any) {
+      setError(restoreError?.message || '恢复正式记忆失败')
+    } finally {
+      setBusyId('')
+    }
+  }
+
   if (loading) return <div className={`text-center py-12 text-sm ${c.muted}`}>加载新记忆库…</div>
   const openCandidates = candidates.filter(item => !['approved', 'rejected'].includes(item.status))
   const familyNames = new Map(families.map(family => [family.id, family.name]))
@@ -732,11 +781,17 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                     {resolvedSources[item.id]?.map((group, index) => <div key={`${item.id}-resolved-${index}`} className={`rounded-lg p-2 ${c.surface}`}><div>{group.source.label || group.source.kind}{group.missing ? ' · 有来源缺失' : ''}</div>{group.resolved.map((message, messageIndex) => <p key={message.id || messageIndex} className="mt-1 whitespace-pre-wrap opacity-80">{message.role === 'user' ? '小火' : message.role === 'assistant' ? '星星' : '来源'}：{message.content}</p>)}</div>)}
                   </div>
                 </details>
+                <button disabled={busyId === item.id || item.lockOwner === 'star'} onClick={() => recycleMemory(item)} className={`mt-3 rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '星星锁定' : '移入回收区'}</button>
               </article>
             ))}
           </div>
         )}
       </div>
+
+      {memoryTrash.length > 0 && <div>
+        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>正式记忆回收区</div>
+        <div className="space-y-2">{memoryTrash.map(item => <div key={item.id} className={`flex items-center justify-between gap-3 rounded-xl border ${c.border} p-3`}><div><div className="text-xs">{item.summary}</div><div className={`mt-1 text-[9px] ${c.muted}`}>24 小时后清除 · {item.purgeAfter.slice(0, 16).replace('T', ' ')}</div></div><button disabled={busyId === item.id} onClick={() => restoreMemory(item.id)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>恢复</button></div>)}</div>
+      </div>}
 
       <div>
         <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>记忆家族</div>
