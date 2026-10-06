@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
+import Database from 'better-sqlite3'
 import { getDataDir } from './data/config'
 import { readChatSession } from './data/repositories/chat'
-import { readJsonFile, updateJsonFile } from './data/json-file'
 import { resolveDataPath } from './data/safe-path'
 
 export type MemoryActor = 'fire' | 'star' | 'system'
@@ -77,47 +79,92 @@ export interface FamilyMembership {
   createdAt: string
 }
 
-interface ChangeRecord {
-  id: string
-  actor: MemoryActor
-  action: string
-  targetId: string
-  createdAt: string
-}
+type Row = Record<string, any>
+type Target = 'candidate' | 'memory'
 
-interface StarMemoryStore {
-  version: 1
-  candidates: MemoryCandidate[]
-  memories: CanonicalMemory[]
-  families: MemoryFamily[]
-  memberships: FamilyMembership[]
-  changes: ChangeRecord[]
-}
-
-const STORE_FILE = resolveDataPath(getDataDir(), 'star-memory', 'store.json')
+const DB_FILE = resolveDataPath(getDataDir(), 'star-memory', 'star-memory.sqlite')
 const MEMORY_TYPES = new Set<MemoryType>(['shared_event', 'durable_fact', 'agreement', 'current_state', 'observation', 'self_event', 'unresolved'])
 const FAMILY_STATUSES = new Set<FamilyStatus>(['active', 'paused', 'ended', 'archived'])
+let database: Database.Database | undefined
 
-function emptyStore(): StarMemoryStore {
-  return { version: 1, candidates: [], memories: [], families: [], memberships: [], changes: [] }
+function getDb(): Database.Database {
+  if (database) return database
+  mkdirSync(path.dirname(DB_FILE), { recursive: true })
+  database = new Database(DB_FILE)
+  database.pragma('foreign_keys = ON')
+  database.pragma('busy_timeout = 5000')
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS candidates (
+      id TEXT PRIMARY KEY, type TEXT NOT NULL, summary TEXT NOT NULL, details TEXT,
+      why_important TEXT, star_feeling TEXT, current_understanding TEXT,
+      occurred_at TEXT, valid_from TEXT, valid_to TEXT,
+      importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 10),
+      inference INTEGER NOT NULL DEFAULT 0 CHECK (inference IN (0, 1)),
+      confidence REAL CHECK (confidence BETWEEN 0 AND 1),
+      locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1)),
+      status TEXT NOT NULL, owner TEXT NOT NULL, created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, memory_id TEXT UNIQUE
+    );
+    CREATE TABLE IF NOT EXISTS memories (
+      id TEXT PRIMARY KEY, type TEXT NOT NULL, summary TEXT NOT NULL, details TEXT,
+      why_important TEXT, star_feeling TEXT, current_understanding TEXT,
+      occurred_at TEXT, valid_from TEXT, valid_to TEXT,
+      importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 10),
+      inference INTEGER NOT NULL DEFAULT 0 CHECK (inference IN (0, 1)),
+      confidence REAL CHECK (confidence BETWEEN 0 AND 1),
+      locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1)),
+      created_by TEXT NOT NULL, approved_by TEXT NOT NULL, created_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+    );
+    CREATE TABLE IF NOT EXISTS source_refs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_type TEXT NOT NULL CHECK (target_type IN ('candidate', 'memory')),
+      target_id TEXT NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL,
+      session_id TEXT, label TEXT, excerpt TEXT, position INTEGER NOT NULL,
+      UNIQUE (target_type, target_id, position)
+    );
+    CREATE TABLE IF NOT EXISTS source_messages (
+      source_id INTEGER NOT NULL REFERENCES source_refs(id) ON DELETE CASCADE,
+      message_id TEXT NOT NULL, position INTEGER NOT NULL,
+      PRIMARY KEY (source_id, message_id)
+    );
+    CREATE TABLE IF NOT EXISTS quotes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_type TEXT NOT NULL CHECK (target_type IN ('candidate', 'memory')),
+      target_id TEXT NOT NULL, actor TEXT NOT NULL, text TEXT NOT NULL,
+      position INTEGER NOT NULL, UNIQUE (target_type, target_id, position)
+    );
+    CREATE TABLE IF NOT EXISTS families (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, title TEXT, summary TEXT,
+      status TEXT NOT NULL, parent_id TEXT REFERENCES families(id),
+      locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1)),
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS families_name_level
+      ON families(COALESCE(parent_id, ''), name COLLATE NOCASE);
+    CREATE TABLE IF NOT EXISTS candidate_family_suggestions (
+      candidate_id TEXT NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+      family_id TEXT NOT NULL REFERENCES families(id),
+      PRIMARY KEY (candidate_id, family_id)
+    );
+    CREATE TABLE IF NOT EXISTS family_memberships (
+      family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+      memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+      role TEXT NOT NULL, reason TEXT, added_by TEXT NOT NULL, created_at TEXT NOT NULL,
+      PRIMARY KEY (family_id, memory_id)
+    );
+    CREATE TABLE IF NOT EXISTS changes (
+      id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL,
+      target_id TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    PRAGMA user_version = 1;
+  `)
+  return database
 }
 
-function validStore(value: unknown): value is StarMemoryStore {
-  const store = value as StarMemoryStore
-  return !!store && store.version === 1
-    && Array.isArray(store.candidates)
-    && Array.isArray(store.memories)
-    && Array.isArray(store.families)
-    && Array.isArray(store.memberships)
-    && Array.isArray(store.changes)
-}
-
-function readStore(): StarMemoryStore {
-  return readJsonFile(STORE_FILE, { fallback: emptyStore, validate: validStore })
-}
-
-function updateStore(update: (store: StarMemoryStore) => StarMemoryStore): StarMemoryStore {
-  return updateJsonFile(STORE_FILE, { fallback: emptyStore, validate: validStore }, update)
+export function closeStarMemoryDatabase(): void {
+  database?.close()
+  database = undefined
 }
 
 function text(value: unknown, name: string, max: number, required = false): string | undefined {
@@ -197,26 +244,100 @@ function draft(value: unknown): MemoryDraft {
   }
 }
 
-function change(actorValue: MemoryActor, action: string, targetId: string, now: string): ChangeRecord {
-  return { id: randomUUID(), actor: actorValue, action, targetId, createdAt: now }
+function draftValues(value: MemoryDraft): unknown[] {
+  return [value.type, value.summary, value.details, value.whyImportant, value.starFeeling, value.currentUnderstanding,
+    value.occurredAt, value.validFrom, value.validTo, value.importance || 5, value.inference ? 1 : 0,
+    value.confidence, value.locked ? 1 : 0]
+}
+
+function loadSources(target: Target, id: string): SourceRef[] {
+  const db = getDb()
+  return (db.prepare('SELECT * FROM source_refs WHERE target_type = ? AND target_id = ? ORDER BY position').all(target, id) as Row[])
+    .map(row => ({
+      kind: row.kind,
+      actor: row.actor,
+      sessionId: row.session_id || undefined,
+      messageIds: (db.prepare('SELECT message_id FROM source_messages WHERE source_id = ? ORDER BY position').all(row.id) as Row[]).map(item => item.message_id),
+      label: row.label || undefined,
+      excerpt: row.excerpt || undefined,
+    }))
+}
+
+function loadQuotes(target: Target, id: string): { actor: 'fire' | 'star'; text: string }[] {
+  return (getDb().prepare('SELECT actor, text FROM quotes WHERE target_type = ? AND target_id = ? ORDER BY position').all(target, id) as Row[])
+    .map(row => ({ actor: row.actor, text: row.text }))
+}
+
+function writeSources(target: Target, id: string, values: SourceRef[]): void {
+  const db = getDb()
+  const insertSource = db.prepare('INSERT INTO source_refs (target_type, target_id, kind, actor, session_id, label, excerpt, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+  const insertMessage = db.prepare('INSERT INTO source_messages (source_id, message_id, position) VALUES (?, ?, ?)')
+  values.forEach((source, position) => {
+    const info = insertSource.run(target, id, source.kind, source.actor, source.sessionId, source.label, source.excerpt, position)
+    source.messageIds?.forEach((messageId, messagePosition) => insertMessage.run(info.lastInsertRowid, messageId, messagePosition))
+  })
+}
+
+function writeQuotes(target: Target, id: string, values: MemoryDraft['quotes']): void {
+  const insert = getDb().prepare('INSERT INTO quotes (target_type, target_id, actor, text, position) VALUES (?, ?, ?, ?, ?)')
+  values?.forEach((quote, position) => insert.run(target, id, quote.actor, quote.text, position))
+}
+
+function common(row: Row, target: Target): MemoryDraft {
+  return {
+    type: row.type,
+    summary: row.summary,
+    details: row.details || undefined,
+    whyImportant: row.why_important || undefined,
+    sources: loadSources(target, row.id),
+    quotes: loadQuotes(target, row.id),
+    starFeeling: row.star_feeling || undefined,
+    currentUnderstanding: row.current_understanding || undefined,
+    occurredAt: row.occurred_at || undefined,
+    validFrom: row.valid_from || undefined,
+    validTo: row.valid_to || undefined,
+    importance: row.importance,
+    inference: !!row.inference,
+    confidence: row.confidence ?? undefined,
+    locked: !!row.locked,
+  }
+}
+
+function candidateFromRow(row: Row): MemoryCandidate {
+  const suggestedFamilyIds = (getDb().prepare('SELECT family_id FROM candidate_family_suggestions WHERE candidate_id = ?').all(row.id) as Row[]).map(item => item.family_id)
+  return { ...common(row, 'candidate'), id: row.id, status: row.status, owner: row.owner, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at, memoryId: row.memory_id || undefined, suggestedFamilyIds }
+}
+
+function memoryFromRow(row: Row): CanonicalMemory {
+  return { ...common(row, 'memory'), id: row.id, createdBy: row.created_by, approvedBy: row.approved_by, createdAt: row.created_at, status: 'active' }
+}
+
+function familyFromRow(row: Row): MemoryFamily {
+  return { id: row.id, name: row.name, title: row.title || undefined, summary: row.summary || undefined, status: row.status, parentId: row.parent_id || undefined, locked: !!row.locked, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at }
+}
+
+function recordChange(actorValue: MemoryActor, action: string, targetId: string, now: string): void {
+  getDb().prepare('INSERT INTO changes (id, actor, action, target_id, created_at) VALUES (?, ?, ?, ?, ?)').run(randomUUID(), actorValue, action, targetId, now)
 }
 
 export function getStarMemoryStatus() {
-  const store = readStore()
+  const db = getDb()
+  const count = (sql: string) => (db.prepare(sql).get() as Row).count as number
   return {
-    version: store.version,
-    candidates: store.candidates.length,
-    pendingStar: store.candidates.filter(item => item.status === 'pending_star').length,
-    pendingFire: store.candidates.filter(item => item.status === 'pending_fire').length,
-    memories: store.memories.length,
-    families: store.families.length,
+    version: Number(db.pragma('user_version', { simple: true })),
+    candidates: count('SELECT COUNT(*) AS count FROM candidates'),
+    pendingStar: count("SELECT COUNT(*) AS count FROM candidates WHERE status = 'pending_star'"),
+    pendingFire: count("SELECT COUNT(*) AS count FROM candidates WHERE status = 'pending_fire'"),
+    memories: count('SELECT COUNT(*) AS count FROM memories'),
+    families: count('SELECT COUNT(*) AS count FROM families'),
   }
 }
 
 export function listMemoryCandidates(status?: CandidateStatus): MemoryCandidate[] {
-  const items = readStore().candidates
-  return (status ? items.filter(item => item.status === status) : items)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const rows = status
+    ? getDb().prepare('SELECT * FROM candidates WHERE status = ? ORDER BY created_at DESC').all(status)
+    : getDb().prepare('SELECT * FROM candidates ORDER BY created_at DESC').all()
+  return (rows as Row[]).map(candidateFromRow)
 }
 
 export function createMemoryCandidate(input: unknown, createdByValue: unknown, ownerValue: unknown = 'star'): MemoryCandidate {
@@ -224,40 +345,39 @@ export function createMemoryCandidate(input: unknown, createdByValue: unknown, o
   const owner = reviewer(ownerValue)
   const value = draft(input)
   const raw = input as MemoryDraft & { familyIds?: unknown[] }
-  const suggestedFamilyIds = Array.isArray(raw.familyIds)
-    ? Array.from(new Set(raw.familyIds.map(id => text(id, 'familyId', 100, true)!)))
-    : []
+  const suggestedFamilyIds = Array.isArray(raw.familyIds) ? Array.from(new Set(raw.familyIds.map(id => text(id, 'familyId', 100, true)!))) : []
   const now = new Date().toISOString()
-  const candidate: MemoryCandidate = {
-    ...value,
-    id: randomUUID(),
-    status: owner === 'fire' ? 'pending_fire' : 'pending_star',
-    owner,
-    createdBy,
-    createdAt: now,
-    updatedAt: now,
-    suggestedFamilyIds,
-  }
-  updateStore(store => ({
-    ...store,
-    candidates: [...store.candidates, candidate],
-    changes: [...store.changes, change(createdBy, 'candidate.created', candidate.id, now)],
-  }))
-  return candidate
+  const id = randomUUID()
+  getDb().transaction(() => {
+    for (const familyId of suggestedFamilyIds) {
+      if (!getDb().prepare('SELECT 1 FROM families WHERE id = ?').get(familyId)) throw new Error(`family not found: ${familyId}`)
+    }
+    getDb().prepare(`INSERT INTO candidates
+      (id, type, summary, details, why_important, star_feeling, current_understanding, occurred_at, valid_from, valid_to, importance, inference, confidence, locked, status, owner, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, ...draftValues(value), owner === 'fire' ? 'pending_fire' : 'pending_star', owner, createdBy, now, now)
+    writeSources('candidate', id, value.sources)
+    writeQuotes('candidate', id, value.quotes)
+    const suggest = getDb().prepare('INSERT INTO candidate_family_suggestions (candidate_id, family_id) VALUES (?, ?)')
+    suggestedFamilyIds.forEach(familyId => suggest.run(id, familyId))
+    recordChange(createdBy, 'candidate.created', id, now)
+  })()
+  return candidateFromRow(getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row)
 }
 
-function familyDepth(store: StarMemoryStore, parentId?: string): number {
+function familyDepth(parentId?: string): number {
   if (!parentId) return 1
   const seen = new Set<string>()
-  let current = store.families.find(item => item.id === parentId)
+  let currentId: string | undefined = parentId
   let depth = 1
-  while (current) {
-    if (seen.has(current.id)) throw new Error('family hierarchy has a cycle')
-    seen.add(current.id)
+  while (currentId) {
+    if (seen.has(currentId)) throw new Error('family hierarchy has a cycle')
+    seen.add(currentId)
+    const row = getDb().prepare('SELECT parent_id FROM families WHERE id = ?').get(currentId) as Row | undefined
+    if (!row) throw new Error('parent family not found')
     depth += 1
-    current = current.parentId ? store.families.find(item => item.id === current!.parentId) : undefined
+    currentId = row.parent_id || undefined
   }
-  if (!seen.has(parentId)) throw new Error('parent family not found')
   return depth
 }
 
@@ -271,43 +391,37 @@ export function createMemoryFamily(input: unknown, actorValue: unknown): MemoryF
   const parentId = text(raw.parentId, 'family.parentId', 100)
   const status = raw.status || 'active'
   if (!FAMILY_STATUSES.has(status)) throw new Error('family status is invalid')
-  let created!: MemoryFamily
-  updateStore(store => {
-    if (familyDepth(store, parentId) > 3) throw new Error('family nesting cannot exceed three levels')
-    if (store.families.some(item => item.parentId === parentId && item.name.toLowerCase() === name.toLowerCase())) {
-      throw new Error('family name already exists at this level')
-    }
-    const now = new Date().toISOString()
-    created = { id: randomUUID(), name, title, summary, status, parentId, locked: !!raw.locked, createdBy, createdAt: now, updatedAt: now }
-    return {
-      ...store,
-      families: [...store.families, created],
-      changes: [...store.changes, change(createdBy, 'family.created', created.id, now)],
-    }
-  })
-  return created
+  if (familyDepth(parentId) > 3) throw new Error('family nesting cannot exceed three levels')
+  const now = new Date().toISOString()
+  const id = randomUUID()
+  try {
+    getDb().transaction(() => {
+      getDb().prepare('INSERT INTO families (id, name, title, summary, status, parent_id, locked, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(id, name, title, summary, status, parentId, raw.locked ? 1 : 0, createdBy, now, now)
+      recordChange(createdBy, 'family.created', id, now)
+    })()
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) throw new Error('family name already exists at this level')
+    throw error
+  }
+  return familyFromRow(getDb().prepare('SELECT * FROM families WHERE id = ?').get(id) as Row)
 }
 
 export function listMemoryFamilies(): Array<MemoryFamily & { memberCount: number }> {
-  const store = readStore()
-  return store.families.map(family => ({
-    ...family,
-    memberCount: store.memberships.filter(item => item.familyId === family.id).length,
-  })).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+  return (getDb().prepare(`SELECT families.*, COUNT(family_memberships.memory_id) AS member_count
+    FROM families LEFT JOIN family_memberships ON family_memberships.family_id = families.id
+    GROUP BY families.id ORDER BY families.name COLLATE NOCASE`).all() as Row[])
+    .map(row => ({ ...familyFromRow(row), memberCount: row.member_count }))
 }
 
 export function getMemoryFamily(id: string) {
-  const store = readStore()
-  const family = store.families.find(item => item.id === id)
-  if (!family) return null
-  const memberships = store.memberships.filter(item => item.familyId === id)
-  const memoryIds = new Set(memberships.map(item => item.memoryId))
-  return {
-    ...family,
-    children: store.families.filter(item => item.parentId === id),
-    memberships,
-    memories: store.memories.filter(item => memoryIds.has(item.id)),
-  }
+  const row = getDb().prepare('SELECT * FROM families WHERE id = ?').get(id) as Row | undefined
+  if (!row) return null
+  const memberships = (getDb().prepare('SELECT * FROM family_memberships WHERE family_id = ? ORDER BY created_at').all(id) as Row[]).map(item => ({
+    familyId: item.family_id, memoryId: item.memory_id, role: item.role, reason: item.reason || undefined, addedBy: item.added_by, createdAt: item.created_at,
+  })) as FamilyMembership[]
+  const memories = memberships.map(link => getDb().prepare('SELECT * FROM memories WHERE id = ?').get(link.memoryId) as Row).filter(Boolean).map(memoryFromRow)
+  return { ...familyFromRow(row), children: (getDb().prepare('SELECT * FROM families WHERE parent_id = ?').all(id) as Row[]).map(familyFromRow), memberships, memories }
 }
 
 export type CandidateDecision = 'approve' | 'reject' | 'observe' | 'assign_fire' | 'assign_star'
@@ -315,65 +429,45 @@ export type CandidateDecision = 'approve' | 'reject' | 'observe' | 'assign_fire'
 export function reviewMemoryCandidate(idValue: unknown, decision: CandidateDecision, reviewerValue: unknown, familyIdsValue?: unknown) {
   const id = text(idValue, 'candidate id', 100, true)!
   const approvedBy = reviewer(reviewerValue)
-  const allowed = new Set<CandidateDecision>(['approve', 'reject', 'observe', 'assign_fire', 'assign_star'])
-  if (!allowed.has(decision)) throw new Error('candidate decision is invalid')
-  let result!: { candidate: MemoryCandidate; memory?: CanonicalMemory }
-  updateStore(store => {
-    const index = store.candidates.findIndex(item => item.id === id)
-    if (index < 0) throw new Error('candidate not found')
-    const current = store.candidates[index]
+  if (!new Set<CandidateDecision>(['approve', 'reject', 'observe', 'assign_fire', 'assign_star']).has(decision)) throw new Error('candidate decision is invalid')
+  return getDb().transaction(() => {
+    const row = getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row | undefined
+    if (!row) throw new Error('candidate not found')
+    const current = candidateFromRow(row)
     if (current.status === 'approved' || current.status === 'rejected') throw new Error('candidate is already final')
     const now = new Date().toISOString()
-    const candidate = { ...current, updatedAt: now }
-    const candidates = [...store.candidates]
-    if (decision === 'reject') candidate.status = 'rejected'
-    if (decision === 'observe') candidate.status = 'observing'
-    if (decision === 'assign_fire') { candidate.status = 'pending_fire'; candidate.owner = 'fire' }
-    if (decision === 'assign_star') { candidate.status = 'pending_star'; candidate.owner = 'star' }
     if (decision !== 'approve') {
-      candidates[index] = candidate
-      result = { candidate }
-      return { ...store, candidates, changes: [...store.changes, change(approvedBy, `candidate.${decision}`, id, now)] }
+      const status = decision === 'reject' ? 'rejected' : decision === 'observe' ? 'observing' : decision === 'assign_fire' ? 'pending_fire' : 'pending_star'
+      const owner = decision === 'assign_fire' ? 'fire' : decision === 'assign_star' ? 'star' : current.owner
+      getDb().prepare('UPDATE candidates SET status = ?, owner = ?, updated_at = ? WHERE id = ?').run(status, owner, now, id)
+      recordChange(approvedBy, `candidate.${decision}`, id, now)
+      return { candidate: candidateFromRow(getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row) }
     }
 
     const requestedIds = Array.isArray(familyIdsValue)
       ? Array.from(new Set(familyIdsValue.map(value => text(value, 'familyId', 100, true)!)))
       : current.suggestedFamilyIds
     for (const familyId of requestedIds) {
-      if (!store.families.some(item => item.id === familyId)) throw new Error(`family not found: ${familyId}`)
+      if (!getDb().prepare('SELECT 1 FROM families WHERE id = ?').get(familyId)) throw new Error(`family not found: ${familyId}`)
     }
-    const manualByFire = current.sources.some(source => source.kind === 'manual' && source.actor === 'fire')
-    const memory: CanonicalMemory = {
-      ...draft(current),
-      id: randomUUID(),
-      locked: manualByFire || !!current.locked,
-      createdBy: current.createdBy,
-      approvedBy,
-      createdAt: now,
-      status: 'active',
-    }
-    candidate.status = 'approved'
-    candidate.memoryId = memory.id
-    candidates[index] = candidate
-    const memberships = requestedIds.map((familyId): FamilyMembership => ({
-      familyId,
-      memoryId: memory.id,
-      role: current.type === 'shared_event' || current.type === 'self_event' ? 'key_event'
-        : current.type === 'unresolved' ? 'unresolved'
-          : 'member',
-      addedBy: approvedBy,
-      createdAt: now,
-    }))
-    result = { candidate, memory }
+    const memoryId = randomUUID()
+    const locked = current.sources.some(source => source.kind === 'manual' && source.actor === 'fire') || !!current.locked
+    getDb().prepare(`INSERT INTO memories
+      (id, type, summary, details, why_important, star_feeling, current_understanding, occurred_at, valid_from, valid_to, importance, inference, confidence, locked, created_by, approved_by, created_at, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`)
+      .run(memoryId, ...draftValues({ ...current, locked }), current.createdBy, approvedBy, now)
+    writeSources('memory', memoryId, current.sources)
+    writeQuotes('memory', memoryId, current.quotes)
+    getDb().prepare("UPDATE candidates SET status = 'approved', memory_id = ?, updated_at = ? WHERE id = ?").run(memoryId, now, id)
+    const addMembership = getDb().prepare('INSERT INTO family_memberships (family_id, memory_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)')
+    requestedIds.forEach(familyId => addMembership.run(familyId, memoryId,
+      current.type === 'shared_event' || current.type === 'self_event' ? 'key_event' : current.type === 'unresolved' ? 'unresolved' : 'member', approvedBy, now))
+    recordChange(approvedBy, 'candidate.approved', id, now)
     return {
-      ...store,
-      candidates,
-      memories: [...store.memories, memory],
-      memberships: [...store.memberships, ...memberships],
-      changes: [...store.changes, change(approvedBy, 'candidate.approved', id, now)],
+      candidate: candidateFromRow(getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row),
+      memory: memoryFromRow(getDb().prepare('SELECT * FROM memories WHERE id = ?').get(memoryId) as Row),
     }
-  })
-  return result
+  })()
 }
 
 function normalized(value: string): string {
@@ -404,41 +498,34 @@ function relevance(haystack: string, query: string): number {
 export function recallStarMemories(queryValue: unknown, limitValue: unknown = 10) {
   const query = text(queryValue, 'query', 500, true)!
   const limit = Math.max(1, Math.min(20, Number(limitValue) || 10))
-  const store = readStore()
+  const memories = (getDb().prepare('SELECT * FROM memories').all() as Row[]).map(memoryFromRow)
+  const families = (getDb().prepare('SELECT * FROM families').all() as Row[]).map(familyFromRow)
+  const familyScores = new Map(families.map(family => [family.id, relevance(`${family.name} ${family.title || ''} ${family.summary || ''}`, query)]))
   const now = new Date().toISOString()
-  const familyScores = new Map(store.families.map(family => [
-    family.id,
-    relevance(`${family.name} ${family.title || ''} ${family.summary || ''}`, query),
-  ]))
-  return store.memories.map(memory => {
-    const memberships = store.memberships.filter(item => item.memoryId === memory.id)
-    const families = memberships.map(link => store.families.find(item => item.id === link.familyId)).filter((item): item is MemoryFamily => !!item)
+  return memories.map(memory => {
+    const familyIds = (getDb().prepare('SELECT family_id FROM family_memberships WHERE memory_id = ?').all(memory.id) as Row[]).map(item => item.family_id)
+    const linkedFamilies = familyIds.map(id => families.find(item => item.id === id)).filter((item): item is MemoryFamily => !!item)
     const memoryText = [memory.summary, memory.details, memory.whyImportant, memory.currentUnderstanding, ...(memory.quotes || []).map(item => item.text)].filter(Boolean).join(' ')
     const direct = relevance(memoryText, query)
-    const family = Math.max(0, ...families.map(item => familyScores.get(item.id) || 0)) * 0.85
+    const family = Math.max(0, ...linkedFamilies.map(item => familyScores.get(item.id) || 0)) * 0.85
     const base = Math.max(direct, family)
     const current = !memory.validTo || memory.validTo >= now
     const score = base > 0 ? base + (memory.importance || 5) * 2 + (current ? 10 : 0) : 0
-    return { memory, families, score: Number(score.toFixed(2)), match: direct >= family ? 'memory' : 'family', current }
-  }).filter(item => item.score >= 25)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
+    return { memory, families: linkedFamilies, score: Number(score.toFixed(2)), match: direct >= family ? 'memory' : 'family', current }
+  }).filter(item => item.score >= 25).sort((a, b) => b.score - a.score).slice(0, limit)
 }
 
 export function resolveMemorySources(memoryIdValue: unknown) {
   const memoryId = text(memoryIdValue, 'memory id', 100, true)!
-  const memory = readStore().memories.find(item => item.id === memoryId)
-  if (!memory) throw new Error('memory not found')
-  return memory.sources.map(source => {
+  const row = getDb().prepare('SELECT * FROM memories WHERE id = ?').get(memoryId) as Row | undefined
+  if (!row) throw new Error('memory not found')
+  return memoryFromRow(row).sources.map(source => {
     if (source.kind !== 'chat' || !source.sessionId) return { source, resolved: source.excerpt ? [{ content: source.excerpt }] : [] }
     const session = readChatSession(source.sessionId) as any
     const wanted = new Set(source.messageIds || [])
     const resolved = Array.isArray(session?.messages)
       ? session.messages.filter((message: any) => wanted.has(String(message?.id || ''))).map((message: any) => ({
-        id: String(message.id),
-        role: message.role,
-        content: String(message.content || ''),
-        timestamp: Number(message.timestamp) || 0,
+        id: String(message.id), role: message.role, content: String(message.content || ''), timestamp: Number(message.timestamp) || 0,
       }))
       : []
     return { source, resolved, missing: resolved.length !== wanted.size }

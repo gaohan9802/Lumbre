@@ -15,7 +15,10 @@ before(async () => {
   chat = await import('../../src/server/data/repositories/chat')
 })
 
-after(() => rmSync(root, { recursive: true, force: true }))
+after(() => {
+  memory.closeStarMemoryDatabase()
+  rmSync(root, { recursive: true, force: true })
+})
 
 test('a sourced candidate becomes one memory shared by multiple families and traces back to chat', () => {
   chat.writeChatSession('session-1', {
@@ -77,6 +80,7 @@ test('manual memories added by fire lock automatically and invalid review cannot
   assert.throws(() => memory.reviewMemoryCandidate(bad.id, 'approve', 'star', ['missing-family']), /family not found/)
   assert.equal(memory.listMemoryCandidates().find(item => item.id === bad.id)?.status, 'pending_star')
 
-  const store = JSON.parse(readFileSync(path.join(root, 'star-memory', 'store.json'), 'utf8'))
-  assert.equal(store.memories.length, 2)
+  const header = readFileSync(path.join(root, 'star-memory', 'star-memory.sqlite')).subarray(0, 16).toString()
+  assert.equal(header, 'SQLite format 3\0')
+  assert.equal(memory.getStarMemoryStatus().memories, 2)
 })
