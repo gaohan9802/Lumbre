@@ -175,6 +175,41 @@ export const MEMORY_TOOL_DEFINITIONS = [
     }
   },
   {
+    "name": "remember",
+    "description": "把当前对话中的内容写入新的星星记忆库。decision=approve 时由你立即批准为正式记忆；ask_fire 时交给小火审核；later 时留在你的候选箱。当前会话会自动记录为来源。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["shared_event", "durable_fact", "agreement", "current_state", "observation", "self_event", "unresolved"]
+        },
+        "summary": { "type": "string", "description": "简短、准确的事实骨架" },
+        "details": { "type": "string", "description": "必要细节，可省略" },
+        "why_important": { "type": "string", "description": "为什么值得记住" },
+        "star_feeling": { "type": "string", "description": "你当时明确表达的感受，可省略" },
+        "current_understanding": { "type": "string", "description": "目前如何理解这件事，可省略" },
+        "occurred_at": { "type": "string", "description": "发生时间，ISO 8601" },
+        "valid_from": { "type": "string", "description": "事实开始有效的时间，ISO 8601" },
+        "valid_to": { "type": "string", "description": "事实停止有效的时间，ISO 8601" },
+        "importance": { "type": "integer", "description": "1-10，默认 5" },
+        "inference": { "type": "boolean", "description": "是否属于推断或观察" },
+        "confidence": { "type": "number", "description": "推断置信度 0-1" },
+        "locked": { "type": "boolean", "description": "是否同时加上你的个人锁" },
+        "family_ids": { "type": "array", "items": { "type": "string" }, "description": "建议归属的现有家族 ID" },
+        "source_message_ids": { "type": "array", "items": { "type": "string" }, "description": "可选；只引用当前会话中的这些消息。省略时自动引用最近几轮。" },
+        "fire_quote": { "type": "string", "description": "需要保留的小火原话，可省略" },
+        "star_quote": { "type": "string", "description": "需要保留的你的原话，可省略" },
+        "decision": {
+          "type": "string",
+          "enum": ["approve", "ask_fire", "later"],
+          "description": "立即自审通过、交给小火、或留给自己稍后处理"
+        }
+      },
+      "required": ["type", "summary", "decision"]
+    }
+  },
+  {
     "name": "lock_memory",
     "description": "给新记忆库中的正式记忆加上或解除你的个人锁。你只能解除自己加的锁；小火加锁的记忆不能由你修改或解锁。",
     "input_schema": {

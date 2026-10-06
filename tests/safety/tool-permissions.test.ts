@@ -24,12 +24,13 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 80)
-  assert.equal(registry.ALL_TOOLS.length, 80)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 80)
+  assert.equal(registry.registeredToolCount(), 81)
+  assert.equal(registry.ALL_TOOLS.length, 81)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 81)
   assert.deepEqual(registry.ALL_TOOLS.slice(0, 6).map(tool => tool.name), ['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
   assert.equal(registry.ALL_TOOLS[6].name, 'recall_memory')
-  assert.equal(registry.ALL_TOOLS[7].name, 'lock_memory')
+  assert.equal(registry.ALL_TOOLS[7].name, 'remember')
+  assert.equal(registry.ALL_TOOLS[8].name, 'lock_memory')
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.deepEqual(registry.ALL_TOOLS.slice(-2).map(tool => tool.name), ['read_detroit', 'play_detroit'])

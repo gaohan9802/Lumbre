@@ -40,6 +40,7 @@ interface StarCandidate {
   importance?: number
   occurredAt?: string
   validTo?: string
+  lockOwner?: 'fire' | 'star'
   suggestedFamilyIds: string[]
   sources: Array<{ actor: string; label?: string; excerpt?: string }>
 }
@@ -530,7 +531,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
               <article key={candidate.id} className={`rounded-xl border ${c.border} p-3`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className={`text-[10px] ${c.muted}`}>{candidate.type} · 重要度 {candidate.importance || 5} · {candidate.owner === 'fire' ? '等小火' : '等星星'}</div>
+                    <div className={`text-[10px] ${c.muted}`}>{candidate.type} · 重要度 {candidate.importance || 5} · {candidate.owner === 'fire' ? '等小火' : '等星星'}{candidate.lockOwner ? ` · 🔒 ${candidate.lockOwner === 'star' ? '星星' : '小火'}` : ''}</div>
                     <p className="mt-1 text-xs leading-5">{candidate.summary}</p>
                   </div>
                 </div>

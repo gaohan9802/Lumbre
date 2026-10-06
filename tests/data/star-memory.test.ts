@@ -9,6 +9,7 @@ process.env.DATA_DIR = root
 
 let memory: typeof import('../../src/server/star-memory')
 let chat: typeof import('../../src/server/data/repositories/chat')
+let chatSync: typeof import('../../src/server/chat-sync')
 let runtime: typeof import('../../src/server/tool-runtime')
 let route: typeof import('../../src/app/api/star-memory/route')
 let NextRequest: typeof import('next/server').NextRequest
@@ -16,6 +17,7 @@ let NextRequest: typeof import('next/server').NextRequest
 before(async () => {
   memory = await import('../../src/server/star-memory')
   chat = await import('../../src/server/data/repositories/chat')
+  chatSync = await import('../../src/server/chat-sync')
   runtime = await import('../../src/server/tool-runtime')
   route = await import('../../src/app/api/star-memory/route')
   ;({ NextRequest } = await import('next/server'))
@@ -123,4 +125,39 @@ test('a personal lock can only be changed or bypassed by its owner', async () =>
   assert.equal(unlocked.memory.locked, false)
   assert.equal(unlocked.memory.lockOwner, undefined)
   assert.equal(memory.updateCanonicalMemory(approved.id, { summary: '解锁后小火可以修改。' }, 'fire').summary, '解锁后小火可以修改。')
+})
+
+test('star can remember from the current chat and choose who reviews it', async () => {
+  chatSync.upsertSyncSessionMessage('session-remember', {
+    id: 'remember-user', role: 'user', content: '我想让星星自己决定哪些记忆交给我审核。', timestamp: 1,
+  })
+  chatSync.upsertSyncSessionMessage('session-remember', {
+    id: 'remember-star', role: 'assistant', content: '我会把不确定的候选交给小火。', timestamp: 2,
+  })
+  const context = { actorId: 'star', sessionId: 'session-remember', source: 'chat' as const, requestedAt: new Date().toISOString() }
+  const pending = JSON.parse(await runtime.executeRegisteredToolHandler('remember', {
+    type: 'agreement',
+    summary: '星星可以把不确定的长期记忆交给小火审核。',
+    decision: 'ask_fire',
+    source_message_ids: ['remember-user'],
+  }, context))
+  assert.equal(pending.candidate.status, 'pending_fire')
+  assert.equal(pending.candidate.createdBy, 'star')
+  assert.deepEqual(pending.candidate.sources[0].messageIds, ['remember-user'])
+
+  const family = memory.createMemoryFamily({ name: '记忆库建设' }, 'star')
+  const approved = JSON.parse(await runtime.executeRegisteredToolHandler('remember', {
+    type: 'shared_event',
+    summary: '小火和星星接通了星星主动写候选记忆的能力。',
+    why_important: '星星现在可以自主决定记忆去向。',
+    importance: 9,
+    family_ids: [family.id],
+    locked: true,
+    decision: 'approve',
+  }, context))
+  assert.equal(approved.candidate.status, 'approved')
+  assert.equal(approved.memory.approvedBy, 'star')
+  assert.equal(approved.memory.lockOwner, 'star')
+  assert.equal(memory.getMemoryFamily(family.id)?.memories[0].id, approved.memory.id)
+  assert.deepEqual(memory.resolveMemorySources(approved.memory.id)[0].resolved.map((item: { id: string }) => item.id), ['remember-user', 'remember-star'])
 })

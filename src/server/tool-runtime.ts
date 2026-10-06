@@ -44,7 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
-import { recallStarMemories, setCanonicalMemoryLock } from './star-memory'
+import { createMemoryCandidate, recallStarMemories, reviewMemoryCandidate, setCanonicalMemoryLock } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -82,6 +82,49 @@ export async function executeRegisteredToolHandler(
         recall_reason: hit.match === 'family' ? '家族摘要与当前问题相关' : '记忆内容与当前问题相关',
         score: hit.score,
       })))
+    }
+
+    if (name === 'remember') {
+      const decision = String(input.decision || '')
+      if (!['approve', 'ask_fire', 'later'].includes(decision)) throw new Error('decision must be approve, ask_fire, or later')
+      const session = context?.sessionId ? loadSyncSessions([context.sessionId])[0] : undefined
+      const messages = Array.isArray(session?.messages)
+        ? session.messages.filter((message: any) => typeof message?.id === 'string' && ['user', 'assistant'].includes(message.role))
+        : []
+      const requestedIds = Array.isArray(input.source_message_ids) ? input.source_message_ids.map(String) : []
+      if (requestedIds.length && !session) throw new Error('source messages need a current chat session')
+      const knownIds = new Set(messages.map((message: any) => message.id))
+      if (requestedIds.some((id: string) => !knownIds.has(id))) throw new Error('source message not found in the current chat')
+      const messageIds = requestedIds.length ? requestedIds : messages.slice(-4).map((message: any) => message.id)
+      const sources = context?.sessionId && messageIds.length
+        ? [{ kind: 'chat' as const, actor: 'star' as const, sessionId: context.sessionId, messageIds }]
+        : [{ kind: 'manual' as const, actor: 'star' as const, label: '星星手动加入' }]
+      const quotes = [
+        typeof input.fire_quote === 'string' && input.fire_quote.trim() ? { actor: 'fire' as const, text: input.fire_quote } : null,
+        typeof input.star_quote === 'string' && input.star_quote.trim() ? { actor: 'star' as const, text: input.star_quote } : null,
+      ].filter((quote): quote is { actor: 'fire' | 'star'; text: string } => !!quote)
+      const candidate = createMemoryCandidate({
+        type: input.type,
+        summary: input.summary,
+        details: input.details,
+        whyImportant: input.why_important,
+        starFeeling: input.star_feeling,
+        currentUnderstanding: input.current_understanding,
+        occurredAt: input.occurred_at,
+        validFrom: input.valid_from,
+        validTo: input.valid_to,
+        importance: input.importance,
+        inference: input.inference,
+        confidence: input.confidence,
+        locked: input.locked,
+        familyIds: input.family_ids,
+        sources,
+        quotes,
+      }, 'star', decision === 'ask_fire' ? 'fire' : 'star')
+      const result = decision === 'approve'
+        ? reviewMemoryCandidate(candidate.id, 'approve', 'star')
+        : { candidate }
+      return JSON.stringify({ ok: true, ...result })
     }
 
     if (name === 'lock_memory') {
