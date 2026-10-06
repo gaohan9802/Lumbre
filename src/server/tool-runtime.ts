@@ -44,7 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
-import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamily, listMemoryFamilies, listRecycledFamilies, listWorkingMemories, recallStarMemories, recallWorkingMemories, recycleMemoryFamily, removeMemoryFamilyMembership, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, updateMemoryFamily } from './star-memory'
+import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryFamilies, listRecycledFamilies, listWorkingMemories, mergeMemoryFamilies, recallStarMemories, recallWorkingMemories, recycleMemoryFamily, removeMemoryFamilyMembership, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateMemoryFamily } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -156,7 +156,7 @@ export async function executeRegisteredToolHandler(
 
     if (name === 'manage_memory_family') {
       if (input.action === 'list') return JSON.stringify(listMemoryFamilies())
-      if (input.action === 'get') return JSON.stringify(getMemoryFamily(String(input.family_id || '')))
+      if (input.action === 'get') return JSON.stringify(getMemoryFamilyLevel(input.family_id, input.level || 1))
       if (input.action === 'create') return JSON.stringify({ ok: true, family: createMemoryFamily({ name: input.name, title: input.title, summary: input.summary, parentId: input.parent_id, locked: input.locked }, 'star') })
       if (input.action === 'update') return JSON.stringify({ ok: true, family: updateMemoryFamily(input.family_id, { name: input.name, title: input.title, summary: input.summary, status: input.status, major: input.major, reason: input.reason }, 'star') })
       if (input.action === 'lock') return JSON.stringify({ ok: true, family: setMemoryFamilyLock(input.family_id, input.locked, 'star') })
@@ -166,6 +166,8 @@ export async function executeRegisteredToolHandler(
       if (input.action === 'list_trash') return JSON.stringify(listRecycledFamilies())
       if (input.action === 'recycle') return JSON.stringify({ ok: true, recycled: recycleMemoryFamily(input.family_id, 'star') })
       if (input.action === 'restore') return JSON.stringify({ ok: true, family: restoreMemoryFamily(input.recycle_id, 'star') })
+      if (input.action === 'merge') return JSON.stringify({ ok: true, ...mergeMemoryFamilies(input.source_family_id, input.target_family_id, input.summary, 'star') })
+      if (input.action === 'split') return JSON.stringify({ ok: true, ...splitMemoryFamily(input.source_family_id, { name: input.name, title: input.title, summary: input.summary, parentId: input.parent_id }, input.memory_ids, 'star') })
       throw new Error('family action is invalid')
     }
 

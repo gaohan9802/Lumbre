@@ -116,6 +116,37 @@ test('family roles, major revisions, compression, and personal locks stay consis
   assert.equal(memory.listRecycledFamilies('2026-10-07T12:00:01.000Z').length, 0)
 })
 
+test('family recall expands by level and merge or split never duplicates memory bodies', () => {
+  const source = memory.createMemoryFamily({ name: '写作探索', summary: '多个写作方向。' }, 'star')
+  const target = memory.createMemoryFamily({ name: '论文写作', summary: '论文相关进展。' }, 'star')
+  const first = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'shared_event', summary: '确定了论文结构。', sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+  }, 'star').id, 'approve', 'star').memory!
+  const second = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'durable_fact', summary: '形成了稳定写作方法。', sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+  }, 'star').id, 'approve', 'star').memory!
+  memory.setMemoryFamilyMembership(source.id, first.id, 'key_event', '结构节点', 'star')
+  memory.setMemoryFamilyMembership(source.id, second.id, 'member', '背景', 'star')
+  memory.setMemoryFamilyMembership(target.id, first.id, 'member', '已有交叉归属', 'star')
+
+  assert.equal('memories' in memory.getMemoryFamilyLevel(source.id, 1)!, false)
+  assert.deepEqual((memory.getMemoryFamilyLevel(source.id, 3) as any).memories.map((item: any) => item.id), [first.id])
+  assert.equal((memory.getMemoryFamilyLevel(source.id, 4) as any).memories.length, 2)
+
+  const before = memory.listCanonicalMemories().length
+  const merged = memory.mergeMemoryFamilies(source.id, target.id, '论文写作已吸收相关探索。', 'star')
+  assert.equal(merged.movedMemories, 2)
+  assert.equal(memory.getMemoryFamily(source.id), null)
+  assert.deepEqual(memory.getMemoryFamily(target.id)?.memories.map(item => item.id).sort(), [first.id, second.id].sort())
+  assert.equal(memory.listCanonicalMemories().length, before)
+
+  const split = memory.splitMemoryFamily(target.id, { name: '写作方法' }, [second.id], 'star')
+  assert.equal(split.movedMemories, 1)
+  assert.deepEqual(memory.getMemoryFamily(split.family.id)?.memories.map(item => item.id), [second.id])
+  assert.deepEqual(memory.getMemoryFamily(target.id)?.memories.map(item => item.id), [first.id])
+  assert.equal(memory.listCanonicalMemories().length, before)
+})
+
 test('manual memories added by fire lock automatically and invalid review cannot partially write', () => {
   const family = memory.createMemoryFamily({ name: '核心事实' }, 'fire')
   const candidate = memory.createMemoryCandidate({

@@ -669,6 +669,25 @@ export function getMemoryFamily(id: string) {
   return { ...familyFromRow(row), children: (getDb().prepare('SELECT * FROM families WHERE parent_id = ?').all(id) as Row[]).map(familyFromRow), memberships, memories, revisions }
 }
 
+export function getMemoryFamilyLevel(idValue: unknown, levelValue: unknown = 1) {
+  const id = text(idValue, 'family id', 100, true)!
+  const level = Math.max(1, Math.min(4, Math.floor(Number(levelValue) || 1)))
+  if (level === 4) return getMemoryFamily(id)
+  const row = getDb().prepare('SELECT * FROM families WHERE id = ?').get(id) as Row | undefined
+  if (!row) return null
+  const family = familyFromRow(row)
+  const memberCount = (getDb().prepare('SELECT COUNT(*) AS count FROM family_memberships WHERE family_id = ?').get(id) as Row).count as number
+  if (level === 1) return { ...family, memberCount }
+  const children = (getDb().prepare('SELECT * FROM families WHERE parent_id = ? ORDER BY name COLLATE NOCASE').all(id) as Row[]).map(familyFromRow)
+  const roleCounts = Object.fromEntries((getDb().prepare('SELECT role, COUNT(*) AS count FROM family_memberships WHERE family_id = ? GROUP BY role').all(id) as Row[]).map(item => [item.role, item.count]))
+  if (level === 2) return { ...family, memberCount, children, roleCounts }
+  const memberships = (getDb().prepare("SELECT * FROM family_memberships WHERE family_id = ? AND role != 'member' ORDER BY created_at").all(id) as Row[]).map(item => ({
+    familyId: item.family_id, memoryId: item.memory_id, role: item.role, reason: item.reason || undefined, addedBy: item.added_by, createdAt: item.created_at,
+  })) as FamilyMembership[]
+  const memories = memberships.map(link => getDb().prepare('SELECT * FROM memories WHERE id = ?').get(link.memoryId) as Row).filter(Boolean).map(memoryFromRow)
+  return { ...family, memberCount, children, roleCounts, memberships, memories }
+}
+
 function writableFamily(id: string, actorValue: 'fire' | 'star'): Row {
   const row = getDb().prepare('SELECT * FROM families WHERE id = ?').get(id) as Row | undefined
   if (!row) throw new Error('family not found')
@@ -836,6 +855,73 @@ export function restoreMemoryFamily(recycleIdValue: unknown, actorValue: unknown
 export function purgeExpiredFamilyRecycleBin(nowValue: unknown = new Date().toISOString()): number {
   const now = iso(nowValue, 'now')!
   return getDb().prepare('DELETE FROM family_recycle_bin WHERE purge_after <= ?').run(now).changes
+}
+
+export function mergeMemoryFamilies(sourceIdValue: unknown, targetIdValue: unknown, summaryValue: unknown, actorValue: unknown) {
+  const sourceId = text(sourceIdValue, 'source family id', 100, true)!
+  const targetId = text(targetIdValue, 'target family id', 100, true)!
+  const mergedBy = reviewer(actorValue)
+  if (sourceId === targetId) throw new Error('source and target families must differ')
+  const summary = text(summaryValue, 'merged family summary', 2_000)
+  return getDb().transaction(() => {
+    const source = familyFromRow(writableFamily(sourceId, mergedBy))
+    const target = familyFromRow(writableFamily(targetId, mergedBy))
+    if (getDb().prepare('SELECT 1 FROM families WHERE parent_id = ? LIMIT 1').get(sourceId)) throw new Error('move or merge child families first')
+    const now = new Date().toISOString()
+    const sourceLinks = getDb().prepare('SELECT * FROM family_memberships WHERE family_id = ?').all(sourceId) as Row[]
+    const readTargetLink = getDb().prepare('SELECT * FROM family_memberships WHERE family_id = ? AND memory_id = ?')
+    const addTargetLink = getDb().prepare(`INSERT INTO family_memberships (family_id, memory_id, role, reason, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(family_id, memory_id) DO UPDATE SET role = excluded.role, reason = COALESCE(family_memberships.reason, excluded.reason), added_by = excluded.added_by`)
+    sourceLinks.forEach(link => {
+      const existing = readTargetLink.get(targetId, link.memory_id) as Row | undefined
+      const role = existing && existing.role !== 'member' ? existing.role : link.role
+      addTargetLink.run(targetId, link.memory_id, role, link.reason, mergedBy, existing?.created_at || link.created_at)
+    })
+    const candidateIds = (getDb().prepare('SELECT candidate_id FROM candidate_family_suggestions WHERE family_id = ?').all(sourceId) as Row[]).map(row => row.candidate_id)
+    candidateIds.forEach(candidateId => getDb().prepare('INSERT OR IGNORE INTO candidate_family_suggestions (candidate_id, family_id) VALUES (?, ?)').run(candidateId, targetId))
+    const workingRows = getDb().prepare("SELECT id, family_ids_json FROM working_memories WHERE status IN ('active', 'due')").all() as Row[]
+    workingRows.forEach(row => {
+      const familyIds = JSON.parse(row.family_ids_json) as string[]
+      if (familyIds.includes(sourceId)) getDb().prepare('UPDATE working_memories SET family_ids_json = ? WHERE id = ?').run(JSON.stringify(Array.from(new Set(familyIds.map(id => id === sourceId ? targetId : id)))), row.id)
+    })
+    getDb().prepare('INSERT INTO family_summary_revisions (id, family_id, summary, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(randomUUID(), targetId, target.summary, `merged:${sourceId}`, mergedBy, now)
+    getDb().prepare('UPDATE families SET summary = ?, updated_at = ? WHERE id = ?').run(summary ?? target.summary, now, targetId)
+    getDb().prepare('DELETE FROM family_memberships WHERE family_id = ?').run(sourceId)
+    getDb().prepare('DELETE FROM candidate_family_suggestions WHERE family_id = ?').run(sourceId)
+    const recycled = recycleMemoryFamily(sourceId, mergedBy, now)
+    recordChange(mergedBy, 'family.merged', targetId, now)
+    return { family: familyFromRow(getDb().prepare('SELECT * FROM families WHERE id = ?').get(targetId) as Row), recycled, movedMemories: sourceLinks.length }
+  })()
+}
+
+export function splitMemoryFamily(sourceIdValue: unknown, familyValue: unknown, memoryIdsValue: unknown, actorValue: unknown) {
+  const sourceId = text(sourceIdValue, 'source family id', 100, true)!
+  const splitBy = reviewer(actorValue)
+  if (!Array.isArray(memoryIdsValue) || memoryIdsValue.length === 0) throw new Error('split needs at least one memory id')
+  const memoryIds = Array.from(new Set(memoryIdsValue.map(value => text(value, 'memory id', 100, true)!)))
+  if (!familyValue || typeof familyValue !== 'object') throw new Error('new family is required')
+  return getDb().transaction(() => {
+    const source = familyFromRow(writableFamily(sourceId, splitBy))
+    const links = memoryIds.map(memoryId => {
+      const link = getDb().prepare('SELECT * FROM family_memberships WHERE family_id = ? AND memory_id = ?').get(sourceId, memoryId) as Row | undefined
+      if (!link) throw new Error(`memory is not in source family: ${memoryId}`)
+      return link
+    })
+    const raw = familyValue as Partial<MemoryFamily>
+    const created = createMemoryFamily({ ...raw, parentId: raw.parentId === undefined ? source.parentId : raw.parentId }, splitBy)
+    const add = getDb().prepare('INSERT INTO family_memberships (family_id, memory_id, role, reason, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    links.forEach(link => {
+      add.run(created.id, link.memory_id, link.role, link.reason, splitBy, link.created_at)
+      getDb().prepare('DELETE FROM family_memberships WHERE family_id = ? AND memory_id = ?').run(sourceId, link.memory_id)
+    })
+    const now = new Date().toISOString()
+    getDb().prepare('UPDATE families SET updated_at = ? WHERE id = ?').run(now, sourceId)
+    getDb().prepare('INSERT INTO family_summary_revisions (id, family_id, summary, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(randomUUID(), sourceId, source.summary, `split:${created.id}`, splitBy, now)
+    recordChange(splitBy, 'family.split', sourceId, now)
+    return { source: familyFromRow(getDb().prepare('SELECT * FROM families WHERE id = ?').get(sourceId) as Row), family: created, movedMemories: links.length }
+  })()
 }
 
 export type CandidateDecision = 'approve' | 'reject' | 'observe' | 'assign_fire' | 'assign_star'
