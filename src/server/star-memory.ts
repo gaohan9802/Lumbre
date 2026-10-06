@@ -80,6 +80,7 @@ export interface MemoryFamily {
   status: FamilyStatus
   parentId?: string
   locked: boolean
+  lockOwner?: 'fire' | 'star'
   createdBy: 'fire' | 'star'
   createdAt: string
   updatedAt: string
@@ -100,6 +101,7 @@ type Target = 'candidate' | 'memory'
 const DB_FILE = resolveDataPath(getDataDir(), 'star-memory', 'star-memory.sqlite')
 const MEMORY_TYPES = new Set<MemoryType>(['shared_event', 'durable_fact', 'agreement', 'current_state', 'observation', 'self_event', 'unresolved'])
 const FAMILY_STATUSES = new Set<FamilyStatus>(['active', 'paused', 'ended', 'archived'])
+const FAMILY_ROLES = new Set<FamilyMembership['role']>(['key_event', 'key_fact', 'member', 'unresolved'])
 const WORKING_STATUSES = new Set<WorkingMemoryStatus>(['active', 'due', 'dismissed', 'promoted'])
 const WORKING_DECISIONS = new Set<WorkingMemoryDecision>(['dismiss', 'observe', 'promote', 'ask_fire'])
 let database: Database.Database | undefined
@@ -170,6 +172,7 @@ function getDb(): Database.Database {
       id TEXT PRIMARY KEY, name TEXT NOT NULL, title TEXT, summary TEXT,
       status TEXT NOT NULL, parent_id TEXT REFERENCES families(id),
       locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1)),
+      lock_owner TEXT CHECK (lock_owner IN ('fire', 'star')),
       created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS families_name_level
@@ -185,6 +188,10 @@ function getDb(): Database.Database {
       role TEXT NOT NULL, reason TEXT, added_by TEXT NOT NULL, created_at TEXT NOT NULL,
       PRIMARY KEY (family_id, memory_id)
     );
+    CREATE TABLE IF NOT EXISTS family_summary_revisions (
+      id TEXT PRIMARY KEY, family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+      summary TEXT, reason TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS changes (
       id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL,
       target_id TEXT NOT NULL, created_at TEXT NOT NULL
@@ -196,6 +203,7 @@ function getDb(): Database.Database {
   const hasColumn = (table: string, column: string) => (database!.pragma(`table_info(${table})`) as Row[]).some(row => row.name === column)
   if (!hasColumn('candidates', 'lock_owner')) database.exec("ALTER TABLE candidates ADD COLUMN lock_owner TEXT CHECK (lock_owner IN ('fire', 'star'))")
   if (!hasColumn('memories', 'lock_owner')) database.exec("ALTER TABLE memories ADD COLUMN lock_owner TEXT CHECK (lock_owner IN ('fire', 'star'))")
+  if (!hasColumn('families', 'lock_owner')) database.exec("ALTER TABLE families ADD COLUMN lock_owner TEXT CHECK (lock_owner IN ('fire', 'star'))")
   database.exec(`
     UPDATE candidates SET lock_owner = 'fire'
       WHERE locked = 1 AND lock_owner IS NULL AND created_by = 'fire' AND EXISTS (
@@ -209,8 +217,10 @@ function getDb(): Database.Database {
       );
     UPDATE memories SET lock_owner = created_by
       WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
+    UPDATE families SET lock_owner = created_by
+      WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
   `)
-  database.pragma('user_version = 4')
+  database.pragma('user_version = 5')
   return database
 }
 
@@ -393,7 +403,7 @@ function workingFromRow(row: Row): WorkingMemory {
 }
 
 function familyFromRow(row: Row): MemoryFamily {
-  return { id: row.id, name: row.name, title: row.title || undefined, summary: row.summary || undefined, status: row.status, parentId: row.parent_id || undefined, locked: !!row.locked, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at }
+  return { id: row.id, name: row.name, title: row.title || undefined, summary: row.summary || undefined, status: row.status, parentId: row.parent_id || undefined, locked: !!row.locked, lockOwner: row.lock_owner || undefined, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at }
 }
 
 function recordChange(actorValue: MemoryActor, action: string, targetId: string, now: string): void {
@@ -607,14 +617,15 @@ export function createMemoryFamily(input: unknown, actorValue: unknown): MemoryF
   const summary = text(raw.summary, 'family.summary', 2_000)
   const parentId = text(raw.parentId, 'family.parentId', 100)
   const status = raw.status || 'active'
+  if (raw.locked !== undefined && typeof raw.locked !== 'boolean') throw new Error('family.locked must be a boolean')
   if (!FAMILY_STATUSES.has(status)) throw new Error('family status is invalid')
   if (familyDepth(parentId) > 3) throw new Error('family nesting cannot exceed three levels')
   const now = new Date().toISOString()
   const id = randomUUID()
   try {
     getDb().transaction(() => {
-      getDb().prepare('INSERT INTO families (id, name, title, summary, status, parent_id, locked, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(id, name, title, summary, status, parentId, raw.locked ? 1 : 0, createdBy, now, now)
+      getDb().prepare('INSERT INTO families (id, name, title, summary, status, parent_id, locked, lock_owner, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(id, name, title, summary, status, parentId, raw.locked ? 1 : 0, raw.locked ? createdBy : null, createdBy, now, now)
       recordChange(createdBy, 'family.created', id, now)
     })()
   } catch (error) {
@@ -638,7 +649,105 @@ export function getMemoryFamily(id: string) {
     familyId: item.family_id, memoryId: item.memory_id, role: item.role, reason: item.reason || undefined, addedBy: item.added_by, createdAt: item.created_at,
   })) as FamilyMembership[]
   const memories = memberships.map(link => getDb().prepare('SELECT * FROM memories WHERE id = ?').get(link.memoryId) as Row).filter(Boolean).map(memoryFromRow)
-  return { ...familyFromRow(row), children: (getDb().prepare('SELECT * FROM families WHERE parent_id = ?').all(id) as Row[]).map(familyFromRow), memberships, memories }
+  const revisions = (getDb().prepare('SELECT summary, reason, created_by, created_at FROM family_summary_revisions WHERE family_id = ? ORDER BY created_at DESC').all(id) as Row[]).map(item => ({
+    summary: item.summary || undefined, reason: item.reason, createdBy: item.created_by, createdAt: item.created_at,
+  }))
+  return { ...familyFromRow(row), children: (getDb().prepare('SELECT * FROM families WHERE parent_id = ?').all(id) as Row[]).map(familyFromRow), memberships, memories, revisions }
+}
+
+function writableFamily(id: string, actorValue: 'fire' | 'star'): Row {
+  const row = getDb().prepare('SELECT * FROM families WHERE id = ?').get(id) as Row | undefined
+  if (!row) throw new Error('family not found')
+  if (row.lock_owner && row.lock_owner !== actorValue) throw new Error(`family is locked by ${row.lock_owner}`)
+  return row
+}
+
+export function updateMemoryFamily(idValue: unknown, patchValue: unknown, actorValue: unknown): MemoryFamily {
+  const id = text(idValue, 'family id', 100, true)!
+  const updatedBy = reviewer(actorValue)
+  if (!patchValue || typeof patchValue !== 'object') throw new Error('family patch is required')
+  const raw = patchValue as Partial<MemoryFamily> & { major?: unknown; reason?: unknown }
+  return getDb().transaction(() => {
+    const current = familyFromRow(writableFamily(id, updatedBy))
+    const name = raw.name === undefined ? current.name : text(raw.name, 'family.name', 120, true)!
+    const title = raw.title === undefined ? current.title : text(raw.title, 'family.title', 200)
+    const summary = raw.summary === undefined ? current.summary : text(raw.summary, 'family.summary', 2_000)
+    const status = raw.status === undefined ? current.status : raw.status
+    if (!FAMILY_STATUSES.has(status)) throw new Error('family status is invalid')
+    const now = new Date().toISOString()
+    const major = raw.major === true || status !== current.status
+    if (major && (summary !== current.summary || status !== current.status)) {
+      getDb().prepare('INSERT INTO family_summary_revisions (id, family_id, summary, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(randomUUID(), id, current.summary, text(raw.reason, 'family revision reason', 300) || (status !== current.status ? `status:${current.status}->${status}` : 'major_summary'), updatedBy, now)
+    }
+    getDb().prepare('UPDATE families SET name = ?, title = ?, summary = ?, status = ?, updated_at = ? WHERE id = ?')
+      .run(name, title, summary, status, now, id)
+    recordChange(updatedBy, 'family.updated', id, now)
+    return familyFromRow(getDb().prepare('SELECT * FROM families WHERE id = ?').get(id) as Row)
+  })()
+}
+
+export function setMemoryFamilyLock(idValue: unknown, lockedValue: unknown, actorValue: unknown): MemoryFamily {
+  const id = text(idValue, 'family id', 100, true)!
+  const lockActor = reviewer(actorValue)
+  if (typeof lockedValue !== 'boolean') throw new Error('locked must be a boolean')
+  return getDb().transaction(() => {
+    writableFamily(id, lockActor)
+    const now = new Date().toISOString()
+    getDb().prepare('UPDATE families SET locked = ?, lock_owner = ?, updated_at = ? WHERE id = ?')
+      .run(lockedValue ? 1 : 0, lockedValue ? lockActor : null, now, id)
+    recordChange(lockActor, lockedValue ? 'family.locked' : 'family.unlocked', id, now)
+    return familyFromRow(getDb().prepare('SELECT * FROM families WHERE id = ?').get(id) as Row)
+  })()
+}
+
+export function setMemoryFamilyMembership(familyIdValue: unknown, memoryIdValue: unknown, roleValue: unknown, reasonValue: unknown, actorValue: unknown): FamilyMembership {
+  const familyId = text(familyIdValue, 'family id', 100, true)!
+  const memoryId = text(memoryIdValue, 'memory id', 100, true)!
+  const addedBy = reviewer(actorValue)
+  const role = text(roleValue, 'family role', 30, true)! as FamilyMembership['role']
+  if (!FAMILY_ROLES.has(role)) throw new Error('family role is invalid')
+  const reason = text(reasonValue, 'family membership reason', 500)
+  return getDb().transaction(() => {
+    writableFamily(familyId, addedBy)
+    if (!getDb().prepare('SELECT 1 FROM memories WHERE id = ?').get(memoryId)) throw new Error('memory not found')
+    const now = new Date().toISOString()
+    getDb().prepare(`INSERT INTO family_memberships (family_id, memory_id, role, reason, added_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(family_id, memory_id) DO UPDATE SET role = excluded.role, reason = excluded.reason, added_by = excluded.added_by`)
+      .run(familyId, memoryId, role, reason, addedBy, now)
+    recordChange(addedBy, 'family.member_set', familyId, now)
+    const row = getDb().prepare('SELECT * FROM family_memberships WHERE family_id = ? AND memory_id = ?').get(familyId, memoryId) as Row
+    return { familyId, memoryId, role: row.role, reason: row.reason || undefined, addedBy: row.added_by, createdAt: row.created_at }
+  })()
+}
+
+export function removeMemoryFamilyMembership(familyIdValue: unknown, memoryIdValue: unknown, actorValue: unknown): boolean {
+  const familyId = text(familyIdValue, 'family id', 100, true)!
+  const memoryId = text(memoryIdValue, 'memory id', 100, true)!
+  const removedBy = reviewer(actorValue)
+  return getDb().transaction(() => {
+    writableFamily(familyId, removedBy)
+    const removed = getDb().prepare('DELETE FROM family_memberships WHERE family_id = ? AND memory_id = ?').run(familyId, memoryId).changes > 0
+    if (removed) recordChange(removedBy, 'family.member_removed', familyId, new Date().toISOString())
+    return removed
+  })()
+}
+
+export function endMemoryFamily(idValue: unknown, actorValue: unknown): { family: MemoryFamily; removedOrdinaryMembers: number } {
+  const id = text(idValue, 'family id', 100, true)!
+  const endedBy = reviewer(actorValue)
+  return getDb().transaction(() => {
+    const current = familyFromRow(writableFamily(id, endedBy))
+    const now = new Date().toISOString()
+    if (current.status !== 'ended') {
+      getDb().prepare('INSERT INTO family_summary_revisions (id, family_id, summary, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(randomUUID(), id, current.summary, 'family_ended', endedBy, now)
+    }
+    const removedOrdinaryMembers = getDb().prepare("DELETE FROM family_memberships WHERE family_id = ? AND role = 'member'").run(id).changes
+    getDb().prepare("UPDATE families SET status = 'ended', updated_at = ? WHERE id = ?").run(now, id)
+    recordChange(endedBy, 'family.ended', id, now)
+    return { family: familyFromRow(getDb().prepare('SELECT * FROM families WHERE id = ?').get(id) as Row), removedOrdinaryMembers }
+  })()
 }
 
 export type CandidateDecision = 'approve' | 'reject' | 'observe' | 'assign_fire' | 'assign_star'

@@ -44,7 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
-import { createMemoryCandidate, createWorkingMemory, listWorkingMemories, recallStarMemories, recallWorkingMemories, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock } from './star-memory'
+import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamily, listMemoryFamilies, listWorkingMemories, recallStarMemories, recallWorkingMemories, removeMemoryFamilyMembership, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, updateMemoryFamily } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -152,6 +152,18 @@ export async function executeRegisteredToolHandler(
 
     if (name === 'lock_memory') {
       return JSON.stringify({ ok: true, memory: setCanonicalMemoryLock(input.memory_id, input.locked, 'star') })
+    }
+
+    if (name === 'manage_memory_family') {
+      if (input.action === 'list') return JSON.stringify(listMemoryFamilies())
+      if (input.action === 'get') return JSON.stringify(getMemoryFamily(String(input.family_id || '')))
+      if (input.action === 'create') return JSON.stringify({ ok: true, family: createMemoryFamily({ name: input.name, title: input.title, summary: input.summary, parentId: input.parent_id, locked: input.locked }, 'star') })
+      if (input.action === 'update') return JSON.stringify({ ok: true, family: updateMemoryFamily(input.family_id, { name: input.name, title: input.title, summary: input.summary, status: input.status, major: input.major, reason: input.reason }, 'star') })
+      if (input.action === 'lock') return JSON.stringify({ ok: true, family: setMemoryFamilyLock(input.family_id, input.locked, 'star') })
+      if (input.action === 'add_memory') return JSON.stringify({ ok: true, membership: setMemoryFamilyMembership(input.family_id, input.memory_id, input.role || 'member', input.reason, 'star') })
+      if (input.action === 'remove_memory') return JSON.stringify({ ok: true, removed: removeMemoryFamilyMembership(input.family_id, input.memory_id, 'star') })
+      if (input.action === 'end') return JSON.stringify({ ok: true, ...endMemoryFamily(input.family_id, 'star') })
+      throw new Error('family action is invalid')
     }
 
     // Context tools

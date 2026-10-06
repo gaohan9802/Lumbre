@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   createMemoryCandidate,
   createMemoryFamily,
+  endMemoryFamily,
   getMemoryFamily,
   getStarMemoryStatus,
   listCanonicalMemories,
@@ -16,7 +17,11 @@ import {
   reviewMemoryCandidate,
   reviewWorkingMemory,
   setCanonicalMemoryLock,
+  setMemoryFamilyLock,
+  setMemoryFamilyMembership,
+  removeMemoryFamilyMembership,
   updateCanonicalMemory,
+  updateMemoryFamily,
   type CandidateDecision,
   type CandidateStatus,
   type WorkingMemoryDecision,
@@ -56,6 +61,11 @@ export async function POST(req: NextRequest) {
     if (body.action === 'update_memory') return NextResponse.json(updateCanonicalMemory(body.id, body.patch, 'fire'))
     if (body.action === 'set_memory_lock') return NextResponse.json(setCanonicalMemoryLock(body.id, body.locked, 'fire'))
     if (body.action === 'review_working') return NextResponse.json(reviewWorkingMemory(body.id, body.decision as WorkingMemoryDecision, 'fire', new Date().toISOString(), body.summary))
+    if (body.action === 'update_family') return NextResponse.json(updateMemoryFamily(body.id, body.patch, 'fire'))
+    if (body.action === 'set_family_lock') return NextResponse.json(setMemoryFamilyLock(body.id, body.locked, 'fire'))
+    if (body.action === 'set_family_member') return NextResponse.json(setMemoryFamilyMembership(body.id, body.memoryId, body.role, body.reason, 'fire'))
+    if (body.action === 'remove_family_member') return NextResponse.json({ removed: removeMemoryFamilyMembership(body.id, body.memoryId, 'fire') })
+    if (body.action === 'end_family') return NextResponse.json(endMemoryFamily(body.id, 'fire'))
     return NextResponse.json({ error: 'unknown_action' }, { status: 400 })
   } catch (error) {
     return failure(error)

@@ -75,6 +75,32 @@ test('family nesting stops at three levels', () => {
   assert.throws(() => memory.createMemoryFamily({ name: '住所', parentId: third.id }, 'fire'), /three levels/)
 })
 
+test('family roles, major revisions, compression, and personal locks stay consistent', async () => {
+  const family = memory.createMemoryFamily({ name: '职业发展', summary: '仍在探索方向。' }, 'star')
+  const ordinary = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'durable_fact', summary: '一条会被压缩的普通背景。', sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+  }, 'star').id, 'approve', 'star').memory!
+  const key = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'shared_event', summary: '一个需要保留的关键节点。', sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+  }, 'star').id, 'approve', 'star').memory!
+
+  memory.setMemoryFamilyMembership(family.id, ordinary.id, 'member', '背景', 'star')
+  memory.setMemoryFamilyMembership(family.id, key.id, 'key_event', '阶段节点', 'star')
+  const updated = memory.updateMemoryFamily(family.id, { summary: '已经进入新的阶段。', major: true, reason: '方向明确' }, 'star')
+  assert.equal(updated.summary, '已经进入新的阶段。')
+  assert.equal(memory.getMemoryFamily(family.id)?.revisions[0].summary, '仍在探索方向。')
+
+  const ended = memory.endMemoryFamily(family.id, 'star')
+  assert.equal(ended.removedOrdinaryMembers, 1)
+  assert.deepEqual(memory.getMemoryFamily(family.id)?.memberships.map(item => item.memoryId), [key.id])
+  assert.equal(memory.listCanonicalMemories().some(item => item.id === ordinary.id), true)
+
+  memory.setMemoryFamilyLock(family.id, true, 'star')
+  assert.throws(() => memory.updateMemoryFamily(family.id, { summary: '小火不能覆盖。' }, 'fire'), /locked by star/)
+  const toolFamily = JSON.parse(await runtime.executeRegisteredToolHandler('manage_memory_family', { action: 'get', family_id: family.id }))
+  assert.equal(toolFamily.lockOwner, 'star')
+})
+
 test('manual memories added by fire lock automatically and invalid review cannot partially write', () => {
   const family = memory.createMemoryFamily({ name: '核心事实' }, 'fire')
   const candidate = memory.createMemoryCandidate({
@@ -87,6 +113,7 @@ test('manual memories added by fire lock automatically and invalid review cannot
   assert.equal(approved.memory?.locked, true)
   assert.equal(approved.memory?.lockOwner, 'fire')
   assert.throws(() => memory.updateCanonicalMemory(approved.memory!.id, { summary: '星星不能改。' }, 'star'), /locked by fire/)
+  const memoriesBeforeInvalidReview = memory.getStarMemoryStatus().memories
 
   const bad = memory.createMemoryCandidate({
     type: 'shared_event',
@@ -98,7 +125,7 @@ test('manual memories added by fire lock automatically and invalid review cannot
 
   const header = readFileSync(path.join(root, 'star-memory', 'star-memory.sqlite')).subarray(0, 16).toString()
   assert.equal(header, 'SQLite format 3\0')
-  assert.equal(memory.getStarMemoryStatus().memories, 2)
+  assert.equal(memory.getStarMemoryStatus().memories, memoriesBeforeInvalidReview)
 })
 
 test('a personal lock can only be changed or bypassed by its owner', async () => {

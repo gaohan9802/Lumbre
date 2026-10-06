@@ -243,5 +243,27 @@ export const MEMORY_TOOL_DEFINITIONS = [
       },
       "required": ["memory_id", "locked"]
     }
+  },
+  {
+    "name": "manage_memory_family",
+    "description": "管理新记忆库的家族。可以列出、读取、创建或更新家族，调整正式记忆的家族归属与角色，使用你的个人锁，或结束家族并只保留关键节点、关键事实和未完事项。不要用归档冒充删除；删除要等回收区能力开放。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["list", "get", "create", "update", "lock", "add_memory", "remove_memory", "end"] },
+        "family_id": { "type": "string" },
+        "memory_id": { "type": "string" },
+        "name": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "parent_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "paused", "ended", "archived"] },
+        "role": { "type": "string", "enum": ["key_event", "key_fact", "member", "unresolved"] },
+        "reason": { "type": "string" },
+        "major": { "type": "boolean", "description": "摘要是否属于应保留旧版本的重大变化" },
+        "locked": { "type": "boolean" }
+      },
+      "required": ["action"]
+    }
   }
 ] satisfies ToolDef[]

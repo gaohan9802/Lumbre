@@ -48,7 +48,11 @@ interface StarCandidate {
 interface StarFamily {
   id: string
   name: string
+  title?: string
   summary?: string
+  status: 'active' | 'paused' | 'ended' | 'archived'
+  parentId?: string
+  lockOwner?: 'fire' | 'star'
   memberCount: number
 }
 
@@ -573,6 +577,32 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     }
   }
 
+  const manageFamily = async (family: StarFamily, action: 'update_family' | 'set_family_lock' | 'end_family') => {
+    const summary = action === 'update_family' ? prompt('更新家族短摘要', family.summary || '') : null
+    if (action === 'update_family' && summary === null) return
+    if (action === 'end_family' && !confirm('结束后会移除普通成员归属，只保留关键节点、关键事实与未完事项。继续吗？')) return
+    setBusyId(family.id)
+    setError('')
+    try {
+      const response = await fetch('/api/star-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(action === 'update_family'
+          ? { action, id: family.id, patch: { summary } }
+          : action === 'set_family_lock'
+            ? { action, id: family.id, locked: !family.lockOwner }
+            : { action, id: family.id }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || '家族更新失败')
+      await load()
+    } catch (familyError: any) {
+      setError(familyError?.message || '家族更新失败')
+    } finally {
+      setBusyId('')
+    }
+  }
+
   if (loading) return <div className={`text-center py-12 text-sm ${c.muted}`}>加载新记忆库…</div>
   const openCandidates = candidates.filter(item => !['approved', 'rejected'].includes(item.status))
   const familyNames = new Map(families.map(family => [family.id, family.name]))
@@ -680,7 +710,15 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       <div>
         <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>记忆家族</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {families.map(family => <div key={family.id} className={`rounded-xl border ${c.border} p-3`}><div className="flex items-center justify-between gap-2"><span className="text-xs">{family.name}</span><span className={`text-[9px] ${c.muted}`}>{family.memberCount} 条</span></div>{family.summary && <p className={`mt-1 line-clamp-2 text-[10px] leading-4 ${c.muted}`}>{family.summary}</p>}</div>)}
+          {families.map(family => <div key={family.id} className={`rounded-xl border ${c.border} p-3`}>
+            <div className="flex items-center justify-between gap-2"><span className="text-xs">{family.name}{family.lockOwner ? ` · 🔒${family.lockOwner === 'star' ? '星星' : '小火'}` : ''}</span><span className={`text-[9px] ${c.muted}`}>{family.memberCount} 条 · {family.status === 'active' ? '发展中' : family.status === 'paused' ? '搁置' : family.status === 'ended' ? '已结束' : '已归档'}</span></div>
+            {family.summary && <p className={`mt-1 line-clamp-3 text-[10px] leading-4 ${c.muted}`}>{family.summary}</p>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button disabled={busyId === family.id} onClick={() => manageFamily(family, 'update_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>改摘要</button>
+              <button disabled={busyId === family.id} onClick={() => manageFamily(family, 'set_family_lock')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{family.lockOwner ? '解锁' : '加锁'}</button>
+              {!['ended', 'archived'].includes(family.status) && <button disabled={busyId === family.id} onClick={() => manageFamily(family, 'end_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>结束并压缩</button>}
+            </div>
+          </div>)}
           {families.length === 0 && <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无家族</div>}
         </div>
       </div>
