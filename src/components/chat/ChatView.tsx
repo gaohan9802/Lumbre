@@ -238,13 +238,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const pokeLeopardNose = async () => {
     if (nosePokeBusy) return
     setNosePokeBusy(true)
+    const optimisticPoke = { id: `pending-${crypto.randomUUID()}`, timestamp: Date.now() }
+    setNosePokes(current => [...current, optimisticPoke])
+    navigator.vibrate?.(12)
     try {
       const response = await fetch('/api/nose-pokes', { method: 'POST' })
       if (!response.ok) throw new Error('戳鼻子失败')
       const data = await response.json()
       if (Array.isArray(data.events)) setNosePokes(data.events)
-      navigator.vibrate?.(12)
     } catch {
+      setNosePokes(current => current.filter(poke => poke.id !== optimisticPoke.id))
       window.alert('豹子刚才躲过去了，再戳一下试试。')
     } finally {
       setNosePokeBusy(false)
@@ -863,7 +866,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   const sendMessage = async () => {
     if ((!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare) || isLoading) return
-    if (activeRoute === 'claude-code') await ensureCcAvailable(activeRoute, false)
+    if (activeRoute === 'claude-code') void ensureCcAvailable(activeRoute, false)
     const profile = getActiveProfile(settings)
     const model = settings.model
     const now = Date.now()
