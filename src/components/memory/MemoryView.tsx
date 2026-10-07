@@ -41,6 +41,7 @@ interface StarCandidate {
   occurredAt?: string
   validTo?: string
   lockOwner?: 'fire' | 'star'
+  createdAt: string
   suggestedFamilyIds: string[]
   sources: Array<{ actor: string; label?: string; excerpt?: string }>
 }
@@ -54,6 +55,7 @@ interface StarFamily {
   parentId?: string
   lockOwner?: 'fire' | 'star'
   memberCount: number
+  updatedAt?: string
 }
 
 interface RecycledStarFamily {
@@ -88,6 +90,7 @@ interface StarMemory {
   approvedBy: 'fire' | 'star'
   lockOwner?: 'fire' | 'star'
   familyIds: string[]
+  createdAt: string
 }
 
 interface StarWorkingMemory {
@@ -99,6 +102,7 @@ interface StarWorkingMemory {
   expiresAt: string
   status: 'active' | 'due' | 'dismissed' | 'promoted'
   suggestedFamilyIds: string[]
+  createdAt: string
 }
 
 interface ResolvedStarSource {
@@ -106,6 +110,18 @@ interface ResolvedStarSource {
   resolved: Array<{ id?: string; role?: string; content?: string }>
   missing?: boolean
 }
+
+type StarSection = 'timeline' | 'inbox' | 'families' | 'search' | 'current' | 'memories' | 'system'
+
+const STAR_SECTIONS: Array<{ key: StarSection; label: string }> = [
+  { key: 'timeline', label: '时间线' },
+  { key: 'inbox', label: '待审核' },
+  { key: 'families', label: '家族' },
+  { key: 'search', label: '搜索' },
+  { key: 'current', label: '当前' },
+  { key: 'memories', label: '记忆' },
+  { key: 'system', label: '系统' },
+]
 
 // ─── Tab definitions ──────────────────────────────────────────
 type TabKey = 'clusters' | 'nodes' | 'lines' | 'evolution' | 'star' | 'breath' | 'network' | 'admin'
@@ -518,6 +534,8 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState('')
+  const [section, setSection] = useState<StarSection>('timeline')
+  const [starQuery, setStarQuery] = useState('')
   const c = useColors(isNight)
 
   const load = useCallback(async () => {
@@ -685,7 +703,20 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
 
   if (loading) return <div className={`text-center py-12 text-sm ${c.muted}`}>加载新记忆库…</div>
   const openCandidates = candidates.filter(item => !['approved', 'rejected'].includes(item.status))
+  const activeWorking = working.filter(item => ['active', 'due'].includes(item.status))
   const familyNames = new Map(families.map(family => [family.id, family.name]))
+  const timeline = [
+    ...memories.map(item => ({ id: item.id, kind: '正式记忆', summary: item.summary, date: item.occurredAt || item.createdAt, familyIds: item.familyIds, target: 'memories' as StarSection })),
+    ...activeWorking.map(item => ({ id: item.id, kind: '近期记忆', summary: item.summary, date: item.createdAt, familyIds: item.suggestedFamilyIds, target: 'current' as StarSection })),
+  ].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+  const searchNeedle = starQuery.trim().toLocaleLowerCase('zh-CN')
+  const searchResults = searchNeedle ? [
+    ...memories.map(item => ({ id: item.id, kind: '正式记忆', title: item.summary, detail: item.details || '', target: 'memories' as StarSection })),
+    ...activeWorking.map(item => ({ id: item.id, kind: '近期记忆', title: item.summary, detail: '', target: 'current' as StarSection })),
+    ...openCandidates.map(item => ({ id: item.id, kind: '待审核', title: item.summary, detail: item.details || '', target: 'inbox' as StarSection })),
+    ...families.map(item => ({ id: item.id, kind: '记忆家族', title: item.name, detail: item.summary || '', target: 'families' as StarSection })),
+  ].filter(item => `${item.title} ${item.detail}`.toLocaleLowerCase('zh-CN').includes(searchNeedle)) : []
+  const unresolved = [...memories, ...openCandidates].filter(item => item.type === 'unresolved')
 
   return (
     <div className="space-y-3 pt-2">
@@ -698,20 +729,42 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
           <button onClick={load} aria-label="刷新新记忆库" className={`rounded-lg p-2 ${c.surface} ${c.muted}`}><RefreshCw size={13} /></button>
         </div>
         <div className={`mt-3 grid grid-cols-4 gap-2 text-center text-[10px] ${c.muted}`}>
-          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.workingActive || 0}</div>近期</div>
-          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.workingDue || 0}</div>待整理</div>
-          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.pendingFire || 0}</div>等小火</div>
-          <div className={`rounded-lg py-2 ${c.surface}`}><div className="text-sm">{status?.memories || 0}</div>正式记忆</div>
+          <button onClick={() => setSection('current')} className={`rounded-lg py-2 ${c.surface}`}><span className="block text-sm">{status?.workingActive || 0}</span>近期</button>
+          <button onClick={() => setSection('current')} className={`rounded-lg py-2 ${c.surface}`}><span className="block text-sm">{status?.workingDue || 0}</span>待整理</button>
+          <button onClick={() => setSection('inbox')} className={`rounded-lg py-2 ${c.surface}`}><span className="block text-sm">{status?.pendingFire || 0}</span>等小火</button>
+          <button onClick={() => setSection('memories')} className={`rounded-lg py-2 ${c.surface}`}><span className="block text-sm">{status?.memories || 0}</span>正式记忆</button>
         </div>
+      </div>
+
+      <div role="tablist" aria-label="新记忆库视图" className="flex gap-1 overflow-x-auto pb-1">
+        {STAR_SECTIONS.map(item => <button key={item.key} role="tab" aria-selected={section === item.key} onClick={() => setSection(item.key)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] ${section === item.key ? `${c.accentBg} ${c.accent} font-medium` : `${c.surface} ${c.muted}`}`}>{item.label}{item.key === 'inbox' && openCandidates.length > 0 ? ` ${openCandidates.length}` : ''}</button>)}
       </div>
 
       {error && <div className="rounded-xl bg-red-500/10 px-3 py-2 text-[11px] text-red-500">{error}</div>}
 
-      <div>
+      {section === 'timeline' && <div>
+        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>时间线</div>
+        {timeline.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无可显示的记忆</div> : <div className={`ml-2 space-y-0 border-l ${c.border}`}>
+          {timeline.map(item => <button key={`${item.kind}-${item.id}`} onClick={() => setSection(item.target)} className="relative block w-full py-2 pl-4 text-left">
+            <span className={`absolute -left-1 top-4 h-2 w-2 rounded-full ${c.accentBg}`} />
+            <span className={`text-[9px] ${c.muted}`}>{item.date?.slice(0, 10) || '日期未记录'} · {item.kind}</span>
+            <span className="mt-0.5 block text-xs leading-5">{item.summary}</span>
+            {item.familyIds.length > 0 && <span className={`mt-1 block text-[9px] ${c.muted}`}>{item.familyIds.map(id => familyNames.get(id)).filter(Boolean).join('、')}</span>}
+          </button>)}
+        </div>}
+      </div>}
+
+      {section === 'search' && <div>
+        <label className={`mb-2 block text-[11px] font-medium ${c.accent}`} htmlFor="star-memory-search">搜索新记忆库</label>
+        <div className={`flex items-center gap-2 rounded-xl border ${c.border} px-3 py-2`}><Search size={13} className={c.muted} /><input id="star-memory-search" value={starQuery} onChange={event => setStarQuery(event.target.value)} placeholder="搜记忆、候选或家族" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></div>
+        {!searchNeedle ? <div className={`py-8 text-center text-xs ${c.muted}`}>输入关键词开始搜索</div> : searchResults.length === 0 ? <div className={`py-8 text-center text-xs ${c.muted}`}>没有找到匹配内容</div> : <div className="mt-2 space-y-2">{searchResults.map(item => <button key={`${item.kind}-${item.id}`} onClick={() => setSection(item.target)} className={`block w-full rounded-xl border ${c.border} p-3 text-left`}><span className={`text-[9px] ${c.muted}`}>{item.kind}</span><span className="mt-1 block text-xs">{item.title}</span>{item.detail && <span className={`mt-1 line-clamp-2 block text-[10px] ${c.muted}`}>{item.detail}</span>}</button>)}</div>}
+      </div>}
+
+      {section === 'current' && <div>
         <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>短期活跃记忆</div>
-        {working.filter(item => ['active', 'due'].includes(item.status)).length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无近期内容</div> : (
+        {activeWorking.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无近期内容</div> : (
           <div className="space-y-2">
-            {working.filter(item => ['active', 'due'].includes(item.status)).map(item => (
+            {activeWorking.map(item => (
               <article key={item.id} className={`rounded-xl border ${c.border} p-3`}>
                 <div className={`text-[10px] ${c.muted}`}>{item.type} · {item.retentionDays} 天 · {item.status === 'due' ? '待整理' : `到期 ${item.expiresAt.slice(0, 10)}`}</div>
                 <p className="mt-1 text-xs leading-5">{item.summary}</p>
@@ -726,9 +779,11 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
             ))}
           </div>
         )}
-      </div>
+        <div className={`mb-2 mt-4 text-[11px] font-medium ${c.accent}`}>未完事项</div>
+        {unresolved.length === 0 ? <div className={`rounded-xl border ${c.border} py-6 text-center text-xs ${c.muted}`}>暂无未完事项</div> : <div className="space-y-2">{unresolved.map(item => <div key={item.id} className={`rounded-xl border ${c.border} p-3 text-xs`}>{item.summary}</div>)}</div>}
+      </div>}
 
-      <div>
+      {section === 'inbox' && <div>
         <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>候选收件箱</div>
         {openCandidates.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无待审核候选</div> : (
           <div className="space-y-2">
@@ -759,9 +814,9 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
-      <div>
+      {section === 'memories' && <div>
         <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>正式记忆</div>
         {memories.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无正式记忆</div> : (
           <div className="space-y-2">
@@ -786,14 +841,20 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
-      {memoryTrash.length > 0 && <div>
+      {section === 'system' && <div className={`rounded-xl border ${c.border} p-3`}>
+        <div className={`text-[11px] font-medium ${c.accent}`}>系统状态</div>
+        <div className={`mt-2 grid grid-cols-2 gap-2 text-[10px] ${c.muted}`}><div>数据库版本：{status?.version || '—'}</div><div>记忆家族：{status?.families || 0}</div><div>等星星审核：{status?.pendingStar || 0}</div><div>候选总数：{status?.candidates || 0}</div></div>
+        <div className={`mt-2 text-[10px] ${c.muted}`}>新库仍独立运行，旧 Ombre 未停用，本页不会自动迁移旧数据。</div>
+      </div>}
+
+      {section === 'system' && memoryTrash.length > 0 && <div>
         <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>正式记忆回收区</div>
         <div className="space-y-2">{memoryTrash.map(item => <div key={item.id} className={`flex items-center justify-between gap-3 rounded-xl border ${c.border} p-3`}><div><div className="text-xs">{item.summary}</div><div className={`mt-1 text-[9px] ${c.muted}`}>24 小时后清除 · {item.purgeAfter.slice(0, 16).replace('T', ' ')}</div></div><button disabled={busyId === item.id} onClick={() => restoreMemory(item.id)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>恢复</button></div>)}</div>
       </div>}
 
-      <div>
+      {section === 'families' && <div>
         <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>记忆家族</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {families.map(family => <div key={family.id} className={`rounded-xl border ${c.border} p-3`}>
@@ -808,12 +869,14 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
           </div>)}
           {families.length === 0 && <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无家族</div>}
         </div>
-      </div>
+      </div>}
 
-      {familyTrash.length > 0 && <div>
+      {section === 'system' && familyTrash.length > 0 && <div>
         <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>家族回收区</div>
         <div className="space-y-2">{familyTrash.map(item => <div key={item.id} className={`flex items-center justify-between gap-3 rounded-xl border ${c.border} p-3`}><div><div className="text-xs">{item.name}</div><div className={`mt-1 text-[9px] ${c.muted}`}>24 小时后清除 · {item.purgeAfter.slice(0, 16).replace('T', ' ')}</div></div><button disabled={busyId === item.id} onClick={() => restoreFamily(item.id)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>恢复</button></div>)}</div>
       </div>}
+
+      {section === 'system' && memoryTrash.length === 0 && familyTrash.length === 0 && <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>回收区为空</div>}
     </div>
   )
 }
