@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Search, X, ChevronDown, ChevronRight, Pin, Check, Trash2, Edit3, Save, RefreshCw, Settings, Zap, Heart } from 'lucide-react'
 import { apiRequest } from '@/lib/api'
 import { useApp } from '@/lib/store'
+import { PaperActionDialog } from '@/components/PaperActionDialog'
 
 // ─── Types ────────────────────────────────────────────────────
 interface Bucket {
@@ -132,6 +133,12 @@ interface StarMemoryConflict {
 }
 
 type StarSection = 'timeline' | 'inbox' | 'families' | 'search' | 'current' | 'memories' | 'conflicts' | 'system'
+type StarActionDialog =
+  | { kind: 'import_ombre' }
+  | { kind: 'flag_conflict'; memory: StarMemory; proposedSummary: string; reason: string }
+  | { kind: 'merge_family'; family: StarFamily; targetId: string }
+  | { kind: 'split_family'; family: StarFamily; name: string }
+  | { kind: 'manage_family'; family: StarFamily; action: 'update_family' | 'end_family' | 'recycle_family'; summary: string }
 
 const STAR_SECTIONS: Array<{ key: StarSection; label: string }> = [
   { key: 'timeline', label: '时间线' },
@@ -214,6 +221,7 @@ export function MemoryView() {
   const [editForm, setEditForm] = useState<{name:string;importance:number;tags:string;domain:string;content:string}>({name:'',importance:5,tags:'',domain:'',content:''})
   const [batchMode, setBatchMode] = useState(false)
   const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set())
+  const [confirmAction, setConfirmAction] = useState<{kind:'archive';id:string}|{kind:'purge';ids:string[]}|null>(null)
 
   const fetchBuckets = useCallback(async (append = false) => {
     const cursor = append ? nextCursor : 0
@@ -276,7 +284,7 @@ export function MemoryView() {
   }, [])
 
   const doAction = useCallback(async (action: string, id: string) => {
-    if (action === 'delete' && !confirm('确认归档？')) return
+    if (action === 'delete') { setConfirmAction({kind:'archive',id}); return }
     await fetch(`/api/memory/bucket-${action}?id=${id}`, { method: 'POST' })
     fetchBuckets()
     setSelectedBucket(null)
@@ -302,16 +310,21 @@ export function MemoryView() {
 
   const doBatchPurge = useCallback(async () => {
     if (!batchSelected.size) return
-    if (!confirm(`永久删除 ${batchSelected.size} 个桶？不可恢复！`)) return
-    await fetch('/api/memory/bucket-purge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: Array.from(batchSelected) }),
-    })
-    setBatchMode(false)
-    setBatchSelected(new Set())
+    setConfirmAction({kind:'purge',ids:Array.from(batchSelected)})
+  }, [batchSelected])
+
+  const confirmDestructive = async () => {
+    if (!confirmAction) return
+    if (confirmAction.kind === 'archive') {
+      await fetch(`/api/memory/bucket-delete?id=${confirmAction.id}`, { method: 'POST' })
+      setSelectedBucket(null)
+    } else {
+      await fetch('/api/memory/bucket-purge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: confirmAction.ids }) })
+      setBatchMode(false); setBatchSelected(new Set())
+    }
+    setConfirmAction(null)
     fetchBuckets()
-  }, [batchSelected, fetchBuckets])
+  }
 
   const toggleBatch = (id: string) => {
     setBatchSelected(prev => {
@@ -353,7 +366,7 @@ export function MemoryView() {
     : TABS.filter(tab => ['clusters', 'nodes', 'lines', 'evolution', 'star'].includes(tab.key))
 
   return (
-    <div className={`relative h-full flex flex-col ${isNight ? '' : 'chat-paper text-[#3f2c29]'}`}>
+    <div className={`relative h-full flex flex-col ${isNight ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Stats bar */}
       {activeTab !== 'star' && <div className={`px-4 pt-2 pb-1 text-[10px] ${c.muted} flex gap-3 items-center`}>
         <span>{stats.total} 桶</span><span>📌 {stats.pinned}</span>
@@ -539,6 +552,9 @@ export function MemoryView() {
           </motion.div>
         )}
       </AnimatePresence>
+      <PaperActionDialog open={!!confirmAction} title={confirmAction?.kind==='purge'?`永久删除 ${confirmAction.ids.length} 个桶？`:'确认归档？'} confirmLabel={confirmAction?.kind==='purge'?'永久删除':'归档'} danger onClose={()=>setConfirmAction(null)} onConfirm={confirmDestructive}>
+        {confirmAction?.kind==='purge'&&<p className="text-sm opacity-60">删除后不可恢复。</p>}
+      </PaperActionDialog>
     </div>
   )
 }
@@ -578,6 +594,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [editingCandidateId, setEditingCandidateId] = useState('')
   const [candidateEditDraft, setCandidateEditDraft] = useState({ type: 'observation', summary: '', details: '', importance: 5, familyIds: [] as string[] })
   const [favoriteMemoryIds, setFavoriteMemoryIds] = useState<Set<string>>(new Set())
+  const [starDialog, setStarDialog] = useState<StarActionDialog | null>(null)
   const c = useColors(isNight)
 
   const load = useCallback(async () => {
@@ -679,7 +696,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   }
 
   const importOmbre = async () => {
-    if (!ombreImport?.remaining || !confirm(`把剩余 ${ombreImport.remaining} 个旧 Ombre 桶全部放入待审核区？不会修改或删除旧桶。`)) return
+    if (!ombreImport?.remaining) return
     setBusyId('import-ombre')
     setError('')
     try {
@@ -764,15 +781,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     setFavoriteMemoryIds(current => { const next = new Set(current); result.favorited ? next.add(memory.id) : next.delete(memory.id); return next })
   }
 
-  const flagConflict = (memory: StarMemory) => {
-    const proposedSummary = prompt('建议改成哪个准确版本？', memory.summary)?.trim()
-    if (!proposedSummary || proposedSummary === memory.summary) return
-    const reason = prompt('为什么认为它有冲突？（可简写）', '')
-    if (reason === null) return
-    return mutate(`conflict-${memory.id}`, {
-      action: 'flag_conflict', memoryId: memory.id, proposedSummary, reason: reason.trim() || undefined,
-    }, '纠错项创建失败', () => setSection('conflicts'))
-  }
+  const flagConflict = (memory: StarMemory) => setStarDialog({ kind: 'flag_conflict', memory, proposedSummary: memory.summary, reason: '' })
 
   const resolveConflict = (conflict: StarMemoryConflict, resolution: 'keep_current' | 'use_proposal') => mutate(`conflict-${conflict.id}`, {
     action: 'resolve_conflict', id: conflict.id, resolution,
@@ -818,24 +827,13 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const mergeFamily = (family: StarFamily) => {
     const targetId = mergeTarget[family.id]
     if (!targetId) return setError('请先选择要合并到的家族')
-    if (!confirm(`“${family.name}”会合并进“${families.find(item => item.id === targetId)?.name || '目标家族'}”，原家族进入 24 小时回收区。继续吗？`)) return
-    return mutate(`merge-${family.id}`, { action: 'merge_families', sourceId: family.id, targetId }, '家族合并失败', () => {
-      setExpandedFamilyId('')
-      setFamilyDetails(current => { const next = { ...current }; delete next[family.id]; delete next[targetId]; return next })
-      setMergeTarget(current => ({ ...current, [family.id]: '' }))
-    })
+    setStarDialog({ kind: 'merge_family', family, targetId })
   }
 
   const splitFamily = (family: StarFamily) => {
     const memoryIds = splitSelections[family.id] || []
     if (memoryIds.length === 0) return setError('请先勾选要拆出的记忆')
-    const name = prompt('新家族名称')?.trim()
-    if (!name) return
-    return mutate(`split-${family.id}`, { action: 'split_family', sourceId: family.id, family: { name }, memoryIds }, '家族拆分失败', () => {
-      setFamilyDetails(current => { const next = { ...current }; delete next[family.id]; return next })
-      setExpandedFamilyId('')
-      setSplitSelections(current => ({ ...current, [family.id]: [] }))
-    })
+    setStarDialog({ kind: 'split_family', family, name: '' })
   }
 
   const review = async (id: string, decision: 'approve' | 'reject') => {
@@ -877,21 +875,17 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   }
 
   const manageFamily = async (family: StarFamily, action: 'update_family' | 'set_family_lock' | 'end_family' | 'recycle_family') => {
-    const summary = action === 'update_family' ? prompt('更新家族短摘要', family.summary || '') : null
-    if (action === 'update_family' && summary === null) return
-    if (action === 'end_family' && !confirm('结束后会移除普通成员归属，只保留关键节点、关键事实与未完事项。继续吗？')) return
-    if (action === 'recycle_family' && !confirm('家族会进入 24 小时回收区；共享记忆正文不会删除。继续吗？')) return
+    if (action !== 'set_family_lock') {
+      setStarDialog({ kind: 'manage_family', family, action, summary: family.summary || '' })
+      return
+    }
     setBusyId(family.id)
     setError('')
     try {
       const response = await fetch('/api/star-memory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(action === 'update_family'
-          ? { action, id: family.id, patch: { summary } }
-          : action === 'set_family_lock'
-            ? { action, id: family.id, locked: !family.lockOwner }
-            : { action, id: family.id }),
+        body: JSON.stringify({ action, id: family.id, locked: !family.lockOwner }),
       })
       const body = await response.json()
       if (!response.ok) throw new Error(body.error || '家族更新失败')
@@ -901,6 +895,50 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     } finally {
       setBusyId('')
     }
+  }
+
+  const confirmStarDialog = async () => {
+    const dialog = starDialog
+    if (!dialog) return
+    if (dialog.kind === 'import_ombre') {
+      setStarDialog(null)
+      await importOmbre()
+      return
+    }
+    if (dialog.kind === 'flag_conflict') {
+      const proposedSummary = dialog.proposedSummary.trim()
+      if (!proposedSummary || proposedSummary === dialog.memory.summary) return setError('请写下不同的准确版本')
+      setStarDialog(null)
+      await mutate(`conflict-${dialog.memory.id}`, {
+        action: 'flag_conflict', memoryId: dialog.memory.id, proposedSummary, reason: dialog.reason.trim() || undefined,
+      }, '纠错项创建失败', () => setSection('conflicts'))
+      return
+    }
+    if (dialog.kind === 'merge_family') {
+      setStarDialog(null)
+      await mutate(`merge-${dialog.family.id}`, { action: 'merge_families', sourceId: dialog.family.id, targetId: dialog.targetId }, '家族合并失败', () => {
+        setExpandedFamilyId('')
+        setFamilyDetails(current => { const next = { ...current }; delete next[dialog.family.id]; delete next[dialog.targetId]; return next })
+        setMergeTarget(current => ({ ...current, [dialog.family.id]: '' }))
+      })
+      return
+    }
+    if (dialog.kind === 'split_family') {
+      const name = dialog.name.trim()
+      if (!name) return setError('请填写新家族名称')
+      const memoryIds = splitSelections[dialog.family.id] || []
+      setStarDialog(null)
+      await mutate(`split-${dialog.family.id}`, { action: 'split_family', sourceId: dialog.family.id, family: { name }, memoryIds }, '家族拆分失败', () => {
+        setFamilyDetails(current => { const next = { ...current }; delete next[dialog.family.id]; return next })
+        setExpandedFamilyId('')
+        setSplitSelections(current => ({ ...current, [dialog.family.id]: [] }))
+      })
+      return
+    }
+    setStarDialog(null)
+    await mutate(dialog.family.id, dialog.action === 'update_family'
+      ? { action: dialog.action, id: dialog.family.id, patch: { summary: dialog.summary.trim() || undefined } }
+      : { action: dialog.action, id: dialog.family.id }, '家族更新失败')
   }
 
   const restoreFamily = async (recycleId: string) => {
@@ -1088,7 +1126,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
           <button disabled={busyId === 'new-candidate'} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>保存为候选</button>
         </form>}
         {ombreImport && <div className={`mb-3 rounded-xl border ${c.border} p-3`}>
-          <div className="flex items-center justify-between gap-3"><div><div className="text-[11px] font-medium">旧 Ombre 迁移</div><div className={`mt-1 text-[9px] ${c.muted}`}>共 {ombreImport.total} 个 · 已登记 {ombreImport.imported} 个 · 剩余 {ombreImport.remaining} 个{ombreImport.feelings ? ` · 其中感受 ${ombreImport.feelings} 个` : ''}</div></div>{ombreImport.remaining > 0 && <button disabled={busyId === 'import-ombre'} onClick={importOmbre} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>全部放入待审核</button>}</div>
+          <div className="flex items-center justify-between gap-3"><div><div className="text-[11px] font-medium">旧 Ombre 迁移</div><div className={`mt-1 text-[9px] ${c.muted}`}>共 {ombreImport.total} 个 · 已登记 {ombreImport.imported} 个 · 剩余 {ombreImport.remaining} 个{ombreImport.feelings ? ` · 其中感受 ${ombreImport.feelings} 个` : ''}</div></div>{ombreImport.remaining > 0 && <button disabled={busyId === 'import-ombre'} onClick={() => setStarDialog({ kind: 'import_ombre' })} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>全部放入待审核</button>}</div>
           <div className={`mt-2 text-[9px] leading-4 ${c.muted}`}>感受类会标记“建议存入星星日记”；所有旧桶保持原样，重复扫描不会重复导入。</div>
         </div>}
         <div className="mb-2 flex gap-1">{([['all', '全部'], ['ombre', '旧 Ombre'], ['feel', '建议进日记']] as const).map(([key, label]) => <button key={key} onClick={() => { setCandidateFilter(key); setCandidateLimit(30) }} className={`rounded-lg px-2 py-1 text-[9px] ${candidateFilter === key ? `${c.accentBg} ${c.accent}` : `${c.surface} ${c.muted}`}`}>{label}</button>)}</div>
@@ -1312,6 +1350,32 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       </div>}
 
       {section === 'system' && memoryTrash.length === 0 && familyTrash.length === 0 && <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>回收区为空</div>}
+
+      <PaperActionDialog
+        open={!!starDialog}
+        title={starDialog?.kind === 'import_ombre' ? '导入旧 Ombre 记忆？'
+          : starDialog?.kind === 'flag_conflict' ? '登记纠错'
+            : starDialog?.kind === 'merge_family' ? '合并家族？'
+              : starDialog?.kind === 'split_family' ? '拆出新家族'
+                : starDialog?.action === 'update_family' ? '更新家族摘要'
+                  : starDialog?.action === 'end_family' ? '结束并压缩家族？' : '移入回收区？'}
+        confirmLabel={starDialog?.kind === 'import_ombre' ? '放入待审核' : starDialog?.kind === 'flag_conflict' ? '登记' : starDialog?.kind === 'split_family' ? '拆出' : starDialog?.kind === 'manage_family' && starDialog.action === 'update_family' ? '保存' : '确认'}
+        danger={starDialog?.kind === 'merge_family' || (starDialog?.kind === 'manage_family' && starDialog.action !== 'update_family')}
+        busy={!!busyId}
+        onClose={() => setStarDialog(null)}
+        onConfirm={confirmStarDialog}
+      >
+        {starDialog?.kind === 'import_ombre' && <p className="text-sm leading-6 opacity-65">剩余 {ombreImport?.remaining || 0} 个旧桶会进入小火待审核区。旧桶不会被修改或删除。</p>}
+        {starDialog?.kind === 'flag_conflict' && <div className="space-y-3">
+          <label className="block text-xs">建议的准确版本<textarea autoFocus value={starDialog.proposedSummary} onChange={event => setStarDialog(current => current?.kind === 'flag_conflict' ? { ...current, proposedSummary: event.target.value } : current)} className="mt-1 min-h-20 w-full rounded-xl border border-current/15 bg-transparent p-3" /></label>
+          <label className="block text-xs">原因（可选）<textarea value={starDialog.reason} onChange={event => setStarDialog(current => current?.kind === 'flag_conflict' ? { ...current, reason: event.target.value } : current)} className="mt-1 min-h-16 w-full rounded-xl border border-current/15 bg-transparent p-3" /></label>
+        </div>}
+        {starDialog?.kind === 'merge_family' && <p className="text-sm leading-6 opacity-65">“{starDialog.family.name}”会合并进“{families.find(item => item.id === starDialog.targetId)?.name || '目标家族'}”，原家族进入 24 小时回收区。</p>}
+        {starDialog?.kind === 'split_family' && <label className="block text-xs">新家族名称<input autoFocus value={starDialog.name} onChange={event => setStarDialog(current => current?.kind === 'split_family' ? { ...current, name: event.target.value } : current)} className="mt-1 w-full rounded-xl border border-current/15 bg-transparent p-3" /></label>}
+        {starDialog?.kind === 'manage_family' && starDialog.action === 'update_family' && <label className="block text-xs">家族短摘要<textarea autoFocus value={starDialog.summary} onChange={event => setStarDialog(current => current?.kind === 'manage_family' ? { ...current, summary: event.target.value } : current)} className="mt-1 min-h-24 w-full rounded-xl border border-current/15 bg-transparent p-3" /></label>}
+        {starDialog?.kind === 'manage_family' && starDialog.action === 'end_family' && <p className="text-sm leading-6 opacity-65">结束后会移除普通成员归属，只保留关键节点、关键事实与未完事项。</p>}
+        {starDialog?.kind === 'manage_family' && starDialog.action === 'recycle_family' && <p className="text-sm leading-6 opacity-65">家族会进入 24 小时回收区；共享记忆正文不会删除。</p>}
+      </PaperActionDialog>
     </div>
   )
 }

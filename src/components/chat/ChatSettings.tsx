@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTheme } from '@/lib/theme'
 import { useChatStore } from '@/lib/chatStore'
+import { apiRequest } from '@/lib/api'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
 interface Props {
@@ -21,6 +22,7 @@ interface Props {
   onStories?: () => void
   onResearch?: () => void
   onWishlist?: () => void
+  onMedia?: () => void
   onFavorites?: () => void
 }
 
@@ -34,6 +36,7 @@ export function ChatSettings(props: Props) {
   const [draft, setDraft] = useState('')
   const [original, setOriginal] = useState('')
   const [error, setError] = useState('')
+  const [guestbookUnread, setGuestbookUnread] = useState(0)
   const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null)
   const discardRef = useRef<HTMLDivElement>(null)
   const dialog = useRef<HTMLDivElement>(null)
@@ -69,13 +72,23 @@ export function ChatSettings(props: Props) {
   }, [open, initialPanel])
   useEffect(() => { if (open) dialog.current?.focus() }, [panel, open])
   useEffect(() => { if (pendingDiscard) discardRef.current?.querySelector('button')?.focus() }, [pendingDiscard])
+  useEffect(() => {
+    if (!open || panel !== 'menu') return
+    let active = true
+    const refresh = () => apiRequest('/api/guestbook?mode=unread').then(data => { if (active) setGuestbookUnread(Number(data.unread) || 0) }).catch(() => {})
+    const clear = () => setGuestbookUnread(0)
+    void refresh()
+    const timer = window.setInterval(refresh, 15_000)
+    window.addEventListener('lumbre-guestbook-read', clear)
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('lumbre-guestbook-read', clear) }
+  }, [open, panel])
   if (!open) return null
   const card = night ? 'bg-night-card' : 'chat-dialog-card'
   const button = `px-4 py-2.5 rounded-xl text-sm ${card}`
   const titles = { menu: '房间', star: 'SP', settings: '参数' }
   const navigate = (action?: () => void) => { onClose(); action?.() }
-  const row = (label: string, action: () => void, detail?: string) => <button key={label} onClick={action} className={`min-h-[52px] w-full flex items-center gap-2 px-2 py-3 text-left ${night ? 'rounded-xl bg-night-card' : 'border-b chat-dialog-line'}`}>
-    <span className="flex flex-1 min-w-0 items-baseline gap-2"><span className="text-sm">{label}</span>{detail && <span className="truncate text-xs opacity-50">{detail}</span>}</span><ChevronRight size={16}/>
+  const row = (label: string, action: () => void, detail?: string, badge = 0) => <button key={label} onClick={action} className={`min-h-[52px] w-full flex items-center gap-2 px-2 py-3 text-left ${night ? 'rounded-xl bg-night-card' : 'border-b chat-dialog-line'}`}>
+    <span className="flex flex-1 min-w-0 items-baseline gap-2"><span className="text-sm">{label}</span>{detail && <span className="truncate text-xs opacity-50">{detail}</span>}</span>{badge > 0 && <span aria-label={`${badge} 条未读`} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${night ? 'bg-night-amber text-night-bg' : 'bg-[#DBB9B3] text-white'}`}>{badge > 99 ? '99+' : `+${badge}`}</span>}<ChevronRight size={16}/>
   </button>
   const slider = (label: string, value: number, change: (v: number) => void, min = 0, max = 1, step = .05, display?: string) => <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>{label}</span><span className="opacity-60">{display || `${Math.round(value * 100)}%`}</span></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))} className="w-full"/></label>
   const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? (night ? 'bg-night-muted' : 'bg-[#DBB9B3]') : 'bg-gray-400/40'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
@@ -90,7 +103,7 @@ export function ChatSettings(props: Props) {
         {panel === 'menu' && <>
           {row('券包', () => navigate(props.onCoupons))}
           {row('Todo', () => navigate(props.onTodo))}
-          {row('小纸条', () => navigate(props.onNotes))}
+          {row('小纸条', () => navigate(props.onNotes), undefined, guestbookUnread)}
           {row('日记', () => navigate(props.onDiary))}
           {row('照片', () => navigate(props.onPhotos))}
           {row('共诗', () => navigate(props.onPoems))}
@@ -98,6 +111,7 @@ export function ChatSettings(props: Props) {
           {row('星野手记', () => navigate(props.onResearch))}
           {row('收藏夹', () => navigate(props.onFavorites))}
           {row('愿望清单', () => navigate(props.onWishlist))}
+          {row('书影记录', () => navigate(props.onMedia))}
           {row('Timeline', () => navigate(props.onTimeline))}
           {row('Tesis', () => navigate(props.onTesis))}
         </>}

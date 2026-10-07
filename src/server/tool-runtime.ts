@@ -30,8 +30,12 @@ import { getCurrentActivity, listActivities, timelineDurationSeconds, getTimelin
 import { createManyEncouragements, listEncouragements, updateEncouragement, deleteEncouragement, matchingEncouragements } from './encouragement-store'
 import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
+import { commentMediaEvent, deleteMediaContent, getMediaWork, listMediaLibrary, listMediaTimeline, saveMediaEntry, writeMediaNote } from './media-library-store'
+import { deleteCoreadAnnotation, readCoread, updateCoreadProgress, writeCoreadAnnotation } from './coread-store'
+import { deleteGuestbookMessage, readGuestbook, writeGuestbookMessage } from './guestbook-store'
 import { scheduleWake } from './autowake'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
+import { readHealthSummary, type HealthRange } from './data/repositories/health'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
 import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
 import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
@@ -203,6 +207,10 @@ export async function executeRegisteredToolHandler(
       }
       return JSON.stringify(result)
     }
+    if (name === 'read_health_summary') {
+      const range: HealthRange = input.range === 'today' || input.range === 'yesterday' ? input.range : 'week'
+      return JSON.stringify(readHealthSummary(range))
+    }
 
 
     // World-book bookmarks. Deletion is deliberately not exposed.
@@ -328,6 +336,10 @@ export async function executeRegisteredToolHandler(
         const r = deleteNote(input.note_id, input.author)
         return r === 'ok' ? '🗑️ 纸条已删除' : r
       }
+      case 'read_guestbook': return JSON.stringify(readGuestbook(input.limit || 100))
+      case 'write_guestbook': return JSON.stringify({ ok: true, message: writeGuestbookMessage('star', input.content) })
+      case 'reply_guestbook': return JSON.stringify({ ok: true, reply: writeGuestbookMessage('star', input.content, input.message_id, input.reply_id) })
+      case 'delete_guestbook_message': return JSON.stringify({ result: deleteGuestbookMessage('star', input.message_id, input.reply_id) })
 
       // Photos → local store
       case 'read_foto': {
@@ -525,6 +537,22 @@ export async function executeRegisteredToolHandler(
         const r = commentWish(input.id, input.author || 'star', input.content)
         return r === 'ok' ? '💬 已评论' : r
       }
+
+      // Private book & screen log. Tool identity is always 星星.
+      case 'read_media_library': {
+        if (input.work_id) return JSON.stringify(getMediaWork(input.work_id) || { error: 'not_found' })
+        if (input.timeline) return JSON.stringify({ events: listMediaTimeline(input.limit || 100) })
+        return JSON.stringify(listMediaLibrary({ kind: input.kind, status: input.status, query: input.query, coread: input.coread === true }))
+      }
+      case 'save_media_entry': return JSON.stringify({ ok: true, work: saveMediaEntry('star', input) })
+      case 'read_coread_text': return JSON.stringify(readCoread(input.work_id, { actor: 'star', start: input.start, chapter_id: input.chapter_id, limit: input.limit || 12 }))
+      case 'write_coread_annotation': return JSON.stringify({ ok: true, annotation: writeCoreadAnnotation('star', input.work_id, input) })
+      case 'update_coread_progress': return JSON.stringify({ ok: true, progress: updateCoreadProgress('star', input.work_id, input.paragraph_idx, input.offset) })
+      case 'write_media_note': return JSON.stringify({ ok: true, note: writeMediaNote('star', input.work_id, { note_id: input.note_id, type: input.type, content: input.content, locator: input.locator }) })
+      case 'comment_media_event': return JSON.stringify({ ok: true, comment: commentMediaEvent('star', input.work_id, input.event_id, input.content) })
+      case 'delete_media_content': return JSON.stringify({ result: input.type === 'annotation'
+        ? deleteCoreadAnnotation('star', input.work_id, input.annotation_id)
+        : deleteMediaContent('star', input as any) })
 
       case 'read_poems': return JSON.stringify(input.id ? getPoem(input.id) : listPoems(!!input.include_archived))
       case 'write_poem': {

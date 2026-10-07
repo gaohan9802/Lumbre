@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from '@/lib/theme'
 import { useChatStore, getSortedSessions } from '@/lib/chatStore'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw, Bell, BellOff } from 'lucide-react'
+import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw, Bell, BellOff, HeartPulse, Flame, FileText, Dices, Leaf, MessageCircle } from 'lucide-react'
 import { WishlistView } from '@/components/wishlist/WishlistView'
 import { formatMadrid } from '@/lib/madrid-time'
 
@@ -226,7 +226,7 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
   }
 
   return (
-    <div className={`h-full flex flex-col ${n ? 'text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
+    <div className={`h-full flex flex-col ${n ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Tab header */}
       {!fixedTab && <div className={`flex items-center gap-1 px-4 py-3 border-b ${n ? 'border-night-border' : 'chat-dialog-line'}`}
         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
@@ -264,7 +264,7 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
             <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-medium">💓 星星的唤醒</h3>
+                  <h3 className="flex items-center gap-1.5 text-sm font-medium"><HeartPulse size={14}/>星星的唤醒</h3>
                   <p className={`text-[10px] mt-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>四种唤醒各自工作，撞在一起时只醒一次。</p>
                 </div>
                 {fixedTab && <button type="button" aria-label="刷新唤醒信息" onClick={fetchData} className={`rounded-lg p-2 opacity-50 hover:opacity-100 ${loading ? 'animate-spin' : ''}`}><RefreshCw size={14}/></button>}
@@ -288,15 +288,15 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
 
             {config && <div className="grid gap-3 md:grid-cols-2">
               {([
-                { key: 'day' as const, title: '☀️ 日间唤醒', note: '09:00–24:00 · 最近 30 分钟有对话就跳过', value: config.day.intervalHours, label: '每', suffix: '小时', options: [1, 2, 3, 4, 6, 8, 12], next: nextWake?.day },
-                { key: 'night' as const, title: '🌙 夜间唤醒', note: '00:00–09:00 · 最近 30 分钟有对话就跳过', value: config.night.intervalHours, label: '每', suffix: '小时', options: [1, 2, 3, 4, 6, 9], next: nextWake?.night },
-                { key: 'random' as const, title: '🎲 随机唤醒', note: '每天在 24 小时里完全随机', value: config.random.timesPerDay, label: '每天', suffix: '次', options: [1, 2, 3, 4, 5, 6, 7, 8], next: nextWake?.random },
-                { key: 'inactivity' as const, title: '🍂 久未说话', note: '一段沉默期只醒一次，有话才出现', value: config.inactivity.afterHours, label: '超过', suffix: '小时', options: [1, 2, 3, 4, 6, 8, 12, 24, 48, 72], next: nextWake?.inactivity },
+                { key: 'day' as const, icon: Sun, title: '日间唤醒', note: '09:00–24:00 · 最近 30 分钟有对话就跳过', value: config.day.intervalHours, label: '每', suffix: '小时', options: [1, 2, 3, 4, 6, 8, 12], next: nextWake?.day },
+                { key: 'night' as const, icon: Moon, title: '夜间唤醒', note: '00:00–09:00 · 最近 30 分钟有对话就跳过', value: config.night.intervalHours, label: '每', suffix: '小时', options: [1, 2, 3, 4, 6, 9], next: nextWake?.night },
+                { key: 'random' as const, icon: Dices, title: '随机唤醒', note: '每天在 24 小时里完全随机', value: config.random.timesPerDay, label: '每天', suffix: '次', options: [1, 2, 3, 4, 5, 6, 7, 8], next: nextWake?.random },
+                { key: 'inactivity' as const, icon: Leaf, title: '久未说话', note: '一段沉默期只醒一次，有话才出现', value: config.inactivity.afterHours, label: '超过', suffix: '小时', options: [1, 2, 3, 4, 6, 8, 12, 24, 48, 72], next: nextWake?.inactivity },
               ]).map(item => {
                 const setting = config[item.key]
                 return <div key={item.key} className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
                   <div className="flex items-start justify-between gap-3">
-                    <div><h3 className="text-sm font-medium">{item.title}</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>{item.note}</p></div>
+                    <div><h3 className="flex items-center gap-1.5 text-sm font-medium"><item.icon size={14}/>{item.title}</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>{item.note}</p></div>
                     <button aria-label={`${item.title}${setting.enabled ? '关闭' : '开启'}`} onClick={() => updateRule(item.key, { enabled: !setting.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${setting.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20'}`}>
                       <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${setting.enabled ? 'translate-x-5' : ''}`} />
                     </button>
@@ -315,7 +315,7 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
 
             {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
               <div className="flex items-start justify-between gap-3">
-                <div><h3 className="text-sm font-medium">🔥 CC 缓存保温</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>约 50 分钟时 fork 一条临时会话，回复不进聊天，不开工具。</p></div>
+                <div><h3 className="flex items-center gap-1.5 text-sm font-medium"><Flame size={14}/>CC 缓存保温</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>约 50 分钟时 fork 一条临时会话，回复不进聊天，不开工具。</p></div>
                 <button aria-label={`CC 缓存保温${config.warmCache.enabled ? '关闭' : '开启'}`} onClick={() => updateRule('warmCache', { enabled: !config.warmCache.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${config.warmCache.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20'}`}>
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${config.warmCache.enabled ? 'translate-x-5' : ''}`} />
                 </button>
@@ -348,7 +348,7 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
             <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-medium">📝 唤醒文案</h3>
+                  <h3 className="flex items-center gap-1.5 text-sm font-medium"><FileText size={14}/>唤醒文案</h3>
                   <p className={`text-[10px] mt-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                     可用变量：{'{time}'} {'{reason}'} {'{quiet_note}'} {'{status}'} {'{last_msg_time}'}
                   </p>
@@ -406,7 +406,7 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
                       onClick={() => setExpandedLog(expanded ? null : log.id)}
                       className="w-full text-left px-4 py-3 flex items-center gap-3"
                     >
-                      <span className="text-base">{log.trigger === 'warm-cache' ? '🔥' : log.silent ? '🌙' : '💬'}</span>
+                      <span>{log.trigger === 'warm-cache' ? <Flame size={15}/> : log.silent ? <Moon size={15}/> : <MessageCircle size={15}/>}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium truncate">
                           {log.trigger === 'warm-cache' ? '缓存保温' : log.response === '[CANCELLED_BUSY]' ? '闹钟遇到正在调用，已取消' : log.silent ? '静默醒来' : log.response.slice(0, 60)}

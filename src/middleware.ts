@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authCookie, isAuthConfigured, verifySessionToken } from './lib/auth'
 import { shouldBlockDebugApi } from './server/safety-baseline'
 import { isTrustedCcToolBridgeRequest } from './server/chat/cc-tool-bridge-auth'
+import { isTrustedHealthSyncRequest } from './server/health-sync-auth'
 
 const PUBLIC_PATHS = new Set([
   '/login',
   '/api/auth/login',
   '/manifest.json',
+  '/guestbook-manifest.webmanifest',
   '/sw.js',
   '/favicon.png',
   '/logo-pwa.jpg',
@@ -26,7 +28,10 @@ function securityHeaders(response: NextResponse): NextResponse {
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl
-  const isPublic = PUBLIC_PATHS.has(pathname) || pathname.startsWith('/_next/')
+  const isPublic = PUBLIC_PATHS.has(pathname)
+    || pathname === '/guestbook'
+    || pathname.startsWith('/api/guestbook/public/')
+    || pathname.startsWith('/_next/')
 
   if (isPublic) return securityHeaders(NextResponse.next())
 
@@ -50,6 +55,26 @@ export async function middleware(request: NextRequest) {
   // endpoint with a separate bridge secret; the route repeats the check.
   if (pathname === '/api/internal/cc-tools' && isTrustedCcToolBridgeRequest(request.headers.get('authorization'))) {
     return securityHeaders(NextResponse.next())
+  }
+
+  // Apple Shortcuts has no browser cookie and can reach only this write-only
+  // endpoint with its own secret; the route repeats the check.
+  if (pathname === '/api/health/snapshot') {
+    const authorization = request.headers.get('authorization')
+    const shortcutToken = request.headers.get('x-lumbre-health-token')
+    if (isTrustedHealthSyncRequest(authorization, shortcutToken)) return securityHeaders(NextResponse.next())
+    const value = authorization || shortcutToken || ''
+    return securityHeaders(NextResponse.json({
+      error: 'Unauthorized',
+      diagnostic: {
+        header_received: authorization !== null,
+        custom_header_received: shortcutToken !== null,
+        bearer_prefix: value.startsWith('Bearer '),
+        character_length: Array.from(value).length,
+        byte_length: new TextEncoder().encode(value).length,
+        token_shape: /^Bearer [0-9a-f]{64}$/.test(value),
+      },
+    }, { status: 401, headers: { 'Cache-Control': 'no-store' } }))
   }
 
   if (!isAuthConfigured()) {

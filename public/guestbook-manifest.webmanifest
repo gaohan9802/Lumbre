@@ -1,0 +1,20 @@
+{
+  "id": "/guestbook",
+  "name": "告状簿",
+  "short_name": "告状簿",
+  "description": "小火、星星和访客的小纸条",
+  "lang": "zh-CN",
+  "start_url": "/guestbook",
+  "scope": "/guestbook",
+  "display": "standalone",
+  "background_color": "#FFF9F5",
+  "theme_color": "#FFF9F5",
+  "icons": [
+    {
+      "src": "/logo-pwa.jpg",
+      "sizes": "1872x1872",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}

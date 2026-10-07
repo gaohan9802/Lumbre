@@ -198,6 +198,7 @@ export function createSessionActions(set: SetChatState): SessionActions {
         const tail = active.messages.slice(-Math.max(1, tailCount)).map((m) => ({
           ...m,
           images: m.images ? [...m.images] : undefined,
+          attachments: m.attachments ? m.attachments.map(file => ({ ...file })) : undefined,
           versions: m.versions ? m.versions.map((v) => ({ ...v, bubbleLayout: v.bubbleLayout ? { ...v.bubbleLayout, segments: v.bubbleLayout.segments.map(segment => ({ ...segment })) } : undefined })) : undefined,
           tool_calls: m.tool_calls ? m.tool_calls.map((tc) => ({ ...tc, input: { ...tc.input } })) : undefined,
           content_blocks: m.content_blocks ? m.content_blocks.map((block) => ({ ...block, input: block.input ? { ...block.input } : undefined })) : undefined,

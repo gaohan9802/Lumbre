@@ -65,6 +65,7 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
       body: {
         stream: true, session_id: 'conversation-1', turn_id: 'turn-1',
         cc_model: 'claude-opus-5-5',
+        cc_effort: 'max',
         _wake: true,
         messages: [{ id: 'turn-1', role: 'user', route: 'claude-code', content: '回来吗', images: [`data:image/jpeg;base64,${'x'.repeat(1_600_000)}`] }],
         bookmark_injections: 'shared summary',
@@ -86,6 +87,7 @@ test('Lumbre proxies one CC attempt as its normal chat stream without exposing t
     assert.doesNotMatch(JSON.stringify(events), new RegExp(SESSION_ID))
     assert.equal(submitted.idempotency_key, 'lumbre:conversation-1:turn-1')
     assert.equal(submitted.model, 'claude-opus-5-5')
+    assert.equal(submitted.effort, 'max')
     assert.equal(submitted.context.messages[0].id, 'turn-1')
     assert.equal(submitted.context.messages[0].images, undefined)
     assert.match(submitted.context.messages[0].content, /view_foto[\s\S]*message_id=turn-1[\s\S]*image_index=i/)
@@ -101,12 +103,27 @@ test('Lumbre rejects an unknown CC model before contacting the gateway', async (
   let called = false
   try {
     const response = await createCcChatResponse({
-      body: { stream: true, session_id: 'conversation-1', turn_id: 'turn-1', cc_model: 'claude-opus-5' },
+      body: { stream: true, session_id: 'conversation-1', turn_id: 'turn-1', cc_model: 'claude-impossible-9' },
       system: '', volatileContext: '',
       fetchImpl: async () => { called = true; throw new Error('must not call') },
     })
     assert.equal(response.status, 400)
     assert.match(await response.text(), /CC 模型无效/)
+    assert.equal(called, false)
+  } finally { restore() }
+})
+
+test('Lumbre rejects an unknown CC effort before contacting the gateway', async () => {
+  const restore = configure()
+  let called = false
+  try {
+    const response = await createCcChatResponse({
+      body: { stream: true, session_id: 'conversation-1', turn_id: 'turn-1', cc_effort: 'impossible' },
+      system: '', volatileContext: '',
+      fetchImpl: async () => { called = true; throw new Error('must not call') },
+    })
+    assert.equal(response.status, 400)
+    assert.match(await response.text(), /CC 推理强度无效/)
     assert.equal(called, false)
   } finally { restore() }
 })
@@ -194,6 +211,40 @@ test('Lumbre reconnects a prematurely closed gateway stream from its last durabl
   } finally { restore() }
 })
 
+test('Lumbre retries one transient gateway connection failure with the same turn', async () => {
+  const restore = configure()
+  let submissions = 0
+  const fakeFetch: typeof fetch = async (input) => {
+    const url = String(input)
+    if (url.endsWith('/v1/attempts')) {
+      submissions++
+      if (submissions === 1) throw new TypeError('fetch failed')
+      return Response.json({ attempt: { id: ATTEMPT_ID, status: 'queued', sessionMode: 'resume', sessionReason: 'ordinary_delta' } }, { status: 202 })
+    }
+    if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}/events`)) {
+      return new Response(`data: ${JSON.stringify({ id: 1, type: 'completed' })}\n\n`)
+    }
+    if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}`)) {
+      return Response.json({ attempt: {
+        id: ATTEMPT_ID, status: 'completed', sessionMode: 'resume', sessionReason: 'ordinary_delta',
+        result: { text: 'ok', sessionId: SESSION_ID, usage: { output_tokens: 1 } },
+      } })
+    }
+    throw new Error(`unexpected fetch ${url}`)
+  }
+  try {
+    const response = await createCcChatResponse({
+      body: { stream: true, session_id: 'conversation-retry', turn_id: 'turn-retry', messages: [{ id: 'turn-retry', role: 'user', content: '在吗' }] },
+      system: 'system', volatileContext: '', fetchImpl: fakeFetch,
+    })
+    const events = []
+    for await (const event of readChatEventStream(response)) events.push(event)
+    assert.equal(response.status, 200)
+    assert.equal(submissions, 2)
+    assert.equal(events.at(-1)?.type, 'done')
+  } finally { restore() }
+})
+
 test('Lumbre forwards durable CC tool events through the existing chat tool UI protocol', async () => {
   const restore = configure()
   const fakeFetch: typeof fetch = async (input) => {
@@ -204,9 +255,10 @@ test('Lumbre forwards durable CC tool events through the existing chat tool UI p
     if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}/events`)) {
       return new Response([
         `data: ${JSON.stringify({ id: 1, type: 'queued' })}`,
-        `data: ${JSON.stringify({ id: 2, type: 'tool_call', name: 'read_period', input: {}, result: '{"ok":true}', error: false })}`,
-        `data: ${JSON.stringify({ id: 3, type: 'text', content: '我看过啦' })}`,
-        `data: ${JSON.stringify({ id: 4, type: 'completed' })}`,
+        `data: ${JSON.stringify({ id: 2, type: 'tool_start', callId: 'call-1', name: 'read_period', input: {} })}`,
+        `data: ${JSON.stringify({ id: 3, type: 'tool_call', callId: 'call-1', name: 'read_period', input: {}, result: '{"ok":true}', error: false })}`,
+        `data: ${JSON.stringify({ id: 4, type: 'text', content: '我看过啦' })}`,
+        `data: ${JSON.stringify({ id: 5, type: 'completed' })}`,
         '',
       ].join('\n\n'))
     }
@@ -225,8 +277,10 @@ test('Lumbre forwards durable CC tool events through the existing chat tool UI p
     })
     const events = []
     for await (const event of readChatEventStream(response)) events.push(event)
-    assert.deepEqual(events.map(event => event.type), ['attempt', 'tool_call', 'text', 'done'])
+    assert.deepEqual(events.map(event => event.type), ['attempt', 'tool_start', 'tool_call', 'text', 'done'])
     assert.equal(events[1].name, 'read_period')
+    assert.equal(events[1].call_id, 'call-1')
+    assert.equal(events[2].call_id, 'call-1')
   } finally { restore() }
 })
 

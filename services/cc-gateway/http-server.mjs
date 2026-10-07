@@ -89,6 +89,7 @@ export function createGatewayServer({ runtime, secret, claudeCodeVersion, heartb
           conversationId: body.conversation_id,
           prompt: body.prompt,
           model: body.model,
+          effort: body.effort,
           context: body.context,
           sessionAction: body.session_action,
           unattended: body.unattended === true,

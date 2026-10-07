@@ -191,6 +191,7 @@ export class GatewayRuntime {
         prompt: running.prompt,
         systemPrompt: running.systemPrompt,
         model: running.model,
+        effort: running.effort || undefined,
         resumeSessionId: running.resumeSessionId || undefined,
         attemptId: running.id,
         conversationId: running.conversationId,
@@ -274,6 +275,7 @@ export class GatewayRuntime {
       const result = await this.executor.run({
         prompt: '[LUMBRE CACHE WARM] Reply with one period only.',
         model: base.model,
+        effort: base.effort || undefined,
         resumeSessionId: base.result.sessionId,
         forkSession: true,
         toolsEnabled: false,

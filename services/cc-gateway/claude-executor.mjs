@@ -206,8 +206,8 @@ function normalizeUsage(usage) {
 function contextWindowSize(model, requestedModel) {
   const id = String(model || requestedModel || '').toLowerCase()
   if (!id) return null
-  if (id.includes('[1m]') || /(?:sonnet|opus)-5\b/.test(id)) return 1_000_000
-  if (/sonnet-4-6|sonnet-4-5|opus-4-[6-9]|haiku-4-5/.test(id)) return 200_000
+  if (id.includes('[1m]') || /(?:fable|sonnet|opus)-5\b/.test(id)) return 1_000_000
+  if (/sonnet-4-6|sonnet-4-5|opus-4-[5-9]|haiku-4-5/.test(id)) return 200_000
   return null
 }
 
@@ -262,6 +262,7 @@ export class ClaudeExecutor {
    *   prompt: string,
    *   systemPrompt?: string,
    *   model?: string,
+   *   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max',
    *   resumeSessionId?: string,
    *   forkSession?: boolean,
    *   toolsEnabled?: boolean,
@@ -279,6 +280,7 @@ export class ClaudeExecutor {
     prompt,
     systemPrompt,
     model,
+    effort,
     resumeSessionId,
     forkSession = false,
     toolsEnabled = true,
@@ -303,7 +305,7 @@ export class ClaudeExecutor {
         : null
       if (toolEventFile) fs.writeFileSync(toolEventFile, '', { encoding: 'utf8', mode: 0o600 })
       const args = buildClaudeArgs({
-        outputFormat: 'stream-json', model, resumeSessionId,
+        outputFormat: 'stream-json', model, effort, resumeSessionId,
         forkSession,
         systemPrompt,
         mcpConfig: useToolBridge ? LUMBRE_MCP_CONFIG : undefined,

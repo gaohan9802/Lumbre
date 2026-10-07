@@ -5,7 +5,7 @@ import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 import { wish as wishApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Heart, MessageCircle, Send, ChevronDown, ChevronUp, X, Check } from 'lucide-react'
+import { Plus, Trash2, Heart, MessageCircle, Send, ChevronDown, ChevronUp, X, Check, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 
 type Priority = 'want' | 'really' | 'dying'
@@ -64,13 +64,12 @@ export function WishlistView() {
   const fireWishes = wishes.filter(w => w.author === 'fire')
 
   return (
-    <div className={`h-full overflow-y-auto ${night ? '' : 'chat-paper text-[#3f2c29]'}`}>
+    <div className={`h-full overflow-y-auto ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="text-center mb-6">
-          <h1 className={`text-2xl font-semibold ${night ? 'text-night-text' : 'text-day-text'}`}>
-            🌠 2026 愿望清单
+          <h1 className={`flex items-center justify-center gap-2 text-2xl font-semibold ${night ? 'text-night-text' : 'text-day-text'}`}>
+            <Sparkles size={18} strokeWidth={1.5}/>2026 愿望清单
           </h1>
-          <p className={`text-sm mt-1 ${mutedCls}`}>想要的都写下来，慢慢实现。打勾不删除，留着当成就墙。</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -198,11 +197,7 @@ function WishColumn({
 
       {loading ? (
         <p className={`text-sm ${mutedCls} py-4 text-center`}>加载中…</p>
-      ) : active.length === 0 && done.length === 0 ? (
-        <p className={`text-sm ${mutedCls} py-6 text-center`}>
-          {canAdd ? '还没有愿望，点「许个愿」写一个吧。' : '这边还没有愿望。'}
-        </p>
-      ) : (
+      ) : active.length === 0 && done.length === 0 ? null : (
         <div className="space-y-2.5">
           {active.map(w => (
             <WishCard key={w.id} w={w} currentUser={currentUser} night={night} reload={reload} />
@@ -293,13 +288,15 @@ function WishCard({
 
   return (
     <div className={`overflow-hidden rounded-xl border ${cardCls} ${isDone ? 'opacity-70' : ''}`}>
-      <button onClick={() => setExpanded(value => !value)} className="flex w-full items-center gap-2 px-3 py-3 text-left">
-        <span className={`min-w-0 flex-1 truncate text-sm font-medium ${night ? 'text-night-text' : 'text-day-text'} ${isDone ? 'line-through' : ''}`}>{w.title}</span>
-        {expanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
-      </button>
+      <div className="flex items-center gap-2 px-3 py-3">
+        <button onClick={toggleDone} disabled={!isOwner} title={isOwner ? (isDone ? '取消实现' : '标记为已实现') : ''} className={`shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition ${isDone ? (night ? 'bg-night-amber/80 border-night-amber text-night-bg' : 'bg-[#DBB9B3] border-[#DBB9B3] text-white') : (night ? 'border-night-border' : 'border-[#a73a32]/20')} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}>{isDone && <Check size={13}/>}</button>
+        <button onClick={() => setExpanded(value => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <span className={`min-w-0 flex-1 truncate text-sm font-medium ${night ? 'text-night-text' : 'text-day-text'} ${isDone ? 'line-through' : ''}`}>{w.title}</span>
+          {expanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
+        </button>
+      </div>
       <AnimatePresence>{expanded && <motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:'auto'}} exit={{opacity:0,height:0}} className="overflow-hidden"><div className="border-t border-current/10 px-3 pb-3 pt-2">
         <div className="flex items-start gap-2">
-          <button onClick={toggleDone} disabled={!isOwner} title={isOwner ? (isDone ? '取消实现' : '标记为已实现') : ''} className={`mt-0.5 shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition ${isDone ? (night ? 'bg-night-amber/80 border-night-amber text-night-bg' : 'bg-[#DBB9B3] border-[#DBB9B3] text-white') : (night ? 'border-night-border' : 'border-[#a73a32]/20')} ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}>{isDone && <Check size={13}/>}</button>
           <div className="min-w-0 flex-1">
           {editing && isOwner ? (
             <input

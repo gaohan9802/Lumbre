@@ -15,6 +15,7 @@ import {
   DEFAULT_OPENAI_BASE,
 } from '@/lib/chatStore'
 import { chatApi } from '@/features/chat/api/client'
+import { PaperActionDialog } from '@/components/PaperActionDialog'
 
 interface Props {
   open: boolean
@@ -45,6 +46,8 @@ export function ModelDialog({ open, onClose }: Props) {
   const [expandedProfile, setExpandedProfile] = useState<string | null>(null)
   const [manualModel, setManualModel] = useState('')
   const [credentialDrafts, setCredentialDrafts] = useState<Record<string, { baseUrl: string; apiKey: string }>>({})
+  const [deleteTarget, setDeleteTarget] = useState<{ kind: 'profile'; profileId: string; name: string } | { kind: 'model'; profileId: string; modelId: string; name: string } | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   // add form
   const [newName, setNewName] = useState('')
@@ -118,7 +121,6 @@ export function ModelDialog({ open, onClose }: Props) {
   }
 
   const removeProfile = async (profileId: string) => {
-    if (!confirm(`删除 API「${settings.apiProfiles.find(item => item.id === profileId)?.name || profileId}」？`)) return
     try {
       await chatApi.modelProfiles.remove(profileId)
     } catch (error: any) {
@@ -126,6 +128,15 @@ export function ModelDialog({ open, onClose }: Props) {
       return
     }
     deleteApiProfile(profileId)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
+    if (deleteTarget.kind === 'profile') await removeProfile(deleteTarget.profileId)
+    else deleteModel(deleteTarget.profileId, deleteTarget.modelId)
+    setDeleteBusy(false)
+    setDeleteTarget(null)
   }
 
   const fetchModels = async (providerId: string) => {
@@ -152,7 +163,7 @@ export function ModelDialog({ open, onClose }: Props) {
 
   const fmtPrice = (v?: number) => (typeof v === 'number' ? `$${v}` : '—')
 
-  return (
+  return <>
     <AnimatePresence>
       {open && (
         <>
@@ -184,7 +195,7 @@ export function ModelDialog({ open, onClose }: Props) {
                         <div className="text-xs opacity-40 truncate mt-0.5">{p.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'} · {p.credentialConfigured ? `服务器已配置${p.upstreamOrigin ? ` (${p.upstreamOrigin})` : ''}` : '未配置凭据'} · {p.models.filter((m) => m.enabled).length} 模型</div>
                       </div>
                       <button
-                        onClick={() => void removeProfile(p.id)}
+                        onClick={() => setDeleteTarget({ kind: 'profile', profileId: p.id, name: p.name })}
                         className={`text-xs px-3 py-1.5 rounded-lg border flex-shrink-0 ${isNight ? 'border-night-border hover:bg-night-surface' : 'chat-dialog-line hover:bg-[#DBB9B3]/20'}`}
                       >删除</button>
                     </div>
@@ -210,7 +221,7 @@ export function ModelDialog({ open, onClose }: Props) {
                               {expanded && (
                                 <button
                                   disabled={p.models.length <= 1}
-                                  onClick={() => { if (confirm(`删除模型「${m.name || m.id}」？此操作不会删除整个 API。`)) deleteModel(p.id, m.id) }}
+                                  onClick={() => setDeleteTarget({ kind: 'model', profileId: p.id, modelId: m.id, name: m.name || m.id })}
                                   className="p-1 text-red-500/60 hover:text-red-500 disabled:opacity-20 disabled:cursor-not-allowed"
                                   title={p.models.length <= 1 ? '每个 API 至少保留一个模型' : '删除这个模型'}
                                 ><Trash2 size={13} /></button>
@@ -345,5 +356,16 @@ export function ModelDialog({ open, onClose }: Props) {
         </>
       )}
     </AnimatePresence>
-  )
+    <PaperActionDialog
+      open={!!deleteTarget}
+      title={deleteTarget?.kind === 'profile' ? `删除 API「${deleteTarget.name}」？` : `删除模型「${deleteTarget?.name || ''}」？`}
+      confirmLabel="删除"
+      danger
+      busy={deleteBusy}
+      onClose={() => setDeleteTarget(null)}
+      onConfirm={confirmDelete}
+    >
+      {deleteTarget?.kind === 'model' && <p className="text-sm opacity-60">只会从这个 API 中移除模型。</p>}
+    </PaperActionDialog>
+  </>
 }

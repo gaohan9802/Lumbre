@@ -1,5 +1,6 @@
 import type { ChatAppearance, ChatSettings, ProviderModel } from './types'
 import { DEFAULT_CHAT_ROUTE } from '@/lib/chat-route'
+import { DEFAULT_CC_EFFORT } from '@/lib/cc-model'
 
 export const DEFAULT_ANTHROPIC_BASE = 'https://api.anthropic.com'
 export const DEFAULT_OPENAI_BASE = 'https://api.openai.com/v1'
@@ -36,6 +37,7 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   systemPrompt: '',
   contextLength: 30,
   model: 'claude-sonnet-4-20250514',
+  ccEffort: DEFAULT_CC_EFFORT,
   thinkingBudget: 8000,
   temperature: 1,
   streamEnabled: false,

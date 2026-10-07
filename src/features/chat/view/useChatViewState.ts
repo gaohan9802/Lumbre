@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { TimelineCurrent } from '@/components/timeline/TimelineTimerModal'
 import type { SharedCard } from '@/lib/share'
-import type { ContentBlock } from '@/features/chat/state/types'
+import type { ChatAttachment, ContentBlock } from '@/features/chat/state/types'
 
 export const CHAT_PAGE_SIZE = 50
 
@@ -50,6 +50,7 @@ export function useChatViewState() {
   const [mounted, setMounted] = useState(false)
   const [uploadingImg, setUploadingImg] = useState(false)
   const [pendingImages, setPendingImages] = useState<string[]>([])
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([])
   const [pendingShare, setPendingShare] = useState<SharedCard | null>(null)
   const [visibleCount, setVisibleCount] = useState(CHAT_PAGE_SIZE)
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -60,6 +61,7 @@ export function useChatViewState() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const imgInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickBottomRef = useRef(true)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -82,10 +84,10 @@ export function useChatViewState() {
     editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
     copiedId, setCopiedId, mounted, setMounted,
-    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,
+    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingAttachments, setPendingAttachments, pendingShare, setPendingShare,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
-    messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
+    messagesEndRef, inputRef, imgInputRef, fileInputRef, scrollRef, stickBottomRef, abortControllerRef,
     activeGenerationRef, explicitStopRef, recoveredTurnsRef, sendLockRef,
     ...confirm,
   }

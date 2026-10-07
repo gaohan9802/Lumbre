@@ -5,9 +5,11 @@ import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import { formatMadridShort } from '@/lib/madrid-time'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Send, Share2, Trash2, X } from 'lucide-react'
+import { MessageSquareWarning, Pin, Plus, Send, Share2, Trash2, X } from 'lucide-react'
 import { notes as notesApi } from '@/lib/api'
 import { shareToChat } from '@/lib/share'
+import { PaperActionDialog } from '@/components/PaperActionDialog'
+import { GuestbookBoard } from './GuestbookBoard'
 
 interface Note {
   id: string
@@ -38,6 +40,8 @@ export function NotesView() {
   const [replyContent, setReplyContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [expandedNote, setExpandedNote] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [section, setSection] = useState<'notes' | 'guestbook'>('notes')
 
   const isNight = theme === 'night'
 
@@ -70,9 +74,10 @@ export function NotesView() {
     loadNotes()
   }
 
-  const handleDelete = async (noteId: string) => {
-    if (!confirm('撕掉这张纸条？')) return
-    await notesApi.delete(noteId, currentUser)
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    await notesApi.delete(deleteTarget, currentUser)
+    setDeleteTarget(null)
     loadNotes()
   }
 
@@ -85,24 +90,26 @@ export function NotesView() {
     <div className={`h-full flex flex-col ${isNight ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Header */}
       <div className={`px-6 py-4 flex items-center justify-between flex-shrink-0 border-b ${isNight ? 'border-night-border' : 'chat-dialog-line'}`}>
-        <h2 className="text-lg font-medium">
-          📌 留言板
-          <span className={`ml-2 text-xs ${isNight ? 'text-night-muted' : 'text-day-muted'}`}>
-            {notesList.length} 张纸条
-          </span>
-        </h2>
-        <button
-          onClick={() => setIsWriting(true)}
-          className={`p-2.5 rounded-xl transition ${
-            isNight ? 'hover:bg-night-surface text-night-amber' : 'chat-dialog-accent'
-          }`}
-        >
-          <Plus size={20} />
-        </button>
+        <div role="tablist" aria-label="留言板分类" className="flex items-center gap-1 rounded-xl bg-black/5 p-1 dark:bg-white/5">
+          <button role="tab" aria-selected={section === 'notes'} onClick={() => setSection('notes')} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition ${section === 'notes' ? (isNight ? 'bg-night-surface text-night-amber' : 'bg-white text-[#765953] shadow-sm') : 'opacity-45'}`}>
+            <Pin size={14}/><span>小纸条</span>
+          </button>
+          <button role="tab" aria-selected={section === 'guestbook'} onClick={() => setSection('guestbook')} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition ${section === 'guestbook' ? (isNight ? 'bg-night-surface text-night-amber' : 'bg-white text-[#765953] shadow-sm') : 'opacity-45'}`}>
+            <MessageSquareWarning size={14}/><span>告状簿</span>
+          </button>
+        </div>
+        {section === 'notes' && (
+          <button onClick={() => setIsWriting(true)} aria-label="贴一张小纸条" className={`p-2.5 rounded-xl transition ${isNight ? 'hover:bg-night-surface text-night-amber' : 'chat-dialog-accent'}`}>
+            <Plus size={20} />
+          </button>
+        )}
       </div>
 
-      {/* Fridge door surface */}
-      <div className="flex-1 overflow-y-auto px-4 pb-6">
+      {section === 'guestbook' ? (
+        <div className="min-h-0 flex-1"><GuestbookBoard actor="fire" endpoint="/api/guestbook?mark_read=1" onLoaded={() => window.dispatchEvent(new CustomEvent('lumbre-guestbook-read'))} /></div>
+      ) : <>
+        {/* Fridge door surface */}
+        <div className="flex-1 overflow-y-auto px-4 pb-6">
         {/* Write new note - floating card */}
         <AnimatePresence>
           {isWriting && (
@@ -148,13 +155,7 @@ export function NotesView() {
 
         {loading ? (
           <div className="text-center py-16 opacity-30 text-sm">加载中...</div>
-        ) : notesList.length === 0 ? (
-          <div className="text-center py-16 opacity-30 space-y-3">
-            <span className="text-4xl">🧲</span>
-            <p className="text-sm">冰箱门还是空的</p>
-            <p className="text-xs">贴一张纸条吧</p>
-          </div>
-        ) : (
+        ) : notesList.length === 0 ? null : (
           <div className="columns-1 sm:columns-2 gap-3 space-y-3">
             {notesList.map((note, i) => {
               const color = colors[i % colors.length]
@@ -275,7 +276,7 @@ export function NotesView() {
                           </button>
                           {canDelete && (
                             <button
-                              onClick={() => handleDelete(note.id)}
+                              onClick={() => setDeleteTarget(note.id)}
                               className="text-[11px] opacity-30 hover:opacity-60 transition flex items-center gap-0.5"
                             >
                               <Trash2 size={10} /> 撕掉
@@ -297,7 +298,9 @@ export function NotesView() {
             })}
           </div>
         )}
-      </div>
+        </div>
+        <PaperActionDialog open={!!deleteTarget} title="撕掉这张纸条？" confirmLabel="撕掉" danger onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}/>
+      </>}
     </div>
   )
 }

@@ -374,7 +374,7 @@ process.stdin.on('end', () => {
       ANTHROPIC_API_KEY: 'must-not-pass', DATA_DIR: '/persistent',
     } })
     const result: any = await executor.run({
-      prompt: 'hello', systemPrompt: 'You are Star.', model: 'sonnet', resumeSessionId: '550e8400-e29b-41d4-a716-446655440000', signal: undefined,
+      prompt: 'hello', systemPrompt: 'You are Star.', model: 'sonnet', effort: 'high', resumeSessionId: '550e8400-e29b-41d4-a716-446655440000', signal: undefined,
       onText: (text: string) => deltas.push(text), onThinking: (text: string) => thoughts.push(text),
     })
     const observed = JSON.parse(readFileSync(path.join(root, 'observed.json'), 'utf8'))
@@ -386,6 +386,7 @@ process.stdin.on('end', () => {
     assert.equal(observed.args.includes('--bare'), false)
     assert.equal(observed.args.includes('--safe-mode'), false)
     assert.equal(observed.args[observed.args.indexOf('--thinking-display') + 1], 'summarized')
+    assert.equal(observed.args[observed.args.indexOf('--effort') + 1], 'high')
     assert.equal(observed.args[observed.args.indexOf('--system-prompt') + 1], 'You are Star.')
     assert.equal(observed.args[observed.args.indexOf('--resume') + 1], '550e8400-e29b-41d4-a716-446655440000')
     assert.equal(observed.args.some((arg: string) => /dangerously|Bash|Shell/.test(arg)), false)

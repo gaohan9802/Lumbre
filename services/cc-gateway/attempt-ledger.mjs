@@ -7,6 +7,7 @@ const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 const ATTEMPT_ID = /^[0-9a-f-]{36}$/i
 const SAFE_KEY = /^[A-Za-z0-9._:-]{1,160}$/
 const SAFE_MODEL = /^[A-Za-z0-9._:-]{1,120}$/
+const SAFE_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
 
 export class AttemptValidationError extends Error {}
 
@@ -35,6 +36,9 @@ function validateCreateInput(input) {
   )) throw new AttemptValidationError('system prompt must be safe, non-empty, and at most 64 KB')
   if (typeof input.model !== 'string' || !SAFE_MODEL.test(input.model)) {
     throw new AttemptValidationError('model is invalid')
+  }
+  if (input.effort !== undefined && !SAFE_EFFORTS.has(input.effort)) {
+    throw new AttemptValidationError('effort is invalid')
   }
   if (input.unattended !== undefined && typeof input.unattended !== 'boolean') {
     throw new AttemptValidationError('unattended must be a boolean')
@@ -132,6 +136,7 @@ export class AttemptLedger {
         resumeSessionId: input.resumeSessionId || null,
         sessionPlan: input.sessionPlan || null,
         model: input.model,
+        effort: input.effort || null,
         unattended: input.unattended === true,
         status: 'queued',
         cancelRequested: false,
@@ -219,11 +224,15 @@ export class AttemptLedger {
   appendToolCall(id, toolCall) {
     return this.update(id, attempt => {
       if (attempt.status !== 'running') return attempt
-      this.appendEvent(attempt, 'tool_call', {
+      const started = toolCall?.phase === 'start'
+      this.appendEvent(attempt, started ? 'tool_start' : 'tool_call', {
+        callId: String(toolCall?.callId || '').slice(0, 120),
         name: String(toolCall?.name || '').slice(0, 120),
         input: toolCall?.input && typeof toolCall.input === 'object' ? toolCall.input : {},
-        result: String(toolCall?.result || '').slice(0, 16_000),
-        error: toolCall?.error === true,
+        ...(!started ? {
+          result: String(toolCall?.result || '').slice(0, 16_000),
+          error: toolCall?.error === true,
+        } : {}),
       })
       return attempt
     })

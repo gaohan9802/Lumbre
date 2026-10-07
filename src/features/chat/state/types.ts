@@ -1,14 +1,17 @@
 import type { ReplyMode } from '@/lib/chat-reply-mode'
 import type { ChatRoute } from '@/lib/chat-route'
+import type { CcEffort } from '@/lib/cc-model'
 import type { SharedCard } from '@/lib/share'
 import type { MessageRequestAudit } from '@/lib/chat-receipt'
 
 export interface ContentBlock {
   type: 'thinking' | 'text' | 'tool_call'
   content?: string
+  callId?: string
   name?: string
   input?: Record<string, any>
   result?: string
+  pending?: boolean
 }
 
 export interface BubbleSegment {
@@ -48,10 +51,18 @@ export interface MessageVersion {
   modelId?: string
 }
 
+export interface ChatAttachment {
+  name: string
+  type: string
+  size: number
+  text: string
+}
+
 export interface ChatMessage extends MessageVersion {
   id: string
   role: 'user' | 'assistant'
   images?: string[]
+  attachments?: ChatAttachment[]
   sharedCard?: SharedCard
   versions?: MessageVersion[]
   versionIndex?: number
@@ -182,6 +193,7 @@ export interface ChatSettings {
   systemPrompt: string
   contextLength: number
   model: string
+  ccEffort: CcEffort
   thinkingBudget: number
   temperature: number
   streamEnabled: boolean

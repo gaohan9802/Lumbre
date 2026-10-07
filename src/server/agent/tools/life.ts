@@ -29,6 +29,7 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'get_location', domain: 'context', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'update_period', domain: 'period', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_period', domain: 'period', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_health_summary', domain: 'health', level: 'green', allowedSources: ALL_SAFE_SOURCES },
 
   { name: 'read_bookmarks', domain: 'bookmarks', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'add_bookmark', domain: 'bookmarks', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
@@ -42,4 +43,12 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'void_coupon', domain: 'coupons', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'confirm_void_coupon', domain: 'coupons', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '作废券' },
   { name: 'bite_otter_nape', domain: 'wake', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_media_library', domain: 'media', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'save_media_entry', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_coread_text', domain: 'media', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'write_coread_annotation', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'update_coread_progress', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'write_media_note', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'comment_media_event', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'delete_media_content', domain: 'media', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除书影内容' },
 ]

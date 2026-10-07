@@ -31,13 +31,17 @@ function safeInput(value, depth = 0) {
   ]))
 }
 
-function recordToolEvent(payload, input) {
+function recordToolEvent(payload, input, phase, callId) {
   if (!eventFile) return
   const event = {
+    phase,
+    callId: String(callId ?? '').slice(0, 120),
     name: String(payload.name || '').slice(0, 120),
     input: safeInput(input),
-    result: String(payload.result || '').slice(0, 16_000),
-    error: payload.isError === true,
+    ...(phase === 'complete' ? {
+      result: String(payload.result || '').slice(0, 16_000),
+      error: payload.isError === true,
+    } : {}),
   }
   fs.appendFileSync(eventFile, `${JSON.stringify(event)}\n`, { encoding: 'utf8', mode: 0o600 })
 }
@@ -103,12 +107,13 @@ async function handle(message) {
     const name = String(message.params?.name || '')
     const input = message.params?.arguments && typeof message.params.arguments === 'object'
       ? message.params.arguments : {}
+    recordToolEvent({ name }, input, 'start', message.id)
     const data = await bridge('', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ session_id: conversationId, source, name, input }),
     })
-    recordToolEvent(data, input)
+    recordToolEvent(data, input, 'complete', message.id)
     return write({ jsonrpc: '2.0', id: message.id, result: {
       content: Array.isArray(data.content) ? data.content : [{ type: 'text', text: String(data.result || '') }],
       isError: data.isError === true,

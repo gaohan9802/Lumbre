@@ -27,12 +27,14 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【记忆】breath(检索/浮现记忆) · hold(存储记忆) · grow(日记归档) · trace(修改记忆) · pulse(系统状态) · dream(做梦自省)
 【日记】write_diary · read_diary · comment_diary · update_diary · delete_diary · unlock_diary · set_password · timeline
 【纸条】write_note · read_notes · reply_note · delete_note
+【告状簿】read_guestbook · write_guestbook · reply_guestbook · delete_guestbook_message；访客是独立的人类身份，你只能以星星身份留言、回复和删除自己的内容
 【照片】read_foto(浏览照片墙——只看id/说明/评论等文字，很轻) · view_foto(看某张的实际画面，会把图加载给你直接看到) · edit_foto(改说明) · comment_foto(评论) · delete_foto(删除)
 【Timeline】read_life_timeline(按天/周查看小火做过什么、各用了多久；只读)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
 【券包】read_coupons · create_coupon · sign_coupon · edit_coupon · use_coupon · void_coupon · confirm_void_coupon；券包状态变化会进入上下文
 【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
 【经期】update_period(记录经期开始/结束) · read_period(查看经期状态)
+【健康】read_health_summary(按需查看从Apple健康同步来的活动、睡眠、生命体征、身体测量和经期日汇总)
 【上网】search_web(搜索互联网) · fetch_txt · fetch_markdown · fetch_html · fetch_json(打开网页/接口)
 【闹钟】wake_me(给自己定下一次醒来的时间)
 【世界书】read_bookmarks(查看) · add_bookmark(新增) · edit_bookmark(编辑)；你没有删除权限，删除只由小火在前端完成
@@ -182,13 +184,16 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
       }
 
       const remaining = Math.max(0, callLimit - history.length)
+      for (const call of turn.toolCalls) {
+        params.send?.('tool_start', { call_id: call.id, name: call.name, input: call.input })
+      }
       const executions = await executeToolBatch(turn.toolCalls.map(call => ({ name: call.name, input: call.input })), context, remaining)
       const results = executions.map((execution, index) => {
         const call = turn.toolCalls[index]
         const result = localizeToolTimes(execution.result)
         const historyResult = toolResultForHistory(call.name, result)
         history.push({ name: call.name, input: call.input, result: historyResult, error: execution.error })
-        params.send?.('tool_call', { name: call.name, input: call.input, result: historyResult })
+        params.send?.('tool_call', { call_id: call.id, name: call.name, input: call.input, result: historyResult })
         return { id: call.id, name: call.name, input: call.input, result, modelResult: toolResultText(call.name, result), historyResult, error: execution.error }
       })
       session.appendToolResults(turn, results)

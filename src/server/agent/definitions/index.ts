@@ -26,7 +26,7 @@ const TOOL_ORDER = [
   'wake_me',
   'search_web', 'fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json',
   'get_weather', 'get_location',
-  'update_period', 'read_period',
+  'update_period', 'read_period', 'read_health_summary',
   'gmail_status', 'send_email', 'read_emails', 'search_emails', 'read_email_detail', 'reply_email',
   'read_bookmarks', 'add_bookmark', 'edit_bookmark',
   'read_coupons', 'create_coupon', 'sign_coupon', 'edit_coupon', 'use_coupon', 'void_coupon', 'confirm_void_coupon',
@@ -34,6 +34,8 @@ const TOOL_ORDER = [
   'read_stories', 'write_story', 'read_research', 'write_research',
   'bite_otter_nape',
   'read_detroit', 'play_detroit',
+  'read_media_library', 'save_media_entry', 'read_coread_text', 'write_coread_annotation', 'update_coread_progress', 'write_media_note', 'comment_media_event', 'delete_media_content',
+  'read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

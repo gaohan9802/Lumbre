@@ -168,6 +168,7 @@ export function extractConfig(s: ChatSettings) {
     systemPrompt: s.systemPrompt,
     contextLength: s.contextLength,
     model: s.model,
+    ccEffort: s.ccEffort,
     thinkingBudget: s.thinkingBudget,
     temperature: s.temperature,
     streamEnabled: s.streamEnabled,

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { addToolResultsToAudit, type MessageRequestAudit } from '@/lib/chat-receipt'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
 import { loadSyncSessions } from '@/server/chat-sync'
-import { isCcModel } from '@/lib/cc-model'
+import { isCcEffort, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
 
 type FetchLike = typeof fetch
 
@@ -87,6 +87,20 @@ async function gatewayFetch(config: CcGatewayConfig, pathname: string, init: Req
   }
 }
 
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+async function retryGatewayFetch(config: CcGatewayConfig, pathname: string, init: RequestInit, fetchImpl: FetchLike, timeoutMs = 15_000) {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await gatewayFetch(config, pathname, init, fetchImpl, timeoutMs) }
+    catch (error) {
+      lastError = error
+      if (attempt < 2) await wait(250 * 2 ** attempt)
+    }
+  }
+  throw lastError
+}
+
 async function safeJson(response: Response) {
   const text = await response.text()
   try { return text ? JSON.parse(text) : {} } catch { return {} }
@@ -122,16 +136,17 @@ function canonicalContextMessages(body: any, sessionId: string, turnId: string) 
   })
 }
 
-async function submitAttempt(config: CcGatewayConfig, body: any, system: string, volatileContext: string, model: string, fetchImpl: FetchLike) {
+async function submitAttempt(config: CcGatewayConfig, body: any, system: string, volatileContext: string, model: string, effort: string | undefined, fetchImpl: FetchLike) {
   const { sessionId, turnId } = validateTurn(body.session_id, body.turn_id)
   const messages = canonicalContextMessages(body, sessionId, turnId)
-  const response = await gatewayFetch(config, '/v1/attempts', {
+  const response = await retryGatewayFetch(config, '/v1/attempts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       idempotency_key: idempotencyKey(sessionId, turnId),
       conversation_id: sessionId,
       model,
+      effort,
       session_action: body.cc_session_action === 'rebase' ? 'rebase' : undefined,
       context: {
         system,
@@ -221,11 +236,15 @@ export async function createCcChatResponse({
   if (body.cc_model !== undefined && !isCcModel(body.cc_model)) {
     return Response.json({ error: 'CC 模型无效。' }, { status: 400 })
   }
+  if (body.cc_effort !== undefined && !isCcEffort(body.cc_effort)) {
+    return Response.json({ error: 'CC 推理强度无效。' }, { status: 400 })
+  }
   const model = isCcModel(body.cc_model) ? body.cc_model : config.model
+  const effort = normalizeCcEffortForModel(model, body.cc_effort)
 
   let submitted: CcAttempt
   try {
-    submitted = await submitAttempt(config, body, system, volatileContext, model, fetchImpl)
+    submitted = await submitAttempt(config, body, system, volatileContext, model, effort, fetchImpl)
   } catch (error: any) {
     return Response.json({ error: error?.message || 'CC 网关连接失败；不会自动改走 API。' }, { status: 502 })
   }
@@ -250,6 +269,7 @@ export async function createCcChatResponse({
       let reconnectFailures = 0
       try {
         while (!terminal && !clientClosed) {
+          let progressed = false
           try {
             const suffix = lastEventId ? `?after=${lastEventId}` : ''
             const upstream = await gatewayFetch(config, `/v1/attempts/${encodeURIComponent(submitted.id)}/events${suffix}`, {}, fetchImpl, 0)
@@ -260,10 +280,18 @@ export async function createCcChatResponse({
                 send({ type: 'text', content: String(event.content || '') })
               } else if (event.type === 'thinking') {
                 send({ type: 'thinking', content: String(event.content || '') })
+              } else if (event.type === 'tool_start') {
+                send({
+                  type: 'tool_start',
+                  call_id: String(event.callId || ''),
+                  name: String(event.name || ''),
+                  input: event.input && typeof event.input === 'object' ? event.input : {},
+                })
               } else if (event.type === 'tool_call') {
                 toolResults.push({ name: event.name, input: event.input, result: event.result })
                 send({
                   type: 'tool_call',
+                  call_id: String(event.callId || ''),
                   name: String(event.name || ''),
                   input: event.input && typeof event.input === 'object' ? event.input : {},
                   result: String(event.result || ''),
@@ -293,13 +321,15 @@ export async function createCcChatResponse({
                 terminal = true
               }
               if (Number.isSafeInteger(event.id) && event.id > lastEventId) lastEventId = event.id
+              progressed = true
               if (terminal) break
             }
-            if (!terminal) reconnectFailures++
+            if (!terminal) reconnectFailures = progressed ? 0 : reconnectFailures + 1
           } catch {
             reconnectFailures++
           }
-          if (reconnectFailures >= 4) break
+          if (reconnectFailures >= 6) break
+          if (!terminal && !clientClosed && reconnectFailures > 0) await wait(Math.min(4_000, 250 * 2 ** (reconnectFailures - 1)))
         }
         if (!terminal && !clientClosed) {
           send({ type: 'recoverable_disconnect', content: 'CC 仍可能在后台运行，稍后会按同一轮取回。' })

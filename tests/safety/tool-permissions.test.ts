@@ -24,17 +24,14 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 84)
-  assert.equal(registry.ALL_TOOLS.length, 84)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 84)
+  assert.equal(registry.registeredToolCount(), 97)
+  assert.equal(registry.ALL_TOOLS.length, 97)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 97)
   assert.deepEqual(registry.ALL_TOOLS.slice(0, 6).map(tool => tool.name), ['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
-  assert.equal(registry.ALL_TOOLS[6].name, 'recall_memory')
-  assert.equal(registry.ALL_TOOLS[7].name, 'remember')
-  assert.equal(registry.ALL_TOOLS[8].name, 'review_memory')
-  assert.equal(registry.ALL_TOOLS[9].name, 'lock_memory')
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-2).map(tool => tool.name), ['read_detroit', 'play_detroit'])
+  assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
+  assert.deepEqual(registry.ALL_TOOLS.slice(-4).map(tool => tool.name), ['read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message'])
 })
 
 test('green, yellow, red, and black policy decisions fail closed', () => {
@@ -61,7 +58,7 @@ test('unattended wake receives every registered Lumbre tool including destructiv
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake' })
   const names = registry.toolsForContext(wake).map(tool => tool.name)
   assert.equal(names.length, registry.registeredToolCount())
-  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'set_password', 'confirm_void_coupon', 'bite_otter_nape']) {
+  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'read_health_summary', 'set_password', 'confirm_void_coupon', 'bite_otter_nape']) {
     assert.equal(names.includes(allowed), true, allowed)
   }
   const trace = registry.toolsForContext(wake).find(tool => tool.name === 'trace')!

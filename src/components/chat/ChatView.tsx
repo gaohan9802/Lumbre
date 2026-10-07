@@ -1,13 +1,13 @@
 'use client'
 
-import { Fragment, useEffect, useCallback, useState } from 'react'
+import { Fragment, useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTheme } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Sun, MoreHorizontal,
-  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices, Heart,
+  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Paperclip, Clock3, Square, Dices, Heart,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -31,11 +31,12 @@ import { timeline as timelineApi } from '@/lib/api'
 import { loadEarlierChat, syncChatNow } from '@/features/chat/sync/ChatSync'
 import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
+import { toolDisplayLabel } from '@/features/chat/tool-display'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
-import { DEFAULT_CC_MODEL, isCcModel } from '@/lib/cc-model'
-import { chatMessageContentForModel } from '@/lib/chat-message-sync'
+import { DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
+import { chatMessageContentForModel, isSupportedChatFile, MAX_CHAT_ATTACHMENTS, MAX_CHAT_ATTACHMENT_BYTES } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 import { IntimacyWheelModal } from './IntimacyWheelModal'
 import { TodoView } from '@/components/todo/TodoView'
@@ -51,11 +52,12 @@ const StoriesView = dynamic(() => import('@/components/stories/StoriesView').the
 const ResearchView = dynamic(() => import('@/components/research/ResearchView').then(module => module.ResearchView), { ssr: false })
 const DreamsView = dynamic(() => import('@/components/dreams/DreamsView').then(module => module.DreamsView), { ssr: false })
 const WishlistView = dynamic(() => import('@/components/wishlist/WishlistView').then(module => module.WishlistView), { ssr: false })
+const MediaLibraryView = dynamic(() => import('@/components/media/MediaLibraryView').then(module => module.MediaLibraryView), { ssr: false })
 const MemoryView = dynamic(() => import('@/components/memory/MemoryView').then(module => module.MemoryView), { ssr: false })
 const FavoritesView = dynamic(() => import('@/components/favorites/FavoritesView').then(module => module.FavoritesView), { ssr: false })
 
-type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'timeline' | 'tesis'
-const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', timeline: 'Timeline', tesis: 'Tesis' }
+type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'timeline' | 'tesis'
+const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', timeline: 'Timeline', tesis: 'Tesis' }
 
 /* ── helpers ────────────────────────────── */
 
@@ -176,7 +178,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [favoriteChatKeys, setFavoriteChatKeys] = useState<Set<string>>(new Set())
   const {
     messages, settings,
-    addMessage, updateMessage, createSession, setActiveSession,
+    addMessage, updateMessage, createSession, setActiveSession, setSettings,
     renameSession, deleteSession, togglePinSession, setActiveModel,
     setGenerationRoute, setCcModel, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary, updateStageSummary,
   } = useChatStore()
@@ -189,6 +191,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const activeCcModel = selectedCcModel || (isCcModel(ccStatus?.model) ? ccStatus.model : DEFAULT_CC_MODEL)
   const effectiveCcModel = selectedCcModel || ccStatus.model || DEFAULT_CC_MODEL
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
+  const [ccRecoveryTick, setCcRecoveryTick] = useState(0)
+  const bottomedSessionRef = useRef<string | null>(null)
 
   const {
     input, setInput, isLoading, setIsLoading, sendStarting, setSendStarting,
@@ -203,10 +207,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
     copiedId, setCopiedId, mounted, setMounted,
-    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingShare, setPendingShare,
+    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingAttachments, setPendingAttachments, pendingShare, setPendingShare,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
-    messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
+    messagesEndRef, inputRef, imgInputRef, fileInputRef, scrollRef, stickBottomRef, abortControllerRef,
     activeGenerationRef, explicitStopRef, recoveredTurnsRef, sendLockRef,
     confirmState, ask, answer,
   } = useChatViewState()
@@ -239,41 +243,67 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const pokeLeopardNose = async () => {
     if (nosePokeBusy) return
     setNosePokeBusy(true)
+    const optimisticPoke = { id: `pending-${crypto.randomUUID()}`, timestamp: Date.now() }
+    setNosePokes(current => [...current, optimisticPoke])
+    navigator.vibrate?.(12)
     try {
       const response = await fetch('/api/nose-pokes', { method: 'POST' })
       if (!response.ok) throw new Error('戳鼻子失败')
       const data = await response.json()
       if (Array.isArray(data.events)) setNosePokes(data.events)
-      navigator.vibrate?.(12)
     } catch {
+      setNosePokes(current => current.filter(poke => poke.id !== optimisticPoke.id))
       window.alert('豹子刚才躲过去了，再戳一下试试。')
     } finally {
       setNosePokeBusy(false)
     }
   }
-  const refreshCcStatus = useCallback(async () => {
-    setCcRefreshing(true)
-    try { setCcStatus(await chatApi.ccStatus(activeSession?.id)) }
-    catch { setCcStatus(current => ({ ...current, available: false })) }
-    finally { setCcRefreshing(false) }
+  const readCcStatus = useCallback(async () => {
+    const status = await chatApi.ccStatus(activeSession?.id)
+    setCcStatus(current => ({
+      ...status,
+      quota: status.quota.available ? status.quota : current.quota.available ? { ...current.quota, stale: true } : status.quota,
+    }))
+    return status
   }, [activeSession?.id])
+  const refreshCcStatus = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setCcRefreshing(true)
+    try { await readCcStatus() }
+    catch {
+      setCcStatus(current => ({
+        ...current, available: false, toolsAvailable: false,
+        quota: current.quota.available ? { ...current.quota, stale: true } : current.quota,
+      }))
+    }
+    finally { if (showSpinner) setCcRefreshing(false) }
+  }, [readCcStatus])
   const ensureCcAvailable = useCallback(async (route: ChatRoute, notify = true) => {
     if (route !== 'claude-code') return true
-    try {
-      const status = await chatApi.ccStatus()
-      setCcStatus(current => ({ ...status, quota: current.quota, context: current.context }))
-      if (status.available) return true
-    } catch {
-      setCcStatus(current => ({ ...current, available: false }))
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { if ((await readCcStatus()).available) return true } catch {}
+      if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)))
     }
+    setCcStatus(current => ({ ...current, available: false }))
     if (notify) {
-      window.alert('CC 网关现在没有连上；本轮不会自动改走 API。')
+      window.alert('CC 网关暂时没有连上，消息已留在原对话里；恢复后会自动重试，不会改走 API。')
       setModelPickerOpen(true)
     }
     return false
-  }, [activeSession?.id, setModelPickerOpen])
+  }, [readCcStatus, setModelPickerOpen])
   useEffect(() => { void refreshCcStatus() }, [refreshCcStatus])
   useEffect(() => { if (modelPickerOpen) void refreshCcStatus() }, [modelPickerOpen, refreshCcStatus])
+  useEffect(() => {
+    if (activeRoute !== 'claude-code') return
+    const refresh = () => { if (document.visibilityState === 'visible') void refreshCcStatus(false) }
+    const timer = setInterval(refresh, !ccStatus.available ? 5_000 : !ccStatus.quota.available ? 30_000 : 60_000)
+    window.addEventListener('online', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('online', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [activeRoute, ccStatus.available, ccStatus.quota.available, refreshCcStatus])
   useEffect(() => {
     const accept = (detail: SharedCard | string) => {
       if (typeof detail === 'string') setInput((v) => v ? v + '\n\n' + detail : detail)
@@ -317,6 +347,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     ? Math.max(0, Number(activeSession.messageCount || 0) - messages.length)
     : 0
   const visibleMessages = hiddenCount > 0 ? messages.slice(-visibleCount) : messages
+  useLayoutEffect(() => {
+    const sessionId = activeSession?.id
+    if (!mounted || !sessionId || bottomedSessionRef.current === sessionId) return
+    if (!visibleMessages.length && Number(activeSession.messageCount || 0) > 0) return
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    stickBottomRef.current = true
+    bottomedSessionRef.current = sessionId
+  }, [activeSession?.id, activeSession?.messageCount, mounted, visibleMessages.length])
   const nosePokeLine = (poke: { id: string; timestamp: number }) => (
     <motion.p
       key={poke.id}
@@ -377,6 +417,30 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     }
     reader.onerror = () => setUploadingImg(false)
     reader.readAsDataURL(file)
+  }
+
+  const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!files.length) return
+    const available = MAX_CHAT_ATTACHMENTS - pendingAttachments.length
+    if (available <= 0) return window.alert(`一条消息最多带 ${MAX_CHAT_ATTACHMENTS} 个文件。`)
+    const selected = files.slice(0, available)
+    const unsupported = selected.find(file => !isSupportedChatFile(file.name, file.type))
+    if (unsupported) return window.alert('目前支持 TXT、Markdown、CSV、JSON、YAML、XML、RTF 和常见代码文件；PDF、Word 等二进制文件暂不支持。')
+    const oversized = selected.find(file => file.size > MAX_CHAT_ATTACHMENT_BYTES)
+    if (oversized) return window.alert(`单个文件不能超过 ${Math.round(MAX_CHAT_ATTACHMENT_BYTES / 1024)} KB。`)
+    try {
+      const attachments = await Promise.all(selected.map(async file => ({
+        name: file.name.replace(/[\r\n]/g, ' ').trim().slice(0, 180),
+        type: file.type || 'text/plain',
+        size: file.size,
+        text: await file.text(),
+      })))
+      setPendingAttachments(previous => [...previous, ...attachments])
+    } catch {
+      window.alert('文件读取失败，请重新选择。')
+    }
   }
 
   const handlePhotoPromptChoice = async (choice: 'public' | 'locked' | 'no') => {
@@ -441,7 +505,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     // error (desktop tolerates it, mobile doesn't). Streaming keeps bytes
     // flowing so the connection stays alive on mobile. `live` only controls
     // whether the UI renders progressively; when off we just show loading dots.
-    const live = settings.streamEnabled
+    const live = route === 'claude-code' || settings.streamEnabled
     setStreamText('')
     setStreamThinking('')
     setStreamBlocks([])
@@ -499,6 +563,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       const res = await chatApi.stream({
         generation_route: route,
         cc_model: route === 'claude-code' ? selectedCcModel : undefined,
+        cc_effort: route === 'claude-code' ? normalizeCcEffortForModel(effectiveCcModel, settings.ccEffort) : undefined,
         turn_id: route === 'claude-code' ? turnId : undefined,
         cc_session_action: route === 'claude-code' ? sessionAction : undefined,
         messages: sendMessages,
@@ -553,12 +618,35 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           const chunk = String(evt.content || '')
           fullThinking += chunk
           appendContentBlock({ type: 'thinking', content: chunk })
+        } else if (evt.type === 'tool_start') {
+          if (evt.name === 'view_foto' && typeof (evt.input as any)?.message_id === 'string') continue
+          appendContentBlock({
+            type: 'tool_call',
+            callId: String(evt.call_id || ''),
+            name: String(evt.name || ''),
+            input: evt.input && typeof evt.input === 'object' ? evt.input : {},
+            pending: true,
+          })
         } else if (evt.type === 'tool_call') {
           const resolved = await resolveConfirmation(evt)
           if (resolved.name === 'view_foto' && typeof resolved.input?.message_id === 'string') continue
           toolCalls.push(resolved)
-          appendContentBlock({ type: 'tool_call', name: resolved.name, input: resolved.input, result: resolved.result })
+          const callId = String(resolved.call_id || '')
+          const pendingIndex = callId
+            ? contentBlocks.findIndex(block => block.type === 'tool_call' && block.pending && block.callId === callId)
+            : -1
+          const completed: ContentBlock = {
+            type: 'tool_call', callId, name: resolved.name, input: resolved.input,
+            result: resolved.result, pending: false,
+          }
+          if (pendingIndex >= 0) {
+            contentBlocks[pendingIndex] = completed
+            scheduleStreamPaint()
+          } else appendContentBlock(completed)
         } else if (evt.type === 'error') {
+          contentBlocks = contentBlocks.map(block => block.pending
+            ? { ...block, pending: false, result: '工具调用中断' }
+            : block)
           const errorText = (fullText ? '\n\n' : '') + '⚠️ ' + (evt.content || '出错了')
           fullText += errorText
           appendContentBlock({ type: 'text', content: errorText })
@@ -610,6 +698,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         setStreamText('')
         setStreamThinking('')
         setStreamBlocks([])
+        recoveredTurnsRef.current.delete(`${activeSession?.id}:${turnId}`)
+        setTimeout(() => setCcRecoveryTick(current => current + 1), 2_000)
       } else {
         const failure = '\n\n⚠️ ' + (err?.message || '连接失败了…')
         await onDone({ content: fullText + failure, thinking: fullThinking || undefined, content_blocks: [...contentBlocks, { type: 'text', content: failure }], tool_calls: toolCalls.length ? toolCalls : undefined, error: true, stopped: true })
@@ -780,8 +870,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   }, [])
 
   const sendMessage = async () => {
-    if ((!input.trim() && pendingImages.length === 0 && !pendingShare) || isLoading) return
-    if (!await ensureCcAvailable(activeRoute)) return
+    if ((!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare) || isLoading) return
+    if (activeRoute === 'claude-code') void ensureCcAvailable(activeRoute, false)
     const profile = getActiveProfile(settings)
     const model = settings.model
     const now = Date.now()
@@ -793,6 +883,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       content: input.trim(),
       timestamp: now,
       images: pendingImages.length ? pendingImages : undefined,
+      attachments: pendingAttachments.length ? pendingAttachments : undefined,
       sharedCard: pendingShare || undefined,
       ccGenerationState: activeRoute === 'claude-code' ? 'pending' : undefined,
       providerId: activeRoute === 'claude-code' ? 'claude-code' : profile?.id,
@@ -800,12 +891,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     }
     stickBottomRef.current = true
     await durableAppend(activeSession, userMsg)
-    if (activeRoute === 'claude-code' && userMsg.images?.length) await flushChatOutbox()
+    if (activeRoute === 'claude-code' && (userMsg.images?.length || userMsg.attachments?.length)) await flushChatOutbox()
     addMessage(userMsg, activeSession?.id)
     if (userMsg.images?.length) setPhotoPrompt({ messageId: userMsg.id, images: [...userMsg.images] })
     onTurn?.('user', userMsg.content)
     setInput('')
     setPendingImages([])
+    setPendingAttachments([])
     setPendingShare(null)
     setIsLoading(true)
 
@@ -996,7 +1088,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     void handleRetry(pending, true, true)
     // Recovery is keyed to the durable turn, not ordinary streaming renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, activeSession?.id, ccStatus.available, isLoading, sendStarting, messages.at(-1)?.id, messages.at(-1)?.ccGenerationState])
+  }, [mounted, activeSession?.id, ccStatus.available, ccRecoveryTick, isLoading, sendStarting, messages.at(-1)?.id, messages.at(-1)?.ccGenerationState])
 
   /* ── delete message ───────────────────── */
 
@@ -1070,7 +1162,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   /* ── key handling ─────────────────────── */
 
   const toggleThinking = (id: string) => {
+    const el = scrollRef.current
+    const top = el?.scrollTop
+    stickBottomRef.current = false
     setExpandedThinking(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+    if (el && top != null) requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = top })
   }
   const toggleTools = (id: string) => {
     setExpandedTools(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
@@ -1107,7 +1203,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={`relative h-full w-[86vw] max-w-[340px] flex flex-col overflow-hidden ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29]'} border-r`}>
-      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(1rem,env(safe-area-inset-top))]' : 'pt-4'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
+      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(2.75rem,env(safe-area-inset-top))]' : 'pt-11'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-base font-medium">会话</div>
@@ -1125,7 +1221,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </motion.button>
         </div>
       </div>
-      <div className="relative z-10 flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="relative z-10 flex-1 overflow-y-auto px-2 pb-2 pt-4 space-y-1">
         {sessions.map((s) => {
           const active = s.id === settings.activeSessionId
           return (
@@ -1229,18 +1325,19 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             </>
           )}
         </section>
-        <div className="grid grid-cols-5 gap-1 pt-1">
-          <button type="button" onClick={() => openChatSettings('star')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>SP</button>
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>摘要</button>
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>书签</button>
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
-          <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
-        </div>
-        <div className="grid grid-cols-4 gap-1 pt-1">
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>心跳唤醒</button>
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>记忆</button>
-          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('favorites') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>收藏</button>
-          <button type="button" onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>换窗</button>
+        <div className="space-y-1.5 pt-1">
+          <div className="grid grid-cols-4 gap-1.5">
+            <button type="button" onClick={() => openChatSettings('star')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>SP</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
+            <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
+            <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>换窗</button>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>摘要</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>书签</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>唤醒</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>记忆</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1330,14 +1427,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               const isExp = expandedThinking.has(blockKey)
                               return (
                                 <div key={blockKey}>
-                                  <button onClick={() => toggleThinking(blockKey)} className={`ml-4 text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                                  <button onClick={() => toggleThinking(blockKey)} className={`ml-4 flex max-w-full items-center gap-1 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                     <span className="truncate">💭星星的小算盘</span>
                                   </button>
                                   <AnimatePresence>
                                     {isExp && (
                                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                                        className={`text-[13px] p-2 rounded-lg overflow-hidden whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                                        {block.content}
+                                        className={`ml-4 mt-1 max-w-[calc(88%_-_1rem)] overflow-hidden text-left text-[13px] leading-relaxed ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                                        <MarkdownText content={block.content}/>
                                       </motion.div>
                                     )}
                                   </AnimatePresence>
@@ -1350,7 +1447,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                                 <div key={blockKey} className={`w-fit max-w-[87%] mr-auto rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
                                   <button onClick={() => toggleTools(blockKey)} className={`w-full flex items-center gap-2 px-3 py-2 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                     <span className={`${n ? 'text-night-muted' : 'text-day-pink'}`}>🔧</span>
-                                    <span>调用工具: <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{block.name}</span></span>
+                                    <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{toolDisplayLabel(block.name)}</span>
                                     <ChevronDown size={12} className={`ml-auto transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
                                   </button>
                                   <AnimatePresence>
@@ -1379,7 +1476,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`chat-ai-bubble relative block w-fit max-w-[88%] mr-auto break-words px-4 py-3 text-justify [text-justify:inter-ideograph] text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}>
+                                <div key={blockKey} className={`chat-ai-bubble relative mr-auto block w-fit max-w-[88%] break-words px-4 py-3 text-left text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}>
                                   {msg.images && bi === 0 && msg.images.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {msg.images.map((src: string, ii: number) => (
@@ -1399,14 +1496,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           {/* Legacy: thinking above bubble */}
                           {msg.thinking && (
                             <>
-                              <button onClick={() => toggleThinking(msg.id)} className={`ml-4 text-xs flex items-center gap-1 max-w-full ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                              <button onClick={() => toggleThinking(msg.id)} className={`ml-4 flex max-w-full items-center gap-1 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                                 <span className="truncate">💭星星的小算盘</span>
                               </button>
                               <AnimatePresence>
                                 {expandedThinking.has(msg.id) && (
                                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                                    className={`text-[13px] p-2 rounded-lg overflow-hidden whitespace-pre-wrap ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-50 text-day-muted'}`}>
-                                    {msg.thinking}
+                                    className={`ml-4 mt-1 max-w-[calc(88%_-_1rem)] overflow-hidden text-left text-[13px] leading-relaxed ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                                    <MarkdownText content={msg.thinking}/>
                                   </motion.div>
                                 )}
                               </AnimatePresence>
@@ -1418,7 +1515,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             <div className="w-fit max-w-[87%] mr-auto">
                               <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-muted' : 'text-day-pink/70'}`}>
                                 <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? '' : '-rotate-90'}`} />
-                                🔧 {msg.tool_calls.map((tc: any) => tc.name).join(', ')}
+                                🔧 {msg.tool_calls.map((tc: any) => toolDisplayLabel(tc.name)).join('、')}
                               </button>
                               <AnimatePresence>
                                 {expandedTools.has(msg.id) && (
@@ -1427,7 +1524,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                                       {msg.tool_calls.map((tc: any, i: number) => (
                                         <div key={i} className={`p-2 rounded-lg space-y-1.5 ${n ? 'bg-night-card' : 'bg-white'}`}>
                                           <div>
-                                            <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{tc.name}</span>
+                                            <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{toolDisplayLabel(tc.name)}</span>
                                           </div>
                                           {tc.input && Object.keys(tc.input).length > 0 && (
                                             <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
@@ -1463,8 +1560,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             <button onClick={finishEditMsg} className={`text-xs font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>保存</button>
                           </div>
                         </div>
-                      ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? `w-fit max-w-[74%] rounded-2xl rounded-br-md ml-auto ${n ? 'bg-night-amber/45 text-night-text' : 'bg-[#DBB9B3]/60 text-[#3f2c29]'}` : `w-fit max-w-[88%] mr-auto text-justify [text-justify:inter-ideograph] ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
+                      ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard)) ? (
+                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? `ml-auto w-fit max-w-[74%] rounded-2xl rounded-br-md ${n ? 'bg-night-amber/45 text-night-text' : 'bg-[#DBB9B3]/60 text-[#3f2c29]'}` : `mr-auto w-fit max-w-[88%] text-left ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
                           {msg.sharedCard && (
                             <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
@@ -1477,6 +1574,17 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               {msg.images.map((src, i) => (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img key={i} src={src} alt="" className="max-w-[180px] max-h-[180px] rounded-lg object-cover" />
+                              ))}
+                            </div>
+                          )}
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="mb-1.5 flex flex-col gap-1.5">
+                              {msg.attachments.map((file, index) => (
+                                <div key={`${file.name}-${index}`} className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs ${n ? 'border-night-muted/25 bg-night-surface/60' : 'border-[#a73a32]/15 bg-white/55'}`}>
+                                  <Paperclip size={14} className="shrink-0 opacity-60" />
+                                  <span className="min-w-0 truncate">{file.name}</span>
+                                  <span className="shrink-0 opacity-45">{Math.max(1, Math.ceil(file.size / 1024))} KB</span>
+                                </div>
                               ))}
                             </div>
                           )}
@@ -1555,6 +1663,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 blocks={streamBlocks}
                 expandedThinking={expandedThinking}
                 onToggleThinking={toggleThinking}
+                expandedTools={expandedTools}
+                onToggleTools={toggleTools}
                 isNight={n}
               />
             )}
@@ -1594,6 +1704,18 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 ))}
               </div>
             )}
+            {pendingAttachments.length > 0 && (
+              <div className="mb-2 flex flex-col gap-1.5 px-1">
+                {pendingAttachments.map((file, index) => (
+                  <div key={`${file.name}-${index}`} className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${n ? 'border-night-muted/25 bg-night-surface' : 'border-[#a73a32]/20 bg-white/80'}`}>
+                    <Paperclip size={14} className="shrink-0 opacity-60" />
+                    <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                    <span className="opacity-45">{Math.max(1, Math.ceil(file.size / 1024))} KB</span>
+                    <button type="button" aria-label={`移除 ${file.name}`} onClick={() => setPendingAttachments(previous => previous.filter((_, itemIndex) => itemIndex !== index))} className="opacity-50"><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="chat-compose-shell relative">
               <div className={`chat-input-tray rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-amber/40 shadow-[0_8px_24px_rgba(3,10,16,0.26)] focus-within:border-night-amber/70' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29] focus-within:border-[#a73a32]/45'}`}>
@@ -1601,8 +1723,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
                   className={`no-frame block min-h-10 w-full resize-none bg-transparent px-1 py-1 text-base outline-none max-h-40 md:text-sm ${n ? 'text-night-text placeholder:text-night-muted' : 'text-[#3f2c29] placeholder:text-[#9a766d]'}`} />
                 <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
+                <input ref={fileInputRef} type="file" multiple accept="text/*,.md,.markdown,.csv,.json,.yaml,.yml,.xml,.rtf,.js,.jsx,.ts,.tsx,.py,.css,.scss,.sql,.sh,.log,.java,.c,.cc,.cpp,.h,.hpp,.go,.rs,.swift,.kt,.kts" hidden onChange={handleUploadFile} />
                 <div className={`mt-1 flex items-center gap-0.5 ${n ? 'text-night-amber/85' : 'text-[#a73a32]/55'}`}>
                   <button type="button" aria-label={uploadingImg ? '正在处理照片' : '上传照片'} title="照片" disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full disabled:opacity-35"><ImagePlus size={17}/></button>
+                  <button type="button" aria-label="添加文件" title="文件" onClick={() => fileInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full"><Paperclip size={17}/></button>
                   <button type="button" aria-label="打开 Timeline" title={timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'} onClick={() => setTimelineOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-full"><Clock3 size={17}/>{timelineCurrent && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#DBB9B3]"/>}</button>
                   <motion.button type="button" aria-label="戳豹子鼻子" title="戳豹子鼻子" disabled={nosePokeBusy} onPointerDown={event => event.preventDefault()} onClick={() => void pokeLeopardNose()} whileTap={{ scale: .9 }} className="grid h-8 w-8 place-items-center rounded-full text-[18px] leading-none disabled:opacity-35">
                     <span aria-hidden="true">🐆</span>
@@ -1615,8 +1739,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       <Square size={14} fill="currentColor" />
                     </button>
                   ) : (
-                    <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && !pendingShare)}
-                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#DBB9B3] text-white hover:bg-[#DBB9B3]/80') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
+                    <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare)}
+                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingAttachments.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#DBB9B3] text-white hover:bg-[#DBB9B3]/80') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
                       <Send size={15} />
                     </button>
                   )}
@@ -1651,6 +1775,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             activeModelId={settings.model}
             activeRoute={activeRoute}
             activeCcModel={activeCcModel}
+            activeCcEffort={settings.ccEffort}
             ccStatus={ccStatus}
             onSelectApiModel={(profileId, modelId) => {
               if (activeSession) setGenerationRoute(activeSession.id, 'api')
@@ -1662,8 +1787,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 setCcModel(activeSession.id, modelId)
                 setGenerationRoute(activeSession.id, 'claude-code')
               }
-              setModelPickerOpen(false)
             }}
+            onSelectCcEffort={(effort) => setSettings({ ccEffort: effort })}
             onClose={() => setModelPickerOpen(false)}
           />
 
@@ -1683,11 +1808,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               <>
                 <motion.button type="button" aria-label={`关闭 ${roomLabels[roomPanel]}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setRoomPanel(null)} className="fixed inset-0 z-[74] bg-black/35 backdrop-blur-[2px]" />
                 <motion.section role="dialog" aria-modal="true" aria-label={roomLabels[roomPanel]} initial={{ opacity: 0, scale: .97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .97, y: 8 }} className={`fixed inset-x-3 bottom-3 top-[max(.75rem,env(safe-area-inset-top))] z-[75] mx-auto flex max-w-6xl flex-col overflow-hidden rounded-[28px] ${n ? 'border border-night-border bg-night-surface text-night-text shadow-2xl' : 'chat-dialog'}`}>
-                  <header className={`flex items-center justify-between border-b px-5 py-3 ${n ? 'border-night-border' : 'chat-dialog-line'}`}>
-                    <h2 className="font-serif text-lg">{roomLabels[roomPanel]}</h2>
+                  <header className="flex justify-end px-3 py-1">
                     <button type="button" aria-label="关闭" onClick={() => setRoomPanel(null)} className="rounded-full p-2 opacity-55 hover:opacity-100"><X size={18}/></button>
                   </header>
-                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
+                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
                 </motion.section>
               </>
             )}
@@ -1712,7 +1836,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onMedia={() => setRoomPanel('media')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} onRegenerateStage={(stage) => { void regenerateStageSummary(stage) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />

@@ -21,7 +21,7 @@ export interface GatewayToolExecution extends GatewayToolCall {
 }
 
 export interface GatewayEmitter {
-  (type: 'text' | 'thinking' | 'tool_call' | 'done' | 'error', data: Record<string, any>): void
+  (type: 'text' | 'thinking' | 'tool_start' | 'tool_call' | 'done' | 'error', data: Record<string, any>): void
 }
 
 export interface GatewayProviderConfig {
