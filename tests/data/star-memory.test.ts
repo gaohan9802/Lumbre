@@ -314,6 +314,9 @@ test('mixed recall separates reliable, fuzzy, current, family, and missing resul
   assert.notEqual(paraphrase.status, 'not_found')
   assert.equal(paraphrase.hits.some(item => item.id === shared.id), true)
 
+  const fuzzy = memory.recallStarMemoryBundle('青色甲乙丙丁戊')
+  assert.equal(fuzzy.status, 'fuzzy')
+
   const byFamily = memory.recallStarMemoryBundle('阳台花草照料')
   assert.equal(byFamily.hits.some(item => item.id === plant.id && item.recall_reason === '家族摘要相关'), true)
 
@@ -324,6 +327,12 @@ test('mixed recall separates reliable, fuzzy, current, family, and missing resul
   const missing = memory.recallStarMemoryBundle('紫金海豚玻璃城堡')
   assert.equal(missing.status, 'not_found')
   assert.deepEqual(missing.hits, [])
+
+  const context = memory.buildStarMemoryContext('我们一起规划长期记忆库的经历')
+  assert.match(context, /新记忆库主动召回/)
+  assert.match(context, /小火和星星一起规划了长期记忆系统/)
+  assert.doesNotMatch(memory.buildStarMemoryContext('我们一起规划长期记忆库的经历', '小火和星星一起规划了长期记忆系统。'), /小火和星星一起规划了长期记忆系统/)
+  assert.equal(memory.buildStarMemoryContext('青色甲乙丙丁戊'), '')
 })
 
 test('short-term memory expires without renewal and can be promoted exactly once', () => {

@@ -1228,6 +1228,32 @@ export function recallStarMemoryBundle(queryValue: unknown, limitValue: unknown 
   }
 }
 
+export function buildStarMemoryContext(queryValue: unknown, existingContextValue: unknown = '', limitValue: unknown = 3): string {
+  const query = typeof queryValue === 'string' ? queryValue.trim().slice(0, 500) : ''
+  if (!query) return ''
+  const bundle = recallStarMemoryBundle(query, limitValue)
+  if (bundle.status !== 'reliable') return ''
+  const existing = normalized(typeof existingContextValue === 'string' ? existingContextValue.slice(0, 100_000) : '')
+  const seen = new Set<string>()
+  const hits = bundle.hits.filter(hit => {
+    const key = normalized(hit.summary)
+    if (!key || seen.has(key) || existing.includes(key)) return false
+    seen.add(key)
+    return true
+  })
+  if (!hits.length) return ''
+  const lines = hits.map(hit => {
+    const familyNames = hit.memory_kind === 'formal' ? hit.families.map(item => item.name) : []
+    return `- ${hit.summary}${familyNames.length ? `（家族：${familyNames.join('、')}）` : ''}；${hit.recall_reason}`
+  })
+  return [
+    '[新记忆库主动召回｜仅在自然相关时使用，不要逐条播报]',
+    ...lines,
+    bundle.certainty_note ? `注意：${bundle.certainty_note}` : '',
+    '需要更多证据时调用 recall_memory；需要展开家族时调用 manage_memory_family。',
+  ].filter(Boolean).join('\n')
+}
+
 export function resolveMemorySources(memoryIdValue: unknown) {
   const memoryId = text(memoryIdValue, 'memory id', 100, true)!
   const row = getDb().prepare('SELECT * FROM memories WHERE id = ?').get(memoryId) as Row | undefined

@@ -9,6 +9,7 @@ import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
 import { couponContext } from '@/server/coupon-store'
 import { dailyCompanionContext } from '@/server/nose-pokes'
+import { buildStarMemoryContext } from '@/server/star-memory'
 import { resolveChatCredential, resolveLegacyChatCredential } from './credentials'
 import { normalizeModelBaseUrl, type ModelCredentialInput } from '@/server/data/repositories/model-credentials'
 import { anthropicAdapter } from './providers/anthropic'
@@ -132,6 +133,7 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
     await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
     params.clientVolatileContext,
     dailyCompanionContext(),
+    buildStarMemoryContext(lastUser, params.bookmarkInjections),
   ].filter(Boolean).join('\n\n')
   const context = toolContext(!!params.unattendedWake, params.sessionId)
   const availableTools = toolsForContext(context)
@@ -227,6 +229,7 @@ export async function handleChatRequest(req: NextRequest) {
         await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
         clientVolatileContext(body.client_volatile_context),
         dailyCompanionContext(),
+        buildStarMemoryContext(lastUser, body.bookmark_injections),
       ].filter(Boolean).join('\n\n')
       const requestAudit = createMessageRequestAudit({
         system,
