@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
+import { madridDateKey } from '@/lib/madrid-time'
 import {
   createMemoryCandidate,
   createMemoryConflict,
@@ -32,6 +33,8 @@ import {
   recycleCanonicalMemory,
   restoreMemoryFamily,
   restoreCanonicalMemory,
+  renderStarMemoryMarkdown,
+  serializeStarMemoryDatabase,
   updateCanonicalMemory,
   updateMemoryFamily,
   type CandidateDecision,
@@ -62,6 +65,25 @@ export async function GET(req: NextRequest) {
     if (view === 'recall') return NextResponse.json(recallStarMemoryBundle(req.nextUrl.searchParams.get('q') || '', req.nextUrl.searchParams.get('limit')))
     if (view === 'sources') return NextResponse.json(resolveMemorySources(req.nextUrl.searchParams.get('id') || ''))
     if (view === 'working_sources') return NextResponse.json(resolveWorkingMemorySources(req.nextUrl.searchParams.get('id') || ''))
+    if (view === 'export') {
+      const format = req.nextUrl.searchParams.get('format')
+      const familyId = req.nextUrl.searchParams.get('familyId') || undefined
+      const suffix = familyId ? '-family' : ''
+      if (format === 'sqlite') {
+        if (familyId) throw new Error('family export only supports markdown')
+        return new NextResponse(new Uint8Array(serializeStarMemoryDatabase()), { headers: {
+          'Content-Type': 'application/vnd.sqlite3',
+          'Content-Disposition': `attachment; filename="star-memory-${madridDateKey()}.sqlite"`,
+          'Cache-Control': 'no-store',
+        } })
+      }
+      if (format === 'markdown') return new NextResponse(renderStarMemoryMarkdown(familyId), { headers: {
+        'Content-Type': 'text/markdown; charset=utf-8',
+        'Content-Disposition': `attachment; filename="star-memory${suffix}-${madridDateKey()}.md"`,
+        'Cache-Control': 'no-store',
+      } })
+      throw new Error('unsupported export format')
+    }
     return NextResponse.json({ error: 'unknown_view' }, { status: 400 })
   } catch (error) {
     return failure(error)

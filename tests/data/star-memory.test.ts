@@ -177,6 +177,46 @@ test('manual memories added by fire lock automatically and invalid review cannot
   assert.equal(memory.getStarMemoryStatus().memories, memoriesBeforeInvalidReview)
 })
 
+test('exports a restorable SQLite snapshot and readable whole or family documents', async () => {
+  const family = memory.createMemoryFamily({ name: '导出测试家族', summary: '只属于这一组的档案。' }, 'fire')
+  const child = memory.createMemoryFamily({ name: '导出测试子家族', parentId: family.id }, 'fire')
+  const other = memory.createMemoryFamily({ name: '导出测试旁系' }, 'fire')
+  const kept = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'shared_event', summary: '导出测试家族中的独特记忆。', details: '这段细节应进入阅读版。',
+    starFeeling: '星星觉得这段共同经历很重要。', sources: [{ kind: 'manual', actor: 'fire', label: '小火手动加入' }], familyIds: [child.id],
+  }, 'fire').id, 'approve', 'fire').memory!
+  memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'durable_fact', summary: '导出测试旁系中的独特记忆。',
+    sources: [{ kind: 'manual', actor: 'fire', label: '小火手动加入' }], familyIds: [other.id],
+  }, 'fire').id, 'approve', 'fire')
+  journal.writeDiary({ date: '2026-10-07', author: 'star', title: '未公开导出测试', content: '这段正文只进机器备份。', visibility: 'private' })
+
+  const snapshot = memory.serializeStarMemoryDatabase()
+  assert.equal(snapshot.subarray(0, 16).toString(), 'SQLite format 3\0')
+  const Database = (await import('better-sqlite3')).default
+  const restored = new Database(snapshot)
+  assert.equal((restored.prepare('SELECT COUNT(*) AS count FROM memories WHERE id = ?').get(kept.id) as { count: number }).count, 1)
+  assert.match((restored.prepare('SELECT payload_json FROM star_diary_backup WHERE date = ?').get('2026-10-07') as { payload_json: string }).payload_json, /这段正文只进机器备份/)
+  restored.close()
+
+  const whole = memory.renderStarMemoryMarkdown(undefined, '2026-10-07T12:00:00.000Z')
+  assert.match(whole, /# 星星记忆库导出/)
+  assert.match(whole, /导出测试家族中的独特记忆/)
+  assert.match(whole, /小火手动加入/)
+  assert.doesNotMatch(whole, /这段正文只进机器备份/)
+  const selected = memory.renderStarMemoryMarkdown(family.id, '2026-10-07T12:00:00.000Z')
+  assert.match(selected, /家族“导出测试家族”及其子家族/)
+  assert.match(selected, /导出测试家族中的独特记忆/)
+  assert.match(selected, /星星当时的感受/)
+  assert.doesNotMatch(selected, /导出测试旁系中的独特记忆/)
+
+  const response = await route.GET(new NextRequest('http://localhost/api/star-memory?view=export&format=sqlite'))
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('content-type'), 'application/vnd.sqlite3')
+  assert.match(response.headers.get('content-disposition') || '', /star-memory-\d{4}-\d{2}-\d{2}\.sqlite/)
+  assert.equal(Buffer.from(await response.arrayBuffer()).subarray(0, 16).toString(), 'SQLite format 3\0')
+})
+
 test('a personal lock can only be changed or bypassed by its owner', async () => {
   const candidate = memory.createMemoryCandidate({
     type: 'self_event',

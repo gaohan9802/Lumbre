@@ -567,6 +567,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [mergeTarget, setMergeTarget] = useState<Record<string, string>>({})
   const [splitSelections, setSplitSelections] = useState<Record<string, string[]>>({})
   const [deletingMemoryId, setDeletingMemoryId] = useState('')
+  const [exportFamilyId, setExportFamilyId] = useState('')
   const c = useColors(isNight)
 
   const load = useCallback(async () => {
@@ -1123,6 +1124,22 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
         <div className={`text-[11px] font-medium ${c.accent}`}>系统状态</div>
         <div className={`mt-2 grid grid-cols-2 gap-2 text-[10px] ${c.muted}`}><div>数据库版本：{status?.version || '—'}</div><div>记忆家族：{status?.families || 0}</div><div>等星星审核：{status?.pendingStar || 0}</div><div>候选总数：{status?.candidates || 0}</div><div>待确认冲突：{status?.conflicts || 0}</div></div>
         <div className={`mt-2 text-[10px] ${c.muted}`}>新库仍独立运行，旧 Ombre 未停用，本页不会自动迁移旧数据。</div>
+      </div>}
+
+      {section === 'system' && <div className={`rounded-xl border ${c.border} p-3`}>
+        <div className={`text-[11px] font-medium ${c.accent}`}>导出与备份</div>
+        <p className={`mt-2 text-[10px] leading-4 ${c.muted}`}>SQLite 是可恢复的完整机器备份；Markdown 是方便阅读的活跃记忆档案。下载不会修改记忆库。</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a download href="/api/star-memory?view=export&format=sqlite" className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent}`}>下载完整 SQLite 备份</a>
+          <a download href="/api/star-memory?view=export&format=markdown" className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted}`}>下载整库阅读版</a>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <select aria-label="选择导出的记忆家族" value={exportFamilyId} onChange={event => setExportFamilyId(event.target.value)} className={`min-w-0 flex-1 rounded-lg border ${c.border} ${c.surface} px-2 py-1.5 text-[10px]`}>
+            <option value="">选择一个家族及其子家族…</option>
+            {families.map(family => <option key={family.id} value={family.id}>{family.name}</option>)}
+          </select>
+          {exportFamilyId && <a download href={`/api/star-memory?view=export&format=markdown&familyId=${encodeURIComponent(exportFamilyId)}`} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted}`}>下载所选家族</a>}
+        </div>
       </div>}
 
       {section === 'system' && memoryTrash.length > 0 && <div>

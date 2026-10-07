@@ -489,6 +489,101 @@ export function getStarMemoryStatus() {
   }
 }
 
+export function serializeStarMemoryDatabase(): Buffer {
+  const snapshot = new Database(getDb().serialize())
+  try {
+    snapshot.exec(`CREATE TABLE IF NOT EXISTS star_diary_backup (
+      date TEXT NOT NULL, time_id TEXT NOT NULL, payload_json TEXT NOT NULL,
+      PRIMARY KEY (date, time_id)
+    )`)
+    const insert = snapshot.prepare('INSERT OR REPLACE INTO star_diary_backup (date, time_id, payload_json) VALUES (?, ?, ?)')
+    readDiaries('star', { author_filter: 'star' }).forEach(entry => insert.run(entry.date, entry.time_id, JSON.stringify(entry)))
+    return snapshot.serialize()
+  } finally {
+    snapshot.close()
+  }
+}
+
+export function renderStarMemoryMarkdown(familyIdValue?: unknown, exportedAtValue: unknown = new Date().toISOString()): string {
+  const familyId = text(familyIdValue, 'family id', 100)
+  const exportedAt = iso(exportedAtValue, 'exportedAt')!
+  const allFamilies = listMemoryFamilies()
+  const selectedIds = new Set<string>()
+  if (familyId) {
+    if (!allFamilies.some(family => family.id === familyId)) throw new Error('family not found')
+    selectedIds.add(familyId)
+    let changed = true
+    while (changed) {
+      changed = false
+      allFamilies.forEach(family => {
+        if (family.parentId && selectedIds.has(family.parentId) && !selectedIds.has(family.id)) { selectedIds.add(family.id); changed = true }
+      })
+    }
+  } else {
+    allFamilies.forEach(family => selectedIds.add(family.id))
+  }
+  const families = allFamilies.filter(family => selectedIds.has(family.id))
+  const familyById = new Map(allFamilies.map(family => [family.id, family]))
+  const memberships = (getDb().prepare('SELECT family_id, memory_id, role FROM family_memberships').all() as Row[])
+    .filter(link => selectedIds.has(link.family_id))
+  const memoryIds = new Set(memberships.map(link => String(link.memory_id)))
+  const allMemories = listCanonicalMemories()
+  const memories = familyId ? allMemories.filter(memory => memoryIds.has(memory.id)) : allMemories
+  const visibleMemoryIds = new Set(memories.map(memory => memory.id))
+  const candidates = listMemoryCandidates().filter(candidate => !['approved', 'rejected'].includes(candidate.status) && (!familyId || candidate.suggestedFamilyIds.some(id => selectedIds.has(id))))
+  const working = (getDb().prepare("SELECT * FROM working_memories WHERE status IN ('active', 'due') ORDER BY expires_at").all() as Row[])
+    .map(workingFromRow)
+    .map(memory => memory.status === 'active' && memory.expiresAt <= exportedAt ? { ...memory, status: 'due' as const } : memory)
+    .filter(memory => !familyId || memory.suggestedFamilyIds.some(id => selectedIds.has(id)))
+  const conflicts = listMemoryConflicts().filter(conflict => visibleMemoryIds.has(conflict.memoryId))
+  const inline = (value: unknown) => String(value || '').replace(/\s+/g, ' ').trim()
+  const block = (value: unknown) => String(value || '').replace(/\r/g, '').trim()
+  const roleName: Record<string, string> = { key_event: '关键节点', key_fact: '关键事实', member: '普通成员', unresolved: '未完事项' }
+  const lines = [
+    '# 星星记忆库导出', '',
+    `- 导出时间：${exportedAt}`,
+    `- 范围：${familyId ? `家族“${inline(familyById.get(familyId)?.name)}”及其子家族` : '完整活跃记忆库'}`,
+    `- 正式记忆：${memories.length} 条`, `- 家族：${families.length} 个`, `- 待审核：${candidates.length} 条`, `- 近期记忆：${working.length} 条`, `- 待确认冲突：${conflicts.length} 条`, '',
+    '## 记忆家族', '',
+  ]
+  if (!families.length) lines.push('_无_', '')
+  families.forEach(family => {
+    const parent = family.parentId ? familyById.get(family.parentId)?.name : undefined
+    lines.push(`### ${inline(family.name)}`, '', `- 状态：${family.status}`, `- 成员：${family.memberCount} 条`)
+    if (parent) lines.push(`- 上级家族：${inline(parent)}`)
+    if (family.summary) lines.push('', block(family.summary))
+    lines.push('')
+  })
+  lines.push('## 正式记忆', '')
+  if (!memories.length) lines.push('_无_', '')
+  memories.forEach((memory, index) => {
+    const familyLabels = memberships.filter(link => link.memory_id === memory.id).map(link => `${inline(familyById.get(link.family_id)?.name)}（${roleName[link.role] || link.role}）`)
+    lines.push(`### ${index + 1}. ${inline(memory.summary)}`, '', `- 类型：${memory.type}`, `- 重要度：${memory.importance || 5}`, `- 确认者：${memory.approvedBy === 'star' ? '星星' : '小火'}`, `- 锁：${memory.lockOwner === 'star' ? '星星' : memory.lockOwner === 'fire' ? '小火' : '无'}`)
+    if (memory.occurredAt) lines.push(`- 发生时间：${memory.occurredAt}`)
+    if (memory.validFrom || memory.validTo) lines.push(`- 有效时间：${memory.validFrom || '未限定'} → ${memory.validTo || '仍有效'}`)
+    if (familyLabels.length) lines.push(`- 家族：${familyLabels.join('、')}`)
+    if (memory.whyImportant) lines.push('', `**为什么重要**\n\n${block(memory.whyImportant)}`)
+    if (memory.details) lines.push('', `**细节**\n\n${block(memory.details)}`)
+    if (memory.starFeeling) lines.push('', `**星星当时的感受**\n\n${block(memory.starFeeling)}`)
+    if (memory.currentUnderstanding) lines.push('', `**当前理解**\n\n${block(memory.currentUnderstanding)}`)
+    if (memory.quotes?.length) lines.push('', '**原话**', '', ...memory.quotes.map(quote => `- ${quote.actor === 'fire' ? '小火' : '星星'}：${inline(quote.text)}`))
+    if (memory.sources.length) lines.push('', '**来源**', '', ...memory.sources.map(source => `- ${source.label || source.kind}${source.excerpt ? `：${inline(source.excerpt)}` : ''}`))
+    lines.push('')
+  })
+  const appendSummaries = (title: string, items: Array<{ summary: string }>) => {
+    lines.push(`## ${title}`, '')
+    if (!items.length) lines.push('_无_', '')
+    else items.forEach(item => lines.push(`- ${inline(item.summary)}`))
+    lines.push('')
+  }
+  appendSummaries('近期记忆', working)
+  appendSummaries('待审核候选', candidates)
+  lines.push('## 待确认冲突', '')
+  if (!conflicts.length) lines.push('_无_', '')
+  conflicts.forEach(conflict => lines.push(`- 当前：${inline(conflict.currentSummary)}\n  - 建议：${inline(conflict.proposedSummary)}${conflict.reason ? `\n  - 原因：${inline(conflict.reason)}` : ''}`))
+  return `${lines.join('\n').trim()}\n`
+}
+
 export function claimPendingFireReminder(nowValue: unknown = new Date().toISOString()) {
   const now = iso(nowValue, 'now')!
   const nowMs = new Date(now).getTime()
