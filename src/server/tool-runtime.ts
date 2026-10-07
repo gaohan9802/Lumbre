@@ -44,7 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
-import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily } from './star-memory'
+import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -86,9 +86,21 @@ export async function executeRegisteredToolHandler(
       const knownIds = new Set(messages.map((message: any) => message.id))
       if (requestedIds.some((id: string) => !knownIds.has(id))) throw new Error('source message not found in the current chat')
       const messageIds = requestedIds.length ? requestedIds : messages.slice(-4).map((message: any) => message.id)
-      const sources = context?.sessionId && messageIds.length
+      const sources: SourceRef[] = context?.sessionId && messageIds.length
         ? [{ kind: 'chat' as const, actor: 'star' as const, sessionId: context.sessionId, messageIds }]
         : [{ kind: 'manual' as const, actor: 'star' as const, label: '星星手动加入' }]
+      const diaryDate = typeof input.source_diary_date === 'string' ? input.source_diary_date.trim() : ''
+      const diaryTimeId = typeof input.source_diary_time_id === 'string' ? input.source_diary_time_id.trim() : ''
+      if (!!diaryDate !== !!diaryTimeId) throw new Error('diary source needs both date and time id')
+      if (diaryDate && input.type !== 'self_event' && (input.inference !== true || decision !== 'ask_fire')) {
+        throw new Error('diary-derived memory about fire must be inferred and reviewed by fire')
+      }
+      if (diaryDate) {
+        const diary = readDiaries('star', { author_filter: 'star', target_date: diaryDate })
+          .find(entry => entry.time_id === diaryTimeId && !entry.locked)
+        if (!diary) throw new Error('source diary not found')
+        sources.push({ kind: 'journal', actor: 'star', label: `星星日记 ${diary.date} ${diary.time_id}`, excerpt: String(diary.content || '').slice(0, 1_000) })
+      }
       const quotes = [
         typeof input.fire_quote === 'string' && input.fire_quote.trim() ? { actor: 'fire' as const, text: input.fire_quote } : null,
         typeof input.star_quote === 'string' && input.star_quote.trim() ? { actor: 'star' as const, text: input.star_quote } : null,

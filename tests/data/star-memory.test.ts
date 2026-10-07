@@ -10,6 +10,7 @@ process.env.DATA_DIR = root
 let memory: typeof import('../../src/server/star-memory')
 let chat: typeof import('../../src/server/data/repositories/chat')
 let chatSync: typeof import('../../src/server/chat-sync')
+let journal: typeof import('../../src/server/diary-store')
 let runtime: typeof import('../../src/server/tool-runtime')
 let route: typeof import('../../src/app/api/star-memory/route')
 let NextRequest: typeof import('next/server').NextRequest
@@ -18,6 +19,7 @@ before(async () => {
   memory = await import('../../src/server/star-memory')
   chat = await import('../../src/server/data/repositories/chat')
   chatSync = await import('../../src/server/chat-sync')
+  journal = await import('../../src/server/diary-store')
   runtime = await import('../../src/server/tool-runtime')
   route = await import('../../src/app/api/star-memory/route')
   ;({ NextRequest } = await import('next/server'))
@@ -282,7 +284,7 @@ test('star can remember from the current chat and choose who reviews it', async 
   assert.equal(recalled.hits.some((item: any) => item.id === short.working.id && item.memory_kind === 'short_term'), true)
 })
 
-test('mixed recall separates reliable, fuzzy, current, family, and missing results', () => {
+test('mixed recall separates reliable, fuzzy, current, family, and missing results', async () => {
   const family = memory.createMemoryFamily({ name: '植物照护', summary: '阳台花草的长期照料过程。' }, 'star')
   const shared = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
     type: 'shared_event',
@@ -333,6 +335,23 @@ test('mixed recall separates reliable, fuzzy, current, family, and missing resul
   assert.match(context, /小火和星星一起规划了长期记忆系统/)
   assert.doesNotMatch(memory.buildStarMemoryContext('我们一起规划长期记忆库的经历', '小火和星星一起规划了长期记忆系统。'), /小火和星星一起规划了长期记忆系统/)
   assert.equal(memory.buildStarMemoryContext('青色甲乙丙丁戊'), '')
+
+  const diary = journal.writeDiary({
+    date: '2099-01-02', author: 'star', title: '雨后玻璃风铃', content: '我当时觉得雨后玻璃风铃像一段很安静的回音。', visibility: 'private',
+  })
+  const diaryContext = memory.buildStarMemoryContext('雨后玻璃风铃')
+  assert.match(diaryContext, /星星日记低频联想/)
+  assert.match(diaryContext, /不是小火说过的事实/)
+  const observation = JSON.parse(await runtime.executeRegisteredToolHandler('remember', {
+    type: 'observation', summary: '星星从风铃日记中产生了一个待小火确认的理解。', inference: true, confidence: 0.7,
+    source_diary_date: diary.date, source_diary_time_id: diary.time_id, decision: 'ask_fire',
+  }))
+  assert.equal(observation.candidate.status, 'pending_fire')
+  assert.equal(observation.candidate.sources.some((source: any) => source.kind === 'journal' && source.label.includes(diary.time_id)), true)
+  assert.match(await runtime.executeRegisteredToolHandler('remember', {
+    type: 'observation', summary: '不应绕过小火审核的日记推断。', inference: true,
+    source_diary_date: diary.date, source_diary_time_id: diary.time_id, decision: 'approve',
+  }), /reviewed by fire/)
 })
 
 test('short-term memory expires without renewal and can be promoted exactly once', () => {

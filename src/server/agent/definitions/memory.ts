@@ -176,7 +176,7 @@ export const MEMORY_TOOL_DEFINITIONS = [
   },
   {
     "name": "remember",
-    "description": "把当前对话中的内容写入新的星星记忆库。decision=short_term 写入近期活跃记忆；approve 立即批准为正式记忆；ask_fire 交给小火审核；later 留在你的候选箱。当前会话会自动记录为来源。",
+    "description": "把当前对话中的内容写入新的星星记忆库。decision=short_term 写入近期活跃记忆；approve 立即批准为正式记忆；ask_fire 交给小火审核；later 留在你的候选箱。当前会话会自动记录为来源。由日记产生的关于小火的新理解必须写成 observation，inference=true 并交给小火审核；关于你自己的认识可写成 self_event。",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -199,6 +199,8 @@ export const MEMORY_TOOL_DEFINITIONS = [
         "retention_days": { "type": "integer", "enum": [1, 7, 14], "description": "短期记忆保留 1、7 或 14 天；只用于 short_term，默认 7" },
         "family_ids": { "type": "array", "items": { "type": "string" }, "description": "建议归属的现有家族 ID" },
         "source_message_ids": { "type": "array", "items": { "type": "string" }, "description": "可选；只引用当前会话中的这些消息。省略时自动引用最近几轮。" },
+        "source_diary_date": { "type": "string", "description": "新理解来自星星日记时填 YYYY-MM-DD，必须与 source_diary_time_id 一起使用" },
+        "source_diary_time_id": { "type": "string", "description": "新理解来自星星日记时填四位 time_id" },
         "fire_quote": { "type": "string", "description": "需要保留的小火原话，可省略" },
         "star_quote": { "type": "string", "description": "需要保留的你的原话，可省略" },
         "decision": {

@@ -4,6 +4,7 @@ import path from 'node:path'
 import Database from 'better-sqlite3'
 import { getDataDir } from './data/config'
 import { readChatSession } from './data/repositories/chat'
+import { readDiaries } from './diary-store'
 import { resolveDataPath } from './data/safe-path'
 
 export type MemoryActor = 'fire' | 'star' | 'system'
@@ -1232,8 +1233,21 @@ export function buildStarMemoryContext(queryValue: unknown, existingContextValue
   const query = typeof queryValue === 'string' ? queryValue.trim().slice(0, 500) : ''
   if (!query) return ''
   const bundle = recallStarMemoryBundle(query, limitValue)
-  if (bundle.status !== 'reliable') return ''
   const existing = normalized(typeof existingContextValue === 'string' ? existingContextValue.slice(0, 100_000) : '')
+  if (bundle.status !== 'reliable') {
+    try {
+      const diary = readDiaries('star', { author_filter: 'star' }).filter(entry => !entry.locked).map(entry => {
+        const diaryText = `${entry.title || ''} ${String(entry.content || '').slice(0, 5_000)} ${(entry.tags || []).join(' ')}`
+        return { entry, score: Math.max(relevance(diaryText, query), vectorRelevance(diaryText, query)) }
+      }).filter(item => item.score >= 55).sort((a, b) => b.score - a.score)[0]
+      if (!diary || existing.includes(normalized(`${diary.entry.title || ''}${String(diary.entry.content || '').slice(0, 500)}`))) return ''
+      return [
+        '[星星日记低频联想｜这是星星自己当时的感受，不是小火说过的事实]',
+        `- ${diary.entry.date} ${diary.entry.time_id}《${diary.entry.title || '无题'}》：${String(diary.entry.content || '').slice(0, 500)}`,
+        '只在自然相关时可说“这让我想起我当时的感受”；不得写成“小火说过”。是否分享日记原文由你决定。',
+      ].join('\n')
+    } catch { return '' }
+  }
   const seen = new Set<string>()
   const hits = bundle.hits.filter(hit => {
     const key = normalized(hit.summary)
