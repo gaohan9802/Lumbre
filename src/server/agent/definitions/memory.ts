@@ -158,7 +158,7 @@ export const MEMORY_TOOL_DEFINITIONS = [
   },
   {
     "name": "recall_memory",
-    "description": "查询新的星星记忆库。返回仍活跃的短期记忆和已批准的正式记忆，包含期限、家族、当前有效性和召回解释；结果为空时应诚实说不记得，不要猜。",
+    "description": "查询新的星星记忆库。合并本地关键词、字符向量和家族召回，先返回 reliable、fuzzy 或 not_found；只有 reliable 可当作可靠记忆，fuzzy 必须表述为模糊印象，not_found 要诚实说不记得。结果包含期限、家族、当前有效性和召回解释。",
     "input_schema": {
       "type": "object",
       "properties": {

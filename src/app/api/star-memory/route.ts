@@ -15,7 +15,7 @@ import {
   listRecycledMemories,
   listWorkingMemories,
   mergeMemoryFamilies,
-  recallStarMemories,
+  recallStarMemoryBundle,
   resolveMemorySources,
   resolveWorkingMemorySources,
   reviewMemoryCandidate,
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       const level = req.nextUrl.searchParams.get('level')
       return NextResponse.json(level ? getMemoryFamilyLevel(req.nextUrl.searchParams.get('id') || '', level) : getMemoryFamily(req.nextUrl.searchParams.get('id') || ''))
     }
-    if (view === 'recall') return NextResponse.json(recallStarMemories(req.nextUrl.searchParams.get('q') || '', req.nextUrl.searchParams.get('limit')))
+    if (view === 'recall') return NextResponse.json(recallStarMemoryBundle(req.nextUrl.searchParams.get('q') || '', req.nextUrl.searchParams.get('limit')))
     if (view === 'sources') return NextResponse.json(resolveMemorySources(req.nextUrl.searchParams.get('id') || ''))
     if (view === 'working_sources') return NextResponse.json(resolveWorkingMemorySources(req.nextUrl.searchParams.get('id') || ''))
     return NextResponse.json({ error: 'unknown_view' }, { status: 400 })

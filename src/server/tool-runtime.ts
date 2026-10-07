@@ -44,7 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
-import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemories, recallWorkingMemories, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily } from './star-memory'
+import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -71,31 +71,7 @@ export async function executeRegisteredToolHandler(
 
     if (name === 'recall_memory') {
       const limit = Math.min(10, Number(input.limit) || 5)
-      const formal = recallStarMemories(input.query, limit).map(hit => ({
-        id: hit.memory.id,
-        memory_kind: 'formal',
-        summary: hit.memory.summary,
-        occurred_at: hit.memory.occurredAt,
-        current: hit.current,
-        importance: hit.memory.importance,
-        locked_by: hit.memory.lockOwner,
-        families: hit.families.map(family => ({ id: family.id, name: family.name })),
-        recall_reason: hit.match === 'family' ? '家族摘要与当前问题相关' : '记忆内容与当前问题相关',
-        score: hit.score,
-      }))
-      const working = recallWorkingMemories(input.query, limit).map(hit => ({
-        id: hit.memory.id,
-        memory_kind: 'short_term',
-        summary: hit.memory.summary,
-        occurred_at: hit.memory.occurredAt,
-        current: true,
-        importance: hit.memory.importance,
-        expires_at: hit.memory.expiresAt,
-        families: hit.memory.suggestedFamilyIds,
-        recall_reason: '仍在有效期内的近期记忆',
-        score: hit.score,
-      }))
-      return JSON.stringify([...formal, ...working].sort((a, b) => b.score - a.score).slice(0, limit))
+      return JSON.stringify(recallStarMemoryBundle(input.query, limit))
     }
 
     if (name === 'remember') {

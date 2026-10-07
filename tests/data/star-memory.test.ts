@@ -63,9 +63,10 @@ test('a sourced candidate becomes one memory shared by multiple families and tra
   assert.deepEqual(traced[0].resolved.map((item: { id?: string }) => item.id), ['m1', 'm2'])
 
   const toolHits = JSON.parse(await runtime.executeRegisteredToolHandler('recall_memory', { query: '一起设计记忆库' }))
-  assert.equal(toolHits.length, 1)
-  assert.equal(toolHits[0].summary, approved.memory?.summary)
-  assert.equal(toolHits[0].recall_reason, '记忆内容与当前问题相关')
+  assert.equal(toolHits.status, 'reliable')
+  assert.equal(toolHits.hits.length, 1)
+  assert.equal(toolHits.hits[0].summary, approved.memory?.summary)
+  assert.equal(toolHits.hits[0].recall_reason, '关键词或原话相关')
 })
 
 test('family nesting stops at three levels', () => {
@@ -227,11 +228,11 @@ test('formal memory recycle restores evidence and family links before purging at
   memory.setCanonicalMemoryLock(approved.id, true, 'star')
   assert.throws(() => memory.recycleCanonicalMemory(approved.id, 'fire'), /locked by star/)
   memory.setCanonicalMemoryLock(approved.id, false, 'star')
-  const recycledAgain = memory.recycleCanonicalMemory(approved.id, 'star', '2026-10-06T12:00:00.000Z')
+  const recycledAgain = memory.recycleCanonicalMemory(approved.id, 'star', '2099-10-06T12:00:00.000Z')
   const toolTrash = JSON.parse(await runtime.executeRegisteredToolHandler('manage_formal_memory', { action: 'list_trash' }))
   assert.equal(toolTrash.some((item: any) => item.id === recycledAgain.id), true)
-  assert.equal(memory.purgeExpiredMemoryRecycleBin('2026-10-07T11:59:59.000Z'), 0)
-  assert.equal(memory.purgeExpiredMemoryRecycleBin('2026-10-07T12:00:00.000Z'), 1)
+  assert.equal(memory.purgeExpiredMemoryRecycleBin('2099-10-07T11:59:59.000Z'), 0)
+  assert.equal(memory.purgeExpiredMemoryRecycleBin('2099-10-07T12:00:00.000Z'), 1)
   assert.throws(() => memory.restoreCanonicalMemory(recycledAgain.id, 'star'), /not found/)
 })
 
@@ -278,7 +279,51 @@ test('star can remember from the current chat and choose who reviews it', async 
   assert.equal(short.working.retentionDays, 1)
   assert.equal(short.working.status, 'active')
   const recalled = JSON.parse(await runtime.executeRegisteredToolHandler('recall_memory', { query: '今天继续设计记忆库' }))
-  assert.equal(recalled.some((item: any) => item.id === short.working.id && item.memory_kind === 'short_term'), true)
+  assert.equal(recalled.hits.some((item: any) => item.id === short.working.id && item.memory_kind === 'short_term'), true)
+})
+
+test('mixed recall separates reliable, fuzzy, current, family, and missing results', () => {
+  const family = memory.createMemoryFamily({ name: '植物照护', summary: '阳台花草的长期照料过程。' }, 'star')
+  const shared = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'shared_event',
+    summary: '小火和星星一起规划了长期记忆系统。',
+    quotes: [{ actor: 'fire', text: '青色彗星暗号。' }],
+    sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+    importance: 9,
+  }, 'star').id, 'approve', 'star').memory!
+  const plant = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'shared_event',
+    summary: '第一次换盆完成。',
+    sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+    familyIds: [family.id],
+  }, 'star').id, 'approve', 'star').memory!
+  memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'durable_fact',
+    summary: '小火当前使用银色火箭杯。',
+    validTo: '2020-01-01T00:00:00.000Z',
+    sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+  }, 'star').id, 'approve', 'star')
+
+  const exact = memory.recallStarMemoryBundle('第一次说青色彗星暗号')
+  assert.equal(exact.status, 'reliable')
+  assert.equal(exact.query_type, 'exact')
+  assert.match(exact.certainty_note || '', /不能单独证明/)
+  assert.equal(exact.hits[0].id, shared.id)
+
+  const paraphrase = memory.recallStarMemoryBundle('我们一起规划长期记忆库的经历')
+  assert.notEqual(paraphrase.status, 'not_found')
+  assert.equal(paraphrase.hits.some(item => item.id === shared.id), true)
+
+  const byFamily = memory.recallStarMemoryBundle('阳台花草照料')
+  assert.equal(byFamily.hits.some(item => item.id === plant.id && item.recall_reason === '家族摘要相关'), true)
+
+  const current = memory.recallStarMemoryBundle('现在还使用银色火箭杯吗')
+  assert.equal(current.query_type, 'current')
+  assert.equal(current.hits.some(item => item.summary.includes('银色火箭杯')), false)
+
+  const missing = memory.recallStarMemoryBundle('紫金海豚玻璃城堡')
+  assert.equal(missing.status, 'not_found')
+  assert.deepEqual(missing.hits, [])
 })
 
 test('short-term memory expires without renewal and can be promoted exactly once', () => {

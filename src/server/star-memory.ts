@@ -1103,35 +1103,129 @@ function relevance(haystack: string, query: string): number {
   return (matches / queryGrams.size) * 70
 }
 
-export function recallWorkingMemories(queryValue: unknown, limitValue: unknown = 10, nowValue: unknown = new Date().toISOString()) {
-  const query = text(queryValue, 'query', 500, true)!
-  const limit = Math.max(1, Math.min(20, Number(limitValue) || 10))
-  return listWorkingMemories('active', nowValue).map(memory => {
-    const memoryText = [memory.summary, memory.details, memory.whyImportant, memory.currentUnderstanding, ...(memory.quotes || []).map(item => item.text)].filter(Boolean).join(' ')
-    const base = relevance(memoryText, query)
-    const score = base > 0 ? base + (memory.importance || 5) * 2 + 10 : 0
-    return { memory, score: Number(score.toFixed(2)) }
-  }).filter(item => item.score >= 25).sort((a, b) => b.score - a.score).slice(0, limit)
+function vectorRelevance(haystack: string, query: string): number {
+  const left = bigrams(haystack)
+  const right = bigrams(query)
+  if (!left.size || !right.size) return 0
+  let overlap = 0
+  right.forEach(gram => { if (left.has(gram)) overlap += 1 })
+  return (overlap / Math.sqrt(left.size * right.size)) * 70
 }
 
-export function recallStarMemories(queryValue: unknown, limitValue: unknown = 10) {
+export type RecallQuestionType = 'exact' | 'current' | 'theme' | 'similar' | 'change' | 'general'
+
+export function classifyRecallQuestion(queryValue: unknown): RecallQuestionType {
+  const query = text(queryValue, 'query', 500, true)!
+  if (/第一次|原话|哪一天|哪天|什么时候|日期/.test(query)) return 'exact'
+  if (/现在|目前|如今|当前|还(?:在|是|会|有|喜欢|想)/.test(query)) return 'current'
+  if (/变化|改变|这些年|后来|以前.*现在/.test(query)) return 'change'
+  if (/类似|像这样|以前有没有|也发生过/.test(query)) return 'similar'
+  if (/生活|历程|故事|项目|家族/.test(query)) return 'theme'
+  return 'general'
+}
+
+function recencyBonus(value: string | undefined, now: string): number {
+  if (!value) return 0
+  const days = Math.max(0, (new Date(now).getTime() - new Date(value).getTime()) / 86_400_000)
+  return days <= 30 ? 4 : days <= 365 ? 2 : 1
+}
+
+export function recallWorkingMemories(queryValue: unknown, limitValue: unknown = 10, nowValue: unknown = new Date().toISOString(), minimumRelevance = 20) {
+  const query = text(queryValue, 'query', 500, true)!
+  const now = iso(nowValue, 'now')!
+  const limit = Math.max(1, Math.min(20, Number(limitValue) || 10))
+  return listWorkingMemories('active', now).map(memory => {
+    const memoryText = [memory.summary, memory.details, memory.whyImportant, memory.currentUnderstanding, ...(memory.quotes || []).map(item => item.text), ...memory.sources.map(item => item.excerpt)].filter(Boolean).join(' ')
+    const keyword = relevance(memoryText, query)
+    const semantic = vectorRelevance(memoryText, query)
+    const relevanceScore = Math.max(keyword, semantic)
+    const importance = (memory.importance || 5) * 1.5
+    const current = 8
+    const emotion = memory.starFeeling ? 2 : memory.quotes?.length ? 1 : 0
+    const recent = recencyBonus(memory.occurredAt || memory.createdAt, now)
+    const score = relevanceScore + importance + current + emotion + recent
+    return { memory, score: Number(score.toFixed(2)), relevance: Number(relevanceScore.toFixed(2)), match: keyword >= semantic ? 'keyword' as const : 'semantic' as const, breakdown: { keyword: Number(keyword.toFixed(2)), semantic: Number(semantic.toFixed(2)), importance, current, emotion, recent } }
+  }).filter(item => item.relevance >= minimumRelevance).sort((a, b) => b.score - a.score).slice(0, limit)
+}
+
+export function recallStarMemories(queryValue: unknown, limitValue: unknown = 10, minimumRelevance = 20) {
   const query = text(queryValue, 'query', 500, true)!
   const limit = Math.max(1, Math.min(20, Number(limitValue) || 10))
+  const questionType = classifyRecallQuestion(query)
   const memories = (getDb().prepare('SELECT * FROM memories').all() as Row[]).map(memoryFromRow)
   const families = (getDb().prepare('SELECT * FROM families').all() as Row[]).map(familyFromRow)
-  const familyScores = new Map(families.map(family => [family.id, relevance(`${family.name} ${family.title || ''} ${family.summary || ''}`, query)]))
+  const familyScores = new Map(families.map(family => {
+    const familyText = `${family.name} ${family.title || ''} ${family.summary || ''}`
+    return [family.id, { keyword: relevance(familyText, query), semantic: vectorRelevance(familyText, query) }] as const
+  }))
   const now = new Date().toISOString()
   return memories.map(memory => {
     const familyIds = (getDb().prepare('SELECT family_id FROM family_memberships WHERE memory_id = ?').all(memory.id) as Row[]).map(item => item.family_id)
     const linkedFamilies = familyIds.map(id => families.find(item => item.id === id)).filter((item): item is MemoryFamily => !!item)
-    const memoryText = [memory.summary, memory.details, memory.whyImportant, memory.currentUnderstanding, ...(memory.quotes || []).map(item => item.text)].filter(Boolean).join(' ')
-    const direct = relevance(memoryText, query)
-    const family = Math.max(0, ...linkedFamilies.map(item => familyScores.get(item.id) || 0)) * 0.85
-    const base = Math.max(direct, family)
+    const memoryText = [memory.summary, memory.details, memory.whyImportant, memory.currentUnderstanding, ...(memory.quotes || []).map(item => item.text), ...memory.sources.map(item => item.excerpt)].filter(Boolean).join(' ')
+    const keyword = relevance(memoryText, query)
+    const semantic = vectorRelevance(memoryText, query)
+    const familyKeyword = Math.max(0, ...linkedFamilies.map(item => familyScores.get(item.id)?.keyword || 0))
+    const familySemantic = Math.max(0, ...linkedFamilies.map(item => familyScores.get(item.id)?.semantic || 0))
+    const family = Math.max(familyKeyword, familySemantic) * 0.85
+    const relevanceScore = Math.max(keyword, semantic, family)
     const current = !memory.validTo || memory.validTo >= now
-    const score = base > 0 ? base + (memory.importance || 5) * 2 + (current ? 10 : 0) : 0
-    return { memory, families: linkedFamilies, score: Number(score.toFixed(2)), match: direct >= family ? 'memory' : 'family', current }
-  }).filter(item => item.score >= 25).sort((a, b) => b.score - a.score).slice(0, limit)
+    const importance = (memory.importance || 5) * 1.5
+    const currentBonus = current ? 8 : 0
+    const emotion = memory.starFeeling ? 2 : memory.quotes?.length ? 1 : 0
+    const recent = recencyBonus(memory.occurredAt || memory.createdAt, now)
+    const score = relevanceScore + importance + currentBonus + emotion + recent
+    const match = family >= keyword && family >= semantic ? 'family' as const : keyword >= semantic ? 'keyword' as const : 'semantic' as const
+    return { memory, families: linkedFamilies, score: Number(score.toFixed(2)), relevance: Number(relevanceScore.toFixed(2)), match, current, breakdown: { keyword: Number(keyword.toFixed(2)), semantic: Number(semantic.toFixed(2)), family: Number(family.toFixed(2)), importance, current: currentBonus, emotion, recent } }
+  }).filter(item => item.relevance >= minimumRelevance && (questionType !== 'current' || item.current)).sort((a, b) => b.score - a.score).slice(0, limit)
+}
+
+export function recallStarMemoryBundle(queryValue: unknown, limitValue: unknown = 5) {
+  const query = text(queryValue, 'query', 500, true)!
+  const limit = Math.max(1, Math.min(10, Number(limitValue) || 5))
+  // ponytail: scan-derived vectors are enough for a two-person library; persist an ANN index only after measured scale needs it.
+  const formal = recallStarMemories(query, limit * 2, 8).map(hit => ({
+    id: hit.memory.id,
+    memory_kind: 'formal' as const,
+    type: hit.memory.type,
+    summary: hit.memory.summary,
+    occurred_at: hit.memory.occurredAt,
+    current: hit.current,
+    importance: hit.memory.importance,
+    locked_by: hit.memory.lockOwner,
+    families: hit.families.map(family => ({ id: family.id, name: family.name })),
+    recall_reason: hit.match === 'family' ? '家族摘要相关' : hit.match === 'semantic' ? '本地语义向量相关' : '关键词或原话相关',
+    score: hit.score,
+    relevance: hit.relevance,
+    breakdown: hit.breakdown,
+  }))
+  const working = recallWorkingMemories(query, limit * 2, new Date().toISOString(), 8).map(hit => ({
+    id: hit.memory.id,
+    memory_kind: 'short_term' as const,
+    type: hit.memory.type,
+    summary: hit.memory.summary,
+    occurred_at: hit.memory.occurredAt,
+    current: true,
+    importance: hit.memory.importance,
+    expires_at: hit.memory.expiresAt,
+    families: hit.memory.suggestedFamilyIds,
+    recall_reason: hit.match === 'semantic' ? '仍有效的近期记忆与问题语义相关' : '仍有效的近期记忆命中关键词',
+    score: hit.score,
+    relevance: hit.relevance,
+    breakdown: hit.breakdown,
+  }))
+  const ranked = [...formal, ...working].sort((a, b) => b.score - a.score)
+  const reliable = ranked.filter(item => item.relevance >= 20).slice(0, limit)
+  const fuzzy = reliable.length ? [] : ranked.filter(item => item.relevance >= 8).slice(0, limit)
+  const status = reliable.length ? 'reliable' as const : fuzzy.length ? 'fuzzy' as const : 'not_found' as const
+  const questionType = classifyRecallQuestion(query)
+  return {
+    status,
+    query_type: questionType,
+    message: status === 'reliable' ? '找到可靠记忆。' : status === 'fuzzy' ? '只有模糊相关内容，不能当作确定事实。' : '没有找到可靠记忆。',
+    certainty_note: questionType === 'exact' && /第一次/.test(query) ? '命中内容不能单独证明这是第一次。' : undefined,
+    hits: status === 'reliable' ? reliable : fuzzy,
+  }
 }
 
 export function resolveMemorySources(memoryIdValue: unknown) {
