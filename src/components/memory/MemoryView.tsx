@@ -58,6 +58,13 @@ interface StarFamily {
   updatedAt?: string
 }
 
+type StarFamilyRole = 'key_event' | 'key_fact' | 'member' | 'unresolved'
+
+interface StarFamilyDetail {
+  memberships: Array<{ familyId: string; memoryId: string; role: StarFamilyRole; reason?: string }>
+  memories: StarMemory[]
+}
+
 interface RecycledStarFamily {
   id: string
   familyId: string
@@ -543,6 +550,10 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [editingMemoryId, setEditingMemoryId] = useState('')
   const [memoryDraft, setMemoryDraft] = useState({ summary: '', details: '', whyImportant: '', currentUnderstanding: '', importance: 5 })
   const [familyPick, setFamilyPick] = useState<Record<string, string>>({})
+  const [expandedFamilyId, setExpandedFamilyId] = useState('')
+  const [familyDetails, setFamilyDetails] = useState<Record<string, StarFamilyDetail>>({})
+  const [mergeTarget, setMergeTarget] = useState<Record<string, string>>({})
+  const [splitSelections, setSplitSelections] = useState<Record<string, string[]>>({})
   const c = useColors(isNight)
 
   const load = useCallback(async () => {
@@ -676,6 +687,56 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     })
   }
 
+  const toggleFamilyDetails = async (familyId: string) => {
+    if (expandedFamilyId === familyId) return setExpandedFamilyId('')
+    setExpandedFamilyId(familyId)
+    if (familyDetails[familyId]) return
+    setBusyId(`detail-${familyId}`)
+    setError('')
+    try {
+      const detail = await apiRequest(`/api/star-memory?view=family&level=4&id=${encodeURIComponent(familyId)}`)
+      setFamilyDetails(current => ({ ...current, [familyId]: detail }))
+    } catch (detailError: any) {
+      setError(detailError?.message || '家族内容加载失败')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  const updateFamilyMember = (familyId: string, memoryId: string, role?: StarFamilyRole) => mutate(`member-${familyId}-${memoryId}`, role
+    ? { action: 'set_family_member', id: familyId, memoryId, role }
+    : { action: 'remove_family_member', id: familyId, memoryId },
+  role ? '成员角色修改失败' : '移出家族失败', () => setFamilyDetails(current => {
+    const detail = current[familyId]
+    if (!detail) return current
+    return { ...current, [familyId]: role
+      ? { ...detail, memberships: detail.memberships.map(link => link.memoryId === memoryId ? { ...link, role } : link) }
+      : { ...detail, memberships: detail.memberships.filter(link => link.memoryId !== memoryId), memories: detail.memories.filter(memory => memory.id !== memoryId) } }
+  }))
+
+  const mergeFamily = (family: StarFamily) => {
+    const targetId = mergeTarget[family.id]
+    if (!targetId) return setError('请先选择要合并到的家族')
+    if (!confirm(`“${family.name}”会合并进“${families.find(item => item.id === targetId)?.name || '目标家族'}”，原家族进入 24 小时回收区。继续吗？`)) return
+    return mutate(`merge-${family.id}`, { action: 'merge_families', sourceId: family.id, targetId }, '家族合并失败', () => {
+      setExpandedFamilyId('')
+      setFamilyDetails(current => { const next = { ...current }; delete next[family.id]; delete next[targetId]; return next })
+      setMergeTarget(current => ({ ...current, [family.id]: '' }))
+    })
+  }
+
+  const splitFamily = (family: StarFamily) => {
+    const memoryIds = splitSelections[family.id] || []
+    if (memoryIds.length === 0) return setError('请先勾选要拆出的记忆')
+    const name = prompt('新家族名称')?.trim()
+    if (!name) return
+    return mutate(`split-${family.id}`, { action: 'split_family', sourceId: family.id, family: { name }, memoryIds }, '家族拆分失败', () => {
+      setFamilyDetails(current => { const next = { ...current }; delete next[family.id]; return next })
+      setExpandedFamilyId('')
+      setSplitSelections(current => ({ ...current, [family.id]: [] }))
+    })
+  }
+
   const review = async (id: string, decision: 'approve' | 'reject') => {
     setBusyId(id)
     setError('')
@@ -800,6 +861,16 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const openCandidates = candidates.filter(item => !['approved', 'rejected'].includes(item.status))
   const activeWorking = working.filter(item => ['active', 'due'].includes(item.status))
   const familyNames = new Map(families.map(family => [family.id, family.name]))
+  const familyTreeRows: Array<{ family: StarFamily; depth: number }> = []
+  const addedFamilyIds = new Set<string>()
+  const addFamilyBranch = (family: StarFamily, depth: number) => {
+    if (addedFamilyIds.has(family.id)) return
+    addedFamilyIds.add(family.id)
+    familyTreeRows.push({ family, depth })
+    families.filter(child => child.parentId === family.id).forEach(child => addFamilyBranch(child, depth + 1))
+  }
+  families.filter(family => !family.parentId).forEach(family => addFamilyBranch(family, 0))
+  families.filter(family => !addedFamilyIds.has(family.id)).forEach(family => addFamilyBranch(family, 0))
   const timeline = [
     ...memories.map(item => ({ id: item.id, kind: '正式记忆', summary: item.summary, date: item.occurredAt || item.createdAt, familyIds: item.familyIds, target: 'memories' as StarSection })),
     ...activeWorking.map(item => ({ id: item.id, kind: '近期记忆', summary: item.summary, date: item.createdAt, familyIds: item.suggestedFamilyIds, target: 'current' as StarSection })),
@@ -1024,17 +1095,48 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
           </label>
           <button disabled={busyId === 'new-family'} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>创建家族</button>
         </form>}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {families.map(family => <div key={family.id} className={`rounded-xl border ${c.border} p-3`}>
-            <div className="flex items-center justify-between gap-2"><span className="text-xs">{family.name}{family.lockOwner ? ` · 🔒${family.lockOwner === 'star' ? '星星' : '小火'}` : ''}</span><span className={`text-[9px] ${c.muted}`}>{family.memberCount} 条 · {family.status === 'active' ? '发展中' : family.status === 'paused' ? '搁置' : family.status === 'ended' ? '已结束' : '已归档'}</span></div>
-            {family.summary && <p className={`mt-1 line-clamp-3 text-[10px] leading-4 ${c.muted}`}>{family.summary}</p>}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'update_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>改摘要</button>
-              <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'set_family_lock')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{family.lockOwner === 'star' ? '星星锁定' : family.lockOwner ? '解锁' : '加锁'}</button>
-              {!['ended', 'archived'].includes(family.status) && <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'end_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>结束并压缩</button>}
-              <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'recycle_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>移入回收区</button>
+        <div className="space-y-2">
+          {familyTreeRows.map(({ family, depth }) => {
+            const detail = familyDetails[family.id]
+            const selected = splitSelections[family.id] || []
+            const hasProtectedMembers = detail?.memories.some(memory => memory.lockOwner === 'star')
+            return <div key={family.id} style={{ marginLeft: `${Math.min(depth, 2) * 16}px` }} className={`rounded-xl border ${c.border} p-3`}>
+              <div className="flex items-center justify-between gap-2"><span className="text-xs">{depth > 0 ? '↳ ' : ''}{family.name}{family.lockOwner ? ` · 🔒${family.lockOwner === 'star' ? '星星' : '小火'}` : ''}</span><span className={`text-[9px] ${c.muted}`}>第 {depth + 1} 层 · {family.memberCount} 条 · {family.status === 'active' ? '发展中' : family.status === 'paused' ? '搁置' : family.status === 'ended' ? '已结束' : '已归档'}</span></div>
+              {family.summary && <p className={`mt-1 line-clamp-3 text-[10px] leading-4 ${c.muted}`}>{family.summary}</p>}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button disabled={busyId === `detail-${family.id}`} onClick={() => toggleFamilyDetails(family.id)} className={`rounded-lg px-2 py-1 text-[9px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>{expandedFamilyId === family.id ? '收起成员' : '展开成员'}</button>
+                <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'update_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>改摘要</button>
+                <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'set_family_lock')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{family.lockOwner === 'star' ? '星星锁定' : family.lockOwner ? '解锁' : '加锁'}</button>
+                {!['ended', 'archived'].includes(family.status) && <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'end_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>结束并压缩</button>}
+                <button disabled={busyId === family.id || family.lockOwner === 'star'} onClick={() => manageFamily(family, 'recycle_family')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>移入回收区</button>
+              </div>
+              {expandedFamilyId === family.id && <div className={`mt-3 border-t pt-3 ${c.border}`}>
+                {!detail ? <div className={`py-3 text-center text-[10px] ${c.muted}`}>加载家族内容…</div> : <>
+                  <div className="space-y-2">
+                    {detail.memories.map(memory => {
+                      const link = detail.memberships.find(item => item.memoryId === memory.id)
+                      const blocked = family.lockOwner === 'star' || memory.lockOwner === 'star'
+                      return <div key={memory.id} className={`rounded-lg ${c.surface} p-2`}>
+                        <div className="flex items-start gap-2">
+                          <input aria-label={`选择拆出${memory.summary}`} type="checkbox" disabled={blocked} checked={selected.includes(memory.id)} onChange={() => setSplitSelections(current => ({ ...current, [family.id]: selected.includes(memory.id) ? selected.filter(id => id !== memory.id) : [...selected, memory.id] }))} className="mt-1" />
+                          <div className="min-w-0 flex-1"><div className="text-[10px] leading-4">{memory.summary}{memory.lockOwner === 'star' ? ' · 🔒星星' : ''}</div>{link?.reason && <div className={`mt-1 text-[9px] ${c.muted}`}>{link.reason}</div>}</div>
+                          <select aria-label="家族成员角色" disabled={blocked || busyId === `member-${family.id}-${memory.id}`} value={link?.role || 'member'} onChange={event => updateFamilyMember(family.id, memory.id, event.target.value as StarFamilyRole)} className={`rounded border ${c.border} bg-transparent px-1 py-1 text-[9px] disabled:opacity-40`}><option value="key_event">关键节点</option><option value="key_fact">关键事实</option><option value="member">普通成员</option><option value="unresolved">未完事项</option></select>
+                          <button aria-label="移出家族" disabled={blocked || busyId === `member-${family.id}-${memory.id}`} onClick={() => updateFamilyMember(family.id, memory.id)} className={`px-1 text-[10px] ${c.muted} disabled:opacity-30`}>×</button>
+                        </div>
+                      </div>
+                    })}
+                    {detail.memories.length === 0 && <div className={`py-3 text-center text-[10px] ${c.muted}`}>这个家族还没有正式记忆</div>}
+                  </div>
+                  <div className={`mt-3 space-y-2 rounded-lg border ${c.border} p-2`}>
+                    <div className={`text-[9px] ${c.muted}`}>勾选成员可拆成新家族；合并会保留一份共享记忆正文。</div>
+                    <button disabled={selected.length === 0 || family.lockOwner === 'star' || busyId === `split-${family.id}`} onClick={() => splitFamily(family)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>拆出所选（{selected.length}）</button>
+                    <div className="flex gap-2"><select aria-label="选择合并目标家族" value={mergeTarget[family.id] || ''} onChange={event => setMergeTarget(current => ({ ...current, [family.id]: event.target.value }))} className={`min-w-0 flex-1 rounded-lg border ${c.border} ${c.surface} px-2 py-1.5 text-[9px]`}><option value="">合并到…</option>{families.filter(target => target.id !== family.id && target.lockOwner !== 'star').map(target => <option key={target.id} value={target.id}>{target.name}</option>)}</select><button disabled={!mergeTarget[family.id] || family.lockOwner === 'star' || hasProtectedMembers || busyId === `merge-${family.id}`} onClick={() => mergeFamily(family)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>合并</button></div>
+                    {hasProtectedMembers && <div className={`text-[9px] ${c.muted}`}>包含星星锁定记忆，只有星星能移动这些归属。</div>}
+                  </div>
+                </>}
+              </div>}
             </div>
-          </div>)}
+          })}
           {families.length === 0 && <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无家族</div>}
         </div>
       </div>}
