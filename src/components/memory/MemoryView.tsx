@@ -4,8 +4,9 @@ import { shareToChat } from '@/lib/share'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, X, ChevronDown, ChevronRight, Pin, Check, Trash2, Edit3, Save, RefreshCw, Settings, Zap } from 'lucide-react'
+import { Search, X, ChevronDown, ChevronRight, Pin, Check, Trash2, Edit3, Save, RefreshCw, Settings, Zap, Heart } from 'lucide-react'
 import { apiRequest } from '@/lib/api'
+import { useApp } from '@/lib/store'
 
 // ─── Types ────────────────────────────────────────────────────
 interface Bucket {
@@ -35,7 +36,7 @@ interface StarCandidate {
   summary: string
   details?: string
   whyImportant?: string
-  status: 'pending_star' | 'pending_fire' | 'observing' | 'approved' | 'rejected'
+  status: 'pending_star' | 'pending_fire' | 'observing' | 'approved' | 'rejected' | 'journaled'
   owner: 'fire' | 'star'
   importance?: number
   occurredAt?: string
@@ -43,8 +44,10 @@ interface StarCandidate {
   lockOwner?: 'fire' | 'star'
   createdAt: string
   suggestedFamilyIds: string[]
-  sources: Array<{ actor: string; label?: string; excerpt?: string }>
+  sources: Array<{ kind: string; actor: string; sessionId?: string; label?: string; excerpt?: string }>
 }
+
+interface OmbreImportStatus { total: number; imported: number; remaining: number; feelings: number }
 
 interface StarFamily {
   id: string
@@ -541,6 +544,7 @@ export function MemoryView() {
 }
 
 function StarMemoryTab({ isNight }: { isNight: boolean }) {
+  const { currentUser } = useApp()
   const [status, setStatus] = useState<any>(null)
   const [candidates, setCandidates] = useState<StarCandidate[]>([])
   const [memories, setMemories] = useState<StarMemory[]>([])
@@ -568,13 +572,19 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [splitSelections, setSplitSelections] = useState<Record<string, string[]>>({})
   const [deletingMemoryId, setDeletingMemoryId] = useState('')
   const [exportFamilyId, setExportFamilyId] = useState('')
+  const [ombreImport, setOmbreImport] = useState<OmbreImportStatus | null>(null)
+  const [candidateFilter, setCandidateFilter] = useState<'all' | 'ombre' | 'feel'>('all')
+  const [candidateLimit, setCandidateLimit] = useState(30)
+  const [editingCandidateId, setEditingCandidateId] = useState('')
+  const [candidateEditDraft, setCandidateEditDraft] = useState({ type: 'observation', summary: '', details: '', importance: 5, familyIds: [] as string[] })
+  const [favoriteMemoryIds, setFavoriteMemoryIds] = useState<Set<string>>(new Set())
   const c = useColors(isNight)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const [nextStatus, nextCandidates, nextMemories, nextWorking, nextFamilies, nextFamilyTrash, nextMemoryTrash, nextConflicts] = await Promise.all([
+      const [nextStatus, nextCandidates, nextMemories, nextWorking, nextFamilies, nextFamilyTrash, nextMemoryTrash, nextConflicts, nextOmbreImport] = await Promise.all([
         apiRequest('/api/star-memory?view=status'),
         apiRequest('/api/star-memory?view=candidates'),
         apiRequest('/api/star-memory?view=memories'),
@@ -583,6 +593,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
         apiRequest('/api/star-memory?view=family_trash'),
         apiRequest('/api/star-memory?view=memory_trash'),
         apiRequest('/api/star-memory?view=conflicts'),
+        apiRequest('/api/star-memory?view=ombre_import'),
       ])
       setStatus(nextStatus)
       setCandidates(Array.isArray(nextCandidates) ? nextCandidates : [])
@@ -592,6 +603,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       setFamilyTrash(Array.isArray(nextFamilyTrash) ? nextFamilyTrash : [])
       setMemoryTrash(Array.isArray(nextMemoryTrash) ? nextMemoryTrash : [])
       setConflicts(Array.isArray(nextConflicts) ? nextConflicts : [])
+      setOmbreImport(nextOmbreImport)
     } catch (loadError: any) {
       setError(loadError?.message || '新记忆库加载失败')
     } finally {
@@ -614,6 +626,9 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   }
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    apiRequest('/api/favorites?kind=memory').then((items: any[]) => setFavoriteMemoryIds(new Set((Array.isArray(items) ? items : []).map(item => item.targetKey)))).catch(() => {})
+  }, [])
 
   const mutate = async (busyKey: string, body: Record<string, unknown>, fallback: string, after?: () => void) => {
     setBusyId(busyKey)
@@ -663,6 +678,50 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     })
   }
 
+  const importOmbre = async () => {
+    if (!ombreImport?.remaining || !confirm(`把剩余 ${ombreImport.remaining} 个旧 Ombre 桶全部放入待审核区？不会修改或删除旧桶。`)) return
+    setBusyId('import-ombre')
+    setError('')
+    try {
+      await apiRequest('/api/star-memory', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'import_ombre' }),
+      }, 120_000)
+      setCandidateFilter('ombre')
+      setCandidateLimit(30)
+      await load()
+    } catch (importError: any) {
+      setError(importError?.message || '旧 Ombre 迁移失败')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  const startEditingCandidate = (candidate: StarCandidate) => {
+    setEditingCandidateId(candidate.id)
+    setCandidateEditDraft({
+      type: candidate.type,
+      summary: candidate.summary,
+      details: candidate.details || '',
+      importance: candidate.importance || 5,
+      familyIds: candidate.suggestedFamilyIds,
+    })
+  }
+
+  const saveCandidate = (candidate: StarCandidate) => mutate(`edit-candidate-${candidate.id}`, {
+    action: 'update_candidate', id: candidate.id,
+    patch: {
+      type: candidateEditDraft.type,
+      summary: candidateEditDraft.summary.trim(),
+      details: candidateEditDraft.details.trim() || undefined,
+      importance: candidateEditDraft.importance,
+      familyIds: candidateEditDraft.familyIds,
+    },
+  }, '候选修改失败', () => setEditingCandidateId(''))
+
+  const candidateToJournal = (candidate: StarCandidate) => mutate(candidate.id, {
+    action: 'candidate_to_journal', id: candidate.id,
+  }, '存入星星日记失败')
+
   const startEditingMemory = (memory: StarMemory) => {
     setEditingMemoryId(memory.id)
     setMemoryDraft({
@@ -692,6 +751,18 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const toggleMemoryLock = (memory: StarMemory) => mutate(`lock-${memory.id}`, {
     action: 'set_memory_lock', id: memory.id, locked: memory.lockOwner !== 'fire',
   }, '记忆锁定状态修改失败')
+
+  const toggleMemoryFavorite = async (memory: StarMemory) => {
+    const result = await apiRequest('/api/favorites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle', actor: currentUser, favorite: {
+        kind: 'memory', targetKey: memory.id, title: memory.summary,
+        content: [memory.details, memory.whyImportant && `为什么重要：${memory.whyImportant}`, memory.currentUnderstanding && `当前理解：${memory.currentUnderstanding}`].filter(Boolean).join('\n\n') || memory.summary,
+        metadata: { memoryId: memory.id, type: memory.type, familyIds: memory.familyIds },
+      } }),
+    })
+    setFavoriteMemoryIds(current => { const next = new Set(current); result.favorited ? next.add(memory.id) : next.delete(memory.id); return next })
+  }
 
   const flagConflict = (memory: StarMemory) => {
     const proposedSummary = prompt('建议改成哪个准确版本？', memory.summary)?.trim()
@@ -888,7 +959,13 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   }
 
   if (loading) return <div className={`text-center py-12 text-sm ${c.muted}`}>加载新记忆库…</div>
-  const openCandidates = candidates.filter(item => !['approved', 'rejected'].includes(item.status))
+  const openCandidates = candidates.filter(item => !['approved', 'rejected', 'journaled'].includes(item.status))
+  const filteredCandidates = openCandidates.filter(candidate => {
+    const source = candidate.sources.find(item => item.kind === 'ombre')
+    if (candidateFilter === 'ombre') return !!source
+    if (candidateFilter === 'feel') return source?.label?.includes('感受')
+    return true
+  })
   const activeWorking = working.filter(item => ['active', 'due'].includes(item.status))
   const familyNames = new Map(families.map(family => [family.id, family.name]))
   const familyTreeRows: Array<{ family: StarFamily; depth: number }> = []
@@ -1010,9 +1087,17 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
           <div className={`text-[9px] ${c.muted}`}>会标记为“小火手动加入”，先进入待审核区，批准后自动加小火个人锁。</div>
           <button disabled={busyId === 'new-candidate'} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>保存为候选</button>
         </form>}
-        {openCandidates.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无待审核候选</div> : (
+        {ombreImport && <div className={`mb-3 rounded-xl border ${c.border} p-3`}>
+          <div className="flex items-center justify-between gap-3"><div><div className="text-[11px] font-medium">旧 Ombre 迁移</div><div className={`mt-1 text-[9px] ${c.muted}`}>共 {ombreImport.total} 个 · 已登记 {ombreImport.imported} 个 · 剩余 {ombreImport.remaining} 个{ombreImport.feelings ? ` · 其中感受 ${ombreImport.feelings} 个` : ''}</div></div>{ombreImport.remaining > 0 && <button disabled={busyId === 'import-ombre'} onClick={importOmbre} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>全部放入待审核</button>}</div>
+          <div className={`mt-2 text-[9px] leading-4 ${c.muted}`}>感受类会标记“建议存入星星日记”；所有旧桶保持原样，重复扫描不会重复导入。</div>
+        </div>}
+        <div className="mb-2 flex gap-1">{([['all', '全部'], ['ombre', '旧 Ombre'], ['feel', '建议进日记']] as const).map(([key, label]) => <button key={key} onClick={() => { setCandidateFilter(key); setCandidateLimit(30) }} className={`rounded-lg px-2 py-1 text-[9px] ${candidateFilter === key ? `${c.accentBg} ${c.accent}` : `${c.surface} ${c.muted}`}`}>{label}</button>)}</div>
+        {filteredCandidates.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无待审核候选</div> : (
           <div className="space-y-2">
-            {openCandidates.map(candidate => (
+            {filteredCandidates.slice(0, candidateLimit).map(candidate => {
+              const ombreSource = candidate.sources.find(source => source.kind === 'ombre')
+              const isOmbreFeeling = !!ombreSource?.label?.includes('感受')
+              return (
               <article key={candidate.id} className={`rounded-xl border ${c.border} p-3`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -1023,6 +1108,13 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                 {candidate.suggestedFamilyIds.length > 0 && <div className="mt-2 flex flex-wrap gap-1">
                   {candidate.suggestedFamilyIds.map(id => <span key={id} className={`rounded px-1.5 py-0.5 text-[9px] ${c.accentBg} ${c.accent}`}>{familyNames.get(id) || '未知家族'}</span>)}
                 </div>}
+                {editingCandidateId === candidate.id && <form onSubmit={event => { event.preventDefault(); saveCandidate(candidate) }} className={`mt-3 space-y-2 rounded-xl ${c.surface} p-3`}>
+                  <div className="grid grid-cols-2 gap-2"><label className={`text-[9px] ${c.muted}`}>类型<select value={candidateEditDraft.type} onChange={event => setCandidateEditDraft(current => ({ ...current, type: event.target.value }))} className={`mt-1 w-full rounded-lg border ${c.border} bg-transparent px-2 py-1.5 text-[10px]`}><option value="shared_event">共同经历</option><option value="durable_fact">稳定事实</option><option value="agreement">承诺约定</option><option value="current_state">当前状态</option><option value="observation">观察</option><option value="self_event">星星经历</option><option value="unresolved">未完事项</option></select></label><label className={`text-[9px] ${c.muted}`}>重要度<input type="number" min="1" max="10" value={candidateEditDraft.importance} onChange={event => setCandidateEditDraft(current => ({ ...current, importance: Number(event.target.value) }))} className={`mt-1 w-full rounded-lg border ${c.border} bg-transparent px-2 py-1.5 text-[10px]`} /></label></div>
+                  <textarea required maxLength={1000} aria-label="候选摘要" value={candidateEditDraft.summary} onChange={event => setCandidateEditDraft(current => ({ ...current, summary: event.target.value }))} className={`min-h-16 w-full rounded-lg border ${c.border} bg-transparent px-2 py-2 text-[10px]`} />
+                  <textarea maxLength={6000} aria-label="候选细节" value={candidateEditDraft.details} onChange={event => setCandidateEditDraft(current => ({ ...current, details: event.target.value }))} className={`min-h-20 w-full rounded-lg border ${c.border} bg-transparent px-2 py-2 text-[10px]`} />
+                  {families.length > 0 && <div><div className={`mb-1 text-[9px] ${c.muted}`}>家族（可多选）</div><div className="flex flex-wrap gap-1">{families.filter(family => !['ended', 'archived'].includes(family.status)).map(family => <label key={family.id} className={`flex items-center gap-1 rounded px-2 py-1 text-[9px] ${c.accentBg}`}><input type="checkbox" checked={candidateEditDraft.familyIds.includes(family.id)} onChange={() => setCandidateEditDraft(current => ({ ...current, familyIds: current.familyIds.includes(family.id) ? current.familyIds.filter(id => id !== family.id) : [...current.familyIds, family.id] }))} />{family.name}</label>)}</div></div>}
+                  <div className="flex gap-2"><button disabled={!candidateEditDraft.summary.trim() || busyId === `edit-candidate-${candidate.id}`} className={`rounded-lg px-2 py-1 text-[9px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>保存修改</button><button type="button" onClick={() => setEditingCandidateId('')} className={`text-[9px] ${c.muted}`}>取消</button></div>
+                </form>}
                 {(candidate.whyImportant || candidate.details || candidate.sources.length > 0) && <details className="mt-2">
                   <summary className={`cursor-pointer text-[10px] ${c.muted}`}>依据与细节</summary>
                   <div className={`mt-2 space-y-2 border-l pl-2 text-[10px] leading-4 ${c.border} ${c.muted}`}>
@@ -1031,12 +1123,15 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                     {candidate.sources.map((source, index) => <div key={`${candidate.id}-source-${index}`}><div>{source.label || `${source.actor} 提供`}</div>{source.excerpt && <p className="mt-1 whitespace-pre-wrap opacity-80">{source.excerpt}</p>}</div>)}
                   </div>
                 </details>}
-                <div className="mt-3 flex gap-2">
-                  <button disabled={busyId === candidate.id} onClick={() => review(candidate.id, 'approve')} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>批准</button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button disabled={busyId === candidate.id} onClick={() => review(candidate.id, 'approve')} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>{isOmbreFeeling ? '存为正式记忆' : '批准'}</button>
+                  {isOmbreFeeling && <button disabled={busyId === candidate.id} onClick={() => candidateToJournal(candidate)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>存入星星日记</button>}
+                  <button disabled={busyId === candidate.id} onClick={() => startEditingCandidate(candidate)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>编辑后再审</button>
                   <button disabled={busyId === candidate.id} onClick={() => review(candidate.id, 'reject')} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>不保留</button>
                 </div>
               </article>
-            ))}
+            )})}
+            {filteredCandidates.length > candidateLimit && <button onClick={() => setCandidateLimit(limit => limit + 30)} className={`w-full rounded-xl border ${c.border} py-2 text-[10px] ${c.muted}`}>再显示 30 条（剩余 {filteredCandidates.length - candidateLimit} 条）</button>}
           </div>
         )}
       </div>}
@@ -1088,6 +1183,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                   </div>
                 </details>}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={() => toggleMemoryFavorite(item)} title={favoriteMemoryIds.has(item.id) ? '取消收藏' : '收藏'} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted}`}><Heart className="mr-1 inline" size={10} fill={favoriteMemoryIds.has(item.id) ? 'currentColor' : 'none'} />{favoriteMemoryIds.has(item.id) ? '已收藏' : '收藏'}</button>
                   <button disabled={item.lockOwner === 'star'} onClick={() => startEditingMemory(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '星星锁定' : '编辑'}</button>
                   <button disabled={busyId === `lock-${item.id}` || item.lockOwner === 'star'} onClick={() => toggleMemoryLock(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '不可解锁' : item.lockOwner === 'fire' ? '解除小火锁' : '加小火锁'}</button>
                   <button disabled={busyId === `conflict-${item.id}`} onClick={() => flagConflict(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>纠错</button>

@@ -161,7 +161,7 @@ function normalizeBucket(raw: any): Bucket | null {
       metadata: {
         id: raw.id,
         name: raw.metadata.name || '',
-        type: raw.metadata.type || 'dynamic',
+        type: raw.metadata.type || (raw.metadata.feel || raw.feel ? 'feel' : 'dynamic'),
         domain: raw.metadata.domain || ['未分类'],
         tags: raw.metadata.tags || [],
         valence: raw.metadata.valence ?? 0.5,
@@ -186,7 +186,7 @@ function normalizeBucket(raw: any): Bucket | null {
     metadata: {
       id: raw.id,
       name: raw.name || '',
-      type: raw.type || 'dynamic',
+      type: raw.type || (raw.feel ? 'feel' : 'dynamic'),
       domain: raw.domain || ['未分类'],
       tags: raw.tags || [],
       valence: raw.valence ?? 0.5,

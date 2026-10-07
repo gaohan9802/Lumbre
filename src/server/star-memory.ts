@@ -5,17 +5,19 @@ import Database from 'better-sqlite3'
 import { getDataDir } from './data/config'
 import { readChatSession } from './data/repositories/chat'
 import { readDiaries } from './diary-store'
+import { writeImportedDiary } from './diary-store'
+import { getBucket, loadAllBuckets } from './brain'
 import { resolveDataPath } from './data/safe-path'
 
 export type MemoryActor = 'fire' | 'star' | 'system'
 export type MemoryType = 'shared_event' | 'durable_fact' | 'agreement' | 'current_state' | 'observation' | 'self_event' | 'unresolved'
-export type CandidateStatus = 'pending_star' | 'pending_fire' | 'observing' | 'approved' | 'rejected'
+export type CandidateStatus = 'pending_star' | 'pending_fire' | 'observing' | 'approved' | 'rejected' | 'journaled'
 export type FamilyStatus = 'active' | 'paused' | 'ended' | 'archived'
 export type WorkingMemoryStatus = 'active' | 'due' | 'dismissed' | 'promoted'
 export type MemoryConflictResolution = 'keep_current' | 'use_proposal'
 
 export interface SourceRef {
-  kind: 'chat' | 'manual' | 'image' | 'journal' | 'health'
+  kind: 'chat' | 'manual' | 'image' | 'journal' | 'health' | 'ombre'
   actor: MemoryActor
   sessionId?: string
   messageIds?: string[]
@@ -127,6 +129,17 @@ export interface MemoryConflict {
   createdAt: string
   resolvedBy?: 'fire' | 'star'
   resolvedAt?: string
+}
+
+export interface FavoriteItem {
+  id: string
+  kind: 'memory' | 'diary' | 'chat'
+  targetKey: string
+  title: string
+  content: string
+  metadata: Record<string, unknown>
+  createdBy: 'fire' | 'star'
+  createdAt: string
 }
 
 type Row = Record<string, any>
@@ -253,6 +266,12 @@ function getDb(): Database.Database {
     CREATE TABLE IF NOT EXISTS reminder_state (
       kind TEXT PRIMARY KEY, last_sent_at TEXT, last_attempt_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS favorites (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('memory', 'diary', 'chat')),
+      target_key TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL,
+      metadata_json TEXT NOT NULL, created_by TEXT NOT NULL CHECK (created_by IN ('fire', 'star')),
+      created_at TEXT NOT NULL, UNIQUE (kind, target_key)
+    );
   `)
   const hasColumn = (table: string, column: string) => (database!.pragma(`table_info(${table})`) as Row[]).some(row => row.name === column)
   if (!hasColumn('candidates', 'lock_owner')) database.exec("ALTER TABLE candidates ADD COLUMN lock_owner TEXT CHECK (lock_owner IN ('fire', 'star'))")
@@ -274,7 +293,7 @@ function getDb(): Database.Database {
     UPDATE families SET lock_owner = created_by
       WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
   `)
-  database.pragma('user_version = 8')
+  database.pragma('user_version = 9')
   return database
 }
 
@@ -312,7 +331,7 @@ function sources(value: unknown): SourceRef[] {
   return value.map((raw): SourceRef => {
     if (!raw || typeof raw !== 'object') throw new Error('source is invalid')
     const item = raw as SourceRef
-    if (!['chat', 'manual', 'image', 'journal', 'health'].includes(item.kind)) throw new Error('source kind is invalid')
+    if (!['chat', 'manual', 'image', 'journal', 'health', 'ombre'].includes(item.kind)) throw new Error('source kind is invalid')
     const sourceActor = actor(item.actor)
     const sessionId = text(item.sessionId, 'source.sessionId', 200)
     const messageIds = Array.isArray(item.messageIds)
@@ -322,6 +341,7 @@ function sources(value: unknown): SourceRef[] {
     const excerpt = text(item.excerpt, 'source.excerpt', 2_000)
     if (item.kind === 'chat' && (!sessionId || !messageIds?.length)) throw new Error('chat source needs sessionId and messageIds')
     if (item.kind === 'manual' && !label) throw new Error('manual source needs a label')
+    if (item.kind === 'ombre' && !sessionId) throw new Error('Ombre source needs a bucket id')
     return { kind: item.kind, actor: sourceActor, sessionId, messageIds, label, excerpt }
   })
 }
@@ -489,6 +509,66 @@ export function getStarMemoryStatus() {
   }
 }
 
+function favoriteFromRow(row: Row): FavoriteItem {
+  return {
+    id: row.id,
+    kind: row.kind,
+    targetKey: row.target_key,
+    title: row.title,
+    content: row.content,
+    metadata: JSON.parse(row.metadata_json || '{}'),
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  }
+}
+
+export function listFavorites(kindValue?: unknown): FavoriteItem[] {
+  const kind = text(kindValue, 'favorite kind', 20) as FavoriteItem['kind'] | undefined
+  if (kind && !['memory', 'diary', 'chat'].includes(kind)) throw new Error('favorite kind is invalid')
+  const rows = kind
+    ? getDb().prepare('SELECT * FROM favorites WHERE kind = ? ORDER BY created_at DESC').all(kind)
+    : getDb().prepare('SELECT * FROM favorites ORDER BY created_at DESC').all()
+  return (rows as Row[]).map(favoriteFromRow)
+}
+
+export function toggleFavorite(inputValue: unknown, actorValue: unknown): { favorited: boolean; item?: FavoriteItem } {
+  const actor = reviewer(actorValue)
+  if (!inputValue || typeof inputValue !== 'object') throw new Error('favorite is required')
+  const input = inputValue as Partial<FavoriteItem>
+  const kind = text(input.kind, 'favorite kind', 20, true) as FavoriteItem['kind']
+  if (!['memory', 'diary', 'chat'].includes(kind)) throw new Error('favorite kind is invalid')
+  const targetKey = text(input.targetKey, 'favorite target', 300, true)!
+  const title = text(input.title, 'favorite title', 1_000, true)!
+  const content = text(input.content, 'favorite content', 50_000, true)!
+  const metadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata) ? input.metadata : {}
+  const encoded = JSON.stringify(metadata)
+  if (encoded.length > 10_000) throw new Error('favorite metadata is too large')
+  return getDb().transaction(() => {
+    const existing = getDb().prepare('SELECT * FROM favorites WHERE kind = ? AND target_key = ?').get(kind, targetKey) as Row | undefined
+    if (existing) {
+      getDb().prepare('DELETE FROM favorites WHERE id = ?').run(existing.id)
+      recordChange(actor, 'favorite.removed', existing.id, new Date().toISOString())
+      return { favorited: false }
+    }
+    const id = randomUUID()
+    const now = new Date().toISOString()
+    getDb().prepare('INSERT INTO favorites (id, kind, target_key, title, content, metadata_json, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, kind, targetKey, title, content, encoded, actor, now)
+    recordChange(actor, 'favorite.created', id, now)
+    return { favorited: true, item: favoriteFromRow(getDb().prepare('SELECT * FROM favorites WHERE id = ?').get(id) as Row) }
+  })()
+}
+
+export function removeFavorite(idValue: unknown, actorValue: unknown): boolean {
+  const id = text(idValue, 'favorite id', 100, true)!
+  const actor = reviewer(actorValue)
+  return getDb().transaction(() => {
+    const removed = getDb().prepare('DELETE FROM favorites WHERE id = ?').run(id).changes > 0
+    if (removed) recordChange(actor, 'favorite.removed', id, new Date().toISOString())
+    return removed
+  })()
+}
+
 export function serializeStarMemoryDatabase(): Buffer {
   const snapshot = new Database(getDb().serialize())
   try {
@@ -530,7 +610,7 @@ export function renderStarMemoryMarkdown(familyIdValue?: unknown, exportedAtValu
   const allMemories = listCanonicalMemories()
   const memories = familyId ? allMemories.filter(memory => memoryIds.has(memory.id)) : allMemories
   const visibleMemoryIds = new Set(memories.map(memory => memory.id))
-  const candidates = listMemoryCandidates().filter(candidate => !['approved', 'rejected'].includes(candidate.status) && (!familyId || candidate.suggestedFamilyIds.some(id => selectedIds.has(id))))
+  const candidates = listMemoryCandidates().filter(candidate => !['approved', 'rejected', 'journaled'].includes(candidate.status) && (!familyId || candidate.suggestedFamilyIds.some(id => selectedIds.has(id))))
   const working = (getDb().prepare("SELECT * FROM working_memories WHERE status IN ('active', 'due') ORDER BY expires_at").all() as Row[])
     .map(workingFromRow)
     .map(memory => memory.status === 'active' && memory.expiresAt <= exportedAt ? { ...memory, status: 'due' as const } : memory)
@@ -748,6 +828,105 @@ export function createMemoryCandidate(input: unknown, createdByValue: unknown, o
     recordChange(createdBy, 'candidate.created', id, now)
   })()
   return candidateFromRow(getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row)
+}
+
+export function updateMemoryCandidate(idValue: unknown, patchValue: unknown, actorValue: unknown): MemoryCandidate {
+  const id = text(idValue, 'candidate id', 100, true)!
+  const updatedBy = reviewer(actorValue)
+  if (!patchValue || typeof patchValue !== 'object') throw new Error('candidate patch is required')
+  return getDb().transaction(() => {
+    const row = getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row | undefined
+    if (!row) throw new Error('candidate not found')
+    const current = candidateFromRow(row)
+    if (['approved', 'rejected', 'journaled'].includes(current.status)) throw new Error('candidate is already final')
+    if (current.lockOwner && current.lockOwner !== updatedBy) throw new Error(`candidate is locked by ${current.lockOwner}`)
+    const raw = patchValue as Partial<MemoryDraft> & { familyIds?: unknown[] }
+    const next = draft({ ...current, ...raw, sources: current.sources, quotes: current.quotes, locked: current.locked })
+    const familyIds = raw.familyIds === undefined ? current.suggestedFamilyIds : Array.from(new Set((raw.familyIds || []).map(value => text(value, 'family id', 100, true)!)))
+    familyIds.forEach(familyId => { if (!getDb().prepare('SELECT 1 FROM families WHERE id = ?').get(familyId)) throw new Error(`family not found: ${familyId}`) })
+    getDb().prepare(`UPDATE candidates SET type = ?, summary = ?, details = ?, why_important = ?, star_feeling = ?, current_understanding = ?,
+      occurred_at = ?, valid_from = ?, valid_to = ?, importance = ?, inference = ?, confidence = ?, updated_at = ? WHERE id = ?`)
+      .run(...draftValues({ ...next, locked: false }).slice(0, 12), new Date().toISOString(), id)
+    getDb().prepare('DELETE FROM candidate_family_suggestions WHERE candidate_id = ?').run(id)
+    const suggest = getDb().prepare('INSERT INTO candidate_family_suggestions (candidate_id, family_id) VALUES (?, ?)')
+    familyIds.forEach(familyId => suggest.run(id, familyId))
+    recordChange(updatedBy, 'candidate.updated', id, new Date().toISOString())
+    return candidateFromRow(getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row)
+  })()
+}
+
+function ombreMemoryType(type: string): MemoryType {
+  if (type === 'feel') return 'self_event'
+  if (type === 'plan') return 'unresolved'
+  if (type === 'anchor' || type === 'permanent') return 'durable_fact'
+  if (type === 'letter') return 'shared_event'
+  return 'observation'
+}
+
+export function getOmbreImportStatus() {
+  const buckets = loadAllBuckets()
+  const imported = new Set((getDb().prepare("SELECT session_id FROM source_refs WHERE kind = 'ombre' AND session_id IS NOT NULL").all() as Row[]).map(row => String(row.session_id)))
+  const remaining = buckets.filter(bucket => !imported.has(bucket.id))
+  return {
+    total: buckets.length,
+    imported: buckets.length - remaining.length,
+    remaining: remaining.length,
+    feelings: remaining.filter(bucket => bucket.metadata.type === 'feel').length,
+  }
+}
+
+export function importOmbreBuckets() {
+  const imported = new Set((getDb().prepare("SELECT session_id FROM source_refs WHERE kind = 'ombre' AND session_id IS NOT NULL").all() as Row[]).map(row => String(row.session_id)))
+  let created = 0
+  let feelings = 0
+  const failed: string[] = []
+  loadAllBuckets().forEach(bucket => {
+    if (imported.has(bucket.id)) return
+    const isFeeling = bucket.metadata.type === 'feel'
+    const summary = (bucket.metadata.name.trim() || bucket.content.trim().split(/\n+/)[0] || `旧 Ombre 桶 ${bucket.id}`).slice(0, 1_000)
+    const details = bucket.content.trim() && bucket.content.trim() !== summary ? bucket.content.trim().slice(0, 6_000) : undefined
+    const occurredAt = Number.isNaN(new Date(bucket.metadata.created).getTime()) ? undefined : new Date(bucket.metadata.created).toISOString()
+    try {
+      createMemoryCandidate({
+        type: ombreMemoryType(bucket.metadata.type), summary, details, occurredAt,
+        importance: 5,
+        inference: !isFeeling && !['anchor', 'permanent', 'plan', 'letter'].includes(bucket.metadata.type),
+        confidence: !isFeeling && !['anchor', 'permanent', 'plan', 'letter'].includes(bucket.metadata.type) ? 0.5 : undefined,
+        sources: [{
+          kind: 'ombre', actor: 'system', sessionId: bucket.id,
+          label: `${isFeeling ? '旧 Ombre 感受 · 建议存入星星日记' : `旧 Ombre 桶 · ${bucket.metadata.type}`} · 原重要度 ${bucket.metadata.importance}${bucket.metadata.pinned ? ' · 原钉选' : ''}${bucket.metadata.resolved ? ' · 原已解决' : ''}${bucket.metadata.digested ? ' · 原已消化' : ''}`,
+          excerpt: bucket.content.slice(0, 2_000),
+        }],
+      }, 'system', 'fire')
+      created += 1
+      if (isFeeling) feelings += 1
+    } catch { failed.push(bucket.id) }
+  })
+  return { created, feelings, failed, status: getOmbreImportStatus() }
+}
+
+export function moveOmbreCandidateToJournal(idValue: unknown, actorValue: unknown) {
+  const id = text(idValue, 'candidate id', 100, true)!
+  const reviewedBy = reviewer(actorValue)
+  const row = getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row | undefined
+  if (!row) throw new Error('candidate not found')
+  const candidate = candidateFromRow(row)
+  if (['approved', 'rejected', 'journaled'].includes(candidate.status)) throw new Error('candidate is already final')
+  const source = candidate.sources.find(item => item.kind === 'ombre' && item.sessionId)
+  const bucket = source?.sessionId ? getBucket(source.sessionId) : null
+  if (!bucket || bucket.metadata.type !== 'feel') throw new Error('candidate is not an Ombre feeling')
+  const entry = writeImportedDiary({
+    sourceId: bucket.id,
+    createdAt: bucket.metadata.created,
+    title: bucket.metadata.name || candidate.summary,
+    content: bucket.content || candidate.details || candidate.summary,
+    tags: [...bucket.metadata.domain, ...bucket.metadata.tags],
+  })
+  getDb().transaction(() => {
+    getDb().prepare("UPDATE candidates SET status = 'journaled', updated_at = ? WHERE id = ?").run(new Date().toISOString(), id)
+    recordChange(reviewedBy, 'candidate.journaled', id, new Date().toISOString())
+  })()
+  return { candidate: candidateFromRow(getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row), entry }
 }
 
 function familyDepth(parentId?: string): number {
@@ -1084,7 +1263,7 @@ export function reviewMemoryCandidate(idValue: unknown, decision: CandidateDecis
     const row = getDb().prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Row | undefined
     if (!row) throw new Error('candidate not found')
     const current = candidateFromRow(row)
-    if (current.status === 'approved' || current.status === 'rejected') throw new Error('candidate is already final')
+    if (current.status === 'approved' || current.status === 'rejected' || current.status === 'journaled') throw new Error('candidate is already final')
     const now = new Date().toISOString()
     if (decision !== 'approve') {
       const status = decision === 'reject' ? 'rejected' : decision === 'observe' ? 'observing' : decision === 'assign_fire' ? 'pending_fire' : 'pending_star'
@@ -1474,6 +1653,10 @@ export function resolveWorkingMemorySources(memoryIdValue: unknown) {
 
 function resolveSources(values: SourceRef[]) {
   return values.map(source => {
+    if (source.kind === 'ombre' && source.sessionId) {
+      const bucket = getBucket(source.sessionId)
+      return { source, resolved: bucket ? [{ id: bucket.id, content: bucket.content }] : [], missing: !bucket }
+    }
     if (source.kind !== 'chat' || !source.sessionId) return { source, resolved: source.excerpt ? [{ content: source.excerpt }] : [] }
     const session = readChatSession(source.sessionId) as any
     const wanted = new Set(source.messageIds || [])

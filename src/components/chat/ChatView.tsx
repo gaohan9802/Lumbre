@@ -7,13 +7,13 @@ import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Sun, MoreHorizontal,
-  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices,
+  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Clock3, Square, Dices, Heart,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
   getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary, StageSummary,
 } from '@/lib/chatStore'
-import { photos as photosApi } from '@/lib/api'
+import { apiRequest, photos as photosApi } from '@/lib/api'
 import type { SharedCard } from '@/lib/share'
 import { ChatSettings, type ChatSettingsPanel } from './ChatSettings'
 import { applyBubbleLayout, composeBubbleLayout } from '@/lib/chat-bubble-composer'
@@ -52,9 +52,10 @@ const ResearchView = dynamic(() => import('@/components/research/ResearchView').
 const DreamsView = dynamic(() => import('@/components/dreams/DreamsView').then(module => module.DreamsView), { ssr: false })
 const WishlistView = dynamic(() => import('@/components/wishlist/WishlistView').then(module => module.WishlistView), { ssr: false })
 const MemoryView = dynamic(() => import('@/components/memory/MemoryView').then(module => module.MemoryView), { ssr: false })
+const FavoritesView = dynamic(() => import('@/components/favorites/FavoritesView').then(module => module.FavoritesView), { ssr: false })
 
-type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'wake' | 'memory' | 'wishlist' | 'timeline' | 'tesis'
-const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', wake: '心跳唤醒', memory: '记忆', wishlist: '愿望清单', timeline: 'Timeline', tesis: 'Tesis' }
+type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'timeline' | 'tesis'
+const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', timeline: 'Timeline', tesis: 'Tesis' }
 
 /* ── helpers ────────────────────────────── */
 
@@ -161,7 +162,7 @@ export interface ChatViewProps {
 }
 
 export function ChatView({ embedded = false, contextInjection = '', inputPlaceholder = '', onTurn }: ChatViewProps = {}) {
-  const { setSidebarOpen } = useApp()
+  const { setSidebarOpen, currentUser } = useApp()
   const { theme, toggle: toggleTheme } = useTheme()
   const n = theme === 'night'
   const [wheelOpen, setWheelOpen] = useState(false)
@@ -172,6 +173,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number }[]>([])
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
+  const [favoriteChatKeys, setFavoriteChatKeys] = useState<Set<string>>(new Set())
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession,
@@ -210,6 +212,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   } = useChatViewState()
 
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    apiRequest('/api/favorites?kind=chat').then((items: any[]) => setFavoriteChatKeys(new Set((Array.isArray(items) ? items : []).map(item => item.targetKey)))).catch(() => {})
+  }, [])
   useEffect(() => {
     let cancelled = false
     fetch('/api/nose-pokes', { cache: 'no-store' })
@@ -1013,6 +1018,24 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     setTimeout(() => setCopiedId(null), 1500)
   }
 
+  const toggleChatFavorite = async (msg: ChatMessage) => {
+    if (!activeSession || !msg.content.trim()) return
+    const targetKey = `${activeSession.id}:${msg.id}`
+    const result = await apiRequest('/api/favorites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'toggle', actor: currentUser,
+        favorite: {
+          kind: 'chat', targetKey,
+          title: `星星的回复 · ${fmtFullTs(msg.timestamp)}`,
+          content: msg.content,
+          metadata: { sessionId: activeSession.id, messageId: msg.id, sessionTitle: activeSession.title, timestamp: msg.timestamp },
+        },
+      }),
+    })
+    setFavoriteChatKeys(current => { const next = new Set(current); result.favorited ? next.add(targetKey) : next.delete(targetKey); return next })
+  }
+
   /* ── edit user message ────────────────── */
 
   const startEditMsg = (msg: ChatMessage) => {
@@ -1213,9 +1236,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
           <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
         </div>
-        <div className="grid grid-cols-3 gap-1 pt-1">
+        <div className="grid grid-cols-4 gap-1 pt-1">
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>心跳唤醒</button>
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>记忆</button>
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('favorites') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>收藏</button>
           <button type="button" onClick={() => { createSession(); if (mobile) setSessionDrawerOpen(false) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-white/70'}`}>换窗</button>
         </div>
       </div>
@@ -1498,6 +1522,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                         <button onClick={() => handleCopy(msg.id, msg.content)} title="复制" className="p-1">
                           {copiedId === msg.id ? <Check size={12} /> : <Copy size={12} />}
                         </button>
+                        {!isUser && !!msg.content.trim() && <button onClick={() => toggleChatFavorite(msg)} title={activeSession && favoriteChatKeys.has(`${activeSession.id}:${msg.id}`) ? '取消收藏' : '收藏'} className="p-1"><Heart size={12} fill={activeSession && favoriteChatKeys.has(`${activeSession.id}:${msg.id}`) ? 'currentColor' : 'none'} /></button>}
                         {isUser && <button onClick={() => startEditMsg(msg)} title="修改" className="p-1"><Pencil size={12} /></button>}
                         {deleteMenuId === msg.id && (
                           <div className={`absolute ${isUser ? 'right-0' : 'left-0'} top-full mt-1 z-20 rounded-xl shadow-lg border py-1 min-w-[160px] ${n ? 'bg-night-card border-night-border' : 'bg-white border-gray-200'}`}>
@@ -1662,7 +1687,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                     <h2 className="font-serif text-lg">{roomLabels[roomPanel]}</h2>
                     <button type="button" aria-label="关闭" onClick={() => setRoomPanel(null)} className="rounded-full p-2 opacity-55 hover:opacity-100"><X size={18}/></button>
                   </header>
-                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
+                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
                 </motion.section>
               </>
             )}
@@ -1687,7 +1712,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onWishlist={() => setRoomPanel('wishlist')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} onRegenerateStage={(stage) => { void regenerateStageSummary(stage) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />

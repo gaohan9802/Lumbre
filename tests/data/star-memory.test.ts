@@ -12,6 +12,8 @@ let chat: typeof import('../../src/server/data/repositories/chat')
 let chatSync: typeof import('../../src/server/chat-sync')
 let journal: typeof import('../../src/server/diary-store')
 let runtime: typeof import('../../src/server/tool-runtime')
+let brain: typeof import('../../src/server/brain')
+let memoryRepository: typeof import('../../src/server/data/repositories/memory')
 let route: typeof import('../../src/app/api/star-memory/route')
 let NextRequest: typeof import('next/server').NextRequest
 
@@ -21,6 +23,8 @@ before(async () => {
   chatSync = await import('../../src/server/chat-sync')
   journal = await import('../../src/server/diary-store')
   runtime = await import('../../src/server/tool-runtime')
+  brain = await import('../../src/server/brain')
+  memoryRepository = await import('../../src/server/data/repositories/memory')
   route = await import('../../src/app/api/star-memory/route')
   ;({ NextRequest } = await import('next/server'))
 })
@@ -215,6 +219,46 @@ test('exports a restorable SQLite snapshot and readable whole or family document
   assert.equal(response.headers.get('content-type'), 'application/vnd.sqlite3')
   assert.match(response.headers.get('content-disposition') || '', /star-memory-\d{4}-\d{2}-\d{2}\.sqlite/)
   assert.equal(Buffer.from(await response.arrayBuffer()).subarray(0, 16).toString(), 'SQLite format 3\0')
+})
+
+test('imports Ombre buckets once and sends feelings to the journal only after review', () => {
+  const hard = brain.holdBucket('旧 Ombre 里的一条稳定内容。', { importance: 8, pinned: true })
+  const feeling = brain.holdBucket('星星当时觉得一起做这件事很开心。', { importance: 7, feel: true })
+  memoryRepository.writeMemoryBucket('abcdef123456', {
+    id: 'abcdef123456', name: '旧格式感受', feel: true, content: '这是只有 feel:true 的旧格式桶。', created: '2026-01-02T12:00:00.000Z', importance: 6,
+  })
+  const imported = memory.importOmbreBuckets()
+  assert.equal(imported.failed.length, 0)
+  const candidates = memory.listMemoryCandidates()
+  const hardCandidate = candidates.find(item => item.sources.some(source => source.kind === 'ombre' && source.sessionId === hard.id))!
+  const feelingCandidate = candidates.find(item => item.sources.some(source => source.kind === 'ombre' && source.sessionId === feeling.id))!
+  const legacyFeelingCandidate = candidates.find(item => item.sources.some(source => source.kind === 'ombre' && source.sessionId === 'abcdef123456'))!
+  assert.equal(hardCandidate.status, 'pending_fire')
+  assert.equal(feelingCandidate.type, 'self_event')
+  assert.match(feelingCandidate.sources[0].label || '', /建议存入星星日记/)
+  assert.equal(legacyFeelingCandidate.type, 'self_event')
+
+  const edited = memory.updateMemoryCandidate(hardCandidate.id, { summary: '小火审核后修正的骨架。', familyIds: [] }, 'fire')
+  assert.equal(edited.summary, '小火审核后修正的骨架。')
+  const moved = memory.moveOmbreCandidateToJournal(feelingCandidate.id, 'fire')
+  assert.equal(moved.candidate.status, 'journaled')
+  assert.equal(moved.entry.author, 'star')
+  assert.equal(moved.entry.visibility, 'public')
+  assert.match(moved.entry.content, /很开心/)
+  assert.equal(memory.importOmbreBuckets().created, 0)
+})
+
+test('favorites keep snapshots for memories, diaries, and chat replies without duplicates', () => {
+  const memoryFavorite = memory.toggleFavorite({ kind: 'memory', targetKey: 'memory-1', title: '一条重要记忆', content: '记忆快照', metadata: { memoryId: 'memory-1' } }, 'fire')
+  memory.toggleFavorite({ kind: 'diary', targetKey: 'star:2026-10-07:1200', title: '星星日记', content: '日记快照', metadata: { date: '2026-10-07' } }, 'fire')
+  memory.toggleFavorite({ kind: 'chat', targetKey: 'session-1:message-1', title: '星星的回复', content: '聊天回复快照', metadata: { sessionId: 'session-1', messageId: 'message-1' } }, 'fire')
+  assert.equal(memoryFavorite.favorited, true)
+  assert.equal(memory.listFavorites().length, 3)
+  assert.equal(memory.listFavorites('chat')[0].content, '聊天回复快照')
+  assert.equal(memory.toggleFavorite({ kind: 'memory', targetKey: 'memory-1', title: '一条重要记忆', content: '记忆快照' }, 'fire').favorited, false)
+  assert.equal(memory.listFavorites('memory').length, 0)
+  assert.equal(memory.removeFavorite(memory.listFavorites('diary')[0].id, 'fire'), true)
+  assert.equal(memory.listFavorites().length, 1)
 })
 
 test('a personal lock can only be changed or bypassed by its owner', async () => {

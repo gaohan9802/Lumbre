@@ -9,6 +9,7 @@ import {
   endMemoryFamily,
   getMemoryFamily,
   getMemoryFamilyLevel,
+  getOmbreImportStatus,
   getStarMemoryStatus,
   listCanonicalMemories,
   listMemoryCandidates,
@@ -18,6 +19,8 @@ import {
   listRecycledMemories,
   listWorkingMemories,
   mergeMemoryFamilies,
+  importOmbreBuckets,
+  moveOmbreCandidateToJournal,
   recallStarMemoryBundle,
   resolveMemorySources,
   resolveWorkingMemorySources,
@@ -36,6 +39,7 @@ import {
   renderStarMemoryMarkdown,
   serializeStarMemoryDatabase,
   updateCanonicalMemory,
+  updateMemoryCandidate,
   updateMemoryFamily,
   type CandidateDecision,
   type CandidateStatus,
@@ -65,6 +69,7 @@ export async function GET(req: NextRequest) {
     if (view === 'recall') return NextResponse.json(recallStarMemoryBundle(req.nextUrl.searchParams.get('q') || '', req.nextUrl.searchParams.get('limit')))
     if (view === 'sources') return NextResponse.json(resolveMemorySources(req.nextUrl.searchParams.get('id') || ''))
     if (view === 'working_sources') return NextResponse.json(resolveWorkingMemorySources(req.nextUrl.searchParams.get('id') || ''))
+    if (view === 'ombre_import') return NextResponse.json(getOmbreImportStatus())
     if (view === 'export') {
       const format = req.nextUrl.searchParams.get('format')
       const familyId = req.nextUrl.searchParams.get('familyId') || undefined
@@ -94,6 +99,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     if (body.action === 'create_candidate') return NextResponse.json(createMemoryCandidate(body.candidate, 'fire', body.owner))
+    if (body.action === 'update_candidate') return NextResponse.json(updateMemoryCandidate(body.id, body.patch, 'fire'))
+    if (body.action === 'import_ombre') return NextResponse.json(importOmbreBuckets())
+    if (body.action === 'candidate_to_journal') return NextResponse.json(moveOmbreCandidateToJournal(body.id, 'fire'))
     if (body.action === 'create_family') return NextResponse.json(createMemoryFamily(body.family, 'fire'))
     if (body.action === 'review_candidate') {
       return NextResponse.json(reviewMemoryCandidate(body.id, body.decision as CandidateDecision, 'fire', body.familyIds))

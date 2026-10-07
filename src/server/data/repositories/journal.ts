@@ -80,6 +80,16 @@ function diaryFile(entry: Pick<DiaryEntry, 'date' | 'time_id' | 'author'>): stri
   return resolveDataPath(DIARY_DIR, filename)
 }
 
+function availableDiaryTimeId(date: string, authorValue: string, preferred: string): string {
+  const start = Number(preferred.slice(0, 2)) * 60 + Number(preferred.slice(2))
+  for (let offset = 0; offset < 1440; offset++) {
+    const minute = (start + offset) % 1440
+    const candidate = `${String(Math.floor(minute / 60)).padStart(2, '0')}${String(minute % 60).padStart(2, '0')}`
+    if (!fs.existsSync(diaryFile({ date, author: authorValue, time_id: candidate }))) return candidate
+  }
+  throw new Error('No diary time slot is available for this day')
+}
+
 function noteFile(id: string): string {
   return resolveDataPath(NOTES_DIR, `${noteId(id)}.json`)
 }
@@ -248,13 +258,15 @@ export function writeDiary(data: {
   type?: string
 }): DiaryEntry {
   const now = new Date()
+  const date = assertDateKey(data.date)
+  const author = actor(data.author)
   const type = data.type || (data.visibility === 'timed' ? 'capsule' : 'diary')
   let visibility = data.visibility
   if (type === 'letter') visibility = 'public'
   else if (type === 'capsule') visibility = 'timed'
   const entry: DiaryEntry = {
-    date: assertDateKey(data.date),
-    author: actor(data.author),
+    date,
+    author,
     title: data.title,
     content: data.content,
     type,
@@ -262,8 +274,39 @@ export function writeDiary(data: {
     reveal_at: visibility === 'timed' ? (parseMadridDateTime(data.reveal_at)?.toISOString() || null) : null,
     tags: data.tags ? data.tags.split(/\s+/).filter(Boolean) : [],
     comments: [],
-    time_id: formatMadrid(now, false).slice(-5).replace(':', ''),
+    time_id: availableDiaryTimeId(date, author, formatMadrid(now, false).slice(-5).replace(':', '')),
     created_at: now.toISOString(),
+    updated_at: null,
+  }
+  writeJsonFile(diaryFile(entry), entry)
+  return entry
+}
+
+export function writeImportedDiary(data: {
+  sourceId: string
+  createdAt: string
+  title: string
+  content: string
+  tags?: string[]
+}): DiaryEntry {
+  const sourceTag = `ombre:${assertIdentifier(data.sourceId, /^[A-Za-z0-9_-]{1,128}$/, 'Ombre bucket id')}`
+  const existing = listAllDiaries().find(entry => entry.author === 'star' && entry.tags?.includes(sourceTag))
+  if (existing) return existing
+  const created = new Date(data.createdAt)
+  if (Number.isNaN(created.getTime())) throw new Error('Ombre bucket date is invalid')
+  const date = formatMadrid(created, false).slice(0, 10).replaceAll('/', '-')
+  const entry: DiaryEntry = {
+    date,
+    author: 'star',
+    title: data.title.trim() || '旧 Ombre 感受',
+    content: data.content,
+    type: 'diary',
+    visibility: 'public',
+    reveal_at: null,
+    tags: Array.from(new Set([...(data.tags || []), '旧Ombre', sourceTag])),
+    comments: [],
+    time_id: availableDiaryTimeId(date, 'star', formatMadrid(created, false).slice(-5).replace(':', '')),
+    created_at: created.toISOString(),
     updated_at: null,
   }
   writeJsonFile(diaryFile(entry), entry)

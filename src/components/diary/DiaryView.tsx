@@ -7,11 +7,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Lock, Clock, ChevronLeft, Send,
   Trash2, MessageCircle, FilePlus2, Key, Eye, Timer,
-  BookText, Mail, Hourglass, Hash, Share2,
+  BookText, Mail, Hourglass, Hash, Share2, Heart,
 } from 'lucide-react'
 import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { diary } from '@/lib/api'
+import { apiRequest, diary } from '@/lib/api'
 import { shareToChat } from '@/lib/share'
 
 interface Comment {
@@ -110,6 +110,7 @@ export function DiaryView() {
   const [loading, setLoading] = useState(true)
   const [authorFilter, setAuthorFilter] = useState<AuthorFilter>('all')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
+  const [favoriteKeys, setFavoriteKeys] = useState<Set<string>>(new Set())
 
   const [docType, setDocType] = useState<DocType>('diary')
   const [title, setTitle] = useState('')
@@ -144,6 +145,9 @@ export function DiaryView() {
   }, [currentUser, authorFilter])
 
   useEffect(() => { loadEntries() }, [loadEntries])
+  useEffect(() => {
+    apiRequest('/api/favorites?kind=diary').then((items: any[]) => setFavoriteKeys(new Set((Array.isArray(items) ? items : []).map(item => item.targetKey)))).catch(() => {})
+  }, [])
 
   const visibleEntries = entries.filter(
     (e) => typeFilter === 'all' || effectiveType(e) === typeFilter
@@ -248,6 +252,20 @@ export function DiaryView() {
 
   const shareEntry = (entry: DiaryEntry) => shareToChat({kind:'diary', title:displayTitle(entry), subtitle:`${entry.author==='star'?'🐆':'🦦'} · ${entry.date}`, body:entry.content, metadata:{...entry}})
 
+  const favoriteKey = (entry: DiaryEntry) => `${entry.author}:${entry.date}:${entry.time_id || ''}`
+  const toggleFavorite = async (entry: DiaryEntry) => {
+    if (entry.visibility === 'private') return
+    const targetKey = favoriteKey(entry)
+    const result = await apiRequest('/api/favorites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle', actor: currentUser, favorite: {
+        kind: 'diary', targetKey, title: displayTitle(entry), content: entry.content,
+        metadata: { author: entry.author, date: entry.date, timeId: entry.time_id, visibility: entry.visibility },
+      } }),
+    })
+    setFavoriteKeys(current => { const next = new Set(current); result.favorited ? next.add(targetKey) : next.delete(targetKey); return next })
+  }
+
   const canEdit = selected && selected.author === currentUser
 
   const noFrame = 'no-frame'
@@ -284,6 +302,9 @@ export function DiaryView() {
           )}
           {selected && (
             <span role="button" tabIndex={0} onClick={() => shareEntry(selected)} className="p-2 rounded-xl opacity-50 hover:opacity-100 cursor-pointer" title="分享到 Chat"><Share2 size={15} /></span>
+          )}
+          {selected && selected.visibility !== 'private' && (
+            <button onClick={() => toggleFavorite(selected)} className="p-2 rounded-xl opacity-50 hover:opacity-100" title={favoriteKeys.has(favoriteKey(selected)) ? '取消收藏' : '收藏'}><Heart size={15} fill={favoriteKeys.has(favoriteKey(selected)) ? 'currentColor' : 'none'} /></button>
           )}
           {selected && canEdit && (
             <button onClick={handleDelete} className="p-2 rounded-xl opacity-30 hover:opacity-100 hover:text-day-error dark:hover:text-night-error transition">
