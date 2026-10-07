@@ -248,13 +248,17 @@ export const MEMORY_TOOL_DEFINITIONS = [
   },
   {
     "name": "manage_formal_memory",
-    "description": "管理新记忆库中的正式硬记忆。可以修改正文、移入二十四小时回收区、查看回收区或恢复；回收时来源、原话和家族关系会一起保存，锁定记忆只能由锁的主人操作。",
+    "description": "管理新记忆库中的正式硬记忆。可以修改正文、登记和处理冲突、移入二十四小时回收区、查看回收区或恢复；冲突解决后仍只保留一份正文，锁定记忆只能由锁的主人修改。",
     "input_schema": {
       "type": "object",
       "properties": {
-        "action": { "type": "string", "enum": ["update", "list_trash", "recycle", "restore"] },
+        "action": { "type": "string", "enum": ["update", "list_conflicts", "flag_conflict", "resolve_conflict", "list_trash", "recycle", "restore"] },
         "memory_id": { "type": "string" },
+        "conflict_id": { "type": "string" },
         "recycle_id": { "type": "string" },
+        "proposed_summary": { "type": "string", "description": "发现冲突时建议采用的准确版本" },
+        "reason": { "type": "string", "description": "冲突依据或需要确认的原因" },
+        "resolution": { "type": "string", "enum": ["keep_current", "use_proposal"] },
         "patch": {
           "type": "object",
           "description": "update 时传需要修改的字段，例如 summary、details、whyImportant、currentUnderstanding、validFrom、validTo、importance、inference 或 confidence"

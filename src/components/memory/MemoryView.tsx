@@ -118,7 +118,17 @@ interface ResolvedStarSource {
   missing?: boolean
 }
 
-type StarSection = 'timeline' | 'inbox' | 'families' | 'search' | 'current' | 'memories' | 'system'
+interface StarMemoryConflict {
+  id: string
+  memoryId: string
+  currentSummary: string
+  proposedSummary: string
+  reason?: string
+  createdBy: 'fire' | 'star'
+  createdAt: string
+}
+
+type StarSection = 'timeline' | 'inbox' | 'families' | 'search' | 'current' | 'memories' | 'conflicts' | 'system'
 
 const STAR_SECTIONS: Array<{ key: StarSection; label: string }> = [
   { key: 'timeline', label: '时间线' },
@@ -127,6 +137,7 @@ const STAR_SECTIONS: Array<{ key: StarSection; label: string }> = [
   { key: 'search', label: '搜索' },
   { key: 'current', label: '当前' },
   { key: 'memories', label: '记忆' },
+  { key: 'conflicts', label: '纠错' },
   { key: 'system', label: '系统' },
 ]
 
@@ -537,6 +548,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [families, setFamilies] = useState<StarFamily[]>([])
   const [familyTrash, setFamilyTrash] = useState<RecycledStarFamily[]>([])
   const [memoryTrash, setMemoryTrash] = useState<RecycledStarMemory[]>([])
+  const [conflicts, setConflicts] = useState<StarMemoryConflict[]>([])
   const [resolvedSources, setResolvedSources] = useState<Record<string, ResolvedStarSource[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -554,13 +566,14 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [familyDetails, setFamilyDetails] = useState<Record<string, StarFamilyDetail>>({})
   const [mergeTarget, setMergeTarget] = useState<Record<string, string>>({})
   const [splitSelections, setSplitSelections] = useState<Record<string, string[]>>({})
+  const [deletingMemoryId, setDeletingMemoryId] = useState('')
   const c = useColors(isNight)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const [nextStatus, nextCandidates, nextMemories, nextWorking, nextFamilies, nextFamilyTrash, nextMemoryTrash] = await Promise.all([
+      const [nextStatus, nextCandidates, nextMemories, nextWorking, nextFamilies, nextFamilyTrash, nextMemoryTrash, nextConflicts] = await Promise.all([
         apiRequest('/api/star-memory?view=status'),
         apiRequest('/api/star-memory?view=candidates'),
         apiRequest('/api/star-memory?view=memories'),
@@ -568,6 +581,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
         apiRequest('/api/star-memory?view=families'),
         apiRequest('/api/star-memory?view=family_trash'),
         apiRequest('/api/star-memory?view=memory_trash'),
+        apiRequest('/api/star-memory?view=conflicts'),
       ])
       setStatus(nextStatus)
       setCandidates(Array.isArray(nextCandidates) ? nextCandidates : [])
@@ -576,6 +590,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       setFamilies(Array.isArray(nextFamilies) ? nextFamilies : [])
       setFamilyTrash(Array.isArray(nextFamilyTrash) ? nextFamilyTrash : [])
       setMemoryTrash(Array.isArray(nextMemoryTrash) ? nextMemoryTrash : [])
+      setConflicts(Array.isArray(nextConflicts) ? nextConflicts : [])
     } catch (loadError: any) {
       setError(loadError?.message || '新记忆库加载失败')
     } finally {
@@ -676,6 +691,20 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const toggleMemoryLock = (memory: StarMemory) => mutate(`lock-${memory.id}`, {
     action: 'set_memory_lock', id: memory.id, locked: memory.lockOwner !== 'fire',
   }, '记忆锁定状态修改失败')
+
+  const flagConflict = (memory: StarMemory) => {
+    const proposedSummary = prompt('建议改成哪个准确版本？', memory.summary)?.trim()
+    if (!proposedSummary || proposedSummary === memory.summary) return
+    const reason = prompt('为什么认为它有冲突？（可简写）', '')
+    if (reason === null) return
+    return mutate(`conflict-${memory.id}`, {
+      action: 'flag_conflict', memoryId: memory.id, proposedSummary, reason: reason.trim() || undefined,
+    }, '纠错项创建失败', () => setSection('conflicts'))
+  }
+
+  const resolveConflict = (conflict: StarMemoryConflict, resolution: 'keep_current' | 'use_proposal') => mutate(`conflict-${conflict.id}`, {
+    action: 'resolve_conflict', id: conflict.id, resolution,
+  }, '纠错处理失败')
 
   const changeMemoryFamily = (memory: StarMemory, familyId: string, add: boolean) => {
     if (!familyId) return setError('请先选择一个家族')
@@ -821,7 +850,6 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   }
 
   const recycleMemory = async (memory: StarMemory) => {
-    if (!confirm('正式记忆、来源、原话和家族关系会进入 24 小时回收区。继续吗？')) return
     setBusyId(memory.id)
     setError('')
     try {
@@ -831,6 +859,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       })
       const body = await response.json()
       if (!response.ok) throw new Error(body.error || '删除正式记忆失败')
+      setDeletingMemoryId('')
       await load()
     } catch (recycleError: any) {
       setError(recycleError?.message || '删除正式记忆失败')
@@ -880,6 +909,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     ...memories.map(item => ({ id: item.id, kind: '正式记忆', title: item.summary, detail: item.details || '', target: 'memories' as StarSection })),
     ...activeWorking.map(item => ({ id: item.id, kind: '近期记忆', title: item.summary, detail: '', target: 'current' as StarSection })),
     ...openCandidates.map(item => ({ id: item.id, kind: '待审核', title: item.summary, detail: item.details || '', target: 'inbox' as StarSection })),
+    ...conflicts.map(item => ({ id: item.id, kind: '待纠错', title: item.proposedSummary, detail: `${item.currentSummary} ${item.reason || ''}`, target: 'conflicts' as StarSection })),
     ...families.map(item => ({ id: item.id, kind: '记忆家族', title: item.name, detail: item.summary || '', target: 'families' as StarSection })),
   ].filter(item => `${item.title} ${item.detail}`.toLocaleLowerCase('zh-CN').includes(searchNeedle)) : []
   const unresolved = [...memories, ...openCandidates].filter(item => item.type === 'unresolved')
@@ -903,7 +933,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       </div>
 
       <div role="tablist" aria-label="新记忆库视图" className="flex gap-1 overflow-x-auto pb-1">
-        {STAR_SECTIONS.map(item => <button key={item.key} role="tab" aria-selected={section === item.key} onClick={() => setSection(item.key)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] ${section === item.key ? `${c.accentBg} ${c.accent} font-medium` : `${c.surface} ${c.muted}`}`}>{item.label}{item.key === 'inbox' && openCandidates.length > 0 ? ` ${openCandidates.length}` : ''}</button>)}
+        {STAR_SECTIONS.map(item => <button key={item.key} role="tab" aria-selected={section === item.key} onClick={() => setSection(item.key)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] ${section === item.key ? `${c.accentBg} ${c.accent} font-medium` : `${c.surface} ${c.muted}`}`}>{item.label}{item.key === 'inbox' && openCandidates.length > 0 ? ` ${openCandidates.length}` : item.key === 'conflicts' && conflicts.length > 0 ? ` ${conflicts.length}` : ''}</button>)}
       </div>
 
       {error && <div className="rounded-xl bg-red-500/10 px-3 py-2 text-[11px] text-red-500">{error}</div>}
@@ -1059,17 +1089,39 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button disabled={item.lockOwner === 'star'} onClick={() => startEditingMemory(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '星星锁定' : '编辑'}</button>
                   <button disabled={busyId === `lock-${item.id}` || item.lockOwner === 'star'} onClick={() => toggleMemoryLock(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '不可解锁' : item.lockOwner === 'fire' ? '解除小火锁' : '加小火锁'}</button>
-                  <button disabled={busyId === item.id || item.lockOwner === 'star'} onClick={() => recycleMemory(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>移入回收区</button>
+                  <button disabled={busyId === `conflict-${item.id}`} onClick={() => flagConflict(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>纠错</button>
+                  <button disabled={busyId === item.id || item.lockOwner === 'star'} onClick={() => setDeletingMemoryId(current => current === item.id ? '' : item.id)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '星星锁定' : '删除…'}</button>
                 </div>
+                {deletingMemoryId === item.id && <div className={`mt-2 space-y-2 rounded-lg border ${c.border} p-2`}>
+                  <div className={`text-[10px] ${c.muted}`}>选择删除范围</div>
+                  {item.familyIds.map(id => <button key={id} disabled={busyId === `family-${item.id}-${id}` || families.find(family => family.id === id)?.lockOwner === 'star'} onClick={() => changeMemoryFamily(item, id, false)} className={`mr-2 rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>只从“{familyNames.get(id) || '未知家族'}”移出</button>)}
+                  <button disabled={busyId === item.id} onClick={() => recycleMemory(item)} className="block rounded-lg bg-red-500/10 px-2 py-1 text-[9px] text-red-500 disabled:opacity-40">删除整条正式记忆</button>
+                  <div className={`text-[9px] leading-4 ${c.muted}`}>整条删除会把正文、索引、来源引用、原话和家族关系一起放进 24 小时回收区；原始聊天或原始资料不会被这个后台删除。</div>
+                  <button onClick={() => setDeletingMemoryId('')} className={`text-[9px] ${c.muted}`}>取消</button>
+                </div>}
               </article>
             ))}
           </div>
         )}
       </div>}
 
+      {section === 'conflicts' && <div>
+        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>纠错与待确认冲突</div>
+        {conflicts.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无待确认冲突</div> : <div className="space-y-2">{conflicts.map(conflict => {
+          const memory = memories.find(item => item.id === conflict.memoryId)
+          return <article key={conflict.id} className={`rounded-xl border ${c.border} p-3`}>
+            <div className={`text-[9px] ${c.muted}`}>{conflict.createdBy === 'star' ? '星星提出' : '小火提出'} · {conflict.createdAt.slice(0, 16).replace('T', ' ')}</div>
+            {conflict.reason && <p className={`mt-2 text-[10px] ${c.muted}`}>原因：{conflict.reason}</p>}
+            <div className="mt-2 grid gap-2 sm:grid-cols-2"><div className={`rounded-lg ${c.surface} p-2`}><div className={`text-[9px] ${c.muted}`}>登记时的正式版本</div><p className="mt-1 text-[10px] leading-4">{conflict.currentSummary}</p></div><div className={`rounded-lg ${c.accentBg} p-2`}><div className={`text-[9px] ${c.accent}`}>建议修正版</div><p className="mt-1 text-[10px] leading-4">{conflict.proposedSummary}</p></div></div>
+            {memory && memory.summary !== conflict.currentSummary && <div className={`mt-2 text-[9px] ${c.muted}`}>当前正文后来已变为：{memory.summary}</div>}
+            <div className="mt-3 flex flex-wrap gap-2"><button disabled={busyId === `conflict-${conflict.id}`} onClick={() => resolveConflict(conflict, 'keep_current')} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>保留正式版本</button><button disabled={busyId === `conflict-${conflict.id}` || memory?.lockOwner === 'star'} onClick={() => resolveConflict(conflict, 'use_proposal')} className={`rounded-lg px-2 py-1 text-[9px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>{memory?.lockOwner === 'star' ? '星星锁定' : '采用修正版'}</button>{memory && <button disabled={memory.lockOwner === 'star'} onClick={() => { setDeletingMemoryId(memory.id); setSection('memories') }} className="rounded-lg bg-red-500/10 px-2 py-1 text-[9px] text-red-500 disabled:opacity-40">选择删除范围</button>}</div>
+          </article>
+        })}</div>}
+      </div>}
+
       {section === 'system' && <div className={`rounded-xl border ${c.border} p-3`}>
         <div className={`text-[11px] font-medium ${c.accent}`}>系统状态</div>
-        <div className={`mt-2 grid grid-cols-2 gap-2 text-[10px] ${c.muted}`}><div>数据库版本：{status?.version || '—'}</div><div>记忆家族：{status?.families || 0}</div><div>等星星审核：{status?.pendingStar || 0}</div><div>候选总数：{status?.candidates || 0}</div></div>
+        <div className={`mt-2 grid grid-cols-2 gap-2 text-[10px] ${c.muted}`}><div>数据库版本：{status?.version || '—'}</div><div>记忆家族：{status?.families || 0}</div><div>等星星审核：{status?.pendingStar || 0}</div><div>候选总数：{status?.candidates || 0}</div><div>待确认冲突：{status?.conflicts || 0}</div></div>
         <div className={`mt-2 text-[10px] ${c.muted}`}>新库仍独立运行，旧 Ombre 未停用，本页不会自动迁移旧数据。</div>
       </div>}
 

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   createMemoryCandidate,
+  createMemoryConflict,
   createMemoryFamily,
   endMemoryFamily,
   getMemoryFamily,
@@ -10,6 +11,7 @@ import {
   getStarMemoryStatus,
   listCanonicalMemories,
   listMemoryCandidates,
+  listMemoryConflicts,
   listMemoryFamilies,
   listRecycledFamilies,
   listRecycledMemories,
@@ -25,6 +27,7 @@ import {
   setMemoryFamilyMembership,
   splitMemoryFamily,
   removeMemoryFamilyMembership,
+  resolveMemoryConflict,
   recycleMemoryFamily,
   recycleCanonicalMemory,
   restoreMemoryFamily,
@@ -47,6 +50,7 @@ export async function GET(req: NextRequest) {
     if (view === 'status') return NextResponse.json(getStarMemoryStatus())
     if (view === 'candidates') return NextResponse.json(listMemoryCandidates((req.nextUrl.searchParams.get('status') || undefined) as CandidateStatus | undefined))
     if (view === 'memories') return NextResponse.json(listCanonicalMemories())
+    if (view === 'conflicts') return NextResponse.json(listMemoryConflicts())
     if (view === 'working') return NextResponse.json(listWorkingMemories((req.nextUrl.searchParams.get('status') || undefined) as WorkingMemoryStatus | undefined))
     if (view === 'families') return NextResponse.json(listMemoryFamilies())
     if (view === 'family_trash') return NextResponse.json(listRecycledFamilies())
@@ -73,6 +77,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(reviewMemoryCandidate(body.id, body.decision as CandidateDecision, 'fire', body.familyIds))
     }
     if (body.action === 'update_memory') return NextResponse.json(updateCanonicalMemory(body.id, body.patch, 'fire'))
+    if (body.action === 'flag_conflict') return NextResponse.json(createMemoryConflict(body.memoryId, body.proposedSummary, body.reason, 'fire'))
+    if (body.action === 'resolve_conflict') return NextResponse.json(resolveMemoryConflict(body.id, body.resolution, 'fire'))
     if (body.action === 'set_memory_lock') return NextResponse.json(setCanonicalMemoryLock(body.id, body.locked, 'fire'))
     if (body.action === 'review_working') return NextResponse.json(reviewWorkingMemory(body.id, body.decision as WorkingMemoryDecision, 'fire', new Date().toISOString(), body.summary))
     if (body.action === 'update_family') return NextResponse.json(updateMemoryFamily(body.id, body.patch, 'fire'))

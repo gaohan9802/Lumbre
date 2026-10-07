@@ -12,6 +12,7 @@ export type MemoryType = 'shared_event' | 'durable_fact' | 'agreement' | 'curren
 export type CandidateStatus = 'pending_star' | 'pending_fire' | 'observing' | 'approved' | 'rejected'
 export type FamilyStatus = 'active' | 'paused' | 'ended' | 'archived'
 export type WorkingMemoryStatus = 'active' | 'due' | 'dismissed' | 'promoted'
+export type MemoryConflictResolution = 'keep_current' | 'use_proposal'
 
 export interface SourceRef {
   kind: 'chat' | 'manual' | 'image' | 'journal' | 'health'
@@ -112,6 +113,20 @@ export interface RecycledMemory {
   deletedBy: 'fire' | 'star'
   deletedAt: string
   purgeAfter: string
+}
+
+export interface MemoryConflict {
+  id: string
+  memoryId: string
+  currentSummary: string
+  proposedSummary: string
+  reason?: string
+  status: 'open' | 'resolved'
+  resolution?: MemoryConflictResolution
+  createdBy: 'fire' | 'star'
+  createdAt: string
+  resolvedBy?: 'fire' | 'star'
+  resolvedAt?: string
 }
 
 type Row = Record<string, any>
@@ -221,6 +236,16 @@ function getDb(): Database.Database {
       deleted_by TEXT NOT NULL CHECK (deleted_by IN ('fire', 'star')),
       deleted_at TEXT NOT NULL, purge_after TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS memory_conflicts (
+      id TEXT PRIMARY KEY, memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+      current_summary TEXT NOT NULL, proposed_summary TEXT NOT NULL, reason TEXT,
+      status TEXT NOT NULL CHECK (status IN ('open', 'resolved')),
+      resolution TEXT CHECK (resolution IN ('keep_current', 'use_proposal')),
+      created_by TEXT NOT NULL CHECK (created_by IN ('fire', 'star')), created_at TEXT NOT NULL,
+      resolved_by TEXT CHECK (resolved_by IN ('fire', 'star')), resolved_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS memory_conflicts_one_open
+      ON memory_conflicts(memory_id) WHERE status = 'open';
     CREATE TABLE IF NOT EXISTS changes (
       id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL,
       target_id TEXT NOT NULL, created_at TEXT NOT NULL
@@ -249,7 +274,7 @@ function getDb(): Database.Database {
     UPDATE families SET lock_owner = created_by
       WHERE locked = 1 AND lock_owner IS NULL AND created_by IN ('fire', 'star');
   `)
-  database.pragma('user_version = 7')
+  database.pragma('user_version = 8')
   return database
 }
 
@@ -435,6 +460,14 @@ function familyFromRow(row: Row): MemoryFamily {
   return { id: row.id, name: row.name, title: row.title || undefined, summary: row.summary || undefined, status: row.status, parentId: row.parent_id || undefined, locked: !!row.locked, lockOwner: row.lock_owner || undefined, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at }
 }
 
+function conflictFromRow(row: Row): MemoryConflict {
+  return {
+    id: row.id, memoryId: row.memory_id, currentSummary: row.current_summary, proposedSummary: row.proposed_summary,
+    reason: row.reason || undefined, status: row.status, resolution: row.resolution || undefined,
+    createdBy: row.created_by, createdAt: row.created_at, resolvedBy: row.resolved_by || undefined, resolvedAt: row.resolved_at || undefined,
+  }
+}
+
 function recordChange(actorValue: MemoryActor, action: string, targetId: string, now: string): void {
   getDb().prepare('INSERT INTO changes (id, actor, action, target_id, created_at) VALUES (?, ?, ?, ?, ?)').run(randomUUID(), actorValue, action, targetId, now)
 }
@@ -452,6 +485,7 @@ export function getStarMemoryStatus() {
     families: count('SELECT COUNT(*) AS count FROM families'),
     workingActive: count("SELECT COUNT(*) AS count FROM working_memories WHERE status = 'active'"),
     workingDue: count("SELECT COUNT(*) AS count FROM working_memories WHERE status = 'due'"),
+    conflicts: count("SELECT COUNT(*) AS count FROM memory_conflicts WHERE status = 'open'"),
   }
 }
 
@@ -1015,6 +1049,55 @@ export function updateCanonicalMemory(idValue: unknown, patchValue: unknown, act
   })()
 }
 
+export function listMemoryConflicts(openOnly = true): MemoryConflict[] {
+  const rows = openOnly
+    ? getDb().prepare("SELECT * FROM memory_conflicts WHERE status = 'open' ORDER BY created_at DESC").all()
+    : getDb().prepare('SELECT * FROM memory_conflicts ORDER BY created_at DESC').all()
+  return (rows as Row[]).map(conflictFromRow)
+}
+
+export function createMemoryConflict(memoryIdValue: unknown, proposedSummaryValue: unknown, reasonValue: unknown, actorValue: unknown): MemoryConflict {
+  const memoryId = text(memoryIdValue, 'memory id', 100, true)!
+  const proposedSummary = text(proposedSummaryValue, 'proposed summary', 1_000, true)!
+  const reason = text(reasonValue, 'conflict reason', 1_000)
+  const createdBy = reviewer(actorValue)
+  const row = getDb().prepare('SELECT summary FROM memories WHERE id = ?').get(memoryId) as Row | undefined
+  if (!row) throw new Error('memory not found')
+  const now = new Date().toISOString()
+  const id = randomUUID()
+  try {
+    getDb().prepare(`INSERT INTO memory_conflicts
+      (id, memory_id, current_summary, proposed_summary, reason, status, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`)
+      .run(id, memoryId, row.summary, proposedSummary, reason, createdBy, now)
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) throw new Error('memory already has an open conflict')
+    throw error
+  }
+  recordChange(createdBy, 'memory.conflict_opened', memoryId, now)
+  return conflictFromRow(getDb().prepare('SELECT * FROM memory_conflicts WHERE id = ?').get(id) as Row)
+}
+
+export function resolveMemoryConflict(idValue: unknown, resolutionValue: unknown, actorValue: unknown): { conflict: MemoryConflict; memory: CanonicalMemory } {
+  const id = text(idValue, 'conflict id', 100, true)!
+  const resolution = text(resolutionValue, 'conflict resolution', 30, true)! as MemoryConflictResolution
+  if (!new Set<MemoryConflictResolution>(['keep_current', 'use_proposal']).has(resolution)) throw new Error('conflict resolution is invalid')
+  const resolvedBy = reviewer(actorValue)
+  return getDb().transaction(() => {
+    const row = getDb().prepare("SELECT * FROM memory_conflicts WHERE id = ? AND status = 'open'").get(id) as Row | undefined
+    if (!row) throw new Error('open memory conflict not found')
+    if (resolution === 'use_proposal') updateCanonicalMemory(row.memory_id, { summary: row.proposed_summary }, resolvedBy)
+    const now = new Date().toISOString()
+    getDb().prepare("UPDATE memory_conflicts SET status = 'resolved', resolution = ?, resolved_by = ?, resolved_at = ? WHERE id = ?")
+      .run(resolution, resolvedBy, now, id)
+    recordChange(resolvedBy, `memory.conflict_${resolution}`, row.memory_id, now)
+    return {
+      conflict: conflictFromRow(getDb().prepare('SELECT * FROM memory_conflicts WHERE id = ?').get(id) as Row),
+      memory: memoryFromRow(getDb().prepare('SELECT * FROM memories WHERE id = ?').get(row.memory_id) as Row),
+    }
+  })()
+}
+
 export function setCanonicalMemoryLock(idValue: unknown, lockedValue: unknown, actorValue: unknown): CanonicalMemory {
   const id = text(idValue, 'memory id', 100, true)!
   const lockActor = reviewer(actorValue)
@@ -1045,9 +1128,10 @@ export function recycleCanonicalMemory(idValue: unknown, actorValue: unknown, no
   return getDb().transaction(() => {
     const memory = memoryFromRow(writableMemory(id, deletedBy))
     const memberships = getDb().prepare('SELECT * FROM family_memberships WHERE memory_id = ?').all(id) as Row[]
+    const conflicts = getDb().prepare('SELECT * FROM memory_conflicts WHERE memory_id = ?').all(id) as Row[]
     const recycleId = randomUUID()
     getDb().prepare('INSERT INTO memory_recycle_bin (id, memory_id, summary, payload_json, deleted_by, deleted_at, purge_after) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(recycleId, id, memory.summary, JSON.stringify({ memory, memberships }), deletedBy, now, purgeAfter)
+      .run(recycleId, id, memory.summary, JSON.stringify({ memory, memberships, conflicts }), deletedBy, now, purgeAfter)
     getDb().prepare("DELETE FROM source_refs WHERE target_type = 'memory' AND target_id = ?").run(id)
     getDb().prepare("DELETE FROM quotes WHERE target_type = 'memory' AND target_id = ?").run(id)
     getDb().prepare('DELETE FROM memories WHERE id = ?').run(id)
@@ -1062,7 +1146,7 @@ export function restoreCanonicalMemory(recycleIdValue: unknown, actorValue: unkn
   return getDb().transaction(() => {
     const recycled = getDb().prepare('SELECT * FROM memory_recycle_bin WHERE id = ?').get(recycleId) as Row | undefined
     if (!recycled) throw new Error('recycled memory not found')
-    const payload = JSON.parse(recycled.payload_json) as { memory: CanonicalMemory; memberships: Row[] }
+    const payload = JSON.parse(recycled.payload_json) as { memory: CanonicalMemory; memberships: Row[]; conflicts?: Row[] }
     const memory = payload.memory
     getDb().prepare(`INSERT INTO memories
       (id, type, summary, details, why_important, star_feeling, current_understanding, occurred_at, valid_from, valid_to, importance, inference, confidence, locked, lock_owner, created_by, approved_by, created_at, status)
@@ -1074,6 +1158,11 @@ export function restoreCanonicalMemory(recycleIdValue: unknown, actorValue: unkn
     payload.memberships.forEach(link => {
       if (getDb().prepare('SELECT 1 FROM families WHERE id = ?').get(link.family_id)) addMembership.run(link.family_id, memory.id, link.role, link.reason, link.added_by, link.created_at)
     })
+    const addConflict = getDb().prepare(`INSERT INTO memory_conflicts
+      (id, memory_id, current_summary, proposed_summary, reason, status, resolution, created_by, created_at, resolved_by, resolved_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    const conflicts = payload.conflicts || []
+    conflicts.forEach(conflict => addConflict.run(conflict.id, memory.id, conflict.current_summary, conflict.proposed_summary, conflict.reason, conflict.status, conflict.resolution, conflict.created_by, conflict.created_at, conflict.resolved_by, conflict.resolved_at))
     getDb().prepare('DELETE FROM memory_recycle_bin WHERE id = ?').run(recycleId)
     recordChange(restoredBy, 'memory.restored', memory.id, new Date().toISOString())
     return memoryFromRow(getDb().prepare('SELECT * FROM memories WHERE id = ?').get(memory.id) as Row)

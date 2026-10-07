@@ -44,7 +44,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
-import { createMemoryCandidate, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
+import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -144,6 +144,9 @@ export async function executeRegisteredToolHandler(
 
     if (name === 'manage_formal_memory') {
       if (input.action === 'update') return JSON.stringify({ ok: true, memory: updateCanonicalMemory(input.memory_id, input.patch, 'star') })
+      if (input.action === 'list_conflicts') return JSON.stringify(listMemoryConflicts())
+      if (input.action === 'flag_conflict') return JSON.stringify({ ok: true, conflict: createMemoryConflict(input.memory_id, input.proposed_summary, input.reason, 'star') })
+      if (input.action === 'resolve_conflict') return JSON.stringify({ ok: true, ...resolveMemoryConflict(input.conflict_id, input.resolution, 'star') })
       if (input.action === 'list_trash') return JSON.stringify(listRecycledMemories())
       if (input.action === 'recycle') return JSON.stringify({ ok: true, recycled: recycleCanonicalMemory(input.memory_id, 'star') })
       if (input.action === 'restore') return JSON.stringify({ ok: true, memory: restoreCanonicalMemory(input.recycle_id, 'star') })

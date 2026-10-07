@@ -213,6 +213,37 @@ test('a personal lock can only be changed or bypassed by its owner', async () =>
   assert.equal(memory.updateCanonicalMemory(approved.id, { summary: '解锁后小火可以修改。' }, 'fire').summary, '解锁后小火可以修改。')
 })
 
+test('a conflict keeps both proposals pending and resolves to one canonical memory', async () => {
+  const approved = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
+    type: 'durable_fact',
+    summary: '当前正式版本。',
+    sources: [{ kind: 'manual', actor: 'star', label: '星星手动加入' }],
+  }, 'star').id, 'approve', 'star').memory!
+
+  const conflict = memory.createMemoryConflict(approved.id, '建议修正版本。', '两种说法不一致', 'fire')
+  assert.equal(conflict.currentSummary, '当前正式版本。')
+  assert.equal(memory.getStarMemoryStatus().conflicts, 1)
+  assert.throws(() => memory.createMemoryConflict(approved.id, '第三个版本。', undefined, 'star'), /already has an open conflict/)
+  const kept = memory.resolveMemoryConflict(conflict.id, 'keep_current', 'fire')
+  assert.equal(kept.memory.summary, '当前正式版本。')
+  assert.equal(memory.listMemoryConflicts().length, 0)
+
+  const flagged = JSON.parse(await runtime.executeRegisteredToolHandler('manage_formal_memory', {
+    action: 'flag_conflict', memory_id: approved.id, proposed_summary: '最终准确版本。', reason: '星星再次核对',
+  }))
+  const resolved = await route.POST(new NextRequest('http://lumbre.test/api/star-memory', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'resolve_conflict', id: flagged.conflict.id, resolution: 'use_proposal' }),
+  }))
+  assert.equal(resolved.status, 200)
+  assert.equal(memory.listCanonicalMemories().find(item => item.id === approved.id)?.summary, '最终准确版本。')
+
+  memory.setCanonicalMemoryLock(approved.id, true, 'star')
+  const lockedConflict = memory.createMemoryConflict(approved.id, '小火不能直接覆盖。', undefined, 'fire')
+  assert.throws(() => memory.resolveMemoryConflict(lockedConflict.id, 'use_proposal', 'fire'), /locked by star/)
+  assert.equal(memory.resolveMemoryConflict(lockedConflict.id, 'keep_current', 'fire').conflict.resolution, 'keep_current')
+})
+
 test('formal memory recycle restores evidence and family links before purging at 24 hours', async () => {
   const family = memory.createMemoryFamily({ name: '回收测试' }, 'fire')
   const approved = memory.reviewMemoryCandidate(memory.createMemoryCandidate({
@@ -223,6 +254,7 @@ test('formal memory recycle restores evidence and family links before purging at
     quotes: [{ actor: 'fire', text: '请把证据一起保存。' }],
     familyIds: [family.id],
   }, 'star').id, 'approve', 'star').memory!
+  const conflict = memory.createMemoryConflict(approved.id, '待确认的修正版。', '随记忆一起恢复', 'star')
 
   const recycled = memory.recycleCanonicalMemory(approved.id, 'fire', '2026-10-06T10:00:00.000Z')
   assert.equal(memory.listCanonicalMemories().some(item => item.id === approved.id), false)
@@ -235,6 +267,7 @@ test('formal memory recycle restores evidence and family links before purging at
   assert.equal(restored.sources[0].excerpt, '原始依据')
   assert.equal(restored.quotes?.[0].text, '请把证据一起保存。')
   assert.deepEqual(memory.getMemoryFamily(family.id)?.memories.map(item => item.id), [approved.id])
+  assert.equal(memory.listMemoryConflicts().find(item => item.id === conflict.id)?.proposedSummary, '待确认的修正版。')
 
   memory.setCanonicalMemoryLock(approved.id, true, 'star')
   assert.throws(() => memory.recycleCanonicalMemory(approved.id, 'fire'), /locked by star/)
