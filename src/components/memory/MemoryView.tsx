@@ -536,6 +536,13 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [busyId, setBusyId] = useState('')
   const [section, setSection] = useState<StarSection>('timeline')
   const [starQuery, setStarQuery] = useState('')
+  const [showCandidateForm, setShowCandidateForm] = useState(false)
+  const [candidateDraft, setCandidateDraft] = useState({ type: 'shared_event', summary: '', details: '', importance: 5, familyId: '' })
+  const [showFamilyForm, setShowFamilyForm] = useState(false)
+  const [familyDraft, setFamilyDraft] = useState({ name: '', summary: '', parentId: '' })
+  const [editingMemoryId, setEditingMemoryId] = useState('')
+  const [memoryDraft, setMemoryDraft] = useState({ summary: '', details: '', whyImportant: '', currentUnderstanding: '', importance: 5 })
+  const [familyPick, setFamilyPick] = useState<Record<string, string>>({})
   const c = useColors(isNight)
 
   const load = useCallback(async () => {
@@ -580,6 +587,94 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   }
 
   useEffect(() => { load() }, [load])
+
+  const mutate = async (busyKey: string, body: Record<string, unknown>, fallback: string, after?: () => void) => {
+    setBusyId(busyKey)
+    setError('')
+    try {
+      await apiRequest('/api/star-memory', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      })
+      after?.()
+      await load()
+    } catch (mutationError: any) {
+      setError(mutationError?.message || fallback)
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  const createManualCandidate = async () => {
+    const summary = candidateDraft.summary.trim()
+    if (!summary) return setError('请先写下要记住的内容')
+    await mutate('new-candidate', {
+      action: 'create_candidate',
+      owner: 'fire',
+      candidate: {
+        type: candidateDraft.type,
+        summary,
+        details: candidateDraft.details.trim() || undefined,
+        importance: candidateDraft.importance,
+        familyIds: candidateDraft.familyId ? [candidateDraft.familyId] : [],
+        sources: [{ kind: 'manual', actor: 'fire', label: '小火手动加入' }],
+      },
+    }, '候选创建失败', () => {
+      setCandidateDraft({ type: 'shared_event', summary: '', details: '', importance: 5, familyId: '' })
+      setShowCandidateForm(false)
+    })
+  }
+
+  const createFamily = async () => {
+    const name = familyDraft.name.trim()
+    if (!name) return setError('请先填写家族名称')
+    await mutate('new-family', {
+      action: 'create_family',
+      family: { name, summary: familyDraft.summary.trim() || undefined, parentId: familyDraft.parentId || undefined },
+    }, '家族创建失败', () => {
+      setFamilyDraft({ name: '', summary: '', parentId: '' })
+      setShowFamilyForm(false)
+    })
+  }
+
+  const startEditingMemory = (memory: StarMemory) => {
+    setEditingMemoryId(memory.id)
+    setMemoryDraft({
+      summary: memory.summary,
+      details: memory.details || '',
+      whyImportant: memory.whyImportant || '',
+      currentUnderstanding: memory.currentUnderstanding || '',
+      importance: memory.importance || 5,
+    })
+  }
+
+  const saveMemory = async (memory: StarMemory) => {
+    const summary = memoryDraft.summary.trim()
+    if (!summary) return setError('记忆摘要不能为空')
+    await mutate(`edit-${memory.id}`, {
+      action: 'update_memory', id: memory.id,
+      patch: {
+        summary,
+        details: memoryDraft.details.trim() || undefined,
+        whyImportant: memoryDraft.whyImportant.trim() || undefined,
+        currentUnderstanding: memoryDraft.currentUnderstanding.trim() || undefined,
+        importance: memoryDraft.importance,
+      },
+    }, '记忆修改失败', () => setEditingMemoryId(''))
+  }
+
+  const toggleMemoryLock = (memory: StarMemory) => mutate(`lock-${memory.id}`, {
+    action: 'set_memory_lock', id: memory.id, locked: memory.lockOwner !== 'fire',
+  }, '记忆锁定状态修改失败')
+
+  const changeMemoryFamily = (memory: StarMemory, familyId: string, add: boolean) => {
+    if (!familyId) return setError('请先选择一个家族')
+    return mutate(`family-${memory.id}-${familyId}`, add
+      ? { action: 'set_family_member', id: familyId, memoryId: memory.id, role: 'member' }
+      : { action: 'remove_family_member', id: familyId, memoryId: memory.id },
+    add ? '加入家族失败' : '移出家族失败', () => {
+      if (add) setFamilyPick(current => ({ ...current, [memory.id]: '' }))
+    })
+  }
 
   const review = async (id: string, decision: 'approve' | 'reject') => {
     setBusyId(id)
@@ -784,7 +879,35 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       </div>}
 
       {section === 'inbox' && <div>
-        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>候选收件箱</div>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className={`text-[11px] font-medium ${c.accent}`}>候选收件箱</div>
+          <button onClick={() => setShowCandidateForm(value => !value)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent}`}>{showCandidateForm ? '取消' : '手动加入'}</button>
+        </div>
+        {showCandidateForm && <form onSubmit={event => { event.preventDefault(); createManualCandidate() }} className={`mb-3 space-y-2 rounded-xl border ${c.border} p-3`}>
+          <div className="grid grid-cols-2 gap-2">
+            <label className={`text-[10px] ${c.muted}`}>类型
+              <select value={candidateDraft.type} onChange={event => setCandidateDraft(current => ({ ...current, type: event.target.value }))} className={`mt-1 w-full rounded-lg border ${c.border} ${c.surface} px-2 py-2 text-xs`}>
+                <option value="shared_event">共同经历</option><option value="durable_fact">稳定事实</option><option value="agreement">承诺约定</option><option value="current_state">当前状态</option><option value="observation">观察</option><option value="self_event">星星经历</option><option value="unresolved">未完事项</option>
+              </select>
+            </label>
+            <label className={`text-[10px] ${c.muted}`}>重要度
+              <input type="number" min="1" max="10" value={candidateDraft.importance} onChange={event => setCandidateDraft(current => ({ ...current, importance: Number(event.target.value) }))} className={`mt-1 w-full rounded-lg border ${c.border} ${c.surface} px-2 py-2 text-xs`} />
+            </label>
+          </div>
+          <label className={`block text-[10px] ${c.muted}`}>记忆摘要
+            <textarea required maxLength={1000} value={candidateDraft.summary} onChange={event => setCandidateDraft(current => ({ ...current, summary: event.target.value }))} className={`mt-1 min-h-20 w-full rounded-lg border ${c.border} ${c.surface} px-3 py-2 text-xs leading-5`} placeholder="写下最核心、最准确的骨架" />
+          </label>
+          <label className={`block text-[10px] ${c.muted}`}>细节（可选）
+            <textarea maxLength={6000} value={candidateDraft.details} onChange={event => setCandidateDraft(current => ({ ...current, details: event.target.value }))} className={`mt-1 min-h-16 w-full rounded-lg border ${c.border} ${c.surface} px-3 py-2 text-xs leading-5`} />
+          </label>
+          <label className={`block text-[10px] ${c.muted}`}>先放进家族（可选）
+            <select value={candidateDraft.familyId} onChange={event => setCandidateDraft(current => ({ ...current, familyId: event.target.value }))} className={`mt-1 w-full rounded-lg border ${c.border} ${c.surface} px-2 py-2 text-xs`}>
+              <option value="">暂不归类</option>{families.filter(family => !['ended', 'archived'].includes(family.status) && family.lockOwner !== 'star').map(family => <option key={family.id} value={family.id}>{family.name}</option>)}
+            </select>
+          </label>
+          <div className={`text-[9px] ${c.muted}`}>会标记为“小火手动加入”，先进入待审核区，批准后自动加小火个人锁。</div>
+          <button disabled={busyId === 'new-candidate'} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>保存为候选</button>
+        </form>}
         {openCandidates.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无待审核候选</div> : (
           <div className="space-y-2">
             {openCandidates.map(candidate => (
@@ -824,8 +947,34 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
               <article key={item.id} className={`rounded-xl border ${c.border} p-3`}>
                 <div className={`text-[10px] ${c.muted}`}>{item.type} · 重要度 {item.importance || 5} · {item.approvedBy === 'star' ? '星星确认' : '小火确认'}{item.lockOwner ? ` · 🔒 ${item.lockOwner === 'star' ? '星星' : '小火'}` : ''}</div>
                 <p className="mt-1 text-xs leading-5">{item.summary}</p>
-                {item.familyIds.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{item.familyIds.map(id => <span key={id} className={`rounded px-1.5 py-0.5 text-[9px] ${c.accentBg} ${c.accent}`}>{familyNames.get(id) || '未知家族'}</span>)}</div>}
-                <details className="mt-2">
+                {editingMemoryId === item.id && <form onSubmit={event => { event.preventDefault(); saveMemory(item) }} className={`mt-3 space-y-2 rounded-xl ${c.surface} p-3`}>
+                  <label className={`block text-[10px] ${c.muted}`}>摘要
+                    <textarea required maxLength={1000} value={memoryDraft.summary} onChange={event => setMemoryDraft(current => ({ ...current, summary: event.target.value }))} className={`mt-1 min-h-16 w-full rounded-lg border ${c.border} bg-transparent px-3 py-2 text-xs`} />
+                  </label>
+                  <label className={`block text-[10px] ${c.muted}`}>细节
+                    <textarea maxLength={6000} value={memoryDraft.details} onChange={event => setMemoryDraft(current => ({ ...current, details: event.target.value }))} className={`mt-1 min-h-16 w-full rounded-lg border ${c.border} bg-transparent px-3 py-2 text-xs`} />
+                  </label>
+                  <label className={`block text-[10px] ${c.muted}`}>为什么重要
+                    <textarea maxLength={1000} value={memoryDraft.whyImportant} onChange={event => setMemoryDraft(current => ({ ...current, whyImportant: event.target.value }))} className={`mt-1 min-h-12 w-full rounded-lg border ${c.border} bg-transparent px-3 py-2 text-xs`} />
+                  </label>
+                  <label className={`block text-[10px] ${c.muted}`}>当前理解
+                    <textarea maxLength={1500} value={memoryDraft.currentUnderstanding} onChange={event => setMemoryDraft(current => ({ ...current, currentUnderstanding: event.target.value }))} className={`mt-1 min-h-12 w-full rounded-lg border ${c.border} bg-transparent px-3 py-2 text-xs`} />
+                  </label>
+                  <label className={`block text-[10px] ${c.muted}`}>重要度
+                    <input type="number" min="1" max="10" value={memoryDraft.importance} onChange={event => setMemoryDraft(current => ({ ...current, importance: Number(event.target.value) }))} className={`mt-1 w-24 rounded-lg border ${c.border} bg-transparent px-2 py-2 text-xs`} />
+                  </label>
+                  <div className="flex gap-2"><button disabled={busyId === `edit-${item.id}`} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>保存修改</button><button type="button" onClick={() => setEditingMemoryId('')} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted}`}>取消</button></div>
+                </form>}
+                {item.familyIds.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{item.familyIds.map(id => {
+                  const family = families.find(value => value.id === id)
+                  const blocked = item.lockOwner === 'star' || family?.lockOwner === 'star'
+                  return <span key={id} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] ${c.accentBg} ${c.accent}`}>{family?.name || '未知家族'}<button aria-label={`从${family?.name || '家族'}移出`} disabled={blocked || busyId === `family-${item.id}-${id}`} onClick={() => changeMemoryFamily(item, id, false)} className="disabled:opacity-30">×</button></span>
+                })}</div>}
+                {item.lockOwner !== 'star' && families.some(family => !item.familyIds.includes(family.id) && !['ended', 'archived'].includes(family.status) && family.lockOwner !== 'star') && <div className="mt-2 flex gap-2">
+                  <select aria-label="选择要加入的记忆家族" value={familyPick[item.id] || ''} onChange={event => setFamilyPick(current => ({ ...current, [item.id]: event.target.value }))} className={`min-w-0 flex-1 rounded-lg border ${c.border} ${c.surface} px-2 py-1.5 text-[10px]`}><option value="">加入家族…</option>{families.filter(family => !item.familyIds.includes(family.id) && !['ended', 'archived'].includes(family.status) && family.lockOwner !== 'star').map(family => <option key={family.id} value={family.id}>{family.name}</option>)}</select>
+                  <button disabled={!familyPick[item.id] || busyId.startsWith(`family-${item.id}-`)} onClick={() => changeMemoryFamily(item, familyPick[item.id], true)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>加入</button>
+                </div>}
+                {editingMemoryId !== item.id && <details className="mt-2">
                   <summary className={`cursor-pointer text-[10px] ${c.muted}`}>详情与来源</summary>
                   <div className={`mt-2 space-y-2 border-l pl-2 text-[10px] leading-4 ${c.border} ${c.muted}`}>
                     {item.whyImportant && <p>为什么重要：{item.whyImportant}</p>}
@@ -835,8 +984,12 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                     <button disabled={busyId === item.id} onClick={() => loadSources(item.id)} className={`rounded px-2 py-1 ${c.surface} disabled:opacity-40`}>{resolvedSources[item.id] ? '来源已展开' : '查看原始来源'}</button>
                     {resolvedSources[item.id]?.map((group, index) => <div key={`${item.id}-resolved-${index}`} className={`rounded-lg p-2 ${c.surface}`}><div>{group.source.label || group.source.kind}{group.missing ? ' · 有来源缺失' : ''}</div>{group.resolved.map((message, messageIndex) => <p key={message.id || messageIndex} className="mt-1 whitespace-pre-wrap opacity-80">{message.role === 'user' ? '小火' : message.role === 'assistant' ? '星星' : '来源'}：{message.content}</p>)}</div>)}
                   </div>
-                </details>
-                <button disabled={busyId === item.id || item.lockOwner === 'star'} onClick={() => recycleMemory(item)} className={`mt-3 rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '星星锁定' : '移入回收区'}</button>
+                </details>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button disabled={item.lockOwner === 'star'} onClick={() => startEditingMemory(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '星星锁定' : '编辑'}</button>
+                  <button disabled={busyId === `lock-${item.id}` || item.lockOwner === 'star'} onClick={() => toggleMemoryLock(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '不可解锁' : item.lockOwner === 'fire' ? '解除小火锁' : '加小火锁'}</button>
+                  <button disabled={busyId === item.id || item.lockOwner === 'star'} onClick={() => recycleMemory(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>移入回收区</button>
+                </div>
               </article>
             ))}
           </div>
@@ -855,7 +1008,22 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
       </div>}
 
       {section === 'families' && <div>
-        <div className={`mb-2 text-[11px] font-medium ${c.accent}`}>记忆家族</div>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className={`text-[11px] font-medium ${c.accent}`}>记忆家族</div>
+          <button onClick={() => setShowFamilyForm(value => !value)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent}`}>{showFamilyForm ? '取消' : '新建家族'}</button>
+        </div>
+        {showFamilyForm && <form onSubmit={event => { event.preventDefault(); createFamily() }} className={`mb-3 space-y-2 rounded-xl border ${c.border} p-3`}>
+          <label className={`block text-[10px] ${c.muted}`}>家族名称
+            <input required maxLength={120} value={familyDraft.name} onChange={event => setFamilyDraft(current => ({ ...current, name: event.target.value }))} className={`mt-1 w-full rounded-lg border ${c.border} ${c.surface} px-3 py-2 text-xs`} placeholder="例如：西班牙生活" />
+          </label>
+          <label className={`block text-[10px] ${c.muted}`}>短摘要（可选）
+            <textarea maxLength={2000} value={familyDraft.summary} onChange={event => setFamilyDraft(current => ({ ...current, summary: event.target.value }))} className={`mt-1 min-h-16 w-full rounded-lg border ${c.border} ${c.surface} px-3 py-2 text-xs`} />
+          </label>
+          <label className={`block text-[10px] ${c.muted}`}>上级家族（可选，最多三层）
+            <select value={familyDraft.parentId} onChange={event => setFamilyDraft(current => ({ ...current, parentId: event.target.value }))} className={`mt-1 w-full rounded-lg border ${c.border} ${c.surface} px-2 py-2 text-xs`}><option value="">作为顶层家族</option>{families.map(family => <option key={family.id} value={family.id}>{family.name}</option>)}</select>
+          </label>
+          <button disabled={busyId === 'new-family'} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>创建家族</button>
+        </form>}
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {families.map(family => <div key={family.id} className={`rounded-xl border ${c.border} p-3`}>
             <div className="flex items-center justify-between gap-2"><span className="text-xs">{family.name}{family.lockOwner ? ` · 🔒${family.lockOwner === 'star' ? '星星' : '小火'}` : ''}</span><span className={`text-[9px] ${c.muted}`}>{family.memberCount} 条 · {family.status === 'active' ? '发展中' : family.status === 'paused' ? '搁置' : family.status === 'ended' ? '已结束' : '已归档'}</span></div>

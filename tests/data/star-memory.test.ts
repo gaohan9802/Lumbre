@@ -185,10 +185,19 @@ test('a personal lock can only be changed or bypassed by its owner', async () =>
     locked: true,
   }, 'star', 'star')
   const approved = memory.reviewMemoryCandidate(candidate.id, 'approve', 'star').memory!
+  const family = memory.createMemoryFamily({ name: '个人锁测试家族' }, 'star')
+  const otherFamily = memory.createMemoryFamily({ name: '个人锁测试第二家族' }, 'fire')
+  memory.setMemoryFamilyMembership(family.id, approved.id, 'member', '星星保留的节点', 'star')
   assert.equal(approved.lockOwner, 'star')
   assert.throws(() => memory.setCanonicalMemoryLock(approved.id, undefined, 'star'), /locked must be a boolean/)
   assert.throws(() => memory.updateCanonicalMemory(approved.id, { summary: '小火不能改。' }, 'fire'), /locked by star/)
   assert.throws(() => memory.setCanonicalMemoryLock(approved.id, false, 'fire'), /locked by star/)
+  assert.throws(() => memory.removeMemoryFamilyMembership(family.id, approved.id, 'fire'), /locked by star/)
+  assert.throws(() => memory.setMemoryFamilyMembership(otherFamily.id, approved.id, 'member', undefined, 'fire'), /locked by star/)
+  assert.throws(() => memory.endMemoryFamily(family.id, 'fire'), /locked by star/)
+  assert.throws(() => memory.recycleMemoryFamily(family.id, 'fire'), /locked by star/)
+  assert.throws(() => memory.mergeMemoryFamilies(family.id, otherFamily.id, undefined, 'fire'), /locked by star/)
+  assert.throws(() => memory.splitMemoryFamily(family.id, { name: '锁定记忆拆分结果' }, [approved.id], 'fire'), /locked by star/)
   const forged = await route.POST(new NextRequest('http://lumbre.test/api/star-memory', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
