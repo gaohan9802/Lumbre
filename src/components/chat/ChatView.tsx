@@ -1209,7 +1209,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={`relative h-full w-[86vw] max-w-[340px] flex flex-col overflow-hidden ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29]'} border-r`}>
-      <div className={`relative z-10 px-4 pb-4 space-y-3 border-b ${mobile ? 'pt-[max(3.5rem,calc(env(safe-area-inset-top)+1rem))]' : 'pt-14'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
+      <div className={`relative z-10 px-4 pb-3 space-y-2.5 border-b ${mobile ? 'pt-[max(3.5rem,calc(env(safe-area-inset-top)+1rem))]' : 'pt-14'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-base font-medium">会话</div>
@@ -1226,27 +1226,28 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {n ? <Sun size={17} strokeWidth={1.45}/> : <Moon size={17} strokeWidth={1.45}/>}
           </motion.button>
         </div>
-        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>
-          <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
-            <span>天气 · 精确位置</span>
-            <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className="p-1 -m-1 hover:opacity-100 disabled:opacity-70">
-              <RotateCcw size={13} className={locationRefreshing ? 'animate-spin' : ''} />
+        <section className={`rounded-xl border px-2.5 py-2 ${n ? 'border-night-border bg-night-surface/35' : 'border-[#a73a32]/15 bg-[#fffaf5]/45'}`}>
+          <div className="flex items-center gap-2">
+            <span className="w-5 shrink-0 text-center text-base leading-none">{weather?.updatedAt ? weatherEmoji(weather.code) : '📍'}</span>
+            {weather?.updatedAt ? (
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-1.5 leading-none">
+                  <span className="shrink-0 text-base tabular-nums">{weather.temp == null ? '—' : `${Math.round(weather.temp)}°`}</span>
+                  <span className="min-w-0 truncate text-[11px] opacity-65">{weather.address || weather.city || '地址解析中'}</span>
+                </div>
+                <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[8px] opacity-40">
+                  <span className="min-w-0 truncate font-mono">{weather.lat.toFixed(6)}, {weather.lon.toFixed(6)}{weather.accuracy != null ? ` · ±${Math.round(weather.accuracy)}m` : ''}</span>
+                  <span className="shrink-0">{new Date(weather.updatedAt).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="min-w-0 flex-1 text-[11px] opacity-50">尚未定位</div>
+            )}
+            <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border transition hover:opacity-100 disabled:opacity-70 ${n ? 'border-night-border/80' : 'border-[#a73a32]/15'}`}>
+              <RotateCcw size={12} className={locationRefreshing ? 'animate-spin' : ''} />
             </button>
           </div>
-          {weather?.updatedAt ? (
-            <>
-              <div className="mt-1.5 flex items-baseline gap-1.5 text-sm">
-                <span>{weatherEmoji(weather.code)}</span>
-                <span className="text-lg tabular-nums">{weather.temp == null ? '—' : `${Math.round(weather.temp)}°`}</span>
-                <span className="min-w-0 truncate opacity-70">{weather.address || weather.city || '地址解析中'}</span>
-              </div>
-              <div className="mt-1.5 truncate font-mono text-[9px] opacity-45">{weather.lat.toFixed(6)}, {weather.lon.toFixed(6)}{weather.accuracy != null ? ` · ±${Math.round(weather.accuracy)}m` : ''}</div>
-              <div className="mt-1 text-[9px] opacity-40">与星星共用 · {new Date(weather.updatedAt).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })} 更新</div>
-            </>
-          ) : (
-            <div className="mt-2 text-[10px] leading-relaxed opacity-50">尚未定位，点右上角刷新并允许精确位置。</div>
-          )}
-          {locationError && <div className="mt-1.5 text-[9px] text-red-500/80">{locationError}</div>}
+          {locationError && <div className="mt-1 pl-7 text-[8px] text-red-500/75">{locationError}</div>}
         </section>
       </div>
       <div className="relative z-10 flex-1 overflow-y-auto px-2 pb-2 pt-4 space-y-1">
