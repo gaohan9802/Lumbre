@@ -1236,7 +1236,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <span className="min-w-0 truncate text-[11px] opacity-65">{weather.address || weather.city || '地址解析中'}</span>
                 </div>
                 <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[8px] opacity-40">
-                  <span className="min-w-0 truncate font-mono">{weather.lat.toFixed(6)}, {weather.lon.toFixed(6)}{weather.accuracy != null ? ` · ±${Math.round(weather.accuracy)}m` : ''}</span>
+                  <span className="min-w-0 truncate font-mono">{weather.lat.toFixed(2)}, {weather.lon.toFixed(2)}{weather.accuracy != null ? ` · ±${Math.round(weather.accuracy)}m` : ''}</span>
                   <span className="shrink-0">{new Date(weather.updatedAt).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                 </div>
               </div>
