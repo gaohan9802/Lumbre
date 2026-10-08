@@ -4,7 +4,7 @@ import { shareToChat } from '@/lib/share'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTheme } from '@/lib/theme'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, X, ChevronDown, ChevronRight, Pin, Check, Trash2, Edit3, Save, RefreshCw, Settings, Zap, Heart } from 'lucide-react'
+import { Search, X, ChevronDown, ChevronRight, Pin, Check, Trash2, Edit3, Save, RefreshCw, Settings, Zap, Heart, Share2 } from 'lucide-react'
 import { apiRequest } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { PaperActionDialog } from '@/components/PaperActionDialog'
@@ -781,6 +781,14 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
     setFavoriteMemoryIds(current => { const next = new Set(current); result.favorited ? next.add(memory.id) : next.delete(memory.id); return next })
   }
 
+  const shareStarMemory = (memory: { id: string; type: string; summary: string; details?: string; whyImportant?: string; currentUnderstanding?: string }, stage: string, familyIds: string[] = []) => shareToChat({
+    kind: 'memory',
+    title: `🧠 ${memory.summary}`,
+    subtitle: [stage, memory.type, familyIds.map(id => families.find(family => family.id === id)?.name).filter(Boolean).join('、')].filter(Boolean).join(' · '),
+    body: [memory.details, memory.whyImportant && `为什么重要：${memory.whyImportant}`, memory.currentUnderstanding && `当前理解：${memory.currentUnderstanding}`].filter(Boolean).join('\n\n') || memory.summary,
+    metadata: { ...memory, stage, familyIds },
+  })
+
   const flagConflict = (memory: StarMemory) => setStarDialog({ kind: 'flag_conflict', memory, proposedSummary: memory.summary, reason: '' })
 
   const resolveConflict = (conflict: StarMemoryConflict, resolution: 'keep_current' | 'use_proposal') => mutate(`conflict-${conflict.id}`, {
@@ -1082,6 +1090,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                 <p className="mt-1 text-xs leading-5">{item.summary}</p>
                 {item.suggestedFamilyIds.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{item.suggestedFamilyIds.map(id => <span key={id} className={`rounded px-1.5 py-0.5 text-[9px] ${c.accentBg} ${c.accent}`}>{familyNames.get(id) || '未知家族'}</span>)}</div>}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={() => shareStarMemory(item, '近期记忆', item.suggestedFamilyIds)} aria-label="分享到 Chat" title="分享到 Chat" className={`rounded-lg p-1.5 ${c.surface} ${c.muted}`}><Share2 size={11} /></button>
                   <button disabled={busyId === item.id} onClick={() => reviewWorking(item.id, 'promote')} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>升格</button>
                   {item.status === 'due' && item.retentionDays < 14 && <button disabled={busyId === item.id} onClick={() => reviewWorking(item.id, 'observe')} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>观察到14天</button>}
                   <button disabled={busyId === item.id} onClick={() => reviewWorking(item.id, 'ask_fire')} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>交给小火</button>
@@ -1162,6 +1171,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                   </div>
                 </details>}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={() => shareStarMemory(candidate, '待审核', candidate.suggestedFamilyIds)} aria-label="分享到 Chat" title="分享到 Chat" className={`rounded-lg p-1.5 ${c.surface} ${c.muted}`}><Share2 size={11} /></button>
                   <button disabled={busyId === candidate.id} onClick={() => review(candidate.id, 'approve')} className={`rounded-lg px-3 py-1.5 text-[10px] font-medium ${c.accentBg} ${c.accent} disabled:opacity-40`}>{isOmbreFeeling ? '存为正式记忆' : '批准'}</button>
                   {isOmbreFeeling && <button disabled={busyId === candidate.id} onClick={() => candidateToJournal(candidate)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.accentBg} ${c.accent} disabled:opacity-40`}>存入星星日记</button>}
                   <button disabled={busyId === candidate.id} onClick={() => startEditingCandidate(candidate)} className={`rounded-lg px-3 py-1.5 text-[10px] ${c.surface} ${c.muted} disabled:opacity-40`}>编辑后再审</button>
@@ -1221,6 +1231,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                   </div>
                 </details>}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={() => shareStarMemory(item, '正式记忆', item.familyIds)} aria-label="分享到 Chat" title="分享到 Chat" className={`rounded-lg p-1.5 ${c.surface} ${c.muted}`}><Share2 size={11} /></button>
                   <button onClick={() => toggleMemoryFavorite(item)} title={favoriteMemoryIds.has(item.id) ? '取消收藏' : '收藏'} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted}`}><Heart className="mr-1 inline" size={10} fill={favoriteMemoryIds.has(item.id) ? 'currentColor' : 'none'} />{favoriteMemoryIds.has(item.id) ? '已收藏' : '收藏'}</button>
                   <button disabled={item.lockOwner === 'star'} onClick={() => startEditingMemory(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '星星锁定' : '编辑'}</button>
                   <button disabled={busyId === `lock-${item.id}` || item.lockOwner === 'star'} onClick={() => toggleMemoryLock(item)} className={`rounded-lg px-2 py-1 text-[9px] ${c.surface} ${c.muted} disabled:opacity-40`}>{item.lockOwner === 'star' ? '不可解锁' : item.lockOwner === 'fire' ? '解除小火锁' : '加小火锁'}</button>
@@ -1323,6 +1334,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
                         <div className="flex items-start gap-2">
                           <input aria-label={`选择拆出${memory.summary}`} type="checkbox" disabled={blocked} checked={selected.includes(memory.id)} onChange={() => setSplitSelections(current => ({ ...current, [family.id]: selected.includes(memory.id) ? selected.filter(id => id !== memory.id) : [...selected, memory.id] }))} className="mt-1" />
                           <div className="min-w-0 flex-1"><div className="text-[10px] leading-4">{memory.summary}{memory.lockOwner === 'star' ? ' · 🔒星星' : ''}</div>{link?.reason && <div className={`mt-1 text-[9px] ${c.muted}`}>{link.reason}</div>}</div>
+                          <button onClick={() => shareStarMemory(memory, '正式记忆', memory.familyIds)} aria-label="分享到 Chat" title="分享到 Chat" className={`p-1 ${c.muted}`}><Share2 size={10} /></button>
                           <select aria-label="家族成员角色" disabled={blocked || busyId === `member-${family.id}-${memory.id}`} value={link?.role || 'member'} onChange={event => updateFamilyMember(family.id, memory.id, event.target.value as StarFamilyRole)} className={`rounded border ${c.border} bg-transparent px-1 py-1 text-[9px] disabled:opacity-40`}><option value="key_event">关键节点</option><option value="key_fact">关键事实</option><option value="member">普通成员</option><option value="unresolved">未完事项</option></select>
                           <button aria-label="移出家族" disabled={blocked || busyId === `member-${family.id}-${memory.id}`} onClick={() => updateFamilyMember(family.id, memory.id)} className={`px-1 text-[10px] ${c.muted} disabled:opacity-30`}>×</button>
                         </div>

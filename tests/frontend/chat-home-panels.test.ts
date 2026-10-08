@@ -230,6 +230,10 @@ test('memory room exposes the isolated star memory review inbox', () => {
   assert.match(memory, /action: 'split_family'/)
   assert.match(memory, /action: 'flag_conflict'/)
   assert.match(memory, /action: 'resolve_conflict'/)
+  assert.match(memory, /shareStarMemory\(candidate, '待审核'/)
+  assert.match(memory, /shareStarMemory\(item, '近期记忆'/)
+  assert.match(memory, /shareStarMemory\(item, '正式记忆'/)
+  assert.match(memory, /aria-label="分享到 Chat"/)
   assert.match(memory, /原始聊天或原始资料不会被这个后台删除/)
 })
 
