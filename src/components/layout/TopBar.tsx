@@ -10,7 +10,7 @@ import { SyncBadge } from './SyncBadge'
 export function TopBar() {
   const { toggleSidebar, activeTab } = useApp()
   const { theme } = useTheme()
-  const weather = useWeather()
+  const { data: weather } = useWeather()
 
   const titles: Record<string, string> = {
     chat: '🐆 星星',

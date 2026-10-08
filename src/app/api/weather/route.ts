@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { updateUserContext } from '@/server/agent/tools/user-context'
+import { getUserContext, updateUserContext } from '@/server/agent/tools/user-context'
+
+function responseOf(ctx: ReturnType<typeof getUserContext>) {
+  return { ...ctx, code: ctx.weatherCode ?? 0 }
+}
+
+export async function GET() {
+  return NextResponse.json(responseOf(getUserContext()))
+}
 
 // Server-side proxy: open-meteo (weather, no key) + bigdatacloud (reverse geocode, no key)
 // Also caches the location for AI tools (get_weather, get_location)
 export async function POST(req: NextRequest) {
   try {
-    const { lat, lon } = await req.json()
-    if (typeof lat !== 'number' || typeof lon !== 'number') {
-      return NextResponse.json({ error: 'lat/lon required' }, { status: 400 })
+    const { lat, lon, accuracy } = await req.json()
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lon) || lon < -180 || lon > 180
+      || (accuracy != null && (!Number.isFinite(accuracy) || accuracy < 0))) {
+      return NextResponse.json({ error: 'valid lat/lon required' }, { status: 400 })
     }
     const [wRes, gRes, nRes] = await Promise.all([
       fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`),
@@ -33,9 +42,8 @@ export async function POST(req: NextRequest) {
     const address = nom?.display_name || [road, houseNumber, city].filter(Boolean).join(' ') || ''
 
     // Cache for AI tools
-    updateUserContext({ lat, lon, temp, weatherCode: code, city, road, houseNumber, address })
-
-    return NextResponse.json({ temp, code, city, road, houseNumber, address })
+    const saved = updateUserContext({ lat, lon, accuracy, temp, weatherCode: code, city, road, houseNumber, address })
+    return NextResponse.json(responseOf(saved))
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

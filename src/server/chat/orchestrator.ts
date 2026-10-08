@@ -10,6 +10,7 @@ import { getWeatherContext } from '@/server/weather-hook'
 import { couponContext } from '@/server/coupon-store'
 import { dailyCompanionContext } from '@/server/nose-pokes'
 import { buildStarMemoryContext } from '@/server/star-memory'
+import { preciseLocationContext } from '@/server/agent/tools/user-context'
 import { resolveChatCredential, resolveLegacyChatCredential } from './credentials'
 import { normalizeModelBaseUrl, type ModelCredentialInput } from '@/server/data/repositories/model-credentials'
 import { anthropicAdapter } from './providers/anthropic'
@@ -84,6 +85,7 @@ function currentTimestamp(): string {
 async function volatileContext(userMessage: string): Promise<string> {
   const timestamp = currentTimestamp()
   const parts: string[] = [`当前时间：${timestamp}`, couponContext()]
+  try { parts.splice(1, 0, preciseLocationContext()) } catch {}
   try {
     const note = getPeriodContext(userMessage, timestamp.split(' ')[0].replace(/\//g, '-'))
     if (note) parts.push(note)

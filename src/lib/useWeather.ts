@@ -2,7 +2,7 @@
 
 /**
  * Weather + city for the top bar.
- * Geolocation → /api/weather (open-meteo + reverse geocode) → 30min cache.
+ * Geolocation → /api/weather (open-meteo + reverse geocode) → shared server snapshot.
  * Refreshes automatically when the tab regains visibility/focus so weather &
  * location stay current even if the user never opens a specific page.
  * Location is requested silently (no custom prompt) — default authorize.
@@ -17,9 +17,15 @@ export interface WeatherInfo {
   temp: number | null
   code: number
   city: string
+  lat: number
+  lon: number
+  accuracy?: number
+  road?: string
+  houseNumber?: string
+  address?: string
+  updatedAt: number
 }
 
-const CACHE_KEY = 'lumbre-weather'
 const LASTPOS_KEY = 'lumbre-lastpos'
 const CACHE_MS = 30 * 60 * 1000
 
@@ -73,7 +79,7 @@ function readLastPos(): { lat: number; lon: number } | null {
 }
 
 /** Take up to 3 fixes, drop drift, and return the most reliable coordinate. */
-async function bestPosition(): Promise<{ lat: number; lon: number } | null> {
+async function bestPosition(): Promise<Fix | null> {
   const fixes: Fix[] = []
   for (let i = 0; i < 3; i++) {
     const f = await getFix()
@@ -103,60 +109,59 @@ async function bestPosition(): Promise<{ lat: number; lon: number } | null> {
     return a.accuracy - b.accuracy
   })
   const chosen = pool[0]
-  const result = { lat: chosen.lat, lon: chosen.lon }
+  const result = { lat: chosen.lat, lon: chosen.lon, accuracy: chosen.accuracy }
   try { localStorage.setItem(LASTPOS_KEY, JSON.stringify(result)) } catch {}
   return result
 }
 
-export function useWeather(): WeatherInfo | null {
+export function useWeather() {
   const [data, setData] = useState<WeatherInfo | null>(null)
-  const fetching = useRef(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState('')
+  const pending = useRef<Promise<WeatherInfo | null> | null>(null)
 
-  const refresh = useCallback(async (force = false) => {
-    // serve fresh cache unless forced
-    try {
-      const cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null')
-      if (cached && Date.now() - cached.at < CACHE_MS) {
-        setData(cached.data)
-        if (!force) return
-      }
-    } catch {}
+  const refresh = useCallback((force = false, maxAgeMs = CACHE_MS): Promise<WeatherInfo | null> => {
+    if (pending.current) return pending.current
+    pending.current = (async () => {
+      setRefreshing(true)
+      setError('')
+      try {
+        const currentRes = await fetch('/api/weather', { cache: 'no-store' })
+        const current = currentRes.ok ? await currentRes.json() as WeatherInfo : null
+        if (current?.updatedAt) setData(current)
+        if (!force && current?.updatedAt && Date.now() - current.updatedAt < maxAgeMs) return current
+        if (typeof navigator === 'undefined' || !navigator.geolocation) throw new Error('这台设备不支持定位')
 
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return
-    if (fetching.current) return
-    fetching.current = true
-
-    try {
-      const pos = await bestPosition()
-      if (pos) {
+        const pos = await bestPosition()
+        if (!pos) throw new Error('没有拿到定位，请检查浏览器定位权限')
         const res = await fetch('/api/weather', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat: pos.lat, lon: pos.lon }),
+          body: JSON.stringify(pos),
         })
-        const d = await res.json()
-        if (d && typeof d.code === 'number') {
-          setData(d)
-          try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), data: d })) } catch {}
-        }
+        if (!res.ok) throw new Error('位置保存失败')
+        const next = await res.json() as WeatherInfo
+        setData(next)
+        return next
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : '位置刷新失败')
+        return null
+      } finally {
+        setRefreshing(false)
+        pending.current = null
       }
-    } catch {}
-    fetching.current = false
+    })()
+    return pending.current
   }, [])
 
   useEffect(() => {
-    refresh()
+    void refresh()
 
     // Re-confirm weather + location whenever the tab becomes visible again or
     // regains focus, but only if the cache has gone stale.
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
-      let stale = true
-      try {
-        const cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null')
-        stale = !cached || Date.now() - cached.at >= CACHE_MS
-      } catch {}
-      if (stale) refresh(true)
+      void refresh(false)
     }
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onVisible)
@@ -169,5 +174,5 @@ export function useWeather(): WeatherInfo | null {
     }
   }, [refresh])
 
-  return data
+  return { data, refreshing, error, refresh }
 }

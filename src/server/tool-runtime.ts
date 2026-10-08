@@ -715,21 +715,25 @@ function executeGetWeather(): string {
 /** Get user's GPS location (with street-level address + Google Maps link) */
 function executeGetLocation(): string {
   const ctx = readUserContext()
-  if (!ctx.updatedAt || Date.now() - ctx.updatedAt > 60 * 60 * 1000) {
+  if (!ctx.updatedAt || ctx.lat == null || ctx.lon == null) {
     return JSON.stringify({ error: '小火的位置信息不可用（她可能还没打开Lumbre，或者没授权定位）' })
   }
+  const ageMinutes = Math.max(0, Math.floor((Date.now() - ctx.updatedAt) / 60_000))
   const mapsUrl = (ctx.lat != null && ctx.lon != null)
     ? `https://www.google.com/maps/search/?api=1&query=${ctx.lat},${ctx.lon}`
     : undefined
   return JSON.stringify({
     latitude: ctx.lat,
     longitude: ctx.lon,
+    accuracy_meters: ctx.accuracy,
     city: ctx.city || '未知',
     road: ctx.road || undefined,
     house_number: ctx.houseNumber || undefined,
     address: ctx.address || undefined,
     google_maps: mapsUrl,
     updated: madridTime(ctx.updatedAt),
+    age_minutes: ageMinutes,
+    stale: ageMinutes > 60,
   })
 }
 
