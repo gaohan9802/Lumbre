@@ -20,8 +20,10 @@ export const JOURNAL_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'reply_guestbook', domain: 'notes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'delete_guestbook_message', domain: 'notes', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除告状簿留言' },
 
+  { name: 'list_foto_albums', domain: 'photos', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_foto', domain: 'photos', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'view_foto', domain: 'photos', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'save_chat_foto', domain: 'photos', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'edit_foto', domain: 'photos', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'delete_foto', domain: 'photos', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除照片' },
   { name: 'comment_foto', domain: 'photos', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },

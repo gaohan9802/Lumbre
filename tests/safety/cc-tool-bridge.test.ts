@@ -39,7 +39,7 @@ test('internal bridge exposes only registered Lumbre chat tools behind its own s
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('cache-control'), 'no-store')
   const body = await response.json()
-  assert.equal(body.tools.length, 97)
+  assert.equal(body.tools.length, 99)
   assert.equal(body.tools.some((tool: any) => ['Bash', 'Shell', 'Read', 'Write', 'Edit'].includes(tool.name)), false)
   assert.equal(body.tools.some((tool: any) => tool.name === 'read_diary'), true)
   assert.equal(body.tools.some((tool: any) => tool.name === 'reply_guestbook'), true)
@@ -85,6 +85,21 @@ test('view_foto can load the exact image attached to the current CC conversation
   assert.equal(body.content.at(-1).mimeType, 'image/png')
   assert.equal(body.content.at(-1).data, 'aGVsbG8=')
   assert.doesNotMatch(body.result, /aGVsbG8=/)
+})
+
+test('save_chat_foto can keep a declined current-chat image once', async () => {
+  const image = 'data:image/gif;base64,R0lGODlhAQABAAAAACw='
+  chatSync.upsertSyncSessionMessage('conversation-save-image', {
+    id: 'message-save-image', role: 'user', content: '这张不放了', images: [image], timestamp: Date.now(),
+  })
+  const call = () => route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
+    method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ session_id: 'conversation-save-image', name: 'save_chat_foto', input: { message_id: 'message-save-image', image_index: 0, caption: '星星喜欢' } }),
+  }))
+  const first = await (await call()).json()
+  const second = await (await call()).json()
+  assert.equal(JSON.parse(first.result).ok, true)
+  assert.equal(JSON.parse(second.result).already_saved, true)
 })
 
 test('unattended CC wakes can execute the full registered Lumbre tool set', async () => {

@@ -14,6 +14,7 @@ import {
   getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary, StageSummary,
 } from '@/lib/chatStore'
 import { apiRequest, photos as photosApi } from '@/lib/api'
+import { compressImage } from '@/lib/image'
 import type { SharedCard } from '@/lib/share'
 import { ChatSettings, type ChatSettingsPanel } from './ChatSettings'
 import { applyBubbleLayout, composeBubbleLayout } from '@/lib/chat-bubble-composer'
@@ -129,31 +130,6 @@ function toModelMessage(message: ChatMessage) {
 /* ── image compression ──────────────────────
  * 手机原图常是 HEIC/超大 JPEG，直接塞进 vision 请求会因格式不支持或超过
  * 5MB 上限被上游拒绝 → 回复被截断/为空。统一压成 ≤1568px 的 JPEG。 */
-function compressImage(dataUrl: string, maxDim = 1568, quality = 0.85): Promise<string> {
-  return new Promise((resolve) => {
-    try {
-      const img = new Image()
-      img.onload = () => {
-        let { width, height } = img
-        if (width > maxDim || height > maxDim) {
-          const scale = maxDim / Math.max(width, height)
-          width = Math.round(width * scale)
-          height = Math.round(height * scale)
-        }
-        const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return resolve(dataUrl)
-        ctx.drawImage(img, 0, 0, width, height)
-        resolve(canvas.toDataURL('image/jpeg', quality))
-      }
-      img.onerror = () => resolve(dataUrl)
-      img.src = dataUrl
-    } catch { resolve(dataUrl) }
-  })
-}
-
 /* ── main component ─────────────────────── */
 
 export interface ChatViewProps {

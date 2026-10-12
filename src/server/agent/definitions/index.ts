@@ -18,7 +18,7 @@ const TOOL_ORDER = [
   'breath', 'hold', 'grow', 'trace', 'pulse', 'dream', 'recall_memory', 'remember', 'review_memory', 'lock_memory', 'manage_formal_memory', 'manage_memory_family',
   'write_diary', 'read_diary', 'comment_diary', 'update_diary', 'delete_diary', 'unlock_diary', 'set_password', 'timeline',
   'write_note', 'read_notes', 'reply_note', 'delete_note',
-  'read_foto', 'view_foto', 'edit_foto', 'delete_foto', 'comment_foto',
+  'list_foto_albums', 'read_foto', 'view_foto', 'save_chat_foto', 'edit_foto', 'delete_foto', 'comment_foto',
   'write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline',
   'read_todo', 'add_todo', 'edit_todo', 'remove_todo', 'comment_todo',
   'read_thesis', 'comment_thesis',

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getPhoto } from '@/server/photo-store'
+import { getPhoto, photoImageDataUrl } from '@/server/photo-store'
 
 /**
  * Serve a stored photo as a real HTTP image (decoded from its base64 dataUrl).
@@ -10,10 +10,11 @@ export async function GET(_req: NextRequest, ctx: { params: { id: string } }) {
   const photo = getPhoto(ctx.params.id)
   if (!photo?.url) return new Response('not found', { status: 404 })
 
-  const m = /^data:([^;]+);base64,([\s\S]*)$/i.exec(photo.url)
+  const source = photoImageDataUrl(photo)
+  const m = /^data:([^;]+);base64,([\s\S]*)$/i.exec(source)
   if (!m) {
     // Already a remote URL — redirect to it.
-    return Response.redirect(photo.url, 302)
+    return Response.redirect(source, 302)
   }
   const buf = Buffer.from(m[2], 'base64')
   return new Response(buf, {

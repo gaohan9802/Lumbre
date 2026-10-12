@@ -308,6 +308,16 @@ export const JOURNAL_TOOL_DEFINITIONS = [
     }
   },
   {
+    "name": "list_foto_albums",
+    "description": "查看照片墙、旅行和上锁区里的专辑名称与id。想按专辑找照片、移动照片或收藏聊天附图时先用它。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "zone": { "type": "string", "enum": ["wall", "travel", "locked"], "description": "可选的分区筛选" }
+      }
+    }
+  },
+  {
     "name": "read_foto",
     "description": "浏览照片墙。只返回每张照片的id、作者、说明文字、评论等文字信息(不含画面，很轻)。想看某张的实际画面，用 view_foto(id)。",
     "input_schema": {
@@ -316,7 +326,9 @@ export const JOURNAL_TOOL_DEFINITIONS = [
         "limit": {
           "type": "integer",
           "description": "返回数量上限(默认20)"
-        }
+        },
+        "zone": { "type": "string", "enum": ["wall", "travel", "locked"] },
+        "album_id": { "type": "string", "description": "专辑id" }
       }
     }
   },
@@ -342,8 +354,22 @@ export const JOURNAL_TOOL_DEFINITIONS = [
     }
   },
   {
+    "name": "save_chat_foto",
+    "description": "把当前聊天里小火发来的某张图收进照片墙。即使小火当时点了‘不用’，你喜欢的话也可以自己收藏；只能使用当前会话真实存在的 message_id 和 image_index。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "message_id": { "type": "string", "description": "聊天消息id" },
+        "image_index": { "type": "integer", "minimum": 0, "maximum": 3, "description": "图片序号，从0开始" },
+        "album_id": { "type": "string", "description": "收进的专辑id，不填则收进日常" },
+        "caption": { "type": "string", "description": "可选的照片说明" }
+      },
+      "required": ["message_id", "image_index"]
+    }
+  },
+  {
     "name": "edit_foto",
-    "description": "编辑一张照片的说明文字(caption)。",
+    "description": "编辑一张照片的说明文字，或把它移到另一本专辑。",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -354,11 +380,11 @@ export const JOURNAL_TOOL_DEFINITIONS = [
         "caption": {
           "type": "string",
           "description": "新的说明文字"
-        }
+        },
+        "album_id": { "type": "string", "description": "要移入的专辑id" }
       },
       "required": [
-        "id",
-        "caption"
+        "id"
       ]
     }
   },

@@ -14,7 +14,7 @@ import {
   unlockDiary, setPassword,
   listNotes, writeNote, replyNote, deleteNote,
 } from './diary-store'
-import { listPhotos, getPhoto, editPhoto, deletePhoto, commentPhoto } from './photo-store'
+import { listPhotos, getPhoto, editPhoto, deletePhoto, commentPhoto, findPhotoBySource, listPhotoAlbums, photoImageDataUrl, writePhoto, type PhotoEntry, type PhotoZone } from './photo-store'
 
 /** Format an epoch/Date as Madrid local time (Europe/Madrid, auto DST). */
 function madridTime(d: Date | number = new Date()): string {
@@ -60,6 +60,19 @@ export interface ToolCallResult {
   input: Record<string, any>
   result: string
   error?: boolean
+}
+
+function chatPhoto(input: Record<string, any>, context?: ToolCallContext): { photo: PhotoEntry | null; ref: string | null; index: number } {
+  if (!context?.sessionId || typeof input.message_id !== 'string') return { photo: null, ref: null, index: 0 }
+  const session = loadSyncSessions([context.sessionId])[0]
+  const message = session?.messages?.find((item: any) => item?.id === input.message_id)
+  const index = Number.isInteger(input.image_index) ? input.image_index : 0
+  const ref = index >= 0 && index < 4 && typeof message?.images?.[index] === 'string' ? message.images[index] : null
+  const storedId = ref ? /^\/api\/photos\/raw\/([A-Za-z0-9_-]{1,128})$/.exec(ref)?.[1] : null
+  const photo = storedId ? getPhoto(storedId) : ref && /^data:image\/[a-z0-9.+-]+;base64,/i.test(ref)
+    ? { id: `${input.message_id}:${index}`, author: 'fire', caption: '', url: ref, comments: [], created_at: '', updated_at: null }
+    : null
+  return { photo, ref, index }
 }
 
 export async function executeRegisteredToolHandler(
@@ -342,39 +355,50 @@ export async function executeRegisteredToolHandler(
       case 'delete_guestbook_message': return JSON.stringify({ result: deleteGuestbookMessage('star', input.message_id, input.reply_id) })
 
       // Photos → local store
+      case 'list_foto_albums': {
+        const albums = listPhotoAlbums(input.zone as PhotoZone | undefined)
+        return JSON.stringify(albums.map(album => ({ id: album.id, name: album.name, zone: album.zone })))
+      }
       case 'read_foto': {
         // Text-only: never carries the base64 image, so it can't blow up the
         // request payload / get terminated by a relay. Use view_foto to see one.
-        const photos = listPhotos({ limit: input.limit || 20 })
+        const zone = ['wall', 'travel', 'locked'].includes(input.zone) ? input.zone as PhotoZone : undefined
+        const photos = listPhotos({ limit: input.limit || 20, zone, albumId: input.album_id })
         return JSON.stringify(photos.map(ph => ({
           id: ph.id, author: ph.author, caption: ph.caption,
+          zone: ph.zone, album_id: ph.album_id,
           comments: (ph.comments || []).map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
           created_at: ph.created_at,
         })))
       }
       case 'view_foto': {
         let ph = typeof input.id === 'string' ? getPhoto(input.id) : null
-        if (!ph && context?.sessionId && typeof input.message_id === 'string') {
-          const session = loadSyncSessions([context.sessionId])[0]
-          const message = session?.messages?.find((item: any) => item?.id === input.message_id)
-          const index = Number.isInteger(input.image_index) ? input.image_index : 0
-          const ref = index >= 0 && index < 4 ? message?.images?.[index] : null
-          const storedId = typeof ref === 'string' ? /^\/api\/photos\/raw\/([A-Za-z0-9_-]{1,128})$/.exec(ref)?.[1] : null
-          ph = storedId ? getPhoto(storedId) : typeof ref === 'string' && /^data:image\/[a-z0-9.+-]+;base64,/i.test(ref)
-            ? { id: `${input.message_id}:${index}`, author: 'fire', caption: '', url: ref, comments: [], created_at: '', updated_at: null }
-            : null
-        }
+        if (!ph) ph = chatPhoto(input, context).photo
         if (!ph) return JSON.stringify({ error: 'not_found', id: input.id })
         // Include url so the chat route injects the actual image (single photo →
         // bounded payload). The text history strips it.
         return JSON.stringify({
-          id: ph.id, author: ph.author, caption: ph.caption, url: ph.url,
+          id: ph.id, author: ph.author, caption: ph.caption, url: photoImageDataUrl(ph),
           comments: (ph.comments || []).map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
           created_at: ph.created_at,
         })
       }
+      case 'save_chat_foto': {
+        const resolved = chatPhoto(input, context)
+        if (!resolved.photo || !resolved.ref || !context?.sessionId) return JSON.stringify({ error: 'chat_image_not_found' })
+        const source = `chat:${context.sessionId}:${input.message_id}:${resolved.index}`
+        const existing = findPhotoBySource(source)
+        if (existing) return JSON.stringify({ ok: true, id: existing.id, already_saved: true })
+        const storedId = /^\/api\/photos\/raw\/([A-Za-z0-9_-]{1,128})$/.exec(resolved.ref)?.[1]
+        if (storedId) {
+          if (input.album_id || typeof input.caption === 'string') editPhoto(storedId, { albumId: input.album_id, caption: input.caption })
+          return JSON.stringify({ ok: true, id: storedId, already_saved: true })
+        }
+        const saved = writePhoto({ author: 'star', url: resolved.ref, caption: input.caption || '', source, albumId: input.album_id, zone: 'wall' })
+        return JSON.stringify({ ok: true, id: saved.id, album_id: saved.album_id })
+      }
       case 'edit_foto': {
-        const r = editPhoto(input.id, { caption: input.caption })
+        const r = editPhoto(input.id, { caption: input.caption, albumId: input.album_id })
         return r === 'ok' ? '🖊️ 照片说明已更新' : r
       }
       case 'delete_foto': {

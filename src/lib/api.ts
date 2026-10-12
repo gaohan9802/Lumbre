@@ -91,9 +91,21 @@ async function get(path: string) {
 }
 
 export const photos = {
-  list:    (opts?: { locked?: boolean }) => get('/api/photos/list' + (opts?.locked !== undefined ? `?locked=${opts.locked}` : '')),
-  write:   (author: string, url: string, caption?: string, source?: string, locked?: boolean) => post('/api/photos/write', { author, url, caption, source, locked }),
-  edit:    (id: string, caption?: string, locked?: boolean) => post('/api/photos/edit', { id, caption, locked }),
+  list:    (opts: { zone?: 'wall' | 'travel' | 'locked'; album_id?: string; cursor?: string; limit?: number; locked?: boolean } = {}) => {
+    const query = new URLSearchParams()
+    if (opts.zone) query.set('zone', opts.zone)
+    if (opts.album_id) query.set('album_id', opts.album_id)
+    if (opts.cursor) query.set('cursor', opts.cursor)
+    if (opts.limit) query.set('limit', String(opts.limit))
+    if (opts.locked !== undefined) query.set('locked', String(opts.locked))
+    return get(`/api/photos/list${query.size ? `?${query}` : ''}`)
+  },
+  albums:  (zone?: 'wall' | 'travel' | 'locked') => get(`/api/photos/albums${zone ? `?zone=${zone}` : ''}`),
+  createAlbum: (name: string, zone: 'wall' | 'travel' | 'locked') => post('/api/photos/albums', { action: 'create', name, zone }),
+  renameAlbum: (id: string, name: string) => post('/api/photos/albums', { action: 'rename', id, name }),
+  deleteAlbum: (id: string) => post('/api/photos/albums', { action: 'delete', id }),
+  write:   (author: string, url: string, caption?: string, source?: string, locked?: boolean, album_id?: string, zone?: 'wall' | 'travel' | 'locked') => post('/api/photos/write', { author, url, caption, source, locked, album_id, zone }),
+  edit:    (id: string, caption?: string, locked?: boolean, album_id?: string) => post('/api/photos/edit', { id, caption, locked, album_id }),
   delete:  (id: string) => post('/api/photos/delete', { id }),
   comment: (id: string, author: string, content: string) => post('/api/photos/comment', { id, author, content }),
   password: (action: 'set' | 'verify' | 'check', password?: string) => post('/api/photos/password', { action, password }),

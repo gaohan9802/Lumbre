@@ -148,7 +148,9 @@ test('chat rooms keep the night palette and compact reading type', () => {
   assert.match(guestbook, /aria-label="分享到 Chat"/)
   assert.match(chatSettings, /guestbookUnread/)
   assert.match(chatSettings, /lumbre-guestbook-read/)
-  assert.match(photos, /<Camera[^>]*\/>照片墙/)
+  assert.match(photos, /<Camera[^>]*\/>我们的相册/)
+  assert.match(photos, /label: '照片墙'[\s\S]*label: '旅行'[\s\S]*label: '上锁'/)
+  assert.match(photos, /grid-cols-3[\s\S]*thumbnail_url[\s\S]*decoding="async"/)
   assert.doesNotMatch(dreams, /💓|🔥|📝|☀️|🌙|🎲|🍂/)
 })
 
