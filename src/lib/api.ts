@@ -101,6 +101,7 @@ export const photos = {
     return get(`/api/photos/list${query.size ? `?${query}` : ''}`)
   },
   albums:  (zone?: 'wall' | 'travel' | 'locked') => get(`/api/photos/albums${zone ? `?zone=${zone}` : ''}`),
+  albumShare: (id: string) => get(`/api/photos/albums?share=${encodeURIComponent(id)}`),
   createAlbum: (name: string, zone: 'wall' | 'travel' | 'locked') => post('/api/photos/albums', { action: 'create', name, zone }),
   renameAlbum: (id: string, name: string) => post('/api/photos/albums', { action: 'rename', id, name }),
   deleteAlbum: (id: string) => post('/api/photos/albums', { action: 'delete', id }),

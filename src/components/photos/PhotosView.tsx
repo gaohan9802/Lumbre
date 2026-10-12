@@ -87,6 +87,25 @@ export function PhotosView() {
     kind: 'photo', title: '📷 照片', subtitle: `${emojiFor(photo.author)} · ${fmt(photo.created_at)}`,
     body: photo.caption, imageUrl: photo.url, metadata: { ...photo },
   })
+  const shareAlbum = async (album: PhotoAlbum) => {
+    setBusy(true); setError('')
+    try {
+      const data = await photosApi.albumShare(album.id)
+      const photos = (data.photos || []) as Array<Pick<PhotoEntry, 'id' | 'author' | 'caption' | 'created_at' | 'url'>>
+      shareToChat({
+        kind: 'photo-album', title: `🖼️ ${album.name}`,
+        subtitle: `${ZONES.find(item => item.id === album.zone)?.label || '相册'} · ${data.photo_count || 0} 张`,
+        body: photos.length ? photos.slice(0, 8).map((photo, index) => `${index + 1}. ${photo.caption || '无说明'} ${emojiFor(photo.author)}`).join('\n') : '这本相册还是空的。',
+        imageUrl: photos[0]?.url,
+        metadata: {
+          album: { id: album.id, name: album.name, zone: album.zone },
+          photo_count: data.photo_count || 0,
+          photos: photos.map(photo => ({ id: photo.id, author: photo.author, caption: photo.caption, created_at: photo.created_at })),
+        },
+      })
+    } catch (err) { setError(err instanceof Error ? err.message : '分享相册失败') }
+    finally { setBusy(false) }
+  }
 
   const onFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -170,6 +189,7 @@ export function PhotosView() {
 
   const [allAlbums, setAllAlbums] = useState<PhotoAlbum[]>([])
   useEffect(() => { photosApi.albums().then(data => setAllAlbums(data.albums || [])).catch(() => {}) }, [albums])
+  const selectedAlbum = albums.find(album => album.id === albumId)
 
   return (
     <div className={`h-full overflow-y-auto ${isNight ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
@@ -201,6 +221,7 @@ export function PhotosView() {
             </span>}
           </div>)}
           <button onClick={createAlbum} className="shrink-0 p-1.5 rounded-full opacity-45 hover:opacity-100" title="新建专辑"><FolderPlus size={14}/></button>
+          {selectedAlbum && !lockedOut && <button onClick={() => void shareAlbum(selectedAlbum)} disabled={busy} aria-label={`分享${selectedAlbum.name}到 Chat`} title="分享整本相册到 Chat" className="shrink-0 p-1.5 rounded-full opacity-45 hover:opacity-100 disabled:opacity-20"><Share2 size={13}/></button>}
           {zone === 'locked' && <button onClick={() => setSettingPassword(true)} className="ml-auto shrink-0 text-[10px] opacity-40">{hasPassword ? '改密码' : '设密码'}</button>}
         </div>
 
@@ -229,7 +250,7 @@ export function PhotosView() {
       <AnimatePresence>{active && <>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setActive(null)} className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm"/>
         <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 280 }} className={`fixed bottom-0 left-0 right-0 z-[71] max-h-[88dvh] rounded-t-2xl overflow-y-auto ${isNight ? 'bg-night-card text-night-text' : 'chat-dialog'}`} style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <div className="flex items-center justify-between p-3 sticky top-0 z-10 backdrop-blur-md"><span className="text-xs opacity-50">{emojiFor(active.author)} · {fmt(active.created_at)}</span><div className="flex gap-1"><button onClick={() => sharePhoto(active)} className="p-2 opacity-60"><Share2 size={15}/></button><button onClick={() => setDeleteConfirm(active.id)} className="p-2 text-red-400"><Trash2 size={15}/></button><button onClick={() => setActive(null)} className="p-2 opacity-60"><X size={16}/></button></div></div>
+          <div className="flex items-center justify-between p-3 sticky top-0 z-10 backdrop-blur-md"><span className="text-xs opacity-50">{emojiFor(active.author)} · {fmt(active.created_at)}</span><div className="flex gap-1"><button onClick={() => sharePhoto(active)} aria-label="分享照片到 Chat" title="分享到 Chat" className="p-2 opacity-60"><Share2 size={15}/></button><button onClick={() => setDeleteConfirm(active.id)} className="p-2 text-red-400"><Trash2 size={15}/></button><button onClick={() => setActive(null)} className="p-2 opacity-60"><X size={16}/></button></div></div>
           {/* eslint-disable-next-line @next/next/no-img-element */}<img src={active.url} alt={active.caption || '照片'} className="w-full max-h-[50dvh] object-contain bg-black/5"/>
           <div className="p-4 space-y-4">
             <select aria-label="移动到专辑" value={active.album_id} onChange={event => movePhoto(event.target.value)} disabled={busy} className={`w-full text-xs p-2 rounded-lg outline-none ${isNight ? 'bg-night-surface' : 'chat-dialog-field'}`}>{ZONES.map(group => <optgroup key={group.id} label={group.label}>{allAlbums.filter(album => album.zone === group.id).map(album => <option key={album.id} value={album.id}>{album.name}</option>)}</optgroup>)}</select>

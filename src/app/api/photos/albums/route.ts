@@ -1,7 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPhotoAlbum, deletePhotoAlbum, listPhotoAlbums, renamePhotoAlbum, type PhotoZone } from '@/server/photo-store'
+import { createPhotoAlbum, deletePhotoAlbum, getPhotoAlbum, listPhotoAlbums, listPhotos, renamePhotoAlbum, type PhotoZone } from '@/server/photo-store'
 
 export async function GET(req: NextRequest) {
+  const shareId = req.nextUrl.searchParams.get('share')
+  if (shareId) {
+    try {
+      const album = getPhotoAlbum(shareId)
+      if (!album) return NextResponse.json({ error: 'photo album not found' }, { status: 404 })
+      const photos = listPhotos({ albumId: album.id }).map(photo => ({
+        id: photo.id, author: photo.author, caption: photo.caption,
+        created_at: photo.created_at, url: photo.url,
+      }))
+      return NextResponse.json({ album, photo_count: photos.length, photos })
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'album share failed' }, { status: 400 })
+    }
+  }
   const requested = req.nextUrl.searchParams.get('zone')
   const zone = ['wall', 'travel', 'locked'].includes(String(requested)) ? requested as PhotoZone : undefined
   return NextResponse.json({ albums: listPhotoAlbums(zone) })
