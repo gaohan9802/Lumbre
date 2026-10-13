@@ -221,11 +221,11 @@ export function PhotosView() {
         <div className="flex gap-1.5 overflow-x-auto pb-1 items-center">
           <button onClick={() => setAlbumId(null)} className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] ${albumId === null ? (isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-[#DBB9B3]/30') : 'opacity-45'}`}>全部</button>
           {albums.map(album => <div key={album.id} className="group relative shrink-0">
-            <button onClick={() => setAlbumId(album.id)} onDoubleClick={() => !album.built_in && renameAlbum(album)}
+            <button onClick={() => setAlbumId(album.id)} onDoubleClick={() => renameAlbum(album)}
               className={`px-3 py-1.5 rounded-full text-[11px] ${albumId === album.id ? (isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-[#DBB9B3]/30') : 'opacity-55'}`}>{album.name}</button>
-            {!album.built_in && albumId === album.id && <span className="absolute -right-2 -top-2 flex gap-0.5">
+            {albumId === album.id && <span className="absolute -right-2 -top-2 flex gap-0.5">
               <button aria-label={`重命名${album.name}`} onClick={() => renameAlbum(album)} className={`rounded-full p-1 ${isNight ? 'bg-night-card' : 'bg-white'}`}><Pencil size={8}/></button>
-              <button aria-label={`删除${album.name}`} onClick={() => deleteAlbum(album)} className="rounded-full bg-red-400 text-white p-1"><X size={8}/></button>
+              {!album.built_in && <button aria-label={`删除${album.name}`} onClick={() => deleteAlbum(album)} className="rounded-full bg-red-400 text-white p-1"><X size={8}/></button>}
             </span>}
           </div>)}
           <button onClick={createAlbum} className="shrink-0 p-1.5 rounded-full opacity-45 hover:opacity-100" title="新建专辑"><FolderPlus size={14}/></button>

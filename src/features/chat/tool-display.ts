@@ -28,6 +28,8 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   edit_foto: '修改了照片说明',
   delete_foto: '删掉了一张照片',
   comment_foto: '评论了一张照片',
+  read_travel_journal: '翻了翻旅行日记',
+  write_travel_journal: '续写了旅行日记',
   write_timeline_encouragements: '写了几句鼓励',
   read_timeline_encouragements: '看了看鼓励语',
   edit_timeline_encouragement: '修改了鼓励语',

@@ -79,6 +79,9 @@ function zoneFor(photo: PhotoEntry): PhotoZone {
 function defaultAlbum(zone: PhotoZone): PhotoAlbum {
   return DEFAULT_ALBUMS.find(album => album.zone === zone)!
 }
+function mergePhotoAlbums(stored: PhotoAlbum[]): PhotoAlbum[] {
+  return Array.from(new Map([...DEFAULT_ALBUMS, ...stored].map(album => [album.id, album])).values())
+}
 function normalizePhoto(photo: PhotoEntry): PhotoEntry {
   const zone = zoneFor(photo)
   return { ...photo, zone, album_id: photo.album_id || defaultAlbum(zone).id, locked: zone === 'locked', comments: Array.isArray(photo.comments) ? photo.comments : [] }
@@ -124,8 +127,7 @@ function readPhoto(id: string): PhotoEntry {
 
 export function listPhotoAlbums(zone?: PhotoZone): PhotoAlbum[] {
   const stored = readJsonFile<PhotoAlbum[]>(ALBUMS_FILE, { fallback: () => [], validate: isAlbumList })
-  const byId = new Map([...DEFAULT_ALBUMS, ...stored].map(album => [album.id, album]))
-  const albums = Array.from(byId.values())
+  const albums = mergePhotoAlbums(stored)
   return (zone ? albums.filter(album => album.zone === zone) : albums).sort((a, b) => a.created_at.localeCompare(b.created_at))
 }
 export function getPhotoAlbum(id: string): PhotoAlbum | null {
@@ -139,7 +141,7 @@ export function createPhotoAlbum(name: string, zone: PhotoZone): PhotoAlbum {
   const now = new Date().toISOString()
   const album: PhotoAlbum = { id: `${zone}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, name: clean, zone, created_at: now, updated_at: null }
   updateJsonFile<PhotoAlbum[]>(ALBUMS_FILE, { fallback: () => [], validate: isAlbumList }, albums => {
-    if ([...DEFAULT_ALBUMS, ...albums].some(item => item.zone === zone && item.name.toLocaleLowerCase() === clean.toLocaleLowerCase())) throw new Error('album already exists')
+    if (mergePhotoAlbums(albums).some(item => item.zone === zone && item.name.toLocaleLowerCase() === clean.toLocaleLowerCase())) throw new Error('album already exists')
     return [...albums, album]
   })
   return album
@@ -148,14 +150,18 @@ export function renamePhotoAlbum(id: string, name: string): PhotoAlbum | null {
   assertIdentifier(id, ALBUM_ID, 'photo album id')
   const clean = name.trim()
   if (!clean || clean.length > 30) throw new Error('album name must be 1-30 characters')
-  if (DEFAULT_ALBUMS.some(album => album.id === id)) throw new Error('built-in album cannot be renamed')
   let updated: PhotoAlbum | null = null
-  updateJsonFile<PhotoAlbum[]>(ALBUMS_FILE, { fallback: () => [], validate: isAlbumList }, albums => albums.map(album => {
-    if (album.id !== id) return album
-    if ([...DEFAULT_ALBUMS, ...albums].some(item => item.id !== id && item.zone === album.zone && item.name.toLocaleLowerCase() === clean.toLocaleLowerCase())) throw new Error('album already exists')
-    updated = { ...album, name: clean, updated_at: new Date().toISOString() }
-    return updated
-  }))
+  updateJsonFile<PhotoAlbum[]>(ALBUMS_FILE, { fallback: () => [], validate: isAlbumList }, albums => {
+    const effective = mergePhotoAlbums(albums)
+    const current = effective.find(album => album.id === id)
+    if (!current) return albums
+    if (effective.some(item => item.id !== id && item.zone === current.zone && item.name.toLocaleLowerCase() === clean.toLocaleLowerCase())) throw new Error('album already exists')
+    const replacement = { ...current, name: clean, updated_at: new Date().toISOString() }
+    updated = replacement
+    return albums.some(album => album.id === id)
+      ? albums.map(album => album.id === id ? replacement : album)
+      : [...albums, replacement]
+  })
   return updated
 }
 export function deletePhotoAlbum(id: string): 'ok' | 'not_found' | 'not_empty' | 'built_in' {

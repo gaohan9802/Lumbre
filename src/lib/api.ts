@@ -116,6 +116,7 @@ export const travelVisits = {
   list: () => get('/api/travel-visits'),
   search: (query: string) => get(`/api/travel-visits/search?q=${encodeURIComponent(query)}`),
   save: (visit: Record<string, unknown>) => post('/api/travel-visits', { action: 'save', visit }),
+  appendJournal: (id: string, content: string) => post('/api/travel-visits', { action: 'append_journal', id, content }),
   remove: (id: string) => post('/api/travel-visits', { action: 'delete', id }),
 }
 

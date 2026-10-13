@@ -27,4 +27,6 @@ export const JOURNAL_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'edit_foto', domain: 'photos', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'delete_foto', domain: 'photos', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除照片' },
   { name: 'comment_foto', domain: 'photos', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_travel_journal', domain: 'photos', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'write_travel_journal', domain: 'photos', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
 ]

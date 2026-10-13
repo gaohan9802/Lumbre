@@ -1,5 +1,13 @@
 export type TravelCompanion = 'solo' | 'star' | 'other'
 export type TravelMapView = 'all' | 'solo' | 'star'
+export type TravelJournalAuthor = 'fire' | 'star'
+
+export interface TravelJournalEntry {
+  id: string
+  author: TravelJournalAuthor
+  content: string
+  created_at: string
+}
 
 export interface TravelVisit {
   id: string
@@ -13,6 +21,7 @@ export interface TravelVisit {
   companion: TravelCompanion
   companion_name: string
   note: string
+  journal: TravelJournalEntry[]
   album_id: string | null
   created_at: string
   updated_at: string | null

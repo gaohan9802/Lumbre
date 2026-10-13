@@ -29,7 +29,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【日记】write_diary · read_diary · comment_diary · update_diary · delete_diary · unlock_diary · set_password · timeline
 【纸条】write_note · read_notes · reply_note · delete_note
 【告状簿】read_guestbook · write_guestbook · reply_guestbook · delete_guestbook_message；访客是独立的人类身份，你只能以星星身份留言、回复和删除自己的内容
-【照片】list_foto_albums(看分区和专辑) · read_foto(浏览照片文字信息) · view_foto(看实际画面) · save_chat_foto(收藏当前聊天附图) · edit_foto(改说明/移专辑) · comment_foto(评论) · delete_foto(删除)
+【照片与旅行】list_foto_albums(看分区和专辑) · read_foto(浏览照片文字信息) · view_foto(看实际画面) · save_chat_foto(收藏当前聊天附图) · edit_foto(改说明/移专辑) · comment_foto(评论) · delete_foto(删除) · read_travel_journal(看旅行足迹和小日记) · write_travel_journal(续写旅行日记)
 【Timeline】read_life_timeline(按天/周查看小火做过什么、各用了多久；只读)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
 【券包】read_coupons · create_coupon · sign_coupon · edit_coupon · use_coupon · void_coupon · confirm_void_coupon；券包状态变化会进入上下文

@@ -54,6 +54,15 @@ test('photo thumbnails are generated once as small webp files', async () => {
   assert.equal(existsSync(path.join(root, 'photos', 'thumbs', `${photo.id}.webp`)), true)
 })
 
+test('built-in albums can be renamed but remain protected from deletion', () => {
+  const renamed = photos.renamePhotoAlbum('wall-daily', '生活')
+  assert.equal(renamed?.name, '生活')
+  assert.equal(renamed?.built_in, true)
+  assert.equal(photos.getPhotoAlbum('wall-daily')?.name, '生活')
+  assert.equal(photos.deletePhotoAlbum('wall-daily'), 'built_in')
+  assert.equal(photos.createPhotoAlbum('日常', 'wall').name, '日常')
+})
+
 test('photo identifiers cannot escape the photos directory', () => {
   for (const id of ['../config', '/persistent/config', 'nested/name', 'nested\\name']) {
     assert.throws(() => photos.getPhoto(id), DataPathError)

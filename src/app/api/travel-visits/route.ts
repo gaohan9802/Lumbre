@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPhotoAlbum } from '@/server/photo-store'
-import { deleteTravelVisit, listTravelVisits, saveTravelVisit } from '@/server/travel-visit-store'
+import { appendTravelJournal, deleteTravelVisit, listTravelVisits, saveTravelVisit } from '@/server/travel-visit-store'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +17,10 @@ export async function POST(req: NextRequest) {
         if (!album || album.zone !== 'travel') return NextResponse.json({ error: '关联的旅行相册不存在' }, { status: 400 })
       }
       return NextResponse.json({ ok: true, visit: saveTravelVisit(body.visit || {}) })
+    }
+    if (body.action === 'append_journal') {
+      const entry = appendTravelJournal(String(body.id || ''), 'fire', String(body.content || ''))
+      return NextResponse.json(entry ? { ok: true, entry } : { error: '旅行记录不存在' }, { status: entry ? 200 : 404 })
     }
     if (body.action === 'delete') return NextResponse.json({ ok: deleteTravelVisit(String(body.id || '')) })
     return NextResponse.json({ error: 'unknown_action' }, { status: 400 })

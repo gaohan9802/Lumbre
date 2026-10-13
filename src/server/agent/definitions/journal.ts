@@ -361,7 +361,7 @@ export const JOURNAL_TOOL_DEFINITIONS = [
       "properties": {
         "message_id": { "type": "string", "description": "聊天消息id" },
         "image_index": { "type": "integer", "minimum": 0, "maximum": 3, "description": "图片序号，从0开始" },
-        "album_id": { "type": "string", "description": "收进的专辑id，不填则收进日常" },
+        "album_id": { "type": "string", "description": "收进的专辑id，不填则收进照片墙的默认专辑" },
         "caption": { "type": "string", "description": "可选的照片说明" }
       },
       "required": ["message_id", "image_index"]
@@ -426,6 +426,29 @@ export const JOURNAL_TOOL_DEFINITIONS = [
         "id",
         "content"
       ]
+    }
+  },
+  {
+    "name": "read_travel_journal",
+    "description": "查看旅行地图里的每次旅行、旅行备注和两个人续写的旅行小日记。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "visit_id": { "type": "string", "description": "可选；只看某一次旅行" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "最多返回多少次旅行，默认30" }
+      }
+    }
+  },
+  {
+    "name": "write_travel_journal",
+    "description": "以星星身份，在某一次旅行下面续写一段旅行小日记。先用 read_travel_journal 找到 visit_id。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "visit_id": { "type": "string", "description": "旅行记录id" },
+        "content": { "type": "string", "description": "要续写的日记内容，最多2000字" }
+      },
+      "required": ["visit_id", "content"]
     }
   },
   {

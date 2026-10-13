@@ -1,11 +1,12 @@
 import { getDataDir } from '../config'
 import { readJsonFile, updateJsonFile } from '../json-file'
-import { resolveDataPath } from '../safe-path'
-import type { TravelCompanion, TravelPlaceResult, TravelVisit } from '@/lib/travel-map'
+import { assertIdentifier, resolveDataPath } from '../safe-path'
+import type { TravelCompanion, TravelJournalAuthor, TravelJournalEntry, TravelPlaceResult, TravelVisit } from '@/lib/travel-map'
 
 const VISITS_FILE = resolveDataPath(getDataDir(), 'travel-visits.json')
 const GEOCODE_FILE = resolveDataPath(getDataDir(), 'travel-geocode-cache.json')
 const DAY = /^\d{4}-\d{2}-\d{2}$/
+const VISIT_ID = /^[A-Za-z0-9_-]{1,128}$/
 
 function validDay(value: string): boolean {
   if (!DAY.test(value)) return false
@@ -23,17 +24,23 @@ function isVisitList(value: unknown): boolean {
       && (visit.end_date === null || (typeof visit.end_date === 'string' && validDay(visit.end_date)))
       && ['solo', 'star', 'other'].includes(String(visit.companion))
       && typeof visit.companion_name === 'string' && typeof visit.note === 'string'
+      && (visit.journal === undefined || (Array.isArray(visit.journal) && visit.journal.every(entry => {
+        const item = entry as Partial<TravelJournalEntry> | null
+        return !!item && typeof item.id === 'string' && ['fire', 'star'].includes(String(item.author))
+          && typeof item.content === 'string' && typeof item.created_at === 'string'
+      })))
       && (visit.album_id === null || typeof visit.album_id === 'string')
       && typeof visit.created_at === 'string' && (visit.updated_at === null || typeof visit.updated_at === 'string')
   })
 }
 function visits() {
   return readJsonFile<TravelVisit[]>(VISITS_FILE, { fallback: () => [], validate: isVisitList })
+    .map(visit => ({ ...visit, journal: Array.isArray(visit.journal) ? visit.journal : [] }))
 }
 function cleanText(value: unknown, max: number): string {
   return String(value || '').trim().slice(0, max)
 }
-function normalizeVisit(input: Partial<TravelVisit>): Omit<TravelVisit, 'id' | 'created_at' | 'updated_at'> {
+function normalizeVisit(input: Partial<TravelVisit>): Omit<TravelVisit, 'id' | 'created_at' | 'updated_at' | 'journal'> {
   const place_id = cleanText(input.place_id, 180)
   const place_name = cleanText(input.place_name, 100)
   const address = cleanText(input.address, 300)
@@ -69,14 +76,30 @@ export function saveTravelVisit(input: Partial<TravelVisit>): TravelVisit {
       if (!current.some(visit => visit.id === input.id)) throw new Error('旅行记录不存在')
       return current.map(visit => {
         if (visit.id !== input.id) return visit
-        saved = { ...visit, ...clean, updated_at: now }
+        saved = { ...visit, ...clean, journal: visit.journal || [], updated_at: now }
         return saved
       })
     }
-    saved = { ...clean, id: `trip_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, created_at: now, updated_at: null }
+    saved = { ...clean, journal: [], id: `trip_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, created_at: now, updated_at: null }
     return [...current, saved]
   })
   return saved!
+}
+
+export function appendTravelJournal(id: string, author: TravelJournalAuthor, content: string): TravelJournalEntry | null {
+  assertIdentifier(id, VISIT_ID, 'travel visit id')
+  if (!['fire', 'star'].includes(author)) throw new Error('invalid travel journal author')
+  const clean = cleanText(content, 2_000)
+  if (!clean) throw new Error('旅行日记不能为空')
+  const now = new Date().toISOString()
+  const entry: TravelJournalEntry = { id: `travel_note_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, author, content: clean, created_at: now }
+  let found = false
+  updateJsonFile<TravelVisit[]>(VISITS_FILE, { fallback: () => [], validate: isVisitList }, current => current.map(visit => {
+    if (visit.id !== id) return visit
+    found = true
+    return { ...visit, journal: [...(visit.journal || []), entry], updated_at: now }
+  }))
+  return found ? entry : null
 }
 
 export function deleteTravelVisit(id: string): boolean {

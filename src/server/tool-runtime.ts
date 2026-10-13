@@ -15,6 +15,7 @@ import {
   listNotes, writeNote, replyNote, deleteNote,
 } from './diary-store'
 import { listPhotos, getPhoto, editPhoto, deletePhoto, commentPhoto, findPhotoBySource, listPhotoAlbums, photoImageDataUrl, writePhoto, type PhotoEntry, type PhotoZone } from './photo-store'
+import { appendTravelJournal, listTravelVisits } from './travel-visit-store'
 
 /** Format an epoch/Date as Madrid local time (Europe/Madrid, auto DST). */
 function madridTime(d: Date | number = new Date()): string {
@@ -408,6 +409,19 @@ export async function executeRegisteredToolHandler(
       case 'comment_foto': {
         const r = commentPhoto(input.id, input.author || 'star', input.content)
         return r === 'ok' ? '💬 评论成功' : r
+      }
+      case 'read_travel_journal': {
+        const visits = listTravelVisits().filter(visit => !input.visit_id || visit.id === input.visit_id).slice(0, input.limit || 30)
+        return JSON.stringify(visits.map(visit => ({
+          id: visit.id, place_name: visit.place_name, address: visit.address,
+          start_date: visit.start_date, end_date: visit.end_date,
+          companion: visit.companion, companion_name: visit.companion_name,
+          note: visit.note, journal: visit.journal,
+        })))
+      }
+      case 'write_travel_journal': {
+        const entry = appendTravelJournal(input.visit_id, 'star', input.content)
+        return JSON.stringify(entry ? { ok: true, entry } : { error: 'not_found' })
       }
 
 
