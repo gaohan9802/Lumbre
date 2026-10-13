@@ -112,6 +112,13 @@ export const photos = {
   password: (action: 'set' | 'verify' | 'check', password?: string) => post('/api/photos/password', { action, password }),
 }
 
+export const travelVisits = {
+  list: () => get('/api/travel-visits'),
+  search: (query: string) => get(`/api/travel-visits/search?q=${encodeURIComponent(query)}`),
+  save: (visit: Record<string, unknown>) => post('/api/travel-visits', { action: 'save', visit }),
+  remove: (id: string) => post('/api/travel-visits', { action: 'delete', id }),
+}
+
 // ── Todo ────────────────────────────────────────────────
 export const todo = {
   list:    (date?: string) => get('/api/todo/list' + (date ? `?date=${date}` : '')),

@@ -155,6 +155,12 @@ test('chat rooms keep the night palette and compact reading type', () => {
   assert.match(photos, /photosApi\.albumShare\(album\.id\)/)
   assert.match(photos, /aria-label=\{`分享\$\{selectedAlbum\.name\}到 Chat`\}/)
   assert.match(photos, /aria-label="分享照片到 Chat"/)
+  assert.match(photos, /<TravelMapView[^>]*onOpenAlbum=/)
+  const travelMap = read('../../src/components/photos/TravelMapView.tsx')
+  assert.match(travelMap, /kind: 'travel-map'/)
+  assert.match(travelMap, /aria-label="分享旅行地图到 Chat"/)
+  assert.match(travelMap, /全部足迹[\s\S]*独自出发[\s\S]*和星星/)
+  assert.match(travelMap, /url\('\/maps\/world-land\.svg'\)/)
   assert.doesNotMatch(dreams, /💓|🔥|📝|☀️|🌙|🎲|🍂/)
 })
 

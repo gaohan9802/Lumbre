@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import dynamic from 'next/dynamic'
 import { Camera, Check, FolderPlus, Images, Lock, MapPin, MessageCircle, Pencil, Plus, Send, Share2, Trash2, X } from 'lucide-react'
 import { photos as photosApi } from '@/lib/api'
 import { compressImage } from '@/lib/image'
@@ -9,6 +10,8 @@ import { formatMadridShort } from '@/lib/madrid-time'
 import { shareToChat } from '@/lib/share'
 import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
+
+const TravelMapView = dynamic(() => import('./TravelMapView').then(module => module.TravelMapView), { ssr: false })
 
 type PhotoZone = 'wall' | 'travel' | 'locked'
 interface PhotoComment { author: string; content: string; time: string }
@@ -33,6 +36,7 @@ export function PhotosView() {
   const { currentUser } = useApp()
   const fileRef = useRef<HTMLInputElement>(null)
   const [zone, setZone] = useState<PhotoZone>('wall')
+  const [travelPage, setTravelPage] = useState<'photos' | 'map'>('photos')
   const [albums, setAlbums] = useState<PhotoAlbum[]>([])
   const [albumId, setAlbumId] = useState<string | null>(null)
   const [items, setItems] = useState<PhotoEntry[]>([])
@@ -190,16 +194,17 @@ export function PhotosView() {
   const [allAlbums, setAllAlbums] = useState<PhotoAlbum[]>([])
   useEffect(() => { photosApi.albums().then(data => setAllAlbums(data.albums || [])).catch(() => {}) }, [albums])
   const selectedAlbum = albums.find(album => album.id === albumId)
+  const mapActive = zone === 'travel' && travelPage === 'map'
 
   return (
     <div className={`h-full overflow-y-auto ${isNight ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       <div className="max-w-lg mx-auto px-4 py-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-xl font-medium"><Camera size={17} strokeWidth={1.5}/>我们的相册</h2>
-          <button onClick={() => fileRef.current?.click()} disabled={busy || lockedOut}
+          {!mapActive && <button onClick={() => fileRef.current?.click()} disabled={busy || lockedOut}
             className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs disabled:opacity-30 ${isNight ? 'bg-night-amber/20 text-night-amber' : 'chat-dialog-accent'}`}>
             <Plus size={13}/>{busy ? '收进去…' : '收藏照片'}
-          </button>
+          </button>}
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile}/>
         </div>
 
@@ -210,6 +215,9 @@ export function PhotosView() {
           })}
         </div>
 
+        {zone === 'travel' && <div className={`mx-auto grid w-40 grid-cols-2 gap-1 rounded-xl p-1 ${isNight ? 'bg-night-surface' : 'bg-[#DBB9B3]/14'}`}><button onClick={() => setTravelPage('photos')} className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-[10px] ${travelPage === 'photos' ? (isNight ? 'bg-night-card text-night-amber' : 'bg-white/75 shadow-sm') : 'opacity-40'}`}><Images size={11}/>相册</button><button onClick={() => setTravelPage('map')} className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-[10px] ${travelPage === 'map' ? (isNight ? 'bg-night-card text-night-amber' : 'bg-white/75 shadow-sm') : 'opacity-40'}`}><MapPin size={11}/>地图</button></div>}
+
+        {mapActive ? <TravelMapView isNight={isNight} albums={albums} onOpenAlbum={id => { setAlbumId(id); setTravelPage('photos') }}/> : <>
         <div className="flex gap-1.5 overflow-x-auto pb-1 items-center">
           <button onClick={() => setAlbumId(null)} className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] ${albumId === null ? (isNight ? 'bg-night-amber/20 text-night-amber' : 'bg-[#DBB9B3]/30') : 'opacity-45'}`}>全部</button>
           {albums.map(album => <div key={album.id} className="group relative shrink-0">
@@ -244,6 +252,7 @@ export function PhotosView() {
           </button>)}</div>
           : !loading && <div className="py-16 text-center opacity-35"><Images size={28} className="mx-auto mb-2"/><p className="text-xs">这本专辑还是空的</p></div>}
           {nextCursor && <button onClick={() => load(true, nextCursor)} disabled={loading} className="block mx-auto px-4 py-2 text-xs opacity-55 disabled:opacity-20">{loading ? '正在翻页…' : '再看一些'}</button>}
+        </>}
         </>}
       </div>
 
