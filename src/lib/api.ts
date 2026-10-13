@@ -120,6 +120,14 @@ export const travelVisits = {
   remove: (id: string) => post('/api/travel-visits', { action: 'delete', id }),
 }
 
+export const energy = {
+  dashboard: (date?: string, days = 7) => get(`/api/energy?${new URLSearchParams({ ...(date ? { date } : {}), days: String(days) }).toString()}`),
+  saveProfile: (profile: Record<string, unknown>) => post('/api/energy', { action: 'profile', profile }),
+  saveMeasurement: (measurement: Record<string, unknown>) => post('/api/energy', { action: 'measurement', measurement }),
+  saveEntry: (entry: Record<string, unknown>) => post('/api/energy', { action: 'entry', entry }),
+  remove: (id: string) => post('/api/energy', { action: 'delete', id }),
+}
+
 // ── Todo ────────────────────────────────────────────────
 export const todo = {
   list:    (date?: string) => get('/api/todo/list' + (date ? `?date=${date}` : '')),

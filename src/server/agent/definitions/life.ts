@@ -478,6 +478,93 @@ export const LIFE_TOOL_DEFINITIONS = [
     }
   },
   {
+    "name": "read_energy_summary",
+    "description": "查看小火某天或最近几天的饮食、液体、运动、体重、体脂率、预计消耗与热量缺口。所有热量都是估值，不能用于医疗诊断。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "结束日期，YYYY-MM-DD；默认今天" },
+        "days": { "type": "integer", "minimum": 1, "maximum": 31, "description": "返回天数，默认7" }
+      }
+    }
+  },
+  {
+    "name": "log_energy_intake",
+    "description": "以星星身份记录小火吃的食物或喝的液体。需要给出克数/毫升和每100克/毫升的估算热量；不确定时明确使用粗略估值。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "enum": ["food", "liquid"], "description": "food=食物，liquid=液体" },
+        "date": { "type": "string", "description": "YYYY-MM-DD" },
+        "name": { "type": "string", "description": "食物或饮料名称" },
+        "amount": { "type": "number", "minimum": 0.1, "maximum": 100000, "description": "食物填克数，液体填毫升" },
+        "kcal_per_100": { "type": "number", "minimum": 0, "maximum": 2000, "description": "每100克或100毫升的千卡数" },
+        "meal": { "type": "string", "enum": ["breakfast", "lunch", "dinner", "snack"], "description": "餐次" },
+        "note": { "type": "string", "description": "可选备注" }
+      },
+      "required": ["kind", "date", "name", "amount", "kcal_per_100"]
+    }
+  },
+  {
+    "name": "log_energy_exercise",
+    "description": "以星星身份记录小火的一次运动。优先提供MET让系统按最近体重估算；没有体重时必须直接提供calories。若Apple健康没有记录这次运动，not_in_health设为true。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "YYYY-MM-DD" },
+        "name": { "type": "string", "description": "运动名称" },
+        "duration_minutes": { "type": "number", "minimum": 1, "maximum": 1440, "description": "时长，分钟" },
+        "met": { "type": "number", "minimum": 0.5, "maximum": 30, "description": "可选MET值" },
+        "calories": { "type": "number", "minimum": 0, "maximum": 20000, "description": "可选手动消耗千卡" },
+        "not_in_health": { "type": "boolean", "description": "这次运动是否没有被Apple健康记录" },
+        "note": { "type": "string", "description": "可选备注" }
+      },
+      "required": ["date", "name", "duration_minutes"]
+    }
+  },
+  {
+    "name": "record_body_measurement",
+    "description": "以星星身份记录小火某天的体重和可选体脂率。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "YYYY-MM-DD" },
+        "weight_kg": { "type": "number", "minimum": 20, "maximum": 500, "description": "体重，公斤" },
+        "body_fat_percent": { "type": "number", "minimum": 0, "maximum": 100, "description": "可选体脂率" }
+      },
+      "required": ["date", "weight_kg"]
+    }
+  },
+  {
+    "name": "edit_energy_entry",
+    "description": "修改一条已有的饮食、液体或运动记录。先用read_energy_summary找到entry id，只传要改的字段。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "记录id" },
+        "patch": {
+          "type": "object",
+          "properties": {
+            "date": { "type": "string" }, "name": { "type": "string" }, "amount": { "type": "number" },
+            "kcal_per_100": { "type": "number" }, "meal": { "type": "string" },
+            "duration_minutes": { "type": "number" }, "met": { "type": "number" },
+            "calories": { "type": "number" }, "not_in_health": { "type": "boolean" }, "note": { "type": "string" }
+          }
+        }
+      },
+      "required": ["id", "patch"]
+    }
+  },
+  {
+    "name": "delete_energy_entry",
+    "description": "删除一条饮食、液体或运动记录。",
+    "input_schema": {
+      "type": "object",
+      "properties": { "id": { "type": "string", "description": "记录id" } },
+      "required": ["id"]
+    }
+  },
+  {
     "name": "read_bookmarks",
     "description": "查看世界书/书签的全部字段。名称只用于管理；内容会按关键词、扫描深度、优先级、常驻、启用状态和注入位置触发。",
     "input_schema": {

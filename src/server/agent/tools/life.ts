@@ -30,6 +30,12 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'update_period', domain: 'period', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_period', domain: 'period', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_health_summary', domain: 'health', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_energy_summary', domain: 'health', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'log_energy_intake', domain: 'health', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'log_energy_exercise', domain: 'health', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'record_body_measurement', domain: 'health', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'edit_energy_entry', domain: 'health', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'delete_energy_entry', domain: 'health', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除能量手账记录' },
 
   { name: 'read_bookmarks', domain: 'bookmarks', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'add_bookmark', domain: 'bookmarks', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },

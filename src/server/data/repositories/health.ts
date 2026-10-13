@@ -203,3 +203,9 @@ export function readHealthSummary(range: HealthRange = 'week', now = new Date())
     days: days.map(healthDayForDisplay),
   }
 }
+
+export function readHealthDay(date: string): HealthDay | null {
+  const key = assertDateKey(date, 'health date')
+  const store = readJsonFile(HEALTH_FILE, { fallback: emptyStore, validate: validStore })
+  return store.days.find(day => day.date === key) || null
+}

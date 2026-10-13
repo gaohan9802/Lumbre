@@ -3,7 +3,7 @@ import test from 'node:test'
 import { TOOL_DISPLAY_LABELS, toolDisplayLabel } from '../../src/features/chat/tool-display'
 
 test('every Lumbre tool has one fixed display label with a safe fallback', () => {
-  assert.equal(Object.keys(TOOL_DISPLAY_LABELS).length, 95)
+  assert.equal(Object.keys(TOOL_DISPLAY_LABELS).length, 101)
   assert.equal(toolDisplayLabel('read_notes'), '翻了翻纸条')
   assert.equal(toolDisplayLabel('get_location'), '查了查水獭位置')
   assert.equal(toolDisplayLabel('read_health_summary'), '看了看小火的健康状态')
@@ -11,5 +11,6 @@ test('every Lumbre tool has one fixed display label with a safe fallback', () =>
   assert.equal(toolDisplayLabel('reply_guestbook'), '在告状簿回了句话')
   assert.equal(toolDisplayLabel('save_chat_foto'), '收藏了一张照片')
   assert.equal(toolDisplayLabel('write_travel_journal'), '续写了旅行日记')
+  assert.equal(toolDisplayLabel('log_energy_intake'), '记下了小火的吃喝')
   assert.equal(toolDisplayLabel('future_tool'), 'future_tool')
 })

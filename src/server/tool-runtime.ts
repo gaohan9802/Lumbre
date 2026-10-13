@@ -37,6 +37,7 @@ import { deleteGuestbookMessage, readGuestbook, writeGuestbookMessage } from './
 import { scheduleWake } from './autowake'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { readHealthSummary, type HealthRange } from './data/repositories/health'
+import { deleteEnergyEntry, readEnergyDashboard, saveBodyMeasurement, saveEnergyEntry } from './energy-store'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
 import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
 import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
@@ -224,6 +225,24 @@ export async function executeRegisteredToolHandler(
     if (name === 'read_health_summary') {
       const range: HealthRange = input.range === 'today' || input.range === 'yesterday' ? input.range : 'week'
       return JSON.stringify(readHealthSummary(range))
+    }
+    if (name === 'read_energy_summary') {
+      return JSON.stringify(readEnergyDashboard(input.date, input.days || 7))
+    }
+    if (name === 'log_energy_intake') {
+      return JSON.stringify({ ok: true, entry: saveEnergyEntry({ ...input, kind: input.kind === 'liquid' ? 'liquid' : 'food', source: 'star' }, 'star') })
+    }
+    if (name === 'log_energy_exercise') {
+      return JSON.stringify({ ok: true, entry: saveEnergyEntry({ ...input, kind: 'exercise', source: 'star' }, 'star') })
+    }
+    if (name === 'record_body_measurement') {
+      return JSON.stringify({ ok: true, measurement: saveBodyMeasurement(input, 'star') })
+    }
+    if (name === 'edit_energy_entry') {
+      return JSON.stringify({ ok: true, entry: saveEnergyEntry({ id: input.id, ...(input.patch || {}) }, 'star') })
+    }
+    if (name === 'delete_energy_entry') {
+      return JSON.stringify({ ok: deleteEnergyEntry(String(input.id || '')) })
     }
 
 
