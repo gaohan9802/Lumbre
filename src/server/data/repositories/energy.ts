@@ -1,5 +1,5 @@
 import { addMadridDays, madridDateKey } from '@/lib/madrid-time'
-import { caloriesForAmount, exerciseCalories, restingCalories, type BodyMeasurement, type EnergyActor, type EnergyDaySummary, type EnergyEntry, type EnergyEntryKind, type EnergyMeal, type EnergyProfile, type EnergySource, type FormulaSex } from '@/lib/energy'
+import { caloriesForAmount, exerciseCalories, restingCalories, type BodyMeasurement, type EnergyActor, type EnergyDaySummary, type EnergyEntry, type EnergyEntryKind, type EnergyGoal, type EnergyMeal, type EnergyProfile, type EnergySource, type FormulaSex, type PantryItem } from '@/lib/energy'
 import { getDataDir } from '../config'
 import { readJsonFile, updateJsonFile } from '../json-file'
 import { assertDateKey, assertIdentifier, resolveDataPath } from '../safe-path'
@@ -10,16 +10,19 @@ const ENTRY_ID = /^[A-Za-z0-9_-]{1,128}$/
 const KINDS: EnergyEntryKind[] = ['food', 'liquid', 'exercise']
 const MEALS: EnergyMeal[] = ['breakfast', 'lunch', 'dinner', 'snack']
 const SOURCES: EnergySource[] = ['catalog', 'database', 'manual', 'star']
+const WATER_NAMES = new Set(['水', '白水', '矿泉水', '气泡水', '苏打水'])
 
 interface EnergyStore {
   version: 1
   profile: EnergyProfile
   measurements: BodyMeasurement[]
   entries: EnergyEntry[]
+  pantry: PantryItem[]
+  goals: EnergyGoal[]
 }
 
 const emptyProfile = (): EnergyProfile => ({ height_cm: null, birth_date: null, formula_sex: null, goal_weight_kg: null, manual_baseline_kcal: null, updated_at: null })
-const emptyStore = (): EnergyStore => ({ version: 1, profile: emptyProfile(), measurements: [], entries: [] })
+const emptyStore = (): EnergyStore => ({ version: 1, profile: emptyProfile(), measurements: [], entries: [], pantry: [], goals: [] })
 
 function validNumber(value: unknown, min: number, max: number, nullable = false) {
   return (nullable && value === null) || (typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max)
@@ -27,7 +30,8 @@ function validNumber(value: unknown, min: number, max: number, nullable = false)
 function validStore(value: unknown): value is EnergyStore {
   if (!value || typeof value !== 'object') return false
   const store = value as EnergyStore
-  if (store.version !== 1 || !store.profile || !Array.isArray(store.measurements) || !Array.isArray(store.entries)) return false
+  if (store.version !== 1 || !store.profile || !Array.isArray(store.measurements) || !Array.isArray(store.entries)
+    || !(store.pantry === undefined || Array.isArray(store.pantry)) || !(store.goals === undefined || Array.isArray(store.goals))) return false
   const profile = store.profile
   if (!validNumber(profile.height_cm, 80, 260, true)
     || !(profile.birth_date === null || typeof profile.birth_date === 'string')
@@ -39,7 +43,7 @@ function validStore(value: unknown): value is EnergyStore {
     && validNumber(item.weight_kg, 20, 500) && validNumber(item.body_fat_percent, 0, 100, true)
     && ['fire', 'star'].includes(item.recorded_by) && typeof item.created_at === 'string'
     && (item.updated_at === null || typeof item.updated_at === 'string'))) return false
-  return store.entries.every(item => item && typeof item.id === 'string' && typeof item.date === 'string'
+  const entriesValid = store.entries.every(item => item && typeof item.id === 'string' && typeof item.date === 'string'
     && KINDS.includes(item.kind) && typeof item.name === 'string'
     && validNumber(item.amount, 0, 100_000, true) && (item.unit === null || ['g', 'ml'].includes(item.unit))
     && validNumber(item.kcal_per_100, 0, 2_000, true) && validNumber(item.duration_minutes, 0, 1_440, true)
@@ -47,6 +51,13 @@ function validStore(value: unknown): value is EnergyStore {
     && (item.meal === null || MEALS.includes(item.meal)) && typeof item.not_in_health === 'boolean'
     && typeof item.note === 'string' && SOURCES.includes(item.source) && ['fire', 'star'].includes(item.recorded_by)
     && typeof item.created_at === 'string' && (item.updated_at === null || typeof item.updated_at === 'string'))
+  const pantryValid = (store.pantry || []).every(item => item && typeof item.id === 'string' && typeof item.name === 'string'
+    && typeof item.quantity === 'string' && ['fire', 'star'].includes(item.recorded_by) && typeof item.created_at === 'string'
+    && (item.updated_at === null || typeof item.updated_at === 'string'))
+  const goalsValid = (store.goals || []).every(item => item && typeof item.id === 'string' && typeof item.date === 'string'
+    && typeof item.title === 'string' && typeof item.done === 'boolean' && ['fire', 'star'].includes(item.recorded_by)
+    && typeof item.created_at === 'string' && (item.updated_at === null || typeof item.updated_at === 'string'))
+  return entriesValid && pantryValid && goalsValid
 }
 function readStore() {
   return readJsonFile<EnergyStore>(ENERGY_FILE, { fallback: emptyStore, validate: validStore })
@@ -154,15 +165,80 @@ export function deleteEnergyEntry(id: string): boolean {
   return found
 }
 
+export function savePantryItem(input: Partial<PantryItem>, actor: EnergyActor): PantryItem {
+  const now = new Date().toISOString()
+  if (input.id) assertIdentifier(input.id, ENTRY_ID, 'pantry item id')
+  let saved!: PantryItem
+  updateJsonFile<EnergyStore>(ENERGY_FILE, { fallback: emptyStore, validate: validStore }, store => {
+    const pantry = store.pantry || []
+    const existing = input.id ? pantry.find(item => item.id === input.id) : null
+    if (input.id && !existing) throw new Error('pantry item not found')
+    const name = cleanText(input.name ?? existing?.name, 80)
+    if (!name) throw new Error('pantry item name is required')
+    const quantity = cleanText(input.quantity ?? existing?.quantity, 80)
+    saved = existing
+      ? { ...existing, name, quantity, updated_at: now }
+      : { id: `pantry_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, name, quantity, recorded_by: actor, created_at: now, updated_at: null }
+    return { ...store, pantry: existing ? pantry.map(item => item.id === existing.id ? saved : item) : [...pantry, saved] }
+  })
+  return saved
+}
+
+export function deletePantryItem(id: string): boolean {
+  assertIdentifier(id, ENTRY_ID, 'pantry item id')
+  let found = false
+  updateJsonFile<EnergyStore>(ENERGY_FILE, { fallback: emptyStore, validate: validStore }, store => ({ ...store, pantry: (store.pantry || []).filter(item => {
+    if (item.id !== id) return true
+    found = true
+    return false
+  }) }))
+  return found
+}
+
+export function saveEnergyGoal(input: Partial<EnergyGoal>, actor: EnergyActor): EnergyGoal {
+  const now = new Date().toISOString()
+  if (input.id) assertIdentifier(input.id, ENTRY_ID, 'energy goal id')
+  let saved!: EnergyGoal
+  updateJsonFile<EnergyStore>(ENERGY_FILE, { fallback: emptyStore, validate: validStore }, store => {
+    const goals = store.goals || []
+    const existing = input.id ? goals.find(item => item.id === input.id) : null
+    if (input.id && !existing) throw new Error('energy goal not found')
+    const title = cleanText(input.title ?? existing?.title, 160)
+    if (!title) throw new Error('energy goal title is required')
+    saved = existing
+      ? { ...existing, date: input.date === undefined ? existing.date : date(input.date), title, done: input.done === undefined ? existing.done : input.done === true, updated_at: now }
+      : { id: `goal_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, date: date(input.date || madridDateKey()), title, done: input.done === true, recorded_by: actor, created_at: now, updated_at: null }
+    return { ...store, goals: existing ? goals.map(item => item.id === existing.id ? saved : item) : [...goals, saved] }
+  })
+  return saved
+}
+
+export function deleteEnergyGoal(id: string): boolean {
+  assertIdentifier(id, ENTRY_ID, 'energy goal id')
+  let found = false
+  updateJsonFile<EnergyStore>(ENERGY_FILE, { fallback: emptyStore, validate: validStore }, store => ({ ...store, goals: (store.goals || []).filter(item => {
+    if (item.id !== id) return true
+    found = true
+    return false
+  }) }))
+  return found
+}
+
 function summarizeDay(store: EnergyStore, day: string): EnergyDaySummary {
   const entries = store.entries.filter(item => item.date === day).sort((a, b) => a.created_at.localeCompare(b.created_at))
   const foodKcal = entries.filter(item => item.kind === 'food').reduce((sum, item) => sum + item.calories, 0)
   const liquidEntries = entries.filter(item => item.kind === 'liquid')
   const liquidKcal = liquidEntries.reduce((sum, item) => sum + item.calories, 0)
   const liquidMl = liquidEntries.reduce((sum, item) => sum + (item.amount || 0), 0)
+  const waterMl = liquidEntries.filter(item => WATER_NAMES.has(item.name.trim())).reduce((sum, item) => sum + (item.amount || 0), 0)
   const exerciseEntries = entries.filter(item => item.kind === 'exercise')
   const exerciseKcal = exerciseEntries.reduce((sum, item) => sum + item.calories, 0)
-  const healthActive = readHealthDay(day)?.active_energy_kcal ?? null
+  const health = readHealthDay(day)
+  const healthActive = health?.active_energy_kcal ?? null
+  const healthExerciseMinutes = health?.exercise_minutes ?? null
+  const exerciseMinutes = healthExerciseMinutes === null
+    ? exerciseEntries.reduce((sum, item) => sum + (item.duration_minutes || 0), 0)
+    : healthExerciseMinutes + exerciseEntries.filter(item => item.not_in_health).reduce((sum, item) => sum + (item.duration_minutes || 0), 0)
   const measurement = latestMeasurement(store.measurements, day)
   const resting = measurement ? restingCalories(store.profile, measurement.weight_kg, day) : null
   const base = store.profile.manual_baseline_kcal ?? (resting === null ? null : healthActive === null ? Math.round(resting * 1.2) : resting)
@@ -172,10 +248,25 @@ function summarizeDay(store: EnergyStore, day: string): EnergyDaySummary {
   const totalBurn = base === null ? null : Math.round(base + (healthActive || 0) + countedExercise)
   const intake = Math.round(foodKcal + liquidKcal)
   return {
-    date: day, intake_kcal: intake, food_kcal: Math.round(foodKcal), liquid_kcal: Math.round(liquidKcal), liquid_ml: Math.round(liquidMl),
-    exercise_kcal: Math.round(exerciseKcal), health_active_kcal: healthActive, total_burn_kcal: totalBurn,
+    date: day, intake_kcal: intake, food_kcal: Math.round(foodKcal), liquid_kcal: Math.round(liquidKcal), liquid_ml: Math.round(liquidMl), water_ml: Math.round(waterMl),
+    exercise_kcal: Math.round(exerciseKcal), exercise_minutes: Math.round(exerciseMinutes), health_active_kcal: healthActive, total_burn_kcal: totalBurn,
     deficit_kcal: totalBurn === null ? null : totalBurn - intake, entries, measurement,
   }
+}
+
+function withAutomaticProgress(goal: EnergyGoal, day: EnergyDaySummary): EnergyGoal {
+  const compact = goal.title.replace(/\s+/g, '').toLocaleLowerCase()
+  const water = compact.match(/(?:喝水|饮水|补水)(\d+(?:\.\d+)?)(ml|毫升|l|升)/)
+  if (water) {
+    const target = Math.round(Number(water[1]) * (water[2] === 'l' || water[2] === '升' ? 1_000 : 1))
+    if (target > 0) return { ...goal, done: day.water_ml >= target, progress: { kind: 'water_ml', current: day.water_ml, target, unit: 'ml' } }
+  }
+  const exercise = compact.match(/(?:运动|锻炼|散步|快走|跑步|骑车|力量训练|瑜伽).*?(\d+(?:\.\d+)?)(分钟|分|小时|h)/)
+  if (exercise) {
+    const target = Math.round(Number(exercise[1]) * (exercise[2] === '小时' || exercise[2] === 'h' ? 60 : 1))
+    if (target > 0) return { ...goal, done: day.exercise_minutes >= target, progress: { kind: 'exercise_minutes', current: day.exercise_minutes, target, unit: '分钟' } }
+  }
+  return goal
 }
 
 export function readEnergyDashboard(day = madridDateKey(), dayCount = 7) {
@@ -183,11 +274,14 @@ export function readEnergyDashboard(day = madridDateKey(), dayCount = 7) {
   const count = Math.max(1, Math.min(31, Math.round(dayCount)))
   const store = readStore()
   const days = Array.from({ length: count }, (_, index) => summarizeDay(store, addMadridDays(target, index - count + 1)))
+  const today = days[days.length - 1]
   return {
     profile: store.profile,
     current_measurement: latestMeasurement(store.measurements, target),
     measurements: store.measurements.filter(item => item.date <= target).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 90),
+    pantry: (store.pantry || []).sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    goals: (store.goals || []).filter(item => item.date === target).sort((a, b) => a.created_at.localeCompare(b.created_at)).map(goal => withAutomaticProgress(goal, today)),
     days,
-    today: days[days.length - 1],
+    today,
   }
 }

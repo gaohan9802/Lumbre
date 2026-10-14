@@ -126,6 +126,10 @@ export const energy = {
   saveMeasurement: (measurement: Record<string, unknown>) => post('/api/energy', { action: 'measurement', measurement }),
   saveEntry: (entry: Record<string, unknown>) => post('/api/energy', { action: 'entry', entry }),
   remove: (id: string) => post('/api/energy', { action: 'delete', id }),
+  savePantry: (item: Record<string, unknown>) => post('/api/energy', { action: 'pantry', item }),
+  removePantry: (id: string) => post('/api/energy', { action: 'delete_pantry', id }),
+  saveGoal: (goal: Record<string, unknown>) => post('/api/energy', { action: 'goal', goal }),
+  removeGoal: (id: string) => post('/api/energy', { action: 'delete_goal', id }),
 }
 
 // ── Todo ────────────────────────────────────────────────

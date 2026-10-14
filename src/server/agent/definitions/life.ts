@@ -479,7 +479,7 @@ export const LIFE_TOOL_DEFINITIONS = [
   },
   {
     "name": "read_energy_summary",
-    "description": "查看小火某天或最近几天的饮食、液体、运动、体重、体脂率、预计消耗与热量缺口。所有热量都是估值，不能用于医疗诊断。",
+    "description": "查看小火某天或最近几天的饮食、饮水、液体、运动时长、体重、体脂率、预计消耗与热量缺口，也会返回家中食材和所选日期的目标及自动进度。所有热量都是估值，不能用于医疗诊断。",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -561,6 +561,49 @@ export const LIFE_TOOL_DEFINITIONS = [
     "input_schema": {
       "type": "object",
       "properties": { "id": { "type": "string", "description": "记录id" } },
+      "required": ["id"]
+    }
+  },
+  {
+    "name": "save_pantry_item",
+    "description": "新增或修改家里的食材。修改时先用read_energy_summary取得item id；quantity可以写自然语言数量，例如6个、半袋或约300克。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "修改已有食材时传" },
+        "name": { "type": "string", "description": "食材名称" },
+        "quantity": { "type": "string", "description": "可选数量或状态" }
+      }
+    }
+  },
+  {
+    "name": "delete_pantry_item",
+    "description": "从家里的食材清单删除一项。",
+    "input_schema": {
+      "type": "object",
+      "properties": { "id": { "type": "string", "description": "食材id" } },
+      "required": ["id"]
+    }
+  },
+  {
+    "name": "save_energy_goal",
+    "description": "新增、修改或勾选某天的饮食运动目标。喝水/饮水N ml（或L）以及运动/散步/跑步等N分钟（或小时）会根据记录自动计算进度，无需手动勾选；其他目标仍可手动完成。修改时先用read_energy_summary取得goal id。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "修改已有目标时传" },
+        "date": { "type": "string", "description": "YYYY-MM-DD；新增时默认今天" },
+        "title": { "type": "string", "description": "目标内容" },
+        "done": { "type": "boolean", "description": "是否完成" }
+      }
+    }
+  },
+  {
+    "name": "delete_energy_goal",
+    "description": "删除一项饮食运动目标。",
+    "input_schema": {
+      "type": "object",
+      "properties": { "id": { "type": "string", "description": "目标id" } },
       "required": ["id"]
     }
   },

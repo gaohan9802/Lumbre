@@ -23,6 +23,31 @@ export interface BodyMeasurement {
   updated_at: string | null
 }
 
+export interface PantryItem {
+  id: string
+  name: string
+  quantity: string
+  recorded_by: EnergyActor
+  created_at: string
+  updated_at: string | null
+}
+
+export interface EnergyGoal {
+  id: string
+  date: string
+  title: string
+  done: boolean
+  recorded_by: EnergyActor
+  created_at: string
+  updated_at: string | null
+  progress?: {
+    kind: 'water_ml' | 'exercise_minutes'
+    current: number
+    target: number
+    unit: 'ml' | '分钟'
+  }
+}
+
 export interface EnergyEntry {
   id: string
   date: string
@@ -63,7 +88,9 @@ export interface EnergyDaySummary {
   food_kcal: number
   liquid_kcal: number
   liquid_ml: number
+  water_ml: number
   exercise_kcal: number
+  exercise_minutes: number
   health_active_kcal: number | null
   total_burn_kcal: number | null
   deficit_kcal: number | null

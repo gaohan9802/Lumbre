@@ -37,7 +37,7 @@ import { deleteGuestbookMessage, readGuestbook, writeGuestbookMessage } from './
 import { scheduleWake } from './autowake'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { readHealthSummary, type HealthRange } from './data/repositories/health'
-import { deleteEnergyEntry, readEnergyDashboard, saveBodyMeasurement, saveEnergyEntry } from './energy-store'
+import { deleteEnergyEntry, deleteEnergyGoal, deletePantryItem, readEnergyDashboard, saveBodyMeasurement, saveEnergyEntry, saveEnergyGoal, savePantryItem } from './energy-store'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
 import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
 import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
@@ -243,6 +243,18 @@ export async function executeRegisteredToolHandler(
     }
     if (name === 'delete_energy_entry') {
       return JSON.stringify({ ok: deleteEnergyEntry(String(input.id || '')) })
+    }
+    if (name === 'save_pantry_item') {
+      return JSON.stringify({ ok: true, item: savePantryItem(input, 'star') })
+    }
+    if (name === 'delete_pantry_item') {
+      return JSON.stringify({ ok: deletePantryItem(String(input.id || '')) })
+    }
+    if (name === 'save_energy_goal') {
+      return JSON.stringify({ ok: true, goal: saveEnergyGoal(input, 'star') })
+    }
+    if (name === 'delete_energy_goal') {
+      return JSON.stringify({ ok: deleteEnergyGoal(String(input.id || '')) })
     }
 
 

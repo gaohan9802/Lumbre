@@ -31,17 +31,26 @@ test('energy journal combines food, caloric liquids, body fat and health-aware e
   store.saveEnergyEntry({ kind: 'liquid', date: '2026-10-13', name: '可乐', amount: 250, kcal_per_100: 42, meal: 'snack', source: 'catalog' }, 'fire')
   store.saveEnergyEntry({ kind: 'exercise', date: '2026-10-13', name: '快走', duration_minutes: 40, calories: 180, not_in_health: false }, 'fire')
   store.saveEnergyEntry({ kind: 'exercise', date: '2026-10-13', name: '拉伸', duration_minutes: 20, calories: 100, not_in_health: true }, 'fire')
-  health.saveHealthSnapshot({ date: '2026-10-13', active_energy_kcal: 400 })
+  health.saveHealthSnapshot({ date: '2026-10-13', active_energy_kcal: 400, exercise_minutes: 50 })
+  const waterGoal = store.saveEnergyGoal({ date: '2026-10-13', title: '喝水 500 ml' }, 'fire')
+  const exerciseGoal = store.saveEnergyGoal({ date: '2026-10-13', title: '运动 70 分钟' }, 'fire')
+  const manualGoal = store.saveEnergyGoal({ date: '2026-10-13', title: '早点睡觉' }, 'fire')
 
   const dashboard = store.readEnergyDashboard('2026-10-13', 7)
   assert.equal(dashboard.today.food_kcal, 232)
   assert.equal(dashboard.today.liquid_ml, 750)
+  assert.equal(dashboard.today.water_ml, 500)
   assert.equal(dashboard.today.liquid_kcal, 105)
   assert.equal(dashboard.today.intake_kcal, 337)
   assert.equal(dashboard.today.exercise_kcal, 280)
+  assert.equal(dashboard.today.exercise_minutes, 70)
   assert.equal(dashboard.today.health_active_kcal, 400)
   assert.equal(dashboard.today.total_burn_kcal, 1952)
   assert.equal(dashboard.today.deficit_kcal, 1615)
+  assert.deepEqual(dashboard.goals.find(goal => goal.id === waterGoal.id)?.progress, { kind: 'water_ml', current: 500, target: 500, unit: 'ml' })
+  assert.equal(dashboard.goals.find(goal => goal.id === waterGoal.id)?.done, true)
+  assert.equal(dashboard.goals.find(goal => goal.id === exerciseGoal.id)?.done, true)
+  assert.equal(dashboard.goals.find(goal => goal.id === manualGoal.id)?.done, false)
 })
 
 test('web writes are fixed to fire while star tools keep the star identity and support edits', async () => {
@@ -56,6 +65,13 @@ test('web writes are fixed to fire while star tools keep the star identity and s
   const fireEntry = (await response.json()).entry
   assert.equal(fireEntry.recorded_by, 'fire')
 
+  const pantryResponse = await route.POST(new NextRequest('http://lumbre.test/api/energy', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'pantry', item: { actor: 'star', name: '番茄', quantity: '4个' } }),
+  }))
+  const firePantry = (await pantryResponse.json()).item
+  assert.equal(firePantry.recorded_by, 'fire')
+
   const starResult = JSON.parse(await runtime.executeRegisteredToolHandler('log_energy_intake', {
     kind: 'food', date: '2026-10-13', name: '鸡蛋', amount: 55, kcal_per_100: 144, meal: 'breakfast',
   }))
@@ -66,9 +82,19 @@ test('web writes are fixed to fire while star tools keep the star identity and s
   assert.equal(edited.entry.amount, 60)
   assert.equal(edited.entry.recorded_by, 'star')
 
+  const starPantry = JSON.parse(await runtime.executeRegisteredToolHandler('save_pantry_item', { name: '鸡蛋', quantity: '6个' })).item
+  assert.equal(starPantry.recorded_by, 'star')
+  const starGoal = JSON.parse(await runtime.executeRegisteredToolHandler('save_energy_goal', { date: '2026-10-13', title: '散步 30 分钟' })).goal
+  assert.equal(starGoal.recorded_by, 'star')
+  const completedGoal = JSON.parse(await runtime.executeRegisteredToolHandler('save_energy_goal', { id: starGoal.id, done: true })).goal
+  assert.equal(completedGoal.done, true)
+
   const summary = JSON.parse(await runtime.executeRegisteredToolHandler('read_energy_summary', { date: '2026-10-13', days: 1 }))
   assert.equal(summary.today.entries.some((entry: { id: string }) => entry.id === fireEntry.id), true)
   assert.equal(summary.today.entries.some((entry: { id: string }) => entry.id === starResult.entry.id), true)
+  assert.equal(summary.pantry.some((item: { id: string }) => item.id === firePantry.id), true)
+  assert.equal(summary.pantry.some((item: { id: string }) => item.id === starPantry.id), true)
+  assert.equal(summary.goals.some((goal: { id: string; done: boolean }) => goal.id === starGoal.id && goal.done), true)
 })
 
 test('energy inputs reject unsafe and impossible values', () => {
