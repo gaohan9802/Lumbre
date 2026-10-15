@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  loadSyncManifest, loadSyncSessionHistory, loadSyncSessions, loadSyncSessionTails,
+  loadSyncManifest, loadSyncMessageContext, loadSyncSessionHistory, loadSyncSessions, loadSyncSessionTails,
   loadSyncState, mergeSyncDelta, upsertSyncSessionMessage,
 } from '@/server/chat-sync'
 
@@ -42,6 +42,13 @@ export async function GET(req: NextRequest) {
       const page = id ? loadSyncSessionHistory(id, before, limit) : null
       if (!page) return NextResponse.json({ error: 'session not found' }, { status: 404 })
       return json(page)
+    }
+    if (mode === 'message-context') {
+      const id = req.nextUrl.searchParams.get('id') || ''
+      const messageId = req.nextUrl.searchParams.get('messageId') || ''
+      const context = id && messageId ? loadSyncMessageContext(id, messageId) : null
+      if (!context) return NextResponse.json({ error: '原聊天或消息已不存在' }, { status: 404 })
+      return json(context)
     }
     // Full GET stays available to old clients, but current clients never use it.
     return json(loadSyncState())

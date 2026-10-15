@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
-import { Activity, Check, ChevronLeft, ChevronRight, Droplets, Flame, PackageOpen, Pencil, Plus, Scale, Share2, Trash2, Utensils, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { Activity, Check, ChevronLeft, ChevronRight, Droplets, Flame, PackageOpen, Pencil, Plus, Scale, Share2, ShoppingBasket, Trash2, Utensils, X } from 'lucide-react'
 import { energy as energyApi } from '@/lib/api'
 import {
   ENERGY_CATALOG, EXERCISE_CATALOG, MEAL_LABELS, exerciseCalories, findCatalogItem, findExerciseItem,
-  type BodyMeasurement, type EnergyDaySummary, type EnergyEntry, type EnergyEntryKind, type EnergyGoal, type EnergyProfile, type PantryItem,
+  type BodyMeasurement, type EnergyDaySummary, type EnergyEntry, type EnergyEntryKind, type EnergyGoal, type EnergyProfile, type GroceryItem, type PantryItem,
 } from '@/lib/energy'
-import { addMadridDays, madridDateKey } from '@/lib/madrid-time'
+import { addMadridDays, formatMadrid, madridDateKey } from '@/lib/madrid-time'
 import { shareToChat } from '@/lib/share'
 import { useTheme } from '@/lib/theme'
 
@@ -16,6 +16,7 @@ interface Dashboard {
   current_measurement: BodyMeasurement | null
   measurements: BodyMeasurement[]
   pantry: PantryItem[]
+  groceries: GroceryItem[]
   goals: EnergyGoal[]
   days: EnergyDaySummary[]
   today: EnergyDaySummary
@@ -24,6 +25,7 @@ type Tab = 'today' | 'plan' | 'trend' | 'body'
 type ProfileDraft = { height_cm: string; birth_date: string; formula_sex: string; goal_weight_kg: string; manual_baseline_kcal: string }
 type MeasurementDraft = { date: string; weight_kg: string; body_fat_percent: string }
 type PantryDraft = { id?: string; name: string; quantity: string }
+type GroceryDraft = { id?: string; name: string; quantity: string }
 type GoalDraft = { id?: string; title: string }
 type EntryDraft = {
   id?: string
@@ -69,33 +71,40 @@ export function EnergyView() {
   const [measurement, setMeasurement] = useState({ date: madridDateKey(), weight_kg: '', body_fat_percent: '' })
   const [pantryDraft, setPantryDraft] = useState<PantryDraft>({ name: '', quantity: '' })
   const [goalDraft, setGoalDraft] = useState<GoalDraft>({ title: '' })
+  const [groceryDraft, setGroceryDraft] = useState<GroceryDraft>({ name: '', quantity: '' })
+  const [trendDays, setTrendDays] = useState(7)
+  const loadSequence = useRef(0)
 
   const load = async (target = date) => {
+    const sequence = ++loadSequence.current
     setLoading(true)
     setError('')
     try {
-      const result = await energyApi.dashboard(target, 7) as Dashboard
+      const result = await energyApi.dashboard(target, trendDays) as Dashboard
+      if (sequence !== loadSequence.current) return
       setData(result)
       const p = result.profile
       setProfile({
         height_cm: p.height_cm?.toString() || '', birth_date: p.birth_date || '', formula_sex: p.formula_sex || '',
         goal_weight_kg: p.goal_weight_kg?.toString() || '', manual_baseline_kcal: p.manual_baseline_kcal?.toString() || '',
       })
-      setMeasurement(current => ({
-        ...current, date: target,
-        weight_kg: result.current_measurement?.weight_kg?.toString() || current.weight_kg,
-        body_fat_percent: result.current_measurement?.body_fat_percent?.toString() || '',
-      }))
+      const exact = result.measurements.find(item => item.date === target)
+      const synced = result.today.date === target ? result.today.health : null
+      setMeasurement({
+        date: target,
+        weight_kg: (exact?.weight_kg ?? synced?.weight_kg)?.toString() || '',
+        body_fat_percent: (exact?.body_fat_percent ?? synced?.body_fat_percent)?.toString() || '',
+      })
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '能量手账没有打开成功')
+      if (sequence === loadSequence.current) setError(reason instanceof Error ? reason.message : '能量手账没有打开成功')
     } finally {
-      setLoading(false)
+      if (sequence === loadSequence.current) setLoading(false)
     }
   }
-  useEffect(() => { void load() }, [date]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [date, trendDays]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const current = data?.today.date === date ? data.today : undefined
-  const weight = data?.current_measurement?.weight_kg || null
+  const weight = current?.measurement?.weight_kg ?? current?.health?.weight_kg ?? data?.current_measurement?.weight_kg ?? null
   const exerciseEstimate = useMemo(() => {
     if (!draft || draft.kind !== 'exercise' || !weight) return null
     const minutes = Number(draft.duration_minutes)
@@ -219,6 +228,43 @@ export function EnergyView() {
       setBusy(false)
     }
   }
+  const saveGrocery = async (item: Partial<GroceryItem> = groceryDraft) => {
+    if (!item.name?.trim()) return
+    setBusy(true)
+    setError('')
+    try {
+      await energyApi.saveGrocery(item)
+      setGroceryDraft({ name: '', quantity: '' })
+      await load()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '买菜清单没有保存成功')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const removeGrocery = async (id: string) => {
+    setBusy(true)
+    try {
+      await energyApi.removeGrocery(id)
+      await load()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '待买食材没有删除成功')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const clearCompletedGroceries = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await energyApi.clearCompletedGroceries()
+      await load()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '已完成的买菜项没有清理成功')
+    } finally {
+      setBusy(false)
+    }
+  }
   const saveGoal = async (goal: Partial<EnergyGoal> = goalDraft) => {
     if (!goal.title?.trim()) return
     setBusy(true)
@@ -244,28 +290,32 @@ export function EnergyView() {
       setBusy(false)
     }
   }
-  const share = () => {
+  const share = (mealRequest = false) => {
     if (tab === 'plan' && data && current) {
       shareToChat({
-        kind: 'energy-plan', title: '🥬 ' + date + ' 家里与今日计划',
-        subtitle: `${data.pantry.length} 样食材 · ${data.goals.filter(goal => goal.done).length}/${data.goals.length} 项目标完成`,
+        kind: 'energy-plan', title: mealRequest ? '🥬 请星星帮我搭一餐' : '🥬 ' + date + ' 家里与今日计划',
+        subtitle: `${data.pantry.length} 样食材 · ${data.groceries.filter(item => !item.done).length} 样待买 · ${data.goals.filter(goal => goal.done).length}/${data.goals.length} 项目标完成`,
         body: [
+          ...(mealRequest ? ['请根据家里的食材和今日目标，帮我搭一餐。', ''] : []),
           '家里的食材', ...(data.pantry.length ? data.pantry.map(item => `· ${item.name}${item.quantity ? ` ${item.quantity}` : ''}`) : ['· 暂时还没写']),
+          '', '下次买菜', ...(data.groceries.length ? data.groceries.map(item => `${item.done ? '✓' : '○'} ${item.name}${item.quantity ? ` ${item.quantity}` : ''}`) : ['· 暂时还没写']),
           '', '今日目标', ...(data.goals.length ? data.goals.map(goal => `${goal.done ? '✓' : '○'} ${goal.title}${goal.progress ? `（${goal.progress.current}/${goal.progress.target} ${goal.progress.unit}）` : ''}`) : ['· 暂时还没写']),
         ].join('\n'),
-        metadata: { date, pantry: data.pantry, goals: data.goals },
+        metadata: { date, pantry: data.pantry, groceries: data.groceries, goals: data.goals },
       })
       return
     }
     if (!current) return
+    const today = current.date === madridDateKey()
     shareToChat({
       kind: 'energy-day', title: '🍽️ ' + current.date + ' 能量手账',
-      subtitle: '摄入 ' + current.intake_kcal + ' kcal · 预计消耗 ' + (current.total_burn_kcal ?? '—') + ' kcal',
+      subtitle: '摄入 ' + current.intake_kcal + ' kcal · ' + (today ? '今日预算 ' : '全天消耗 ') + (current.total_burn_kcal ?? '—') + ' kcal',
       body: [
         '饮食 ' + current.food_kcal + ' kcal',
         '水 ' + current.water_ml + ' ml · 液体共 ' + current.liquid_ml + ' ml / ' + current.liquid_kcal + ' kcal',
         '运动 ' + current.exercise_minutes + ' 分钟 / 约 ' + current.exercise_kcal + ' kcal',
-        current.deficit_kcal === null ? '身体资料还不足，暂时无法计算缺口' : '当日缺口约 ' + current.deficit_kcal + ' kcal',
+        current.total_burn_kcal === null ? '身体资料还不足，暂时无法计算消耗' : `基础代谢${today ? '全天' : ''} ${current.baseline_kcal} + ${today ? '已同步活动' : '活动'} ${current.activity_kcal} = ${today ? '今日预算' : '全天消耗'} ${current.total_burn_kcal} kcal`,
+        current.deficit_kcal === null ? '身体资料还不足，暂时无法计算热量差' : current.deficit_kcal >= 0 ? (today ? '按当前记录，今天还可用 ' : '当日缺口 ') + current.deficit_kcal + ' kcal' : (today ? '按当前记录，今天已超出 ' : '当日超出 ') + Math.abs(current.deficit_kcal) + ' kcal',
       ].join('\n'),
       metadata: {
         date: current.date, intake_kcal: current.intake_kcal, liquid_ml: current.liquid_ml, water_ml: current.water_ml,
@@ -278,6 +328,20 @@ export function EnergyView() {
   const field = night ? 'bg-night-surface' : 'chat-dialog-field'
   const muted = night ? 'text-night-muted' : 'text-[#765953]/55'
   const entries = current?.entries || []
+  const recent = [...(data?.days || [])].reverse().flatMap(day => [...day.entries].reverse()).filter((entry, index, all) => all.findIndex(item => item.kind === entry.kind && item.name === entry.name) === index).slice(0, 6)
+  const groups = [
+    ['breakfast', '早餐', entries.filter(item => item.kind === 'food' && item.meal === 'breakfast')],
+    ['lunch', '午餐', entries.filter(item => item.kind === 'food' && item.meal === 'lunch')],
+    ['dinner', '晚餐', entries.filter(item => item.kind === 'food' && item.meal === 'dinner')],
+    ['snack', '加餐', entries.filter(item => item.kind === 'food' && item.meal === 'snack')],
+    ['liquid', '液体', entries.filter(item => item.kind === 'liquid')],
+    ['exercise', '运动', entries.filter(item => item.kind === 'exercise')],
+  ] as const
+  const repeatEntry = (entry: EnergyEntry) => {
+    edit(entry)
+    setDraft(currentDraft => currentDraft ? { ...currentDraft, id: undefined, date } : currentDraft)
+  }
+  const isToday = date === madridDateKey()
 
   return <div className={classNames('h-full overflow-y-auto px-4 pb-12 pt-2', night ? 'text-night-text' : 'text-[#59433f]')}>
     <div className="mx-auto max-w-3xl space-y-4">
@@ -286,7 +350,7 @@ export function EnergyView() {
           {([['today', '今天'], ['plan', '计划'], ['trend', '趋势'], ['body', '身体']] as const).map(([value, label]) =>
             <button key={value} onClick={() => setTab(value)} aria-pressed={tab === value} className={classNames('flex-1 rounded-lg py-2 text-xs', tab === value ? (night ? 'bg-night-card text-night-amber' : 'bg-white/80 shadow-sm') : 'opacity-45')}>{label}</button>)}
         </div>
-        <button onClick={share} aria-label={tab === 'plan' ? '分享家里与今日计划到 Chat' : '分享能量手账到 Chat'} title="分享到 Chat" className="grid h-8 w-8 place-items-center rounded-full opacity-45"><Share2 size={14}/></button>
+        {(tab === 'today' || tab === 'plan') && <button onClick={() => share()} aria-label={tab === 'plan' ? '分享家里与今日计划到 Chat' : '分享能量手账到 Chat'} title="分享到 Chat" className="grid h-8 w-8 place-items-center rounded-full opacity-45"><Share2 size={14}/></button>}
       </div>
 
       {error && <div role="alert" className="flex items-center justify-between rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-500"><span>{error}</span><button onClick={() => setError('')}><X size={13}/></button></div>}
@@ -298,43 +362,35 @@ export function EnergyView() {
       </div>}
 
       {tab === 'today' && <>
-        <div className={classNames('grid grid-cols-3 gap-2 rounded-2xl border p-3', card)}>
-          <Summary icon={<Utensils size={13}/>} label="摄入" value={loading ? '…' : String(current?.intake_kcal || 0)} suffix="kcal"/>
-          <Summary icon={<Flame size={13}/>} label="预计消耗" value={loading ? '…' : current?.total_burn_kcal?.toString() || '—'} suffix="kcal"/>
-          <Summary icon={<Activity size={13}/>} label={current?.deficit_kcal !== null && current?.deficit_kcal !== undefined && current.deficit_kcal < 0 ? '预计超出' : '预计缺口'} value={loading ? '…' : current?.deficit_kcal === null || current?.deficit_kcal === undefined ? '—' : String(Math.abs(Math.round(current.deficit_kcal)))} suffix="kcal"/>
+        <div className={classNames('rounded-2xl border p-4', card)}>
+          <div className="grid grid-cols-3 gap-2">
+            <Summary icon={<Utensils size={13}/>} label="摄入" value={loading ? '…' : String(current?.intake_kcal || 0)} suffix="kcal"/>
+            <Summary icon={<Flame size={13}/>} label={isToday ? '今日预算' : '全天消耗'} value={loading ? '…' : current?.total_burn_kcal?.toString() || '—'} suffix="kcal"/>
+            <Summary icon={<Activity size={13}/>} label={current?.deficit_kcal !== null && current?.deficit_kcal !== undefined && current.deficit_kcal < 0 ? (isToday ? '已超出' : '当日超出') : (isToday ? '今日可用' : '当日缺口')} value={loading ? '…' : current?.deficit_kcal === null || current?.deficit_kcal === undefined ? '—' : String(Math.abs(Math.round(current.deficit_kcal)))} suffix="kcal"/>
+          </div>
+          <p className={classNames('mt-3 border-t pt-2 text-center text-[9px]', muted)}>基础代谢{isToday ? '全天' : ''} {current?.baseline_kcal ?? '—'} + {isToday ? '已同步活动' : '活动消耗'} {current?.activity_kcal || 0} kcal</p>
         </div>
         <div className="grid grid-cols-3 gap-2">
           <AddButton card={card} onClick={() => setDraft(blankEntry('food', date))} icon={<Utensils size={12}/>} label="饮食"/>
           <AddButton card={card} onClick={() => setDraft(blankEntry('liquid', date))} icon={<Droplets size={12}/>} label="液体"/>
           <AddButton card={card} onClick={() => setDraft(blankEntry('exercise', date))} icon={<Activity size={12}/>} label="运动"/>
         </div>
-        <div className={classNames('flex items-center justify-between rounded-xl border px-3 py-2 text-[10px]', card)}>
-          <span><Droplets size={11} className="mr-1 inline"/>水 {current?.water_ml || 0} ml</span>
-          <span className={muted}>液体共 {current?.liquid_ml || 0} ml · {current?.liquid_kcal || 0} kcal</span>
+        <div className="grid grid-cols-3 gap-2">
+          <ProgressMini label="饮水" value={`${current?.water_ml || 0} ml`} detail={`液体 ${current?.liquid_ml || 0} ml`} card={card}/>
+          <ProgressMini label="运动" value={`${current?.exercise_minutes || 0} 分`} detail={`约 ${current?.exercise_kcal || 0} kcal`} card={card}/>
+          <ProgressMini label="目标" value={`${data?.goals.filter(goal => goal.done).length || 0}/${data?.goals.length || 0}`} detail="今日完成" card={card}/>
         </div>
+        {current?.health && <div className={classNames('flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-3 py-2 text-[9px]', card)}><span className="font-medium">Apple Health</span><span>步数 {current.health.steps ?? '—'}</span><span>睡眠 {current.health.sleep_minutes ? Math.round(current.health.sleep_minutes / 6) / 10 + 'h' : '—'}</span><span>活动 {current.health.active_energy_kcal ?? '—'} kcal</span>{current.health.weight_kg !== null && current.health.weight_kg !== undefined && <span>体重 {current.health.weight_kg} kg</span>}{current.health.body_fat_percent !== null && current.health.body_fat_percent !== undefined && <span>体脂 {current.health.body_fat_percent}%</span>}<span className={muted}>{formatMadrid(current.health.synced_at, false)}</span></div>}
+        {!!recent.length && <div><p className={classNames('mb-2 text-[9px]', muted)}>最近记过 · 点一下快速再记</p><div className="flex gap-1.5 overflow-x-auto pb-1">{recent.map(entry => <button key={entry.kind + entry.name} onClick={() => repeatEntry(entry)} className={classNames('shrink-0 rounded-full px-3 py-1.5 text-[9px]', field)}>{entry.kind === 'exercise' ? '🏃' : entry.kind === 'liquid' ? '🥤' : '🍚'} {entry.name}</button>)}</div></div>}
         <div className="space-y-2">
           {!loading && !entries.length && <p className={classNames('py-10 text-center text-xs', muted)}>今天还没有记录，吃喝运动都可以慢慢记。</p>}
-          {entries.map(entry => <div key={entry.id} className={classNames('rounded-xl border p-3', card)}>
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5">{entry.kind === 'food' ? '🍚' : entry.kind === 'liquid' ? '🥤' : '🏃'}</span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline gap-1.5"><span className="text-xs font-medium">{entry.name}</span><span className={classNames('text-[9px]', muted)}>{entry.kind === 'exercise' ? entry.duration_minutes + ' 分钟' : entry.amount + ' ' + entry.unit}</span></div>
-                <p className={classNames('mt-1 text-[9px]', muted)}>{entry.kind === 'exercise'
-                  ? '消耗约 ' + Math.round(entry.calories) + ' kcal' + (entry.not_in_health ? ' · 未计入健康数据' : '')
-                  : (entry.meal ? MEAL_LABELS[entry.meal] + ' · ' : '') + '约 ' + Math.round(entry.calories) + ' kcal · ' + (entry.source === 'catalog' ? '常用食物估值' : entry.recorded_by === 'star' ? '星星记录' : '手动值')}</p>
-                {entry.note && <p className="mt-1.5 whitespace-pre-wrap text-[10px] opacity-70">{entry.note}</p>}
-              </div>
-              <button onClick={() => edit(entry)} aria-label={'编辑' + entry.name} className="grid h-8 w-8 shrink-0 place-items-center rounded-full opacity-35"><Pencil size={12}/></button>
-              <button onClick={() => setDeleteId(entry.id)} aria-label={'删除' + entry.name} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-red-400/60"><Trash2 size={12}/></button>
-            </div>
-            {deleteId === entry.id && <div className="mt-2 flex items-center gap-2 text-[9px]"><span className="mr-auto opacity-50">确定删除这条记录？</span><button onClick={() => setDeleteId(null)}>取消</button><button disabled={busy} onClick={() => void remove(entry.id)} className="text-red-500">删除</button></div>}
-          </div>)}
+          {groups.filter(([, , items]) => items.length).map(([key, label, items]) => <details key={key} open className={classNames('rounded-xl border px-3 py-2', card)}><summary className="cursor-pointer list-none text-xs font-medium">{label}<span className={classNames('ml-2 text-[9px]', muted)}>{items.length} 条 · {Math.round(items.reduce((sum, item) => sum + item.calories, 0))} kcal</span></summary><div className="mt-2 divide-y divide-current/5">{items.map(entry => <EnergyEntryRow key={entry.id} entry={entry} muted={muted} busy={busy} deleting={deleteId === entry.id} edit={() => edit(entry)} askDelete={() => setDeleteId(entry.id)} cancelDelete={() => setDeleteId(null)} remove={() => remove(entry.id)}/>)}</div></details>)}
         </div>
       </>}
 
-      {tab === 'trend' && <TrendPanel data={data} card={card} muted={muted} night={night}/>}
+      {tab === 'trend' && <TrendPanel data={data} card={card} muted={muted} night={night} days={trendDays} setDays={setTrendDays}/>}
       {tab === 'body' && <BodyPanel night={night} card={card} field={field} muted={muted} busy={busy} profile={profile} setProfile={setProfile} measurement={measurement} setMeasurement={setMeasurement} saveProfile={saveProfile} saveMeasurement={saveMeasurement}/>}
-      {tab === 'plan' && <PlanPanel card={card} field={field} muted={muted} busy={busy} pantry={current ? data?.pantry || [] : []} goals={current ? data?.goals || [] : []} pantryDraft={pantryDraft} setPantryDraft={setPantryDraft} goalDraft={goalDraft} setGoalDraft={setGoalDraft} savePantry={savePantry} removePantry={removePantry} saveGoal={saveGoal} removeGoal={removeGoal}/>}
+      {tab === 'plan' && <PlanPanel card={card} field={field} muted={muted} busy={busy} pantry={current ? data?.pantry || [] : []} groceries={data?.groceries || []} goals={current ? data?.goals || [] : []} pantryDraft={pantryDraft} setPantryDraft={setPantryDraft} groceryDraft={groceryDraft} setGroceryDraft={setGroceryDraft} goalDraft={goalDraft} setGoalDraft={setGoalDraft} savePantry={savePantry} removePantry={removePantry} saveGrocery={saveGrocery} removeGrocery={removeGrocery} clearCompletedGroceries={clearCompletedGroceries} saveGoal={saveGoal} removeGoal={removeGoal} sharePlan={() => share(true)}/>}
     </div>
 
     {draft && <EntryDialog night={night} field={field} muted={muted} busy={busy} draft={draft} setDraft={setDraft} chooseName={chooseName} exerciseEstimate={exerciseEstimate} weight={weight} save={saveEntry}/>}
@@ -349,18 +405,33 @@ function AddButton({ card, onClick, icon, label }: { card: string; onClick: () =
   return <button onClick={onClick} className={classNames('flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs', card)}><Plus size={12}/>{icon}{label}</button>
 }
 
+function ProgressMini({ label, value, detail, card }: { label: string; value: string; detail: string; card: string }) {
+  return <div className={classNames('rounded-xl border px-2 py-2 text-center', card)}><p className="text-[8px] opacity-45">{label}</p><p className="mt-0.5 text-xs font-medium">{value}</p><p className="mt-0.5 text-[8px] opacity-35">{detail}</p></div>
+}
+
+function EnergyEntryRow({ entry, muted, busy, deleting, edit, askDelete, cancelDelete, remove }: { entry: EnergyEntry; muted: string; busy: boolean; deleting: boolean; edit: () => void; askDelete: () => void; cancelDelete: () => void; remove: () => Promise<void> }) {
+  return <div className="py-2 first:pt-0 last:pb-0"><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><p className="truncate text-[11px]">{entry.name} <span className={classNames('text-[9px]', muted)}>{entry.kind === 'exercise' ? `${entry.duration_minutes} 分钟` : `${entry.amount} ${entry.unit}`} · {Math.round(entry.calories)} kcal</span></p>{entry.note && <p className={classNames('mt-1 whitespace-pre-wrap text-[9px]', muted)}>{entry.note}</p>}</div><button onClick={edit} aria-label={'编辑' + entry.name} className="grid h-7 w-7 place-items-center opacity-35"><Pencil size={11}/></button><button onClick={askDelete} aria-label={'删除' + entry.name} className="grid h-7 w-7 place-items-center text-red-400/60"><Trash2 size={11}/></button></div>{deleting && <div className="mt-2 flex items-center gap-2 text-[9px]"><span className="mr-auto opacity-50">确定删除这条记录？</span><button onClick={cancelDelete}>取消</button><button disabled={busy} onClick={() => void remove()} className="text-red-500">删除</button></div>}</div>
+}
+
 function PlanPanel(props: {
-  card: string; field: string; muted: string; busy: boolean; pantry: PantryItem[]; goals: EnergyGoal[]
+  card: string; field: string; muted: string; busy: boolean; pantry: PantryItem[]; groceries: GroceryItem[]; goals: EnergyGoal[]
   pantryDraft: PantryDraft; setPantryDraft: Dispatch<SetStateAction<PantryDraft>>
+  groceryDraft: GroceryDraft; setGroceryDraft: Dispatch<SetStateAction<GroceryDraft>>
   goalDraft: GoalDraft; setGoalDraft: Dispatch<SetStateAction<GoalDraft>>
   savePantry: () => void; removePantry: (id: string) => Promise<void>
+  saveGrocery: (item?: Partial<GroceryItem>) => Promise<void>; removeGrocery: (id: string) => Promise<void>
+  clearCompletedGroceries: () => Promise<void>
   saveGoal: (goal?: Partial<EnergyGoal>) => Promise<void>; removeGoal: (id: string) => Promise<void>
+  sharePlan: () => void
 }) {
-  const { card, field, muted, busy, pantry, goals, pantryDraft, setPantryDraft, goalDraft, setGoalDraft } = props
+  const { card, field, muted, busy, pantry, groceries, goals, pantryDraft, setPantryDraft, groceryDraft, setGroceryDraft, goalDraft, setGoalDraft } = props
   const [deleteKey, setDeleteKey] = useState<string | null>(null)
   const input = classNames('min-w-0 rounded-xl px-3 py-2 text-xs outline-none', field)
   const author = (actor: 'fire' | 'star') => actor === 'star' ? '🐆 星星' : '🦦 小火'
+  const pendingGroceries = groceries.filter(item => !item.done)
+  const completedGroceries = groceries.filter(item => item.done)
   return <div className="space-y-3">
+    <button onClick={props.sharePlan} className={classNames('flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-xs', card)}><Share2 size={13}/>让星星帮我搭一餐</button>
     <section className={classNames('rounded-2xl border p-4', card)}>
       <div className="flex items-center gap-2"><PackageOpen size={14}/><div><p className="text-xs font-medium">家里的食材</p><p className={classNames('mt-0.5 text-[9px]', muted)}>写现有食材，星星就能一起想今天怎么吃。</p></div></div>
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)_88px_36px] gap-2">
@@ -380,6 +451,27 @@ function PlanPanel(props: {
           {deleteKey === 'pantry:' + item.id && <div className="mt-2 flex items-center gap-2 text-[9px]"><span className="mr-auto opacity-50">确定移出食材清单？</span><button onClick={() => setDeleteKey(null)}>取消</button><button disabled={busy} onClick={() => void props.removePantry(item.id).then(() => setDeleteKey(null))} className="text-red-500">删除</button></div>}
         </div>)}
         {!pantry.length && <p className={classNames('py-5 text-center text-[10px]', muted)}>冰箱和储物柜里有什么，就从这里开始写。</p>}
+      </div>
+    </section>
+
+    <section className={classNames('rounded-2xl border p-4', card)}>
+      <div className="flex items-center gap-2"><ShoppingBasket size={14}/><div><p className="text-xs font-medium">下次买菜</p><p className={classNames('mt-0.5 text-[9px]', muted)}>你和星星共用；买到以后直接勾掉。</p></div></div>
+      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_88px_36px] gap-2">
+        <input value={groceryDraft.name} onChange={event => setGroceryDraft({ ...groceryDraft, name: event.target.value })} placeholder="要买什么" maxLength={80} className={input}/>
+        <input value={groceryDraft.quantity} onChange={event => setGroceryDraft({ ...groceryDraft, quantity: event.target.value })} placeholder="数量" maxLength={80} className={input}/>
+        <button onClick={() => void props.saveGrocery()} disabled={busy || !groceryDraft.name.trim()} aria-label={groceryDraft.id ? '保存待买食材修改' : '添加待买食材'} className="grid h-9 w-9 place-items-center rounded-xl bg-[#DBB9B3]/30 disabled:opacity-30">{groceryDraft.id ? <Check size={14}/> : <Plus size={14}/>}</button>
+      </div>
+      {groceryDraft.id && <button onClick={() => setGroceryDraft({ name: '', quantity: '' })} className={classNames('mt-2 text-[9px]', muted)}>取消编辑</button>}
+      <div className="mt-3 space-y-1.5">
+        {pendingGroceries.map(item => <GroceryRow key={item.id} item={item} muted={muted} busy={busy} author={author} deleting={deleteKey === 'grocery:' + item.id} toggle={() => props.saveGrocery({ id: item.id, name: item.name, quantity: item.quantity, done: true })} edit={() => setGroceryDraft({ id: item.id, name: item.name, quantity: item.quantity })} askDelete={() => setDeleteKey('grocery:' + item.id)} cancelDelete={() => setDeleteKey(null)} remove={() => props.removeGrocery(item.id).then(() => setDeleteKey(null))}/>) }
+        {!groceries.length && <p className={classNames('py-5 text-center text-[10px]', muted)}>星星可以把下次要买的食材写在这里。</p>}
+        {!!completedGroceries.length && <details className="pt-1">
+          <summary className={classNames('cursor-pointer list-none text-[9px]', muted)}>已经买到 {completedGroceries.length} 样</summary>
+          <div className="mt-2 space-y-1.5">{completedGroceries.map(item => <GroceryRow key={item.id} item={item} muted={muted} busy={busy} author={author} deleting={deleteKey === 'grocery:' + item.id} toggle={() => props.saveGrocery({ id: item.id, name: item.name, quantity: item.quantity, done: false })} edit={() => setGroceryDraft({ id: item.id, name: item.name, quantity: item.quantity })} askDelete={() => setDeleteKey('grocery:' + item.id)} cancelDelete={() => setDeleteKey(null)} remove={() => props.removeGrocery(item.id).then(() => setDeleteKey(null))}/>)}</div>
+          {deleteKey === 'grocery:completed'
+            ? <div className="mt-2 flex items-center gap-2 text-[9px]"><span className="mr-auto opacity-50">确定清除全部已完成项？</span><button onClick={() => setDeleteKey(null)}>取消</button><button disabled={busy} onClick={() => void props.clearCompletedGroceries().then(() => setDeleteKey(null))} className="text-red-500">清除</button></div>
+            : <button onClick={() => setDeleteKey('grocery:completed')} className="mt-2 text-[9px] text-red-400/70">清除已完成</button>}
+        </details>}
       </div>
     </section>
 
@@ -410,16 +502,35 @@ function PlanPanel(props: {
   </div>
 }
 
-function TrendPanel({ data, card, muted, night }: { data: Dashboard | null; card: string; muted: string; night: boolean }) {
+function GroceryRow(props: {
+  item: GroceryItem; muted: string; busy: boolean; author: (actor: 'fire' | 'star') => string; deleting: boolean
+  toggle: () => Promise<unknown>; edit: () => void; askDelete: () => void; cancelDelete: () => void; remove: () => Promise<unknown>
+}) {
+  const { item, muted, busy } = props
+  return <div className="rounded-xl bg-black/[0.025] px-3 py-2">
+    <div className="flex items-center gap-2">
+      <button onClick={() => void props.toggle()} aria-label={item.done ? '标记为未买' : '标记为已买'} aria-pressed={item.done} className={classNames('grid h-6 w-6 shrink-0 place-items-center rounded-full border', item.done ? 'border-[#789083] bg-[#789083] text-white' : 'border-current opacity-25')}>{item.done && <Check size={12}/>}</button>
+      <span className={classNames('min-w-0 flex-1 truncate text-xs', item.done && 'line-through opacity-40')}>{item.name}{item.quantity && <span className={classNames('ml-2 text-[9px]', muted)}>{item.quantity}</span>}</span>
+      <span className={classNames('text-[8px]', muted)}>{props.author(item.recorded_by)}</span>
+      <button onClick={props.edit} aria-label={'编辑' + item.name} className="grid h-7 w-7 place-items-center opacity-35"><Pencil size={11}/></button>
+      <button onClick={props.askDelete} aria-label={'删除' + item.name} className="grid h-7 w-7 place-items-center text-red-400/60"><Trash2 size={11}/></button>
+    </div>
+    {props.deleting && <div className="mt-2 flex items-center gap-2 text-[9px]"><span className="mr-auto opacity-50">确定从买菜清单删除？</span><button onClick={props.cancelDelete}>取消</button><button disabled={busy} onClick={() => void props.remove()} className="text-red-500">删除</button></div>}
+  </div>
+}
+
+function TrendPanel({ data, card, muted, night, days, setDays }: { data: Dashboard | null; card: string; muted: string; night: boolean; days: number; setDays: (value: number) => void }) {
   const max = Math.max(...(data?.days || []).map(item => Math.max(item.intake_kcal, item.total_burn_kcal || 0)), 1)
   const loggedDays = (data?.days || []).filter(day => day.entries.length > 0)
   const average = (key: 'intake_kcal' | 'deficit_kcal') => {
     const values = loggedDays.map(day => day[key]).filter((value): value is number => value !== null)
     return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null
   }
+  const rangeStart = data?.days[0]?.date
+  const measurements = (data?.measurements || []).filter(item => !rangeStart || item.date >= rangeStart).reverse()
   return <div className="space-y-3">
     <div className={classNames('rounded-2xl border p-4', card)}>
-      <p className="text-xs font-medium">最近7天</p><p className={classNames('mt-1 text-[10px]', muted)}>单日是估值，更值得看一周平均。</p>
+      <div className="flex items-center"><div className="flex-1"><p className="text-xs font-medium">最近{days}天</p><p className={classNames('mt-1 text-[10px]', muted)}>单日是估值，更值得看一段时间的平均。</p></div><div className="flex gap-1">{[7, 14, 30].map(value => <button key={value} onClick={() => setDays(value)} aria-pressed={days === value} className={classNames('rounded-full px-2 py-1 text-[8px]', days === value ? 'bg-[#DBB9B3]/35' : 'opacity-35')}>{value}天</button>)}</div></div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className={classNames('rounded-xl px-3 py-2', night ? 'bg-white/[0.035]' : 'bg-black/[0.025]')}><p className={classNames('text-[8px]', muted)}>有记录日均摄入</p><p className="mt-1 text-sm">{average('intake_kcal') ?? '—'} <span className="text-[8px] opacity-45">kcal</span></p></div>
         <div className={classNames('rounded-xl px-3 py-2', night ? 'bg-white/[0.035]' : 'bg-black/[0.025]')}><p className={classNames('text-[8px]', muted)}>有记录日均热量差</p><p className="mt-1 text-sm">{balanceText(average('deficit_kcal'))} <span className="text-[8px] opacity-45">kcal</span></p></div>
@@ -431,10 +542,20 @@ function TrendPanel({ data, card, muted, night }: { data: Dashboard | null; card
     </div>
     <div className={classNames('rounded-2xl border p-4', card)}>
       <p className="text-xs font-medium">体重与体脂</p>
-      <div className="mt-3 space-y-2">{(data?.measurements || []).slice(0, 14).map(item => <div key={item.id} className="flex items-center text-[10px]"><span className="w-20 opacity-45">{item.date}</span><span className="flex-1">{item.weight_kg} kg</span><span className="opacity-55">{item.body_fat_percent === null ? '—' : item.body_fat_percent + '%'}</span></div>)}</div>
-      {!data?.measurements?.length && <p className={classNames('py-8 text-center text-xs', muted)}>还没有身体数据。</p>}
+      {!!measurements.length && <MiniBodyTrend measurements={measurements} night={night}/>}
+      <div className="mt-3 space-y-2">{[...measurements].reverse().slice(0, 14).map(item => <div key={item.id} className="flex items-center text-[10px]"><span className="w-20 opacity-45">{item.date}</span><span className="flex-1">{item.weight_kg} kg</span><span className="opacity-55">{item.body_fat_percent === null ? '—' : item.body_fat_percent + '%'}</span></div>)}</div>
+      {!measurements.length && <p className={classNames('py-8 text-center text-xs', muted)}>最近{days}天还没有身体数据。</p>}
     </div>
   </div>
+}
+
+function MiniBodyTrend({ measurements, night }: { measurements: BodyMeasurement[]; night: boolean }) {
+  if (measurements.length < 2) return null
+  const values = measurements.map(item => item.weight_kg)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const points = values.map((value, index) => `${index / (values.length - 1) * 100},${36 - (value - min) / Math.max(1, max - min) * 28}`).join(' ')
+  return <svg viewBox="0 0 100 42" role="img" aria-label="体重变化小图" className="mt-3 h-20 w-full overflow-visible"><polyline points={points} fill="none" stroke={night ? '#d8a872' : '#9b7067'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><text x="0" y="41" fontSize="4" fill="currentColor" opacity=".4">{measurements[0].date.slice(5)}</text><text x="100" y="41" textAnchor="end" fontSize="4" fill="currentColor" opacity=".4">{measurements.at(-1)?.date.slice(5)}</text></svg>
 }
 
 function BodyPanel(props: {
@@ -456,13 +577,13 @@ function BodyPanel(props: {
       <button onClick={props.saveMeasurement} disabled={busy || !measurement.weight_kg} className="mt-3 w-full rounded-xl bg-[#DBB9B3]/25 py-2.5 text-xs disabled:opacity-30">保存身体数据</button>
     </div>
     <div className={classNames('rounded-2xl border p-4', card)}>
-      <p className="text-xs font-medium">计算资料</p><p className={classNames('mt-1 text-[9px]', muted)}>只用于估算静息消耗，也可以直接填写基础消耗覆盖公式。</p>
+      <p className="text-xs font-medium">计算资料</p><p className={classNames('mt-1 text-[9px]', muted)}>基础代谢与日常活动分开计算；Apple Health 的活动能量会另外加上。</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <label className="text-[9px]">身高 cm<input inputMode="decimal" value={profile.height_cm} onChange={event => setProfile({ ...profile, height_cm: event.target.value })} className={input}/></label>
         <label className="text-[9px]">出生日期<input type="date" value={profile.birth_date} onChange={event => setProfile({ ...profile, birth_date: event.target.value })} className={input}/></label>
         <label className="text-[9px]">公式选项<select value={profile.formula_sex} onChange={event => setProfile({ ...profile, formula_sex: event.target.value })} className={input}><option value="">暂不填写</option><option value="female">女性公式</option><option value="male">男性公式</option></select></label>
         <label className="text-[9px]">目标体重 kg<input inputMode="decimal" value={profile.goal_weight_kg} onChange={event => setProfile({ ...profile, goal_weight_kg: event.target.value })} className={input}/></label>
-        <label className="col-span-2 text-[9px]">手动基础消耗 kcal（可空，不含额外活动）<input inputMode="numeric" value={profile.manual_baseline_kcal} onChange={event => setProfile({ ...profile, manual_baseline_kcal: event.target.value })} className={input}/></label>
+        <label className="col-span-2 text-[9px]">手动基础代谢 kcal（可空，不含走路和运动）<input inputMode="numeric" value={profile.manual_baseline_kcal} onChange={event => setProfile({ ...profile, manual_baseline_kcal: event.target.value })} className={input}/></label>
       </div>
       <button onClick={props.saveProfile} disabled={busy} className="mt-3 w-full rounded-xl bg-[#DBB9B3]/25 py-2.5 text-xs disabled:opacity-30">保存计算资料</button>
     </div>

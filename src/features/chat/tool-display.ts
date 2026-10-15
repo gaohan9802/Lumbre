@@ -67,6 +67,8 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   delete_energy_entry: '删除了能量手账记录',
   save_pantry_item: '整理了家里的食材',
   delete_pantry_item: '移走了一样食材',
+  save_grocery_item: '写好了下次买菜清单',
+  delete_grocery_item: '删掉了一项待买食材',
   save_energy_goal: '写下了今天的健康目标',
   delete_energy_goal: '删除了一项健康目标',
   gmail_status: '检查邮箱状态',

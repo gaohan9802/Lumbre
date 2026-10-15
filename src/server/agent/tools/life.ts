@@ -38,6 +38,8 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'delete_energy_entry', domain: 'health', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除能量手账记录' },
   { name: 'save_pantry_item', domain: 'health', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'delete_pantry_item', domain: 'health', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除家中食材' },
+  { name: 'save_grocery_item', domain: 'health', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'delete_grocery_item', domain: 'health', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除买菜清单项目' },
   { name: 'save_energy_goal', domain: 'health', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'delete_energy_goal', domain: 'health', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除饮食运动目标' },
 

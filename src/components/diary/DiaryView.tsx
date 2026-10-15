@@ -148,6 +148,19 @@ export function DiaryView() {
 
   useEffect(() => { loadEntries() }, [loadEntries])
   useEffect(() => {
+    if (loading) return
+    let target: any
+    try { target = JSON.parse(sessionStorage.getItem('lumbre-favorite-source') || 'null') } catch {}
+    if (target?.kind !== 'diary') return
+    sessionStorage.removeItem('lumbre-favorite-source')
+    const metadata = target.metadata || {}
+    const entry = entries.find(item => item.author === metadata.author && item.date === metadata.date && (item.time_id || '') === (metadata.timeId || ''))
+    if (!entry) return window.alert('原日记已不存在，收藏快照仍然保留。')
+    setAuthorFilter('all')
+    setTypeFilter('all')
+    setSelected(entry)
+  }, [entries, loading])
+  useEffect(() => {
     apiRequest('/api/favorites?kind=diary').then((items: any[]) => setFavoriteKeys(new Set((Array.isArray(items) ? items : []).map(item => item.targetKey)))).catch(() => {})
   }, [])
 

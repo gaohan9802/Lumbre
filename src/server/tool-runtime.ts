@@ -37,7 +37,7 @@ import { deleteGuestbookMessage, readGuestbook, writeGuestbookMessage } from './
 import { scheduleWake } from './autowake'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { readHealthSummary, type HealthRange } from './data/repositories/health'
-import { deleteEnergyEntry, deleteEnergyGoal, deletePantryItem, readEnergyDashboard, saveBodyMeasurement, saveEnergyEntry, saveEnergyGoal, savePantryItem } from './energy-store'
+import { deleteEnergyEntry, deleteEnergyGoal, deleteGroceryItem, deletePantryItem, readEnergyToolSummary, saveBodyMeasurement, saveEnergyEntry, saveEnergyGoal, saveGroceryItem, savePantryItem } from './energy-store'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
 import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
 import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
@@ -227,7 +227,7 @@ export async function executeRegisteredToolHandler(
       return JSON.stringify(readHealthSummary(range))
     }
     if (name === 'read_energy_summary') {
-      return JSON.stringify(readEnergyDashboard(input.date, input.days || 7))
+      return JSON.stringify(readEnergyToolSummary(input.date, input.days || 7))
     }
     if (name === 'log_energy_intake') {
       return JSON.stringify({ ok: true, entry: saveEnergyEntry({ ...input, kind: input.kind === 'liquid' ? 'liquid' : 'food', source: 'star' }, 'star') })
@@ -249,6 +249,12 @@ export async function executeRegisteredToolHandler(
     }
     if (name === 'delete_pantry_item') {
       return JSON.stringify({ ok: deletePantryItem(String(input.id || '')) })
+    }
+    if (name === 'save_grocery_item') {
+      return JSON.stringify({ ok: true, item: saveGroceryItem(input, 'star') })
+    }
+    if (name === 'delete_grocery_item') {
+      return JSON.stringify({ ok: deleteGroceryItem(String(input.id || '')) })
     }
     if (name === 'save_energy_goal') {
       return JSON.stringify({ ok: true, goal: saveEnergyGoal(input, 'star') })

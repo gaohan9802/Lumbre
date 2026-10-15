@@ -62,6 +62,21 @@ const FavoritesView = dynamic(() => import('@/components/favorites/FavoritesView
 type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'energy' | 'timeline' | 'tesis'
 const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', energy: '能量手账', timeline: 'Timeline', tesis: 'Tesis' }
 
+interface FavoriteSourceItem {
+  kind: 'memory' | 'diary' | 'chat'
+  targetKey: string
+  metadata: Record<string, unknown>
+}
+
+interface FavoriteChatContext {
+  sessionId: string
+  sessionTitle: string
+  targetIndex: number
+  total: number
+  targetMessageId: string
+  messages: ChatMessage[]
+}
+
 /* ── helpers ────────────────────────────── */
 
 const fmtFullTs = (ts: number) => {
@@ -155,6 +170,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number }[]>([])
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
   const [favoriteChatKeys, setFavoriteChatKeys] = useState<Set<string>>(new Set())
+  const [favoriteChatContext, setFavoriteChatContext] = useState<FavoriteChatContext | null>(null)
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession, setSettings,
@@ -197,6 +213,32 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => {
     apiRequest('/api/favorites?kind=chat').then((items: any[]) => setFavoriteChatKeys(new Set((Array.isArray(items) ? items : []).map(item => item.targetKey)))).catch(() => {})
+  }, [])
+  useEffect(() => {
+    const openSource = async (event: Event) => {
+      const item = (event as CustomEvent<FavoriteSourceItem>).detail
+      if (!item || !['memory', 'diary', 'chat'].includes(item.kind)) return
+      if (item.kind !== 'chat') {
+        try { sessionStorage.setItem('lumbre-favorite-source', JSON.stringify(item)) } catch {}
+        setRoomPanel(item.kind)
+        return
+      }
+      const sessionId = typeof item.metadata?.sessionId === 'string' ? item.metadata.sessionId : ''
+      const messageId = typeof item.metadata?.messageId === 'string' ? item.metadata.messageId : ''
+      if (!sessionId || !messageId) return window.alert('这条旧收藏没有保存原聊天位置，快照仍然可以正常阅读。')
+      try {
+        const params = new URLSearchParams({ mode: 'message-context', id: sessionId, messageId })
+        const context = await apiRequest(`/api/sync?${params}`)
+        const state = useChatStore.getState()
+        if (state.settings.sessions.some(session => session.id === sessionId)) state.setActiveSession(sessionId)
+        setFavoriteChatContext({ ...context, targetMessageId: messageId })
+        setRoomPanel(null)
+      } catch (sourceError: any) {
+        window.alert(sourceError?.message || '原聊天已不存在，收藏快照仍然保留。')
+      }
+    }
+    window.addEventListener('lumbre-open-favorite-source', openSource)
+    return () => window.removeEventListener('lumbre-open-favorite-source', openSource)
   }, [])
   useEffect(() => {
     let cancelled = false
@@ -1797,6 +1839,25 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             onSelectCcEffort={(effort) => setSettings({ ccEffort: effort })}
             onClose={() => setModelPickerOpen(false)}
           />
+
+          <AnimatePresence>
+            {favoriteChatContext && (
+              <>
+                <motion.button type="button" aria-label="关闭原聊天" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setFavoriteChatContext(null)} className="fixed inset-0 z-[76] bg-black/45 backdrop-blur-[2px]" />
+                <motion.section role="dialog" aria-modal="true" aria-label="收藏的原聊天" initial={{ opacity: 0, scale: .97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .97, y: 8 }} className={`fixed inset-x-3 bottom-3 top-[max(.75rem,env(safe-area-inset-top))] z-[77] mx-auto flex max-w-2xl flex-col overflow-hidden rounded-[28px] ${n ? 'border border-night-border bg-night-surface text-night-text shadow-2xl' : 'chat-dialog'}`}>
+                  <header className="flex items-start justify-between gap-3 border-b border-current/10 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{favoriteChatContext.sessionTitle}</p><p className="mt-0.5 text-[9px] opacity-40">原聊天 · 第 {favoriteChatContext.targetIndex + 1}/{favoriteChatContext.total} 条附近</p></div><button type="button" aria-label="关闭" onClick={() => setFavoriteChatContext(null)} className="rounded-full p-1.5 opacity-55"><X size={16}/></button></header>
+                  <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">{favoriteChatContext.messages.map(message => {
+                    const target = message.id === favoriteChatContext.targetMessageId
+                    return <article key={message.id} className={`rounded-2xl border px-3 py-2.5 ${target ? (n ? 'border-night-amber/65 bg-night-amber/10' : 'border-[#a73a32]/35 bg-[#DBB9B3]/20') : 'border-current/10'}`}>
+                      <div className="mb-1 flex items-center justify-between text-[9px] opacity-45"><span>{message.role === 'user' ? '🦦 小火' : '🐆 星星'}</span><span>{fmtFullTs(message.timestamp)}</span></div>
+                      <div className="text-xs leading-6"><MarkdownText content={message.content || '（这条消息没有文字内容）'}/></div>
+                      {target && <div className={`mt-2 text-right text-[9px] ${n ? 'text-night-amber' : 'text-[#9f302b]'}`}>收藏原文</div>}
+                    </article>
+                  })}</div>
+                </motion.section>
+              </>
+            )}
+          </AnimatePresence>
 
           <AnimatePresence>
             {todoOpen && (

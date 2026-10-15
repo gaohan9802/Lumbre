@@ -36,6 +36,13 @@ test('legacy monolithic chat data migrates without changing its content', () => 
   assert.equal(existsSync(path.join(root, 'chat', 'sessions', `${encoded('legacy-session')}.json`)), true)
 })
 
+test('an ancient favorite locates its bounded original chat context', () => {
+  const context = sync.loadSyncMessageContext('legacy-session', 'legacy-message')
+  assert.equal(context?.sessionId, 'legacy-session')
+  assert.equal(context?.messages[0]?.content, 'legacy body')
+  assert.equal(sync.loadSyncMessageContext('legacy-session', 'missing-message'), null)
+})
+
 test('session updates retain the historical backup layout and recover corrupt primary JSON', () => {
   const id = 'fixture-session'
   sync.upsertSyncSessionMessage(id, { id: 'one', role: 'user', content: 'one', timestamp: 10 }, { title: 'fixture' })

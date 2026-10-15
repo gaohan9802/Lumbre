@@ -36,6 +36,7 @@ export function MediaLibraryView() {
   const [tab, setTab] = useState<'library' | 'coread' | 'timeline'>('library')
   const [works, setWorks] = useState<MediaWork[]>([])
   const [events, setEvents] = useState<MediaTimelineItem[]>([])
+  const [timelineVisible, setTimelineVisible] = useState(12)
   const [selected, setSelected] = useState<MediaWork | null>(null)
   const [kind, setKind] = useState<MediaKind | ''>('')
   const [status, setStatus] = useState<MediaStatus | ''>('')
@@ -61,7 +62,7 @@ export function MediaLibraryView() {
     setLoading(false)
   }, [kind, status, tab, selected?.id])
 
-  useEffect(() => { void load() }, [kind, status, tab])
+  useEffect(() => { setTimelineVisible(12); void load() }, [kind, status, tab])
 
   const panel = night ? 'border-night-border bg-night-card' : 'border-[#a73a32]/15 bg-[#fffaf5]/80'
   const muted = night ? 'text-night-muted' : 'text-day-muted'
@@ -90,7 +91,7 @@ export function MediaLibraryView() {
         }
       </>}
       {tab === 'coread' && (loading ? <p className={`py-16 text-center text-sm ${muted}`}>翻找共读书架中…</p> : works.length ? <Shelf works={works} night={night} onSelect={setSelected}/> : <div className={`flex min-h-56 flex-col items-center justify-center gap-3 text-center text-sm ${muted}`}><UsersRound size={34} strokeWidth={1.2}/><span>这里只放真正想一起读的书。<br/>可以由你开启，也可以等星星提出想读。</span></div>)}
-      {tab === 'timeline' && <div className="mt-4 space-y-3">{loading ? <p className={`py-16 text-center text-sm ${muted}`}>整理共同动态中…</p> : events.length ? events.map(item => <EventCard key={item.id} item={item} actor={currentUser} night={night} onChanged={load}/>) : <p className={`py-16 text-center text-sm ${muted}`}>第一条书影动态还没发生。</p>}</div>}
+      {tab === 'timeline' && <div className="mt-4 space-y-3">{loading ? <p className={`py-16 text-center text-sm ${muted}`}>整理共同动态中…</p> : events.length ? <>{events.slice(0, timelineVisible).map(item => <EventCard key={item.id} item={item} actor={currentUser} night={night} onChanged={load}/>)}{events.length > timelineVisible && <button onClick={() => setTimelineVisible(value => value + 12)} className={`w-full rounded-xl border px-3 py-2.5 text-xs ${panel} ${muted}`}>再看一些 · 还有 {events.length - timelineVisible} 条</button>}</> : <p className={`py-16 text-center text-sm ${muted}`}>第一条书影动态还没发生。</p>}</div>}
       {error && <p role="alert" className="mt-4 text-sm text-red-500">{error}</p>}
     </div>
     {addOpen && <AddDialog actor={currentUser} night={night} onClose={() => setAddOpen(false)} onSaved={() => { setAddOpen(false); void load() }}/>}

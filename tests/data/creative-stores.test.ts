@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test, { after, before } from 'node:test'
@@ -35,12 +35,29 @@ test('共诗严格交替并保留编辑历史', () => {
 
 test('转盘只抽启用元素并保留最近三十次', () => {
   const state = wheel.readWheel()
+  const roleplay = state.pools.find(item => item.id === 'roleplay')
+  assert.equal(roleplay?.name, '角色扮演')
+  assert.equal(roleplay?.options.length, 5)
   const pool = state.pools[0]
   for (const option of pool.options) wheel.editWheelOption(pool.id, option.id, { enabled: false })
   const only = wheel.addWheelOption(pool.id, '唯一结果', 'star')
   assert.equal(wheel.spinWheel('star', [pool.id]).results[0].option_id, only.id)
   for (let index = 0; index < 35; index += 1) wheel.spinWheel('fire', [pool.id])
   assert.equal(wheel.readWheel().recent.length, 30)
+})
+
+test('旧转盘只补齐缺少的元素池，不覆盖已有内容', () => {
+  const file = path.join(root, 'intimacy-wheel', 'wheel.json')
+  mkdirSync(path.dirname(file), { recursive: true })
+  writeFileSync(file, JSON.stringify({
+    pools: [{ id: 'position', name: '自定义姿势', emoji: '🌙', options: [] }],
+    recent: [],
+  }))
+
+  const state = wheel.readWheel()
+  assert.equal(state.pools.find(item => item.id === 'position')?.name, '自定义姿势')
+  assert.equal(state.pools.find(item => item.id === 'roleplay')?.options.length, 5)
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).pools.some((item: any) => item.id === 'roleplay'), true)
 })
 
 test('长故事分段落盘并在完成前保持草稿', () => {

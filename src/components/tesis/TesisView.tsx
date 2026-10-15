@@ -5,7 +5,7 @@ import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
 import { tesis as tesisApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Check, X, MessageCircle, Send, Minus } from 'lucide-react'
+import { Plus, Trash2, Check, X, MessageCircle, Send, Minus, ChevronDown, ChevronUp } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface Chapter {
@@ -210,6 +210,7 @@ function ChapterCard({ ch, night, accent, accentBg, cardCls, mutedCls, onPatch, 
   onPatch: (id: string, patch: { title?: string; totalPages?: number; currentPages?: number }) => void
   onRemove: (id: string) => void
 }) {
+  const [expanded, setExpanded] = useState(false)
   const [editTotal, setEditTotal] = useState(false)
   const [totalDraft, setTotalDraft] = useState(String(ch.totalPages))
   const [curDraft, setCurDraft] = useState(String(ch.currentPages))
@@ -222,16 +223,17 @@ function ChapterCard({ ch, night, accent, accentBg, cardCls, mutedCls, onPatch, 
 
   return (
     <div className={`rounded-xl border p-3.5 ${cardCls}`}>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium flex-1">{ch.title}</p>
+      <button onClick={() => setExpanded(value => !value)} aria-expanded={expanded} className="flex w-full items-start justify-between gap-2 text-left">
+        <p className="min-w-0 flex-1 truncate text-sm font-medium">{ch.title}</p>
         <span className={`text-sm font-semibold ${accent}`}>{pct}%</span>
-      </div>
+        <span className={mutedCls}>{expanded ? <ChevronUp size={15}/> : <ChevronDown size={15}/>}</span>
+      </button>
 
       <div className={`mt-2 h-1.5 rounded-full overflow-hidden ${night ? 'bg-night-surface' : 'bg-[#DBB9B3]/25'}`}>
         <div className={`h-full rounded-full ${accentBg}`} style={{ width: `${pct}%` }} />
       </div>
 
-      <div className="mt-2.5 flex items-center justify-between">
+      {expanded && <div className="mt-2.5 flex items-center justify-between">
         <div className={`flex items-center gap-1.5 text-sm ${mutedCls}`}>
           <button
             onClick={() => commitCur(Math.max(0, ch.currentPages - 1))}
@@ -266,7 +268,7 @@ function ChapterCard({ ch, night, accent, accentBg, cardCls, mutedCls, onPatch, 
         <button onClick={() => onRemove(ch.id)} className={`p-1.5 rounded-lg ${mutedCls} ${night ? 'hover:bg-night-surface' : 'hover:bg-[#DBB9B3]/20'}`}>
           <Trash2 size={14} />
         </button>
-      </div>
+      </div>}
     </div>
   )
 }

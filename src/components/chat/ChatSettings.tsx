@@ -7,6 +7,7 @@ import { useChatStore } from '@/lib/chatStore'
 import { apiRequest } from '@/lib/api'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
+type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'timeline' | 'poems' | 'stories' | 'research' | 'tesis'
 interface Props {
   open: boolean
   onClose: () => void
@@ -37,7 +38,7 @@ export function ChatSettings(props: Props) {
   const [draft, setDraft] = useState('')
   const [original, setOriginal] = useState('')
   const [error, setError] = useState('')
-  const [guestbookUnread, setGuestbookUnread] = useState(0)
+  const [roomUnread, setRoomUnread] = useState<Partial<Record<RoomUnreadKey, number>>>({})
   const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null)
   const discardRef = useRef<HTMLDivElement>(null)
   const dialog = useRef<HTMLDivElement>(null)
@@ -76,8 +77,8 @@ export function ChatSettings(props: Props) {
   useEffect(() => {
     if (!open || panel !== 'menu') return
     let active = true
-    const refresh = () => apiRequest('/api/guestbook?mode=unread').then(data => { if (active) setGuestbookUnread(Number(data.unread) || 0) }).catch(() => {})
-    const clear = () => setGuestbookUnread(0)
+    const refresh = () => apiRequest('/api/room-unread').then(data => { if (active && data.unread) setRoomUnread(data.unread) }).catch(() => {})
+    const clear = () => { void refresh() }
     void refresh()
     const timer = window.setInterval(refresh, 15_000)
     window.addEventListener('lumbre-guestbook-read', clear)
@@ -88,9 +89,15 @@ export function ChatSettings(props: Props) {
   const button = `px-4 py-2.5 rounded-xl text-sm ${card}`
   const titles = { menu: '房间', star: 'SP', settings: '参数' }
   const navigate = (action?: () => void) => { onClose(); action?.() }
-  const row = (label: string, action: () => void, detail?: string, badge = 0) => <button key={label} onClick={action} className={`min-h-[52px] w-full flex items-center gap-2 px-2 py-3 text-left ${night ? 'rounded-xl bg-night-card' : 'border-b chat-dialog-line'}`}>
-    <span className="flex flex-1 min-w-0 items-baseline gap-2"><span className="text-sm">{label}</span>{detail && <span className="truncate text-xs opacity-50">{detail}</span>}</span>{badge > 0 && <span aria-label={`${badge} 条未读`} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${night ? 'bg-night-amber text-night-bg' : 'bg-[#DBB9B3] text-white'}`}>{badge > 99 ? '99+' : `+${badge}`}</span>}<ChevronRight size={16}/>
+  const openRoom = (room: RoomUnreadKey, action?: () => void) => {
+    setRoomUnread(current => ({ ...current, [room]: 0 }))
+    void apiRequest('/api/room-unread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room }) }).catch(() => {})
+    navigate(action)
+  }
+  const row = (label: string, action: () => void, detail?: string, badge = 0) => <button key={label} onClick={action} className={`flex min-h-[50px] w-full items-center gap-2 px-3 py-2.5 text-left ${night ? 'rounded-xl bg-night-card/70' : 'border-b chat-dialog-line last:border-b-0'}`}>
+    <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="text-sm leading-5">{label}</span>{detail && <span className="truncate text-[10px] leading-4 opacity-40">{detail}</span>}</span>{badge > 0 && <span aria-label={`${badge} 条未读`} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${night ? 'bg-night-amber text-night-bg' : 'bg-[#DBB9B3] text-white'}`}>{badge > 99 ? '99+' : `+${badge}`}</span>}<ChevronRight className="shrink-0 opacity-45" size={15}/>
   </button>
+  const roomGroup = (title: string, items: React.ReactNode) => <section className="space-y-1.5"><h3 className="px-2 text-[10px] tracking-[.18em] opacity-35">{title}</h3><div className={night ? 'space-y-1.5' : 'overflow-hidden rounded-2xl border chat-dialog-line bg-white/20'}>{items}</div></section>
   const slider = (label: string, value: number, change: (v: number) => void, min = 0, max = 1, step = .05, display?: string) => <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>{label}</span><span className="opacity-60">{display || `${Math.round(value * 100)}%`}</span></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))} className="w-full"/></label>
   const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? (night ? 'bg-night-muted' : 'bg-[#DBB9B3]') : 'bg-gray-400/40'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
   return <>
@@ -100,22 +107,28 @@ export function ChatSettings(props: Props) {
         {panel !== 'menu' && <button aria-label={initialPanel === 'menu' ? '返回房间' : '关闭'} onClick={() => initialPanel === 'menu' ? confirm(() => setPanel('menu')) : close()} className="p-2"><ChevronLeft size={20}/></button>}
         <h2 id="chat-menu-title" className="flex-1 font-medium">{titles[panel]}</h2>
       </div>
-      <div className={`flex-1 min-h-0 overflow-y-auto p-5 ${panel === 'menu' ? 'space-y-0' : 'space-y-4'}`}>
+      <div className={`flex-1 min-h-0 overflow-y-auto p-5 ${panel === 'menu' ? 'space-y-5' : 'space-y-4'}`}>
         {panel === 'menu' && <>
-          {row('券包', () => navigate(props.onCoupons))}
-          {row('Todo', () => navigate(props.onTodo))}
-          {row('小纸条', () => navigate(props.onNotes), undefined, guestbookUnread)}
-          {row('日记', () => navigate(props.onDiary))}
-          {row('照片', () => navigate(props.onPhotos))}
-          {row('共诗', () => navigate(props.onPoems))}
-          {row('枕边集', () => navigate(props.onStories))}
-          {row('星野手记', () => navigate(props.onResearch))}
-          {row('收藏夹', () => navigate(props.onFavorites))}
-          {row('愿望清单', () => navigate(props.onWishlist))}
-          {row('书影记录', () => navigate(props.onMedia))}
-          {row('饮食运动', () => navigate(props.onEnergy))}
-          {row('Timeline', () => navigate(props.onTimeline))}
-          {row('Tesis', () => navigate(props.onTesis))}
+          {roomGroup('一起生活', <>
+            {row('券包', () => openRoom('coupons', props.onCoupons), '承诺与小特权', roomUnread.coupons)}
+            {row('Todo', () => openRoom('todo', props.onTodo), '一起做的事', roomUnread.todo)}
+            {row('小纸条', () => openRoom('notes', props.onNotes), '留言与告状簿', roomUnread.notes)}
+            {row('日记', () => openRoom('diary', props.onDiary), '两个人的日记', roomUnread.diary)}
+            {row('愿望清单', () => openRoom('wishlist', props.onWishlist), '想要与想做', roomUnread.wishlist)}
+          </>)}
+          {roomGroup('收藏与记录', <>
+            {row('照片', () => openRoom('photos', props.onPhotos), '相册与旅行', roomUnread.photos)}
+            {row('收藏夹', () => openRoom('favorites', props.onFavorites), '留下喜欢的片段', roomUnread.favorites)}
+            {row('书影记录', () => openRoom('media', props.onMedia), '阅读、观影与共读', roomUnread.media)}
+            {row('饮食运动', () => openRoom('energy', props.onEnergy), '吃喝、运动与目标', roomUnread.energy)}
+            {row('Timeline', () => openRoom('timeline', props.onTimeline), '时间与日常记录', roomUnread.timeline)}
+          </>)}
+          {roomGroup('一起创作', <>
+            {row('共诗', () => openRoom('poems', props.onPoems), '轮流写一首诗', roomUnread.poems)}
+            {row('枕边集', () => openRoom('stories', props.onStories), '故事与长文', roomUnread.stories)}
+            {row('星野手记', () => openRoom('research', props.onResearch), '研究与灵感', roomUnread.research)}
+            {row('Tesis', () => openRoom('tesis', props.onTesis), '论文进度', roomUnread.tesis)}
+          </>)}
         </>}
         {panel === 'star' && <>
           <div className="flex items-center justify-between gap-2"><span className="text-sm">System Prompt / 人设</span>{!editing && <button className={button} onClick={() => { setOriginal(settings.systemPrompt); setDraft(settings.systemPrompt); setEditing(true); setError('') }}>编辑</button>}</div>

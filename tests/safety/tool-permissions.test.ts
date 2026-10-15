@@ -13,6 +13,7 @@ let confirmations: typeof import('../../src/server/data/repositories/tool-securi
 let contextModule: typeof import('../../src/server/agent/context')
 let policy: typeof import('../../src/server/agent/policy')
 let registry: typeof import('../../src/server/agent/registry')
+let roomUnread: typeof import('../../src/server/room-unread-store')
 
 before(async () => {
   contextModule = await import('../../src/server/agent/context')
@@ -20,13 +21,14 @@ before(async () => {
   registry = await import('../../src/server/agent/registry')
   executor = await import('../../src/server/agent/executor')
   confirmations = await import('../../src/server/data/repositories/tool-security')
+  roomUnread = await import('../../src/server/room-unread-store')
 })
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 111)
-  assert.equal(registry.ALL_TOOLS.length, 111)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 111)
+  assert.equal(registry.registeredToolCount(), 113)
+  assert.equal(registry.ALL_TOOLS.length, 113)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 113)
   assert.deepEqual(registry.ALL_TOOLS.slice(0, 6).map(tool => tool.name), ['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
@@ -59,7 +61,7 @@ test('unattended wake receives every registered Lumbre tool including destructiv
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake' })
   const names = registry.toolsForContext(wake).map(tool => tool.name)
   assert.equal(names.length, registry.registeredToolCount())
-  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'read_health_summary', 'read_energy_summary', 'delete_energy_entry', 'save_pantry_item', 'save_energy_goal', 'delete_energy_goal', 'set_password', 'confirm_void_coupon', 'bite_otter_nape']) {
+  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'read_health_summary', 'read_energy_summary', 'delete_energy_entry', 'save_pantry_item', 'save_grocery_item', 'delete_grocery_item', 'save_energy_goal', 'delete_energy_goal', 'set_password', 'confirm_void_coupon', 'bite_otter_nape']) {
     assert.equal(names.includes(allowed), true, allowed)
   }
   const trace = registry.toolsForContext(wake).find(tool => tool.name === 'trace')!
@@ -135,4 +137,17 @@ test('audit log records actor, source, tool and outcome without content values',
   assert.match(raw, /"source":"chat"/)
   assert.match(raw, /"tool":"get_weather"/)
   assert.match(raw, /"outcome":"allowed"/)
+})
+
+test('successful star writes add one room unread while reads and confirmations do not', async () => {
+  roomUnread.markRoomRead('notes')
+  const context = contextModule.createToolContext({ source: 'chat', actorId: 'fixture-user', sessionId: 'unread-session' })
+  const created = JSON.parse(await executor.executeTool('write_note', { author: 'star', content: '新的小纸条' }, context))
+  assert.equal(roomUnread.readRoomUnreadCounts().notes, 1)
+
+  await executor.executeTool('read_notes', {}, context)
+  assert.equal(roomUnread.readRoomUnreadCounts().notes, 1)
+
+  await executor.executeTool('delete_note', { note_id: created.id, author: 'star' }, context)
+  assert.equal(roomUnread.readRoomUnreadCounts().notes, 1)
 })

@@ -479,7 +479,7 @@ export const LIFE_TOOL_DEFINITIONS = [
   },
   {
     "name": "read_energy_summary",
-    "description": "查看小火某天或最近几天的饮食、饮水、液体、运动时长、体重、体脂率、预计消耗与热量缺口，也会返回家中食材和所选日期的目标及自动进度。所有热量都是估值，不能用于医疗诊断。",
+    "description": "查看小火某天或最近几天的饮食、饮水、液体、运动时长、体重、体脂率、基础代谢、活动消耗、预计总消耗与热量缺口，也会返回家中食材、下次买菜清单和所选日期的目标及自动进度。所有热量都是估值，不能用于医疗诊断。",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -582,6 +582,28 @@ export const LIFE_TOOL_DEFINITIONS = [
     "input_schema": {
       "type": "object",
       "properties": { "id": { "type": "string", "description": "食材id" } },
+      "required": ["id"]
+    }
+  },
+  {
+    "name": "save_grocery_item",
+    "description": "新增、修改或勾选下次买菜清单中的一项。小火会照着这份清单购买；修改时先用read_energy_summary取得item id。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "修改已有项目时传" },
+        "name": { "type": "string", "description": "要买的食材或物品" },
+        "quantity": { "type": "string", "description": "可选数量或规格，例如2盒、500克" },
+        "done": { "type": "boolean", "description": "是否已经买到" }
+      }
+    }
+  },
+  {
+    "name": "delete_grocery_item",
+    "description": "从下次买菜清单彻底删除一项。",
+    "input_schema": {
+      "type": "object",
+      "properties": { "id": { "type": "string", "description": "买菜清单项目id" } },
       "required": ["id"]
     }
   },

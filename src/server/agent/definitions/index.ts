@@ -28,7 +28,7 @@ const TOOL_ORDER = [
   'get_weather', 'get_location',
   'update_period', 'read_period', 'read_health_summary',
   'read_energy_summary', 'log_energy_intake', 'log_energy_exercise', 'record_body_measurement', 'edit_energy_entry', 'delete_energy_entry',
-  'save_pantry_item', 'delete_pantry_item', 'save_energy_goal', 'delete_energy_goal',
+  'save_pantry_item', 'delete_pantry_item', 'save_grocery_item', 'delete_grocery_item', 'save_energy_goal', 'delete_energy_goal',
   'gmail_status', 'send_email', 'read_emails', 'search_emails', 'read_email_detail', 'reply_email',
   'read_bookmarks', 'add_bookmark', 'edit_bookmark',
   'read_coupons', 'create_coupon', 'sign_coupon', 'edit_coupon', 'use_coupon', 'void_coupon', 'confirm_void_coupon',

@@ -4,7 +4,15 @@ import { createToolContext } from './context'
 import { recordToolAudit } from './audit'
 import { confirmationTarget, evaluateToolPolicy, resolveToolRisk } from './policy'
 import { getRegisteredTool } from './registry'
-import type { RegisteredTool, ToolExecutionRequest, ToolExecutionResult, ToolRiskLevel } from './types'
+import { incrementRoomUnread, type RoomUnreadKey } from '@/server/room-unread-store'
+import type { RegisteredTool, ToolDomain, ToolExecutionRequest, ToolExecutionResult, ToolRiskLevel } from './types'
+
+const ROOM_FOR_DOMAIN: Partial<Record<ToolDomain, RoomUnreadKey>> = {
+  coupons: 'coupons', todo: 'todo', notes: 'notes', diary: 'diary', wishes: 'wishlist',
+  photos: 'photos', bookmarks: 'favorites', media: 'media', health: 'energy', timeline: 'timeline',
+  poems: 'poems', stories: 'stories', research: 'research', thesis: 'tesis',
+}
+const UNREAD_EXCLUDED_TOOLS = new Set(['write_guestbook', 'reply_guestbook', 'unlock_diary', 'set_password', 'update_coread_progress'])
 
 function safeError(error: unknown): string {
   return error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)
@@ -41,6 +49,10 @@ async function runAllowedTool(
       durationMs: Date.now() - started,
       error: returnedError ? result.slice(0, 300) : undefined,
     })
+    const room = risk === 'yellow' && !returnedError && !UNREAD_EXCLUDED_TOOLS.has(request.name)
+      ? ROOM_FOR_DOMAIN[tool.domain]
+      : undefined
+    if (room) incrementRoomUnread(room)
     return { ...request, result, error: returnedError || undefined }
   } catch (error) {
     const message = safeError(error)

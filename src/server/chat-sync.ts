@@ -304,6 +304,24 @@ export function loadSyncSessionHistory(id: string, requestedBefore: number, requ
   }
 }
 
+/** Locate one durable message without sending the whole conversation to a phone. */
+export function loadSyncMessageContext(id: string, messageId: string, requestedRadius = 4) {
+  if (!messageId || messageId.length > 200) return null
+  const session = loadSyncSessions([id])[0]
+  if (!session) return null
+  const messages = Array.isArray(session.messages) ? session.messages : []
+  const targetIndex = messages.findIndex((message: any) => message?.id === messageId)
+  if (targetIndex < 0) return null
+  const radius = Math.max(2, Math.min(10, Math.floor(requestedRadius) || 4))
+  return {
+    sessionId: id,
+    sessionTitle: typeof session.title === 'string' ? session.title : '原聊天',
+    targetIndex,
+    total: messages.length,
+    messages: messages.slice(Math.max(0, targetIndex - radius), targetIndex + radius + 1),
+  }
+}
+
 export function loadSyncState(): SyncState {
   const manifest = loadSyncManifest()
   return {

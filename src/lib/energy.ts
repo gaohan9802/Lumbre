@@ -32,6 +32,16 @@ export interface PantryItem {
   updated_at: string | null
 }
 
+export interface GroceryItem {
+  id: string
+  name: string
+  quantity: string
+  done: boolean
+  recorded_by: EnergyActor
+  created_at: string
+  updated_at: string | null
+}
+
 export interface EnergyGoal {
   id: string
   date: string
@@ -92,8 +102,19 @@ export interface EnergyDaySummary {
   exercise_kcal: number
   exercise_minutes: number
   health_active_kcal: number | null
+  baseline_kcal: number | null
+  activity_kcal: number
   total_burn_kcal: number | null
   deficit_kcal: number | null
+  health: {
+    steps?: number
+    sleep_minutes?: number
+    active_energy_kcal?: number
+    exercise_minutes?: number
+    weight_kg?: number
+    body_fat_percent?: number
+    synced_at: string
+  } | null
   entries: EnergyEntry[]
   measurement: BodyMeasurement | null
 }

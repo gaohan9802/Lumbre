@@ -203,6 +203,7 @@ export function MemoryView() {
   const { theme } = useTheme()
   const isNight = theme === 'night'
   const [activeTab, setActiveTab] = useState<TabKey>('clusters')
+  const [favoriteMemoryId, setFavoriteMemoryId] = useState('')
   const [buckets, setBuckets] = useState<Bucket[]>(() => {
     if (typeof window === 'undefined') return []
     try { return JSON.parse(sessionStorage.getItem('lumbre-memory-page') || '[]') } catch { return [] }
@@ -222,6 +223,17 @@ export function MemoryView() {
   const [batchMode, setBatchMode] = useState(false)
   const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set())
   const [confirmAction, setConfirmAction] = useState<{kind:'archive';id:string}|{kind:'purge';ids:string[]}|null>(null)
+
+  useEffect(() => {
+    let target: any
+    try { target = JSON.parse(sessionStorage.getItem('lumbre-favorite-source') || 'null') } catch {}
+    if (target?.kind !== 'memory') return
+    sessionStorage.removeItem('lumbre-favorite-source')
+    const memoryId = typeof target.metadata?.memoryId === 'string' ? target.metadata.memoryId : ''
+    if (!memoryId) return window.alert('这条旧收藏没有保存原记忆位置，快照仍然可以正常阅读。')
+    setFavoriteMemoryId(memoryId)
+    setActiveTab('star')
+  }, [])
 
   const fetchBuckets = useCallback(async (append = false) => {
     const cursor = append ? nextCursor : 0
@@ -432,7 +444,7 @@ export function MemoryView() {
               {activeTab === 'nodes' && <NodesTab buckets={filtered} isNight={isNight} onSelect={openDetail} batchMode={batchMode} batchSelected={batchSelected} toggleBatch={toggleBatch} />}
               {activeTab === 'lines' && <LinesTab buckets={filtered} isNight={isNight} onSelect={openDetail} />}
               {activeTab === 'evolution' && <EvolutionTab buckets={filtered} isNight={isNight} onSelect={openDetail} batchMode={batchMode} batchSelected={batchSelected} toggleBatch={toggleBatch} />}
-              {activeTab === 'star' && <StarMemoryTab isNight={isNight} />}
+              {activeTab === 'star' && <StarMemoryTab isNight={isNight} favoriteMemoryId={favoriteMemoryId} />}
               {activeTab === 'breath' && <BreathTab isNight={isNight} />}
               {activeTab === 'network' && <NetworkTab isNight={isNight} />}
               {activeTab === 'admin' && <AdminTab isNight={isNight} onRefresh={() => fetchBuckets(false)} />}
@@ -559,7 +571,7 @@ export function MemoryView() {
   )
 }
 
-function StarMemoryTab({ isNight }: { isNight: boolean }) {
+function StarMemoryTab({ isNight, favoriteMemoryId = '' }: { isNight: boolean; favoriteMemoryId?: string }) {
   const { currentUser } = useApp()
   const [status, setStatus] = useState<any>(null)
   const [candidates, setCandidates] = useState<StarCandidate[]>([])
@@ -595,6 +607,8 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   const [candidateEditDraft, setCandidateEditDraft] = useState({ type: 'observation', summary: '', details: '', importance: 5, familyIds: [] as string[] })
   const [favoriteMemoryIds, setFavoriteMemoryIds] = useState<Set<string>>(new Set())
   const [starDialog, setStarDialog] = useState<StarActionDialog | null>(null)
+  const [focusedMemoryId, setFocusedMemoryId] = useState('')
+  const handledFavoriteRef = useRef('')
   const c = useColors(isNight)
 
   const load = useCallback(async () => {
@@ -643,6 +657,15 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
   }
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    if (loading || !favoriteMemoryId || handledFavoriteRef.current === favoriteMemoryId) return
+    handledFavoriteRef.current = favoriteMemoryId
+    if (!memories.some(item => item.id === favoriteMemoryId)) return window.alert('原记忆已不存在，收藏快照仍然保留。')
+    setSection('memories')
+    setFocusedMemoryId(favoriteMemoryId)
+    const timer = setTimeout(() => document.getElementById(`star-memory-${favoriteMemoryId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
+    return () => clearTimeout(timer)
+  }, [favoriteMemoryId, loading, memories])
   useEffect(() => {
     apiRequest('/api/favorites?kind=memory').then((items: any[]) => setFavoriteMemoryIds(new Set((Array.isArray(items) ? items : []).map(item => item.targetKey)))).catch(() => {})
   }, [])
@@ -1085,7 +1108,7 @@ function StarMemoryTab({ isNight }: { isNight: boolean }) {
         {activeWorking.length === 0 ? <div className={`rounded-xl border ${c.border} py-8 text-center text-xs ${c.muted}`}>暂无近期内容</div> : (
           <div className="space-y-2">
             {activeWorking.map(item => (
-              <article key={item.id} className={`rounded-xl border ${c.border} p-3`}>
+              <article id={`star-memory-${item.id}`} key={item.id} className={`rounded-xl border ${c.border} p-3 transition-shadow ${focusedMemoryId === item.id ? 'ring-2 ring-current/25' : ''}`}>
                 <div className={`text-[10px] ${c.muted}`}>{item.type} · {item.retentionDays} 天 · {item.status === 'due' ? '待整理' : `到期 ${item.expiresAt.slice(0, 10)}`}</div>
                 <p className="mt-1 text-xs leading-5">{item.summary}</p>
                 {item.suggestedFamilyIds.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{item.suggestedFamilyIds.map(id => <span key={id} className={`rounded px-1.5 py-0.5 text-[9px] ${c.accentBg} ${c.accent}`}>{familyNames.get(id) || '未知家族'}</span>)}</div>}

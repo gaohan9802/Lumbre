@@ -19,16 +19,18 @@ const seed: Array<[string, string, string, string[]]> = [
   ['warmup', '前戏', '💋', ['长吻', '按摩', '隔着衣服逗弄', '互相说想要什么', '蒙眼探索']],
   ['mood', '氛围', '✨', ['只开一盏灯', '放一张歌单', '安静听彼此', '洗完澡开始', '先喝点喜欢的东西']],
   ['prop', '衣物与道具', '🎀', ['只选一件好看的衣服', '眼罩', '丝带', '润滑剂', '今天不用道具']],
+  ['roleplay', '角色扮演', '🎭', ['陌生人初遇', '酒吧搭讪', '秘密任务搭档', '吸血鬼与猎人', '酒店偶遇']],
   ['aftercare', '收尾', '🫶', ['抱着休息', '一起洗澡', '喝水吃点东西', '说一句最喜欢的瞬间', '盖好被子聊天']],
 ]
+
+function seededPool([id, name, emoji, values]: (typeof seed)[number], at: string): WheelPool {
+  return { id, name, emoji, options: values.map((text, index) => ({ id: `${id}-${index + 1}`, text, enabled: true, created_by: 'fire', created_at: at, updated_at: at })) }
+}
 
 function defaults(): WheelData {
   const at = new Date().toISOString()
   return {
-    pools: seed.map(([id, name, emoji, values]) => ({
-      id, name, emoji,
-      options: values.map((text, index) => ({ id: `${id}-${index + 1}`, text, enabled: true, created_by: 'fire', created_at: at, updated_at: at })),
-    })),
+    pools: seed.map(item => seededPool(item, at)),
     recent: [],
   }
 }
@@ -53,7 +55,15 @@ function pool(data: WheelData, id: string): WheelPool {
   return found
 }
 
-export function readWheel(): WheelData { return readJsonFile(FILE, options) }
+export function readWheel(): WheelData {
+  return updateJsonFile(FILE, options, data => {
+    const missing = seed.filter(([id]) => !data.pools.some(item => item.id === id))
+    if (!missing.length) return undefined
+    const at = now()
+    data.pools.push(...missing.map(item => seededPool(item, at)))
+    return data
+  })
+}
 
 export function addWheelOption(poolId: string, value: unknown, actor: WheelActor): WheelOption {
   const text = clean(value, 160)

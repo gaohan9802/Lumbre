@@ -77,23 +77,19 @@ export function GuestbookBoard({ actor, endpoint, onLoaded }: { actor: Actor; en
   const name = (value: Actor) => value === 'fire' ? '小火' : value === 'star' ? '星星' : board.guest_name || '访客'
   const icon = (value: Actor) => value === 'fire' ? '🦦' : value === 'star' ? '🐆' : '🌙'
   const canDelete = (value: Actor) => actor === value
-  const colors = night ? ['#182632', '#182632', '#182632'] : ['#FFFAF5', '#FFF7F3', '#FBF4EF']
-  const borders = night ? ['#CFA7A2', '#E2C3BF', '#B88984'] : ['#DBB9B3', '#E3C7BF', '#CFA9A1']
-  const rotations = [-1.2, 0.8, -0.5, 1.1, -0.7, 0.4]
-
   return (
-    <div className={`h-full overflow-y-auto px-4 pb-6 ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
-      <div className={`sticky top-0 z-10 -mx-4 mb-4 px-4 py-4 ${night ? 'bg-night-bg/95' : 'bg-[#fffaf6]/95'} backdrop-blur`}>
+    <div className={`h-full overflow-y-auto px-4 pb-6 pt-4 ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
+      <div className={`mx-auto mb-4 max-w-3xl rounded-2xl border p-3 ${night ? 'border-night-border bg-night-card/70' : 'chat-dialog-card'}`}>
         <textarea
           value={content}
           onChange={event => setContent(event.target.value)}
           placeholder={`以${name(actor)}的身份写一张告状纸…`}
-          rows={3}
+          rows={2}
           maxLength={2000}
-          className={`w-full resize-none rounded-2xl border px-4 py-3 text-sm leading-6 outline-none ${night ? 'border-night-border bg-night-surface text-night-text' : 'border-[#ead5ce] bg-white/75 text-[#3f2c29]'}`}
+          className="w-full resize-none bg-transparent px-1 py-1 text-sm leading-6 outline-none"
         />
         <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="text-xs opacity-45">{icon(actor)} {name(actor)} · 三个人的小纸条</span>
+          <span className="text-xs opacity-45">{icon(actor)} {name(actor)}</span>
           <button disabled={busy || !content.trim()} onClick={() => void submit(content)} className={`rounded-xl px-4 py-2 text-xs font-medium disabled:opacity-35 ${night ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent'}`}>
             {busy ? '贴上去…' : '贴上去'}
           </button>
@@ -104,20 +100,19 @@ export function GuestbookBoard({ actor, endpoint, onLoaded }: { actor: Actor; en
       {board.messages.length === 0 ? (
         <div className="py-16 text-center text-sm opacity-35">第一张告状纸还没有贴上来</div>
       ) : (
-        <div className="columns-1 gap-3 space-y-3 sm:columns-2">
-          {board.messages.map((item, index) => (
-            <article key={item.id} className="relative break-inside-avoid rounded-2xl p-4 shadow-sm transition-transform hover:rotate-0" style={{ background: colors[index % colors.length], borderLeft: `3px solid ${borders[index % borders.length]}`, transform: `rotate(${rotations[index % rotations.length]}deg)` }}>
-              <span aria-hidden className="absolute -top-2 left-4 text-sm">📌</span>
+        <div className="mx-auto max-w-3xl space-y-3">
+          {board.messages.map(item => (
+            <article key={item.id} className={`rounded-2xl border p-4 ${night ? 'border-night-border bg-night-card/70' : 'chat-dialog-card'}`}>
               <div className="flex items-center justify-between gap-3 text-[11px]">
-                <strong className="font-medium">{icon(item.author)} {name(item.author)}</strong>
+                <strong className="flex items-center gap-2 font-medium"><span className={`h-1.5 w-1.5 rounded-full ${item.author === 'star' ? 'bg-[#c89f99]' : item.author === 'fire' ? 'bg-[#9caaa2]' : 'bg-[#b7a4c6]'}`}/>{icon(item.author)} {name(item.author)}</strong>
                 <time className="opacity-40">{formatMadridShort(item.created_at)}</time>
               </div>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{item.content}</p>
 
               {item.replies.length > 0 && (
-                <div className={`mt-3 space-y-2 border-t border-dashed pt-3 ${night ? 'border-night-border' : 'border-[#dec8c1]'}`}>
+                <div className={`mt-3 space-y-2 border-t pt-3 ${night ? 'border-night-border' : 'chat-dialog-line'}`}>
                   {item.replies.map(replyItem => (
-                    <div key={replyItem.id} className="group flex gap-2 text-xs leading-5">
+                    <div key={replyItem.id} className={`group flex gap-2 rounded-xl px-3 py-2 text-xs leading-5 ${night ? 'bg-night-bg/45' : 'bg-[#DBB9B3]/10'}`}>
                       <span>{icon(replyItem.author)}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
@@ -139,7 +134,7 @@ export function GuestbookBoard({ actor, endpoint, onLoaded }: { actor: Actor; en
                 </div>
               )}
 
-              <div className="mt-3 flex items-center gap-3 text-[11px]">
+              <div className={`mt-3 flex items-center gap-3 border-t pt-3 text-[11px] ${night ? 'border-night-border' : 'chat-dialog-line'}`}>
                 <button onClick={() => setReplyingTo({ messageId: item.id, label: name(item.author) })} className="opacity-45 hover:opacity-80">回复</button>
                 <button onClick={() => shareToChat({ kind: 'guestbook', title: '📌 告状簿', subtitle: `${icon(item.author)} ${name(item.author)} · ${formatMadridShort(item.created_at)}`, body: item.content, metadata: { ...item, guest_name: board.guest_name } })} aria-label="分享到 Chat" title="分享到 Chat" className="opacity-35 hover:opacity-70"><Share2 size={11}/></button>
                 {canDelete(item.author) && <button onClick={() => setDeleteTarget({ message_id: item.id })} className="flex items-center gap-1 opacity-35 hover:opacity-70"><Trash2 size={10}/> 撕掉</button>}

@@ -109,6 +109,7 @@ function WishColumn({
   loading: boolean
 }) {
   const [showAdd, setShowAdd] = useState(false)
+  const [showDone, setShowDone] = useState(false)
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
   const [priority, setPriority] = useState<Priority>('want')
@@ -197,20 +198,26 @@ function WishColumn({
 
       {loading ? (
         <p className={`text-sm ${mutedCls} py-4 text-center`}>加载中…</p>
-      ) : active.length === 0 && done.length === 0 ? null : (
+      ) : active.length === 0 && done.length === 0 ? (
+        <p className={`py-8 text-center text-sm ${mutedCls}`}>还没有愿望，等第一颗小星星落下来。</p>
+      ) : (
         <div className="space-y-2.5">
           {active.map(w => (
             <WishCard key={w.id} w={w} currentUser={currentUser} night={night} reload={reload} />
           ))}
 
           {done.length > 0 && (
-            <div className={`pt-2 mt-1 text-xs ${mutedCls} flex items-center gap-2`}>
-              <span>✨ 实现了的愿望</span>
-              <span className="opacity-70">({done.length})</span>
+            <button
+              onClick={() => setShowDone(value => !value)}
+              aria-expanded={showDone}
+              className={`flex w-full items-center gap-2 pt-2 text-left text-xs ${mutedCls}`}
+            >
+              <span>✨ 实现了的愿望 · {done.length}</span>
               <div className={`flex-1 h-px ${night ? 'bg-night-border' : 'bg-[#a73a32]/15'}`} />
-            </div>
+              {showDone ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
+            </button>
           )}
-          {done.map(w => (
+          {showDone && done.map(w => (
             <WishCard key={w.id} w={w} currentUser={currentUser} night={night} reload={reload} />
           ))}
         </div>
