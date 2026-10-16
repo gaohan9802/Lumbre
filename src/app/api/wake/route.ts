@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     ...(body.random && typeof body.random === 'object' ? { random: body.random } : {}),
     ...(body.inactivity && typeof body.inactivity === 'object' ? { inactivity: body.inactivity } : {}),
     ...(body.warmCache && typeof body.warmCache === 'object' ? { warmCache: body.warmCache } : {}),
+    ...(body.opus55WarmCache && typeof body.opus55WarmCache === 'object' ? { opus55WarmCache: body.opus55WarmCache } : {}),
   })
 
   startWakeEngine()

@@ -14,7 +14,7 @@
 import { createHash, randomUUID } from 'crypto'
 import { addMadridDays, madridDateKey, parseMadridDateTime } from '@/lib/madrid-time'
 import { isCcEffort, isCcModel, type CcEffort } from '@/lib/cc-model'
-import { ccSystemPromptForModel } from '@/lib/cc-system-prompt'
+import { ccSystemPromptForModel, OPUS_55_MODEL } from '@/lib/cc-system-prompt'
 import { readChatEventStream } from '@/features/chat/api/event-stream'
 import { appendSyncSessionMessage, loadSyncManifest, loadSyncSessions } from './chat-sync'
 import {
@@ -112,6 +112,10 @@ export interface WarmCacheSetting {
   error?: string
 }
 
+export interface Opus55WarmCacheSetting extends WarmCacheSetting {
+  sessionId: string | null
+}
+
 export interface WakeConfig {
   enabled: boolean             // legacy aggregate; individual switches are authoritative
   sessionId: string | null   // which session to wake into
@@ -127,6 +131,7 @@ export interface WakeConfig {
   random: RandomWakeSetting
   inactivity: InactivityWakeSetting
   warmCache: WarmCacheSetting
+  opus55WarmCache: Opus55WarmCacheSetting
   lastByTrigger: Partial<Record<'day' | 'night' | 'random', number>>
   randomSeed: string
 }
@@ -158,6 +163,7 @@ function defaultWakeConfig(): WakeConfig {
     random: { enabled: false, timesPerDay: 2, day: '', times: [] },
     inactivity: { enabled: false, afterHours: 4, handledActivityAt: 0 },
     warmCache: { enabled: false, observedCcAt: 0, lastAttemptAt: 0, lastSuccessAt: 0, status: 'idle' },
+    opus55WarmCache: { enabled: false, sessionId: null, observedCcAt: 0, lastAttemptAt: 0, lastSuccessAt: 0, status: 'idle' },
     lastByTrigger: {}, randomSeed: randomUUID(),
   }
 }
@@ -165,6 +171,21 @@ function defaultWakeConfig(): WakeConfig {
 function clampInt(value: unknown, fallback: number, min: number, max: number) {
   const number = Math.floor(Number(value))
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback
+}
+
+function normalizeWarmCache(raw: any): WarmCacheSetting {
+  const status = ['idle', 'warmed', 'busy', 'cold', 'miss', 'failed', 'no-session'].includes(raw?.status)
+    ? raw.status : 'idle'
+  return {
+    enabled: !!raw?.enabled,
+    observedCcAt: Math.max(0, Number(raw?.observedCcAt) || 0),
+    lastAttemptAt: Math.max(0, Number(raw?.lastAttemptAt) || 0),
+    lastSuccessAt: Math.max(0, Number(raw?.lastSuccessAt) || 0),
+    status,
+    ...(Number.isFinite(Number(raw?.cacheReadTokens)) ? { cacheReadTokens: Math.max(0, Number(raw.cacheReadTokens)) } : {}),
+    ...(Number.isFinite(Number(raw?.cacheCreationTokens)) ? { cacheCreationTokens: Math.max(0, Number(raw.cacheCreationTokens)) } : {}),
+    ...(typeof raw?.error === 'string' && raw.error ? { error: raw.error.slice(0, 300) } : {}),
+  }
 }
 
 function normalizeWakeConfig(raw: any): WakeConfig {
@@ -188,17 +209,11 @@ function normalizeWakeConfig(raw: any): WakeConfig {
     afterHours: clampInt(raw?.inactivity?.afterHours, 4, 1, 72),
     handledActivityAt: Math.max(0, Number(raw?.inactivity?.handledActivityAt) || 0),
   }
-  const warmStatus = ['idle', 'warmed', 'busy', 'cold', 'miss', 'failed', 'no-session'].includes(raw?.warmCache?.status)
-    ? raw.warmCache.status : 'idle'
-  const warmCache = {
-    enabled: !!raw?.warmCache?.enabled,
-    observedCcAt: Math.max(0, Number(raw?.warmCache?.observedCcAt) || 0),
-    lastAttemptAt: Math.max(0, Number(raw?.warmCache?.lastAttemptAt) || 0),
-    lastSuccessAt: Math.max(0, Number(raw?.warmCache?.lastSuccessAt) || 0),
-    status: warmStatus as WarmCacheSetting['status'],
-    ...(Number.isFinite(Number(raw?.warmCache?.cacheReadTokens)) ? { cacheReadTokens: Math.max(0, Number(raw.warmCache.cacheReadTokens)) } : {}),
-    ...(Number.isFinite(Number(raw?.warmCache?.cacheCreationTokens)) ? { cacheCreationTokens: Math.max(0, Number(raw.warmCache.cacheCreationTokens)) } : {}),
-    ...(typeof raw?.warmCache?.error === 'string' && raw.warmCache.error ? { error: raw.warmCache.error.slice(0, 300) } : {}),
+  const warmCache = normalizeWarmCache(raw?.warmCache)
+  const opus55WarmCache = {
+    ...normalizeWarmCache(raw?.opus55WarmCache),
+    sessionId: typeof raw?.opus55WarmCache?.sessionId === 'string' && raw.opus55WarmCache.sessionId
+      ? raw.opus55WarmCache.sessionId : null,
   }
   const lastWakeAt = Math.max(0, Number(raw?.lastWakeAt) || 0)
   return {
@@ -221,6 +236,7 @@ function normalizeWakeConfig(raw: any): WakeConfig {
     random,
     inactivity,
     warmCache,
+    opus55WarmCache,
     lastByTrigger: {
       day: Math.max(0, Number(raw?.lastByTrigger?.day) || lastWakeAt || (day.enabled ? Date.now() : 0)),
       night: Math.max(0, Number(raw?.lastByTrigger?.night) || lastWakeAt || (night.enabled ? Date.now() : 0)),
@@ -251,6 +267,7 @@ export function updateWakeSettings(patch: Partial<Pick<WakeConfig, 'enabled' | '
   random?: Partial<Pick<RandomWakeSetting, 'enabled' | 'timesPerDay'>>
   inactivity?: Partial<Pick<InactivityWakeSetting, 'enabled' | 'afterHours'>>
   warmCache?: Partial<Pick<WarmCacheSetting, 'enabled'>>
+  opus55WarmCache?: Partial<Pick<Opus55WarmCacheSetting, 'enabled' | 'sessionId'>>
 }): WakeConfig {
   return mutateWakeConfig(config => {
     if (patch.enabled !== undefined) {
@@ -273,6 +290,17 @@ export function updateWakeSettings(patch: Partial<Pick<WakeConfig, 'enabled' | '
     }
     if (patch.inactivity) config.inactivity = { ...config.inactivity, ...patch.inactivity }
     if (patch.warmCache) config.warmCache = { ...config.warmCache, ...patch.warmCache, status: 'idle', error: undefined }
+    if (patch.opus55WarmCache) {
+      const sessionChanged = patch.opus55WarmCache.sessionId !== undefined
+        && patch.opus55WarmCache.sessionId !== config.opus55WarmCache.sessionId
+      config.opus55WarmCache = {
+        ...config.opus55WarmCache,
+        ...patch.opus55WarmCache,
+        ...(sessionChanged ? { observedCcAt: 0, lastAttemptAt: 0, lastSuccessAt: 0, cacheReadTokens: 0, cacheCreationTokens: 0 } : {}),
+        status: 'idle',
+        error: undefined,
+      }
+    }
   })
 }
 
@@ -397,9 +425,13 @@ export function nextWakeSchedule(config: WakeConfig, now = Date.now(), ccActivit
   const warmBase = Math.max(ccActivityAt, config.warmCache.observedCcAt, config.warmCache.lastSuccessAt)
   const warmCache = config.sessionId && config.warmCache.enabled && warmBase > 0 && now - warmBase < WARM_EXPIRES_MS
     ? warmBase + WARM_AFTER_MS : null
+  const opus55WarmBase = Math.max(config.opus55WarmCache.observedCcAt, config.opus55WarmCache.lastSuccessAt)
+  const opus55WarmCache = config.opus55WarmCache.sessionId && config.opus55WarmCache.enabled
+    && opus55WarmBase > 0 && now - opus55WarmBase < WARM_EXPIRES_MS
+    ? opus55WarmBase + WARM_AFTER_MS : null
   const ordinary = [day, night, random, inactivity].filter((value): value is number => typeof value === 'number')
   const overall = [alarm?.at, ...ordinary].filter((value): value is number => typeof value === 'number').sort((a, b) => a - b)[0] || null
-  return { alarm: alarm ? { at: alarm.at, note: alarm.note } : null, day, night, random, inactivity, warmCache, overall }
+  return { alarm: alarm ? { at: alarm.at, note: alarm.note } : null, day, night, random, inactivity, warmCache, opus55WarmCache, overall }
 }
 
 /** Legacy summary used by older clients while the new page reads the full schedule. */
@@ -813,62 +845,77 @@ async function generationBusy() {
 }
 
 async function warmCacheTick(config: WakeConfig, now: number) {
-  if (!config.warmCache.enabled || !config.sessionId || now - lastWarmCheckAt < 60_000) return
+  const targets: Array<{
+    key: 'warmCache' | 'opus55WarmCache'
+    sessionId: string | null
+    model?: string
+    reason: string
+  }> = [
+    { key: 'warmCache', sessionId: config.sessionId, reason: '保持 Claude Code 一小时缓存' },
+    { key: 'opus55WarmCache', sessionId: config.opus55WarmCache.sessionId, model: OPUS_55_MODEL, reason: '保持 Opus 5.5 一小时缓存' },
+  ]
+  if (!targets.some(target => config[target.key].enabled && target.sessionId) || now - lastWarmCheckAt < 60_000) return
   lastWarmCheckAt = now
-  const status = await readCcStatus(config.sessionId)
-  if (!status.available || status.context.reason === 'gateway_unavailable') {
-    mutateWakeConfig(fresh => {
-      fresh.warmCache.status = 'failed'
-      fresh.warmCache.error = 'CC 线路暂时不可用'
-    })
-    return
-  }
-  const observed = status.context.available && status.context.collectedAt
-    ? Date.parse(status.context.collectedAt) : 0
-  const base = Math.max(observed || 0, config.warmCache.observedCcAt, config.warmCache.lastSuccessAt)
-  if (!base) {
-    mutateWakeConfig(fresh => { fresh.warmCache.status = 'no-session' })
-    return
-  }
-  mutateWakeConfig(fresh => { fresh.warmCache.observedCcAt = Math.max(fresh.warmCache.observedCcAt, base) })
-  const age = now - base
-  if (age < WARM_AFTER_MS) return
-  if (age >= WARM_EXPIRES_MS) {
-    mutateWakeConfig(fresh => { fresh.warmCache.status = 'cold'; fresh.warmCache.error = undefined })
-    return
-  }
-  if (await generationBusy()) {
-    mutateWakeConfig(fresh => { fresh.warmCache.status = 'busy' })
-    return
-  }
+  for (const target of targets) {
+    const setting = config[target.key]
+    if (!setting.enabled || !target.sessionId) continue
+    const status = await readCcStatus(target.sessionId)
+    if (!status.available || status.context.reason === 'gateway_unavailable') {
+      mutateWakeConfig(fresh => {
+        fresh[target.key].status = 'failed'
+        fresh[target.key].error = 'CC 线路暂时不可用'
+      })
+      continue
+    }
+    const observed = status.context.available && status.context.collectedAt
+      ? Date.parse(status.context.collectedAt) : 0
+    const base = Math.max(observed || 0, setting.observedCcAt, setting.lastSuccessAt)
+    if (!base) {
+      mutateWakeConfig(fresh => { fresh[target.key].status = 'no-session' })
+      continue
+    }
+    mutateWakeConfig(fresh => { fresh[target.key].observedCcAt = Math.max(fresh[target.key].observedCcAt, base) })
+    const age = now - base
+    if (age < WARM_AFTER_MS) continue
+    if (age >= WARM_EXPIRES_MS) {
+      mutateWakeConfig(fresh => { fresh[target.key].status = 'cold'; fresh[target.key].error = undefined })
+      continue
+    }
+    if (await generationBusy()) {
+      mutateWakeConfig(fresh => { fresh[target.key].status = 'busy' })
+      return
+    }
 
-  const lease = acquireWakeLease()
-  if (!lease) return
-  wakeInFlight = true
-  const startedAt = Date.now()
-  try {
-    const result: any = await warmCcSession(config.sessionId)
-    const read = Math.max(0, Number(result?.usage?.cache_read_input_tokens) || 0)
-    const created = Math.max(0, Number(result?.usage?.cache_creation_input_tokens) || 0)
-    const warmed = result?.status === 'warmed' && read > 0
-    mutateWakeConfig(fresh => {
-      fresh.warmCache.lastAttemptAt = Date.now()
-      fresh.warmCache.cacheReadTokens = read
-      fresh.warmCache.cacheCreationTokens = created
-      fresh.warmCache.status = warmed ? 'warmed' : result?.status === 'busy' ? 'busy' : result?.status === 'no_session' ? 'no-session' : result?.status === 'warmed' ? 'miss' : 'failed'
-      fresh.warmCache.error = result?.error?.message || result?.error || undefined
-      if (warmed) fresh.warmCache.lastSuccessAt = Date.now()
-    })
-    appendWakeLogData({
-      id: `warm-${startedAt}`, timestamp: startedAt, startedAt, finishedAt: Date.now(),
-      trigger: 'warm-cache', reason: '保持 Claude Code 一小时缓存', actions: [],
-      response: warmed ? '[WARMED]' : `[${String(result?.status || 'failed').toUpperCase()}]`,
-      silent: true, sessionWrite: 'silent', error: warmed ? undefined : (result?.error?.message || result?.error),
-      outputTokens: Number(result?.usage?.output_tokens) || 0, responseKind: warmed ? 'silent' : 'error',
-    } satisfies WakeLog)
-  } finally {
-    wakeInFlight = false
-    releaseWakeLease(lease)
+    const lease = acquireWakeLease()
+    if (!lease) return
+    wakeInFlight = true
+    const startedAt = Date.now()
+    try {
+      const result: any = await warmCcSession(target.sessionId, target.model)
+      const read = Math.max(0, Number(result?.usage?.cache_read_input_tokens) || 0)
+      const created = Math.max(0, Number(result?.usage?.cache_creation_input_tokens) || 0)
+      const warmed = result?.status === 'warmed' && read > 0
+      mutateWakeConfig(fresh => {
+        const current = fresh[target.key]
+        current.lastAttemptAt = Date.now()
+        current.cacheReadTokens = read
+        current.cacheCreationTokens = created
+        current.status = warmed ? 'warmed' : result?.status === 'busy' ? 'busy' : result?.status === 'no_session' ? 'no-session' : result?.status === 'warmed' ? 'miss' : 'failed'
+        current.error = result?.error?.message || result?.error || undefined
+        if (warmed) current.lastSuccessAt = Date.now()
+      })
+      appendWakeLogData({
+        id: `warm-${startedAt}`, timestamp: startedAt, startedAt, finishedAt: Date.now(),
+        trigger: 'warm-cache', reason: target.reason, actions: [],
+        response: warmed ? '[WARMED]' : `[${String(result?.status || 'failed').toUpperCase()}]`,
+        silent: true, sessionWrite: 'silent', error: warmed ? undefined : (result?.error?.message || result?.error),
+        outputTokens: Number(result?.usage?.output_tokens) || 0, responseKind: warmed ? 'silent' : 'error',
+      } satisfies WakeLog)
+    } finally {
+      wakeInFlight = false
+      releaseWakeLease(lease)
+    }
+    return
   }
 }
 

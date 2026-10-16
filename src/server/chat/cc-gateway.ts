@@ -417,7 +417,7 @@ export async function isCcGatewayBusy(fetchImpl: FetchLike = fetch): Promise<boo
   }
 }
 
-export async function warmCcSession(conversationId: string, fetchImpl: FetchLike = fetch) {
+export async function warmCcSession(conversationId: string, model?: string, fetchImpl: FetchLike = fetch) {
   const config = configFromEnvironment()
   if (!config) return { status: 'unavailable' as const }
   if (!SAFE_TURN_ID.test(conversationId)) return { status: 'invalid_conversation' as const }
@@ -425,7 +425,7 @@ export async function warmCcSession(conversationId: string, fetchImpl: FetchLike
     const response = await gatewayFetch(config, '/v1/warm-cache', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ conversation_id: conversationId }),
+      body: JSON.stringify({ conversation_id: conversationId, ...(model ? { model } : {}) }),
     }, fetchImpl, 180_000)
     const data = await safeJson(response)
     return response.ok || response.status === 409 ? data : {

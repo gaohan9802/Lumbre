@@ -41,12 +41,19 @@ test('independent wake rules clamp settings and wake_me bypasses recent activity
     random: { enabled: true, timesPerDay: 99 },
     inactivity: { enabled: true, afterHours: 0 },
     warmCache: { enabled: true },
+    opus55WarmCache: { enabled: true, sessionId: 'opus-55-session' },
   })
   assert.equal(updated.day.intervalHours, 12)
   assert.equal(updated.night.intervalHours, 1)
   assert.equal(updated.random.timesPerDay, 8)
   assert.equal(updated.inactivity.afterHours, 1)
   assert.equal(updated.warmCache.enabled, true)
+  assert.equal(updated.opus55WarmCache.enabled, true)
+  assert.equal(updated.opus55WarmCache.sessionId, 'opus-55-session')
+
+  const changed = wake.updateWakeSettings({ opus55WarmCache: { sessionId: 'new-opus-55-session' } })
+  assert.equal(changed.opus55WarmCache.sessionId, 'new-opus-55-session')
+  assert.equal(changed.opus55WarmCache.lastSuccessAt, 0)
 
   const alarm = { at: now - 1, note: 'forced fixture' }
   const decision = wake.decideWake({

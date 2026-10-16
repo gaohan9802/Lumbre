@@ -5,6 +5,7 @@ import { ContextBridgeValidationError } from './context-bridge.mjs'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 const CONVERSATION_ID = /^[A-Za-z0-9._:-]{1,160}$/
+const MODEL = /^[A-Za-z0-9._:-]{1,120}$/
 
 function json(response, status, value) {
   const body = JSON.stringify(value)
@@ -78,7 +79,9 @@ export function createGatewayServer({ runtime, secret, claudeCodeVersion, heartb
         const body = await readBody(request, 8_000)
         const conversationId = body.conversation_id || ''
         if (!CONVERSATION_ID.test(conversationId)) throw new AttemptValidationError('conversation_id is invalid')
-        const result = await runtime.warm(conversationId)
+        const model = body.model || ''
+        if (model && !MODEL.test(model)) throw new AttemptValidationError('model is invalid')
+        const result = await runtime.warm(conversationId, model || undefined)
         return json(response, result.status === 'busy' ? 409 : result.status === 'failed' ? 502 : 200, result)
       }
 

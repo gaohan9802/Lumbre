@@ -334,7 +334,11 @@ test('status and explicit cancel use server-only gateway credentials', async () 
     assert.equal(cancelBody.idempotency_key, 'lumbre:conversation-1:turn-1')
     assert.equal((requests[2].init?.headers as Record<string, string>).authorization, `Bearer ${SECRET}`)
     assert.equal(await isCcGatewayBusy(fakeFetch), true)
-    const warmed = await warmCcSession('conversation-1', fakeFetch)
+    const warmed = await warmCcSession('conversation-1', 'claude-opus-5-5', fakeFetch)
     assert.equal(warmed.status, 'warmed')
+    assert.deepEqual(JSON.parse(String(requests[4].init?.body)), {
+      conversation_id: 'conversation-1',
+      model: 'claude-opus-5-5',
+    })
   } finally { restore() }
 })

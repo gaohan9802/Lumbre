@@ -261,10 +261,11 @@ export class GatewayRuntime {
     return this.active > 0 || this.queue.length > 0
   }
 
-  async warm(conversationId) {
+  async warm(conversationId, model) {
     if (this.busy()) return { status: 'busy' }
     const base = this.ledger.list()
-      .filter(attempt => attempt.conversationId === conversationId && attempt.status === 'completed' && attempt.result?.sessionId)
+      .filter(attempt => attempt.conversationId === conversationId && attempt.status === 'completed'
+        && attempt.result?.sessionId && (!model || attempt.model === model))
       .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)))[0]
     if (!base) return { status: 'no_session' }
 

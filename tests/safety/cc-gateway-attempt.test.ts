@@ -303,7 +303,8 @@ test('cache warm forks the latest session with matching tool schema and returns 
     })
     runtime.submit(fixtureInput())
     await runtime.waitForIdle()
-    const result = await runtime.warm('conversation-1')
+    assert.equal((await runtime.warm('conversation-1', 'claude-opus-5-5')).status, 'no_session')
+    const result = await runtime.warm('conversation-1', 'sonnet')
     assert.equal(result.status, 'warmed')
     assert.equal(result.usage.cache_read_input_tokens, 8_635)
     assert.equal(result.transcriptRemoved, true)
@@ -311,6 +312,7 @@ test('cache warm forks the latest session with matching tool schema and returns 
     assert.equal(calls[1].forkSession, true)
     assert.equal(calls[1].toolsEnabled, false)
     assert.equal(calls[1].cacheWarm, true)
+    assert.equal(calls[1].model, 'sonnet')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

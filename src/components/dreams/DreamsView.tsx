@@ -48,6 +48,17 @@ interface WakeConfig {
     cacheCreationTokens?: number
     error?: string
   }
+  opus55WarmCache: {
+    enabled: boolean
+    sessionId: string | null
+    observedCcAt: number
+    lastAttemptAt: number
+    lastSuccessAt: number
+    status: 'idle' | 'warmed' | 'busy' | 'cold' | 'miss' | 'failed' | 'no-session'
+    cacheReadTokens?: number
+    cacheCreationTokens?: number
+    error?: string
+  }
 }
 
 interface NextWakeSchedule {
@@ -57,6 +68,7 @@ interface NextWakeSchedule {
   random: number | null
   inactivity: number | null
   warmCache: number | null
+  opus55WarmCache: number | null
   overall: number | null
 }
 
@@ -90,6 +102,7 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
   const n = theme === 'night'
   const { settings } = useChatStore()
   const sessions = getSortedSessions(settings)
+  const opus55Sessions = sessions.filter(session => session.ccModel === 'claude-opus-5-5')
 
   const [tab, setTab] = useState<'reality' | 'dreams'>('reality')
   const [config, setConfig] = useState<WakeConfig | null>(null)
@@ -120,7 +133,7 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const updateRule = async (name: 'day' | 'night' | 'random' | 'inactivity' | 'warmCache', patch: Record<string, unknown>) => {
+  const updateRule = async (name: 'day' | 'night' | 'random' | 'inactivity' | 'warmCache' | 'opus55WarmCache', patch: Record<string, unknown>) => {
     if (!config) return
     const optimistic = { ...config, [name]: { ...config[name], ...patch } }
     setConfig(optimistic)
@@ -325,6 +338,25 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
                 {nextWake?.warmCache && <p>预计下次保温：{fmtTime(nextWake.warmCache)}</p>}
                 {config.warmCache.lastAttemptAt > 0 && <p>上次尝试：{fmtRelative(config.warmCache.lastAttemptAt)} · 读缓存 {Math.round((config.warmCache.cacheReadTokens || 0) / 100) / 10}K · 写缓存 {Math.round((config.warmCache.cacheCreationTokens || 0) / 100) / 10}K</p>}
                 {config.warmCache.error && <p className={n ? 'text-night-error' : 'text-red-600'}>{config.warmCache.error}</p>}
+              </div>}
+            </div>}
+
+            {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div><h3 className="flex items-center gap-1.5 text-sm font-medium"><Flame size={14}/>Opus 5.5 缓存保温</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>单独保温 5.5 测试窗，不占用主对话框的保温位置。</p></div>
+                <button aria-label={`Opus 5.5 缓存保温${config.opus55WarmCache.enabled ? '关闭' : '开启'}`} onClick={() => updateRule('opus55WarmCache', { enabled: !config.opus55WarmCache.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${config.opus55WarmCache.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20'}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${config.opus55WarmCache.enabled ? 'translate-x-5' : ''}`} />
+                </button>
+              </div>
+              <select value={config.opus55WarmCache.sessionId || ''} onChange={event => updateRule('opus55WarmCache', { sessionId: event.target.value || null })} className={`w-full text-sm px-3 py-2 rounded-xl outline-none ${n ? 'bg-night-surface border-night-border text-night-text' : 'chat-dialog-field'}`}>
+                <option value="">选择 5.5 测试窗</option>
+                {opus55Sessions.map(session => <option key={session.id} value={session.id}>{session.title} ({session.messages.length}条)</option>)}
+              </select>
+              {config.opus55WarmCache.enabled && <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                <p className={n ? 'text-night-amber' : 'text-[#9c6e69]'}>状态：{{ idle: config.opus55WarmCache.sessionId ? '等待下一次 5.5 活动' : '请先选择 5.5 测试窗', warmed: '保温成功', busy: '星星正在回复，稍后再试', cold: '缓存已冷却，等下一条真实 5.5 消息', miss: '本次没有命中缓存', failed: '保温失败', 'no-session': '测试窗还没有成功调用过 5.5' }[config.opus55WarmCache.status]}</p>
+                {nextWake?.opus55WarmCache && <p>预计下次保温：{fmtTime(nextWake.opus55WarmCache)}</p>}
+                {config.opus55WarmCache.lastAttemptAt > 0 && <p>上次尝试：{fmtRelative(config.opus55WarmCache.lastAttemptAt)} · 读缓存 {Math.round((config.opus55WarmCache.cacheReadTokens || 0) / 100) / 10}K · 写缓存 {Math.round((config.opus55WarmCache.cacheCreationTokens || 0) / 100) / 10}K</p>}
+                {config.opus55WarmCache.error && <p className={n ? 'text-night-error' : 'text-red-600'}>{config.opus55WarmCache.error}</p>}
               </div>}
             </div>}
 

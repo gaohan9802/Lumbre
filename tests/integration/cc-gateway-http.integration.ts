@@ -127,7 +127,7 @@ test('HTTP auth, disconnect, polling and event replay preserve one attempt', asy
 
     const warmed = await request(socketPath, '/v1/warm-cache', {
       method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
-      body: JSON.stringify({ conversation_id: 'conversation-1' }),
+      body: JSON.stringify({ conversation_id: 'conversation-1', model: 'sonnet' }),
     })
     assert.equal(warmed.status, 200)
     assert.equal(JSON.parse(warmed.body).usage.cache_read_input_tokens, 8_200)
