@@ -14,6 +14,7 @@
 import { createHash, randomUUID } from 'crypto'
 import { addMadridDays, madridDateKey, parseMadridDateTime } from '@/lib/madrid-time'
 import { isCcEffort, isCcModel, type CcEffort } from '@/lib/cc-model'
+import { ccSystemPromptForModel } from '@/lib/cc-system-prompt'
 import { readChatEventStream } from '@/features/chat/api/event-stream'
 import { appendSyncSessionMessage, loadSyncManifest, loadSyncSessions } from './chat-sync'
 import {
@@ -550,7 +551,9 @@ ${JSON.stringify(recentDigests)}`
   try {
     const cfg = loadSyncManifest().config
     if (cfg) {
-      systemPrompt = cfg.systemPrompt || undefined
+      systemPrompt = (generationRoute === 'claude-code'
+        ? ccSystemPromptForModel(cfg.systemPrompt || '', cfg.ccOpus55SystemPrompt, isCcModel(wakeSession?.ccModel) ? wakeSession.ccModel : undefined)
+        : cfg.systemPrompt) || undefined
       modelOverride = cfg.model || undefined
       ccEffort = isCcEffort(cfg.ccEffort) ? cfg.ccEffort : undefined
       const profiles = Array.isArray(cfg.apiProfiles) ? cfg.apiProfiles : []

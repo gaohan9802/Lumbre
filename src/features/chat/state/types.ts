@@ -191,6 +191,7 @@ export interface Bookmark {
 
 export interface ChatSettings {
   systemPrompt: string
+  ccOpus55SystemPrompt: string
   contextLength: number
   model: string
   ccEffort: CcEffort

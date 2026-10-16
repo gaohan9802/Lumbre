@@ -37,6 +37,13 @@ test('probe pins the reviewed stable CLI and disables every built-in tool', () =
   assert.throws(() => buildClaudeArgs({ effort: 'impossible' as any }), /effort level/)
 })
 
+test('only Opus 5.5 hides thinking while Opus 4.6 keeps its existing summary', () => {
+  const opus46 = buildClaudeArgs({ model: 'claude-opus-4-6' })
+  const opus55 = buildClaudeArgs({ model: 'claude-opus-5-5' })
+  assert.equal(opus46[opus46.indexOf('--thinking-display') + 1], 'summarized')
+  assert.equal(opus55[opus55.indexOf('--thinking-display') + 1], 'omitted')
+})
+
 test('gateway installs and reuses the pinned CLI when the image binary is stale', () => {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-binary-'))
   const calls: Array<{ command: string, args: string[] }> = []

@@ -20,6 +20,7 @@ import { friendlyStreamError, logUpstreamStreamError, UpstreamHttpError } from '
 import { createCcChatResponse } from './cc-gateway'
 import { beginApiGeneration } from './generation-activity'
 import { addToolResultsToAudit, createMessageRequestAudit, type RequestAuditHints } from '@/lib/chat-receipt'
+import { ccSystemPromptForModel } from '@/lib/cc-system-prompt'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -232,7 +233,7 @@ export async function handleChatRequest(req: NextRequest) {
       const lastUser = Array.isArray(body.messages)
         ? [...body.messages].reverse().find((message: any) => message?.role === 'user')?.content || ''
         : ''
-      const system = body.system?.trim() || DEFAULT_SYSTEM_PROMPT
+      const system = ccSystemPromptForModel(body.system?.trim() || DEFAULT_SYSTEM_PROMPT, undefined, body.cc_model)
       const currentContext = [
         await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
         clientVolatileContext(body.client_volatile_context),

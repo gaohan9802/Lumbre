@@ -100,7 +100,7 @@ export function buildClaudeArgs({
     '--mcp-config', mcpConfig,
     '--max-turns', String(maxTurns),
     '--output-format', outputFormat,
-    '--thinking-display', 'summarized',
+    '--thinking-display', model === 'claude-opus-5-5' ? 'omitted' : 'summarized',
   ]
 
   if (allowedTools.length) args.push('--allowedTools', ...allowedTools)

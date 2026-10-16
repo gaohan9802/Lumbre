@@ -37,6 +37,7 @@ import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
 import { DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
+import { ccSystemPromptForModel } from '@/lib/cc-system-prompt'
 import { chatMessageContentForModel, isSupportedChatFile, MAX_CHAT_ATTACHMENTS, MAX_CHAT_ATTACHMENT_BYTES } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 import { IntimacyWheelModal } from './IntimacyWheelModal'
@@ -501,7 +502,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     const bookmarkBlock = (items: typeof triggered) => items.length
       ? `[书签提醒]\n${items.map(bookmark => bookmark.content).join('\n---\n')}`
       : ''
-    const systemPrompt = settings.systemPrompt || undefined
+    const systemPrompt = (route === 'claude-code'
+      ? ccSystemPromptForModel(settings.systemPrompt, settings.ccOpus55SystemPrompt, effectiveCcModel)
+      : settings.systemPrompt) || undefined
     const readingInjection = contextInjection.trim()
     const statusInjection = timelineCurrent ? `[小火当前状态]\n正在做：${timelineCurrent.title}\n已持续：${Math.max(1, Math.floor((Date.now() - new Date(timelineCurrent.start_at).getTime()) / 60000))}分钟${timelineCurrent.tags?.length ? `\n标签：${timelineCurrent.tags.join('、')}` : ''}${timelineCurrent.note ? `\n开始备注：${timelineCurrent.note}` : ''}` : ''
     const summaryConfig = activeSession?.summaryConfig || { injectCount: settings.summaryInjectCount }

@@ -1,6 +1,7 @@
 import { normalizeReplyMode } from '@/lib/chat-reply-mode'
 import { DEFAULT_CC_EFFORT, isCcEffort, isCcModel } from '@/lib/cc-model'
 import { normalizeChatRoute } from '@/lib/chat-route'
+import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 import { mergeChatMessages, normalizeChatAttachments, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import type {
@@ -218,6 +219,9 @@ export function normalizeSettings(settings: any): ChatSettings {
   return {
     ...DEFAULT_SETTINGS,
     ...(settings || {}),
+    ccOpus55SystemPrompt: typeof settings?.ccOpus55SystemPrompt === 'string' && settings.ccOpus55SystemPrompt.trim()
+      ? withoutOpus55ThinkingInstructions(settings.ccOpus55SystemPrompt)
+      : withoutOpus55ThinkingInstructions(typeof settings?.systemPrompt === 'string' ? settings.systemPrompt : ''),
     apiProfiles: profiles,
     activeProfileId,
     model: settings?.model || activeProfile?.defaultModel || 'claude-sonnet-4-20250514',

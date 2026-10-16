@@ -35,6 +35,7 @@ const now = Date.now()
 
 export const DEFAULT_SETTINGS: ChatSettings = {
   systemPrompt: '',
+  ccOpus55SystemPrompt: '',
   contextLength: 30,
   model: 'claude-sonnet-4-20250514',
   ccEffort: DEFAULT_CC_EFFORT,
