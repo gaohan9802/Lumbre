@@ -13,7 +13,7 @@ import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
   getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary, StageSummary,
 } from '@/lib/chatStore'
-import { apiRequest, photos as photosApi } from '@/lib/api'
+import { apiRequest, pencilDrawings as pencilDrawingsApi, photos as photosApi } from '@/lib/api'
 import { compressImage } from '@/lib/image'
 import type { SharedCard } from '@/lib/share'
 import { ChatSettings, type ChatSettingsPanel } from './ChatSettings'
@@ -32,7 +32,7 @@ import { timeline as timelineApi } from '@/lib/api'
 import { loadEarlierChat, syncChatNow } from '@/features/chat/sync/ChatSync'
 import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
-import { toolDisplayLabel } from '@/features/chat/tool-display'
+import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
@@ -78,10 +78,32 @@ interface FavoriteChatContext {
   messages: ChatMessage[]
 }
 
+interface PencilDrawingResult {
+  id: string
+  imageUrl: string
+  title: string
+}
+
 /* ── helpers ────────────────────────────── */
 
 const fmtFullTs = (ts: number) => {
   try { return formatMadrid(Number(ts) || Date.now()) } catch { return '' }
+}
+
+function parsePencilDrawing(result: unknown): PencilDrawingResult | null {
+  if (typeof result !== 'string') return null
+  try {
+    const value = JSON.parse(result)
+    const id = typeof value?.drawing_id === 'string' ? value.drawing_id : ''
+    const imageUrl = typeof value?.image_url === 'string' ? value.image_url : ''
+    if (!/^drawing-[A-Za-z0-9-]+$/.test(id) || !/^\/api\/pencil-drawings\/raw\/drawing-[A-Za-z0-9-]+$/.test(imageUrl)) return null
+    return { id, imageUrl, title: typeof value?.title === 'string' ? value.title : '' }
+  } catch { return null }
+}
+
+function pencilDrawingForMessage(message: ChatMessage): PencilDrawingResult | null {
+  const call = [...(message.tool_calls || [])].reverse().find(item => item.name === 'draw_picture')
+  return parsePencilDrawing(call?.result)
 }
 
 const fmtShortDate = (ts: number) => {
@@ -172,6 +194,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
   const [favoriteChatKeys, setFavoriteChatKeys] = useState<Set<string>>(new Set())
   const [favoriteChatContext, setFavoriteChatContext] = useState<FavoriteChatContext | null>(null)
+  const [savedDrawings, setSavedDrawings] = useState<Set<string>>(new Set())
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession, setSettings,
@@ -471,6 +494,42 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     setPhotoPrompt(null)
     if (choice !== 'no') {
       await Promise.all(images.map(dataUrl => photosApi.write('fire', dataUrl, '', 'chat', choice === 'locked').catch(() => null)))
+    }
+  }
+
+  const savePencilDrawing = async (drawing: PencilDrawingResult) => {
+    try {
+      await pencilDrawingsApi.save(drawing.id)
+      setSavedDrawings(current => new Set(current).add(drawing.id))
+    } catch (error: any) {
+      window.alert(error?.message || '这张画暂时没有存进照片墙。')
+    }
+  }
+
+  const requestPencilRedraw = (drawing: PencilDrawingResult) => {
+    setInput(`把刚才${drawing.title ? `那张《${drawing.title}》` : '那张画'}再画一版，保留主题，但换一个构图和笔触。`)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
+  const savePencilDrawingLocally = async (drawing: PencilDrawingResult) => {
+    try {
+      const response = await fetch(drawing.imageUrl, { cache: 'no-store' })
+      if (!response.ok) throw new Error('download failed')
+      const blob = await response.blob()
+      const baseName = (drawing.title || '星星的画').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60)
+      const file = new File([blob], `${baseName}.png`, { type: 'image/png' })
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: drawing.title || '星星的画' })
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = file.name
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error: any) {
+      if (error?.name !== 'AbortError') window.alert('这张画暂时没有保存成功。')
     }
   }
 
@@ -1452,6 +1511,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 const displayContentBlocks = baseDisplayBlocks
                   ? (msg.replyMode === 'short' ? applyBubbleLayout(baseDisplayBlocks, msg.bubbleLayout || composeBubbleLayout(baseDisplayBlocks)) : baseDisplayBlocks)
                   : undefined
+                const firstTextBlockIndex = displayContentBlocks?.findIndex(block => block.type === 'text' && !!block.content?.trim()) ?? -1
+                const pencilDrawing = !isUser ? pencilDrawingForMessage(msg) : null
+                const messageImages = pencilDrawing ? [pencilDrawing.imageUrl] : msg.images
                 return (
                   <Fragment key={msg.id}>
                   {precedingPokes.map(nosePokeLine)}
@@ -1507,7 +1569,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                                         <div className={`px-3 pb-2 text-xs space-y-1.5`}>
                                           {block.input && Object.keys(block.input).length > 0 && (
                                             <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-card text-night-muted' : 'bg-white text-day-muted'}`}>
-                                              {JSON.stringify(block.input, null, 2)}
+                                              {JSON.stringify(toolDisplayInput(block.name, block.input), null, 2)}
                                             </pre>
                                           )}
                                           {block.result && (
@@ -1528,11 +1590,20 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
                                 <div key={blockKey} className={`chat-ai-bubble relative mr-auto block w-fit max-w-[88%] break-words px-4 py-3 text-left text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}>
-                                  {msg.images && bi === 0 && msg.images.length > 0 && (
+                                  {messageImages && bi === firstTextBlockIndex && messageImages.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
-                                      {msg.images.map((src: string, ii: number) => (
-                                        <img key={ii} src={src} alt="" className="max-w-[180px] max-h-[180px] rounded-lg object-cover" />
+                                      {messageImages.map((src: string, ii: number) => (
+                                        <img key={ii} src={src} alt="" className={pencilDrawing ? 'max-w-[260px] max-h-[360px] rounded-lg object-contain' : 'max-w-[180px] max-h-[180px] rounded-lg object-cover'} />
                                       ))}
+                                    </div>
+                                  )}
+                                  {pencilDrawing && bi === firstTextBlockIndex && (
+                                    <div className="mb-2 flex items-center gap-3 text-[11px]" onClick={event => event.stopPropagation()}>
+                                      <button type="button" disabled={savedDrawings.has(pencilDrawing.id)} onClick={() => void savePencilDrawing(pencilDrawing)} className="opacity-65 hover:opacity-100 disabled:opacity-35">
+                                        {savedDrawings.has(pencilDrawing.id) ? '已存进照片墙' : '存进照片墙'}
+                                      </button>
+                                      <button type="button" onClick={() => void savePencilDrawingLocally(pencilDrawing)} className="opacity-65 hover:opacity-100">保存到本地</button>
+                                      <button type="button" onClick={() => requestPencilRedraw(pencilDrawing)} className="opacity-65 hover:opacity-100">再画一版</button>
                                     </div>
                                   )}
                                   <MarkdownText content={block.content} />
@@ -1579,7 +1650,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                                           </div>
                                           {tc.input && Object.keys(tc.input).length > 0 && (
                                             <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
-                                              {JSON.stringify(tc.input, null, 2)}
+                                              {JSON.stringify(toolDisplayInput(tc.name, tc.input), null, 2)}
                                             </pre>
                                           )}
                                           {tc.result && (
@@ -1620,12 +1691,21 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               <div className="px-3 pb-2 text-[11px] whitespace-pre-wrap">{msg.sharedCard.subtitle}{msg.sharedCard.body ? `\n${msg.sharedCard.body}` : ''}</div>
                             </div>
                           )}
-                          {msg.images && msg.images.length > 0 && (
+                          {messageImages && messageImages.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mb-1.5">
-                              {msg.images.map((src, i) => (
+                              {messageImages.map((src, i) => (
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img key={i} src={src} alt="" className="max-w-[180px] max-h-[180px] rounded-lg object-cover" />
+                                <img key={i} src={src} alt="" className={pencilDrawing ? 'max-w-[260px] max-h-[360px] rounded-lg object-contain' : 'max-w-[180px] max-h-[180px] rounded-lg object-cover'} />
                               ))}
+                            </div>
+                          )}
+                          {pencilDrawing && (
+                            <div className="mb-2 flex items-center gap-3 text-[11px]" onClick={event => event.stopPropagation()}>
+                              <button type="button" disabled={savedDrawings.has(pencilDrawing.id)} onClick={() => void savePencilDrawing(pencilDrawing)} className="opacity-65 hover:opacity-100 disabled:opacity-35">
+                                {savedDrawings.has(pencilDrawing.id) ? '已存进照片墙' : '存进照片墙'}
+                              </button>
+                              <button type="button" onClick={() => void savePencilDrawingLocally(pencilDrawing)} className="opacity-65 hover:opacity-100">保存到本地</button>
+                              <button type="button" onClick={() => requestPencilRedraw(pencilDrawing)} className="opacity-65 hover:opacity-100">再画一版</button>
                             </div>
                           )}
                           {msg.attachments && msg.attachments.length > 0 && (

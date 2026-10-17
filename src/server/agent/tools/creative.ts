@@ -2,6 +2,7 @@ import type { ToolPolicySpec } from '../types'
 import { ALL_SAFE_SOURCES } from './shared'
 
 export const CREATIVE_TOOL_POLICIES: ToolPolicySpec[] = [
+  { name: 'draw_picture', domain: 'photos', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_poems', domain: 'poems', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   {
     name: 'write_poem', domain: 'poems', level: 'yellow', allowedSources: ALL_SAFE_SOURCES,

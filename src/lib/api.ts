@@ -112,6 +112,10 @@ export const photos = {
   password: (action: 'set' | 'verify' | 'check', password?: string) => post('/api/photos/password', { action, password }),
 }
 
+export const pencilDrawings = {
+  save: (id: string, album_id?: string) => post('/api/pencil-drawings/save', { id, album_id }),
+}
+
 export const travelVisits = {
   list: () => get('/api/travel-visits'),
   search: (query: string) => get(`/api/travel-visits/search?q=${encodeURIComponent(query)}`),

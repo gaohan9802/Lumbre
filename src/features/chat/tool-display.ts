@@ -30,6 +30,7 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   comment_foto: '评论了一张照片',
   read_travel_journal: '翻了翻旅行日记',
   write_travel_journal: '续写了旅行日记',
+  draw_picture: '在小画室画画',
   write_timeline_encouragements: '写了几句鼓励',
   read_timeline_encouragements: '看了看鼓励语',
   edit_timeline_encouragement: '修改了鼓励语',
@@ -110,4 +111,14 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
 
 export function toolDisplayLabel(name: string): string {
   return TOOL_DISPLAY_LABELS[name] || name
+}
+
+export function toolDisplayInput(name: string, input: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (name !== 'draw_picture' || !input) return input
+  let elements = 0
+  try {
+    const scene = JSON.parse(String(input.scene_json || '{}'))
+    elements = Array.isArray(scene.elements) ? scene.elements.length : 0
+  } catch {}
+  return { style: input.style, title: input.title, elements }
 }

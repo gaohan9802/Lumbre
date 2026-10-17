@@ -2,6 +2,22 @@ import type { ToolDef } from '../types'
 
 export const CREATIVE_TOOL_DEFINITIONS = [
   {
+    name: 'draw_picture',
+    description: '用文具盒画一张真正由代码笔触绘制的竖版小画。crayon 是蜡笔油画棒，penwash 是钢笔淡彩。scene_json 使用 0-1000 的归一化坐标，格式为 {"elements":[...]}；元素按顺序叠放，支持 rect/ellipse/blob（x,y,w,h,color）、polygon/path（points:[[x,y],...]，另有 color）、text（x,y,text,size,color）。颜色可用 ink/cream/red/pink/orange/yellow/green/mint/blue/navy/purple/brown/gray/white 或 #RRGGBB。保持 3-12 个主要元素和充足留白；复杂物件用几个简单色块与线条概括，不要尝试临摹照片。画完会直接出现在聊天里，小火可选择存入照片墙。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        style: { type: 'string', enum: ['crayon', 'penwash'] },
+        title: { type: 'string', description: '画面上方短标题，最多40字' },
+        note: { type: 'string', description: '画面下方的一句自己的话，最多60字' },
+        scene_json: { type: 'string', description: '画面元素 JSON；坐标范围0-1000，最多30个元素' },
+        seed: { type: 'string', description: '可选；相同 seed 会保持同一组笔触随机性' },
+        operation_key: { type: 'string', description: '必填；本次画作的稳定唯一键，重试时保持不变，例如 chat消息id-drawing-1' },
+      },
+      required: ['style', 'scene_json', 'operation_key'],
+    },
+  },
+  {
     name: 'read_poems',
     description: '查看共诗列表，或按 id 读取一首诗的正文、轮次和每次编辑历史。',
     input_schema: {

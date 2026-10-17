@@ -12,7 +12,7 @@ const ROOM_FOR_DOMAIN: Partial<Record<ToolDomain, RoomUnreadKey>> = {
   photos: 'photos', bookmarks: 'favorites', media: 'media', health: 'energy', timeline: 'timeline',
   poems: 'poems', stories: 'stories', research: 'research', thesis: 'tesis',
 }
-const UNREAD_EXCLUDED_TOOLS = new Set(['write_guestbook', 'reply_guestbook', 'unlock_diary', 'set_password', 'update_coread_progress'])
+const UNREAD_EXCLUDED_TOOLS = new Set(['write_guestbook', 'reply_guestbook', 'unlock_diary', 'set_password', 'update_coread_progress', 'draw_picture'])
 
 function safeError(error: unknown): string {
   return error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)

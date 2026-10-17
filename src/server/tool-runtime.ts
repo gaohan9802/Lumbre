@@ -50,6 +50,7 @@ import { appendStorySection, createStory, deleteStory, getStory, listStories, up
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
+import { drawPicture } from './pencil-case'
 import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
@@ -396,6 +397,17 @@ export async function executeRegisteredToolHandler(
       case 'list_foto_albums': {
         const albums = listPhotoAlbums(input.zone as PhotoZone | undefined)
         return JSON.stringify(albums.map(album => ({ id: album.id, name: album.name, zone: album.zone })))
+      }
+      case 'draw_picture': {
+        const rendered = await drawPicture(input)
+        return JSON.stringify({
+          ok: true,
+          drawing_id: rendered.drawing.id,
+          style: rendered.drawing.style,
+          title: rendered.drawing.title,
+          image_url: rendered.image_url,
+          already_drawn: rendered.already_drawn,
+        })
       }
       case 'read_foto': {
         // Text-only: never carries the base64 image, so it can't blow up the

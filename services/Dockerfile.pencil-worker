@@ -1,0 +1,19 @@
+FROM python:3.12-slim-bookworm
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends fonts-noto-cjk \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/lumbre/pencil-worker
+ENV PORT=8790 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+COPY pencil-worker/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir --requirement requirements.txt
+
+COPY pencil-worker/ ./
+RUN python -m unittest test_renderer.py
+RUN useradd --create-home --uid 10002 pencil \
+  && chown -R pencil:pencil /opt/lumbre/pencil-worker
+
+USER pencil
+EXPOSE 8790
+CMD ["python", "server.py"]

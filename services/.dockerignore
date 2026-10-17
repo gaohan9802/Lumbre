@@ -1,7 +1,10 @@
 *
 !Dockerfile.lumbre-cc-gateway-preview
+!Dockerfile.pencil-worker
 !cc-probe/
 !cc-probe/contract.mjs
 !cc-probe/managed-settings.json
 !cc-gateway/
 !cc-gateway/*.mjs
+!pencil-worker/
+!pencil-worker/**

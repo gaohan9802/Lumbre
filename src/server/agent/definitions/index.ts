@@ -32,7 +32,7 @@ const TOOL_ORDER = [
   'gmail_status', 'send_email', 'read_emails', 'search_emails', 'read_email_detail', 'reply_email',
   'read_bookmarks', 'add_bookmark', 'edit_bookmark',
   'read_coupons', 'create_coupon', 'sign_coupon', 'edit_coupon', 'use_coupon', 'void_coupon', 'confirm_void_coupon',
-  'read_poems', 'write_poem', 'read_intimacy_wheel', 'update_intimacy_wheel',
+  'read_poems', 'write_poem', 'read_intimacy_wheel', 'update_intimacy_wheel', 'draw_picture',
   'read_stories', 'write_story', 'read_research', 'write_research',
   'bite_otter_nape',
   'read_detroit', 'play_detroit',

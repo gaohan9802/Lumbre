@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import type { ContentBlock } from '@/features/chat/state/types'
 import { MarkdownText } from '@/components/chat/MarkdownText'
-import { toolDisplayLabel } from '@/features/chat/tool-display'
+import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 
 interface StreamingReplyProps {
   blocks: ContentBlock[]
@@ -54,7 +54,7 @@ export function StreamingReply({
                   <div className="px-3 pb-2 text-xs space-y-1.5">
                     {block.input && Object.keys(block.input).length > 0 && (
                       <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${isNight ? 'bg-night-card text-night-muted' : 'bg-white text-day-muted'}`}>
-                        {JSON.stringify(block.input, null, 2)}
+                        {JSON.stringify(toolDisplayInput(block.name, block.input), null, 2)}
                       </pre>
                     )}
                     <div className={`pt-1 border-t ${isNight ? 'border-night-border' : 'border-gray-200'}`}>
