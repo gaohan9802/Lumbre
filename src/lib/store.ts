@@ -10,6 +10,7 @@ export function migrateAppState(persisted: any) {
   if (persisted?.state?.activeTab === 'tesis') persisted.state.activeTab = 'timeline'
   if (persisted?.state?.activeTab === 'wishlist') persisted.state.activeTab = 'dreams'
   if (persisted?.state?.activeTab === 'coupons') persisted.state.activeTab = 'chat'
+  if (persisted?.state) delete persisted.state.sidebarOpen
   if (persisted?.state && !VALID_TABS.includes(persisted.state.activeTab)) {
     persisted.state.activeTab = 'chat'
   }
@@ -40,14 +41,15 @@ export const useApp = create<AppStore>()(
       currentUser: 'fire',
       setCurrentUser: (user) => set({ currentUser: user }),
 
-      sidebarOpen: false,
+      sidebarOpen: true,
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
     }),
     {
       name: 'starfire-app',
-      version: 10,
+      version: 11,
       migrate: migrateAppState,
+      partialize: ({ activeTab, currentUser }) => ({ activeTab, currentUser }),
     }
   )
 )

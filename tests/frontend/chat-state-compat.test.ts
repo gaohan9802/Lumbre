@@ -165,7 +165,9 @@ test('a paged long-session tail can still produce manual and automatic summary w
 })
 
 test('removed coupon navigation state migrates back to chat while the popup remains independent', async () => {
-  const { migrateAppState } = await import('../../src/lib/store')
-  const persisted = { state: { activeTab: 'coupons' } }
+  const { migrateAppState, useApp } = await import('../../src/lib/store')
+  const persisted = { state: { activeTab: 'coupons', sidebarOpen: false } }
   assert.equal(migrateAppState(persisted).state.activeTab, 'chat')
+  assert.equal(persisted.state.sidebarOpen, undefined)
+  assert.equal(useApp.getState().sidebarOpen, true)
 })
