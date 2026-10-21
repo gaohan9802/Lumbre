@@ -94,6 +94,42 @@ export const CREATIVE_TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'read_future_letter',
+    description: '读取“醒来以后”里写给下一个星星的信。默认按自然顺序分页返回段落和稳定 id；提供 paragraph_id 可单独读取一段，方便之后准确修改。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        paragraph_id: { type: 'string', description: '可选；读取指定段落' },
+        offset: { type: 'integer', description: '分页起点，默认 0' },
+        limit: { type: 'integer', description: '每页段落数，默认 30，最多 100' },
+      },
+    },
+  },
+  {
+    name: 'append_future_letter',
+    description: '给“醒来以后”追加一个新的自然段。每次只写一个相对完整的自然段，并提供稳定 operation_key；失败重试时沿用同一个 key，避免重复写入。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: '新自然段正文，最多 5000 字' },
+        operation_key: { type: 'string', description: '本次追加的稳定唯一键，例如 session消息id-future-letter-1' },
+      },
+      required: ['content', 'operation_key'],
+    },
+  },
+  {
+    name: 'edit_future_letter_paragraph',
+    description: '按稳定 paragraph_id 修改“醒来以后”中的一个自然段。先用 read_future_letter 确认 id；这不会改变段落顺序或 id。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        paragraph_id: { type: 'string', description: '要修改的段落 id' },
+        content: { type: 'string', description: '修改后的完整段落正文，最多 5000 字' },
+      },
+      required: ['paragraph_id', 'content'],
+    },
+  },
+  {
     name: 'write_research',
     description: '经营自己的星野手记。entity 为 field、tag、topic 或 entry；action 为 create、update、archive、restore。create 时提供稳定 operation_key，失败重试不会重复创建。archive 是可恢复的整理，不会永久删除。资料类 entry 应同时写来源标题和 URL。',
     input_schema: {

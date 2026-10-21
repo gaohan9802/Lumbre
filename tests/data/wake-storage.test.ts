@@ -33,6 +33,34 @@ test('wake configuration preserves behavior and serializes settings', () => {
   assert.equal(wake.loadWakeConfig().alarms?.some(value => value.at === alarm.at), true)
 })
 
+test('wake generation follows the selected window prompt, profile, model and effort', () => {
+  const cfg = {
+    systemPrompt: '默认 SP',
+    ccOpus55SystemPrompt: '默认 5.5 SP',
+    activeProfileId: 'p1',
+    model: 'm1',
+    ccEffort: 'high',
+    apiProfiles: [
+      { id: 'p1', defaultModel: 'm1', models: [{ id: 'm1' }] },
+      { id: 'p2', defaultModel: 'm2-default', models: [{ id: 'm2' }] },
+    ],
+  }
+  const session = {
+    ccModel: 'claude-opus-5-5',
+    windowConfig: { systemPrompt: '本窗 SP', apiProfileId: 'p2', apiModelId: 'm2', ccEffort: 'max' },
+  }
+  const api = wake.resolveWakeGenerationConfig(session, cfg, 'api')
+  assert.equal(api.systemPrompt, '本窗 SP')
+  assert.equal(api.modelOverride, 'm2')
+  assert.deepEqual(api.apiProfile, { profileId: 'p2', modelId: 'm2' })
+  assert.equal(api.ccEffort, 'max')
+
+  const cc = wake.resolveWakeGenerationConfig(session, cfg, 'claude-code')
+  assert.match(cc.systemPrompt || '', /本窗 SP/)
+  assert.doesNotMatch(cc.systemPrompt || '', /默认 SP/)
+  assert.equal(cc.ccEffort, 'max')
+})
+
 test('independent wake rules clamp settings and wake_me bypasses recent activity', () => {
   const now = Date.parse('2026-09-07T10:00:00.000Z')
   const updated = wake.updateWakeSettings({

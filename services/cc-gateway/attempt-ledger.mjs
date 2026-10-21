@@ -263,6 +263,23 @@ export class AttemptLedger {
     })
   }
 
+  recordManualCompaction(id, result) {
+    return this.update(id, attempt => {
+      if (attempt.status !== 'completed' || !attempt.result?.sessionId) {
+        throw new Error('Only a completed session can be compacted')
+      }
+      attempt.result = {
+        ...attempt.result,
+        compacted: true,
+        context: result?.context || attempt.result.context || null,
+        usage: result?.usage || attempt.result.usage || null,
+        manualCompactedAt: nowIso(this.clock),
+      }
+      this.appendEvent(attempt, 'manual_compacted', { context: attempt.result.context })
+      return attempt
+    })
+  }
+
   markFailed(id, error) {
     return this.update(id, attempt => {
       if (TERMINAL_STATUSES.has(attempt.status)) return attempt

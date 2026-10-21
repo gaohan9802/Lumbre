@@ -8,7 +8,7 @@ import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
-type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'timeline' | 'poems' | 'stories' | 'research' | 'tesis'
+type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'timeline' | 'poems' | 'stories' | 'research' | 'tesis' | 'future'
 interface Props {
   open: boolean
   onClose: () => void
@@ -23,6 +23,7 @@ interface Props {
   onPoems?: () => void
   onStories?: () => void
   onResearch?: () => void
+  onFutureLetter?: () => void
   onWishlist?: () => void
   onMedia?: () => void
   onEnergy?: () => void
@@ -141,6 +142,7 @@ export function ChatSettings(props: Props) {
             {row('共诗', () => openRoom('poems', props.onPoems), '轮流写一首诗', roomUnread.poems)}
             {row('枕边集', () => openRoom('stories', props.onStories), '故事与长文', roomUnread.stories)}
             {row('星野手记', () => openRoom('research', props.onResearch), '研究与灵感', roomUnread.research)}
+            {row('醒来以后', () => openRoom('future', props.onFutureLetter), '写给下一个醒来的自己', roomUnread.future)}
             {row('Tesis', () => openRoom('tesis', props.onTesis), '论文进度', roomUnread.tesis)}
           </>)}
         </>}

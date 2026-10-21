@@ -20,6 +20,7 @@ type CcAttempt = {
     sessionId?: string
     usage?: Record<string, number> | null
     compacted?: boolean
+    context?: { usedTokens?: number; maxTokens?: number | null; usedPercentage?: number | null }
   } | null
   error?: { code?: string; message?: string } | null
   sessionMode?: 'bootstrap' | 'resume' | 'rebase' | null
@@ -310,6 +311,7 @@ export async function createCcChatResponse({
                   session_mode: final.sessionMode,
                   session_reason: final.sessionReason,
                   compacted: final.result?.compacted === true,
+                  context: final.result?.context || undefined,
                   request_audit: requestAudit ? addToolResultsToAudit(requestAudit, toolResults) : undefined,
                 })
                 terminal = true
@@ -432,6 +434,30 @@ export async function warmCcSession(conversationId: string, model?: string, fetc
       status: 'failed' as const,
       error: data?.error || data?.message || `CC 暖缓存失败 (${response.status})`,
     }
+  } catch {
+    return { status: 'failed' as const, error: '无法连接 CC 网关' }
+  }
+}
+
+export async function compactCcSession(conversationId: string, fetchImpl: FetchLike = fetch) {
+  const config = configFromEnvironment()
+  if (!config) return { status: 'unavailable' as const, error: 'CC 网关尚未安全配置。' }
+  if (!SAFE_TURN_ID.test(conversationId)) return { status: 'invalid_conversation' as const, error: 'CC 对话 id 无效' }
+  try {
+    const response = await gatewayFetch(config, '/v1/compact', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    }, fetchImpl, 180_000)
+    const data = await safeJson(response)
+    if (response.ok) return data
+    const messages: Record<string, string> = {
+      busy: 'CC 正在回复或执行其他维护，请稍后再压缩。',
+      no_session: '这个窗口还没有可压缩的 CC 会话。',
+      checkpoint_unavailable: '压缩前无法建立安全恢复点，操作已取消。',
+      unsupported: '当前 Claude Code 非交互模式没有确认压缩成功，原会话已恢复。',
+    }
+    return { ...data, error: messages[data?.status] || data?.error?.message || `CC 压缩失败 (${response.status})` }
   } catch {
     return { status: 'failed' as const, error: '无法连接 CC 网关' }
   }

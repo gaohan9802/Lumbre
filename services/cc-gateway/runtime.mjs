@@ -41,6 +41,7 @@ export class GatewayRuntime {
     this.events = new EventEmitter()
     this.idleWaiters = []
     this.warmController = null
+    this.compactController = null
   }
 
   async quotaOauthToken() {
@@ -303,6 +304,55 @@ export class GatewayRuntime {
       }
     } finally {
       if (this.warmController === controller) this.warmController = null
+      this.active--
+      this.drain()
+      this.resolveIdle()
+    }
+  }
+
+  async compact(conversationId) {
+    if (this.busy()) return { status: 'busy' }
+    const base = this.ledger.list()
+      .filter(attempt => attempt.conversationId === conversationId && attempt.status === 'completed' && attempt.result?.sessionId)
+      .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)))[0]
+    if (!base) return { status: 'no_session' }
+
+    const checkpoint = this.executor.checkpointSession?.(base.result.sessionId) || null
+    if (!checkpoint) return { status: 'checkpoint_unavailable' }
+
+    this.active++
+    const controller = new AbortController()
+    this.compactController = controller
+    try {
+      const result = await this.executor.run({
+        prompt: '/compact Preserve relationship context, identity, durable decisions, promises, unresolved tasks, and recent conversational tone.',
+        model: base.model,
+        effort: base.effort || undefined,
+        resumeSessionId: base.result.sessionId,
+        toolsEnabled: false,
+        conversationId,
+        signal: controller.signal,
+      })
+      if (result.compacted !== true) {
+        this.executor.restoreSession?.(base.result.sessionId, checkpoint)
+        return { status: 'unsupported' }
+      }
+      try {
+        this.ledger.recordManualCompaction(base.id, result)
+      } catch {
+        this.executor.restoreSession?.(base.result.sessionId, checkpoint)
+        return { status: 'failed', error: { code: 'ledger_update_failed', message: 'CC compact state could not be saved' } }
+      }
+      return { status: 'compacted', before: base.result.context || null, after: result.context || null }
+    } catch (error) {
+      this.executor.restoreSession?.(base.result.sessionId, checkpoint)
+      if (controller.signal.aborted || error?.code === 'cancelled') return { status: 'busy' }
+      return {
+        status: 'failed',
+        error: { code: error?.code || 'compact_failed', message: error?.safeMessage || 'Claude Code compact failed' },
+      }
+    } finally {
+      if (this.compactController === controller) this.compactController = null
       this.active--
       this.drain()
       this.resolveIdle()

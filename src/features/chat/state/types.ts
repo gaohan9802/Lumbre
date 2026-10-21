@@ -133,6 +133,23 @@ export interface SessionSummaryConfig {
   anchorTimestamp?: number
 }
 
+export interface ChatWindowConfig {
+  systemPrompt?: string
+  apiProfileId?: string
+  apiModelId?: string
+  ccEffort?: CcEffort
+}
+
+export interface CcContextState {
+  warningLevel?: 85 | 95
+  lastCompaction?: {
+    at: number
+    source: 'automatic' | 'manual'
+    beforeTokens?: number
+    afterTokens?: number
+  }
+}
+
 export interface ChatSession {
   generationRoute?: ChatRoute
   generationRouteUpdatedAt?: number
@@ -140,6 +157,10 @@ export interface ChatSession {
   ccModelUpdatedAt?: number
   conversationMode?: ReplyMode
   conversationModeUpdatedAt?: number
+  windowConfig?: ChatWindowConfig
+  windowConfigUpdatedAt?: number
+  ccContextState?: CcContextState
+  ccContextStateUpdatedAt?: number
   id: string
   title: string
   messages: ChatMessage[]

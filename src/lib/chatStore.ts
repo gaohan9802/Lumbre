@@ -7,7 +7,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
-  ApiProfile, Bookmark, ChatMessage, ChatSession, ChatSettings, ChatSummary,
+  ApiProfile, Bookmark, CcContextState, ChatMessage, ChatSession, ChatSettings, ChatSummary, ChatWindowConfig,
   MessageVersion, ProviderModel, SessionSummaryConfig, StageSummary,
 } from '@/features/chat/state/types'
 import {
@@ -37,7 +37,7 @@ import { createChatPreferenceActions } from '@/features/chat/settings/preference
 
 export type {
   ApiProfile, ApiProvider, Bookmark, BubbleLayout, BubbleSegment, ChatAppearance, ChatMessage, ChatSession,
-  ChatSettings, ChatSummary, ContentBlock, MessageVersion, ProviderModel,
+  CcContextState, ChatSettings, ChatSummary, ChatWindowConfig, ContentBlock, MessageVersion, ProviderModel,
   SessionSummaryConfig, StageSummary,
 } from '@/features/chat/state/types'
 export type { ChatRoute } from '@/lib/chat-route'
@@ -63,6 +63,8 @@ interface ChatStore {
   setGenerationRoute: (id: string, route: 'api' | 'claude-code') => void
   setCcModel: (id: string, model: import('@/lib/cc-model').CcModelId) => void
   setConversationMode: (id: string, mode: 'long' | 'short') => void
+  setWindowConfig: (id: string, config: ChatWindowConfig | undefined | ((current: ChatWindowConfig | undefined) => ChatWindowConfig | undefined)) => void
+  setCcContextState: (id: string, context: CcContextState | undefined | ((current: CcContextState | undefined) => CcContextState | undefined)) => void
   deleteMessage: (id: string) => void
   truncateFrom: (id: string) => void
   branchFromMessage: (id: string) => string

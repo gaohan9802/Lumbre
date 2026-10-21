@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { readChatEventStream } from '../../src/features/chat/api/event-stream'
-import { cancelCcAttempt, createCcChatResponse, isCcGatewayBusy, readCcStatus, warmCcSession } from '../../src/server/chat/cc-gateway'
+import { cancelCcAttempt, compactCcSession, createCcChatResponse, isCcGatewayBusy, readCcStatus, warmCcSession } from '../../src/server/chat/cc-gateway'
 
 const SECRET = 'cc-chat-bridge-fixture-secret-000000000'
 const ATTEMPT_ID = '550e8400-e29b-41d4-a716-446655440000'
@@ -188,7 +188,7 @@ test('Lumbre reconnects a prematurely closed gateway stream from its last durabl
     if (url.endsWith(`/v1/attempts/${ATTEMPT_ID}`)) {
       return Response.json({ attempt: {
         id: ATTEMPT_ID, status: 'completed', sessionMode: 'resume', sessionReason: 'ordinary_delta',
-        result: { text: '星星回来啦', sessionId: SESSION_ID, usage: { output_tokens: 4 }, compacted: false },
+        result: { text: '星星回来啦', sessionId: SESSION_ID, usage: { output_tokens: 4 }, compacted: true, context: { usedTokens: 38_000, maxTokens: 200_000, usedPercentage: 19 } },
       } })
     }
     throw new Error(`unexpected fetch ${url}`)
@@ -207,6 +207,8 @@ test('Lumbre reconnects a prematurely closed gateway stream from its last durabl
     for await (const event of readChatEventStream(response)) events.push(event)
     assert.deepEqual(events.map(event => event.type), ['attempt', 'text', 'text', 'done'])
     assert.equal(events.filter(event => event.type === 'text').map(event => event.content).join(''), '星星回来啦')
+    assert.equal(events.at(-1)?.compacted, true)
+    assert.equal(events.at(-1)?.context?.usedTokens, 38_000)
     assert.equal(eventUrls.length, 2)
   } finally { restore() }
 })
@@ -320,6 +322,7 @@ test('status and explicit cancel use server-only gateway credentials', async () 
     if (url.endsWith('/cancel-by-key')) return Response.json({ attempt: { id: ATTEMPT_ID, status: 'running' } }, { status: 202 })
     if (url.endsWith('/v1/busy')) return Response.json({ busy: true })
     if (url.endsWith('/v1/warm-cache')) return Response.json({ status: 'warmed', usage: { cache_read_input_tokens: 9000 } })
+    if (url.endsWith('/v1/compact')) return Response.json({ status: 'compacted', before: { usedTokens: 121000 }, after: { usedTokens: 38000 } })
     throw new Error(`unexpected fetch ${url}`)
   }
   try {
@@ -340,5 +343,8 @@ test('status and explicit cancel use server-only gateway credentials', async () 
       conversation_id: 'conversation-1',
       model: 'claude-opus-5-5',
     })
+    const compacted = await compactCcSession('conversation-1', fakeFetch)
+    assert.equal(compacted.status, 'compacted')
+    assert.deepEqual(JSON.parse(String(requests[5].init?.body)), { conversation_id: 'conversation-1' })
   } finally { restore() }
 })

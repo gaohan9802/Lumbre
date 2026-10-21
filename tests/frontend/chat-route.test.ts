@@ -5,6 +5,7 @@ import { normalizeSettings } from '../../src/features/chat/migrations/browser-st
 import { snapshotOfMessage } from '../../src/features/chat/sessions/messages'
 import { ccEffortsForModel, isCcModel, mergeCcModel, normalizeCcEffortForModel } from '../../src/lib/cc-model'
 import { chatMessageContentForModel, isSupportedChatFile } from '../../src/lib/chat-message-sync'
+import { ccContextLevel, mergeCcContextState, mergeChatWindowConfig, normalizeCcContextState, normalizeChatWindowConfig } from '../../src/lib/chat-window-config'
 
 test('old conversations and message versions normalize to the API route', () => {
   const settings = normalizeSettings({
@@ -42,6 +43,37 @@ test('a newer CC model selection wins independently from a newer message snapsho
   )
 })
 
+test('window settings merge as one timestamped unit', () => {
+  const selected = { windowConfig: { systemPrompt: '本窗', apiProfileId: 'p1', apiModelId: 'm1', ccEffort: 'max' }, windowConfigUpdatedAt: 50 }
+  assert.deepEqual(mergeChatWindowConfig(selected, { updatedAt: 100 }), {
+    windowConfig: selected.windowConfig,
+    windowConfigUpdatedAt: 50,
+  })
+  assert.deepEqual(mergeChatWindowConfig(selected, { windowConfig: { apiProfileId: 'p2', apiModelId: 'm2' }, windowConfigUpdatedAt: 51 }), {
+    windowConfig: { apiProfileId: 'p2', apiModelId: 'm2', systemPrompt: undefined, ccEffort: undefined },
+    windowConfigUpdatedAt: 51,
+  })
+})
+
+test('context warnings use fixed thresholds and retain one safe compaction receipt', () => {
+  assert.equal(ccContextLevel(69.9), 0)
+  assert.equal(ccContextLevel(70), 70)
+  assert.equal(ccContextLevel(85), 85)
+  assert.equal(ccContextLevel(95), 95)
+  assert.deepEqual(normalizeCcContextState({
+    ccContextWarningLevel: 95,
+    lastCcCompaction: { at: 123, source: 'manual', beforeTokens: 121_000, afterTokens: 38_000 },
+  }), {
+    warningLevel: 95,
+    lastCompaction: { at: 123, source: 'manual', beforeTokens: 121_000, afterTokens: 38_000 },
+  })
+  assert.equal(normalizeChatWindowConfig({ ccContextWarningLevel: 95 }), undefined)
+  assert.deepEqual(mergeCcContextState(
+    { ccContextState: { warningLevel: 85 }, ccContextStateUpdatedAt: 51 },
+    { windowConfig: { systemPrompt: '更新后的 SP' }, windowConfigUpdatedAt: 100 },
+  ), { ccContextState: { warningLevel: 85, lastCompaction: undefined }, ccContextStateUpdatedAt: 51 })
+})
+
 test('CC exposes current model families and only sends supported effort levels', () => {
   assert.equal(isCcModel('claude-fable-5-1'), true)
   assert.equal(isCcModel('claude-sonnet-5'), true)
@@ -77,17 +109,24 @@ test('route persists through store continuation, stale sync and message versions
     const id = useChatStore.getState().createSession()
     useChatStore.getState().setGenerationRoute(id, 'claude-code')
     useChatStore.getState().setCcModel(id, 'claude-opus-5-5')
+    useChatStore.getState().setWindowConfig(id, { systemPrompt: '只属于本窗', apiProfileId: 'anthropic-default', apiModelId: 'claude-sonnet-4-20250514', ccEffort: 'max' })
+    useChatStore.getState().setCcContextState(id, { warningLevel: 85, lastCompaction: { at: 123, source: 'manual' } })
+    useChatStore.getState().setWindowConfig(id, current => ({ ...current, apiModelId: 'claude-opus-4-20250514' }))
     useChatStore.getState().addMessage({ id: 'cc-reply', role: 'assistant', route: 'claude-code', content: 'hi', timestamp: 1 })
     const current = useChatStore.getState().settings.sessions.find(session => session.id === id)!
 
     const continued = useChatStore.getState().continueSession(50)
     assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === continued)?.generationRoute, 'claude-code')
     assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === continued)?.ccModel, 'claude-opus-5-5')
+    assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === continued)?.windowConfig?.systemPrompt, '只属于本窗')
+    assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === continued)?.ccContextState, undefined)
+    assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === id)?.ccContextState?.warningLevel, 85)
 
     useChatStore.getState().setActiveSession(id)
     useChatStore.getState().mergeRemote([{ ...current, updatedAt: Date.now() + 20, generationRoute: undefined, generationRouteUpdatedAt: undefined }], {})
     assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === id)?.generationRoute, 'claude-code')
     assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === id)?.ccModel, 'claude-opus-5-5')
+    assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === id)?.windowConfig?.ccEffort, 'max')
 
     useChatStore.getState().addMessageVersion('cc-reply', { route: 'api', content: 'api reroll', timestamp: 2 })
     assert.equal(useChatStore.getState().messages[0].route, 'api')

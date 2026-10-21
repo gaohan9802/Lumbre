@@ -85,6 +85,18 @@ export function createGatewayServer({ runtime, secret, claudeCodeVersion, heartb
         return json(response, result.status === 'busy' ? 409 : result.status === 'failed' ? 502 : 200, result)
       }
 
+      if (request.method === 'POST' && url.pathname === '/v1/compact') {
+        const body = await readBody(request, 8_000)
+        const conversationId = body.conversation_id || ''
+        if (!CONVERSATION_ID.test(conversationId)) throw new AttemptValidationError('conversation_id is invalid')
+        const result = await runtime.compact(conversationId)
+        const status = result.status === 'busy' ? 409
+          : result.status === 'no_session' ? 404
+            : ['failed', 'unsupported', 'checkpoint_unavailable'].includes(result.status) ? 502
+              : 200
+        return json(response, status, result)
+      }
+
       if (request.method === 'POST' && url.pathname === '/v1/attempts') {
         const body = await readBody(request)
         const result = runtime.submit({

@@ -4,6 +4,7 @@ export interface ChatStreamEvent {
   name?: string
   input?: unknown
   result?: string
+  context?: { usedTokens?: number; maxTokens?: number | null; usedPercentage?: number | null }
   [key: string]: unknown
 }
 

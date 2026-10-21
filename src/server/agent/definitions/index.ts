@@ -38,6 +38,8 @@ const TOOL_ORDER = [
   'read_detroit', 'play_detroit',
   'read_media_library', 'save_media_entry', 'read_coread_text', 'write_coread_annotation', 'update_coread_progress', 'write_media_note', 'comment_media_event', 'delete_media_content',
   'read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message',
+  'write_opening_message', 'clear_opening_message',
+  'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

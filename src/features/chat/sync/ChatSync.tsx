@@ -3,6 +3,7 @@
 import { mergeConversationMode } from '@/lib/chat-reply-mode'
 import { mergeConversationRoute } from '@/lib/chat-route'
 import { mergeCcModel } from '@/lib/cc-model'
+import { mergeCcContextState, mergeChatWindowConfig } from '@/lib/chat-window-config'
 
 /**
  * ChatSync — incremental multi-device sync owned by the chat feature.
@@ -31,7 +32,7 @@ let bootstrapped = false
 let pushedSnapshot: Record<string, number> = {}
 let pushedConfigAt = -1
 
-type ManifestItem = { generationRoute?: 'api' | 'claude-code'; generationRouteUpdatedAt?: number; ccModel?: string; ccModelUpdatedAt?: number; conversationMode?: 'long' | 'short'; conversationModeUpdatedAt?: number; id: string; updatedAt: number; messageCount?: number; title?: string; pinned?: boolean; createdAt?: number }
+type ManifestItem = { generationRoute?: 'api' | 'claude-code'; generationRouteUpdatedAt?: number; ccModel?: string; ccModelUpdatedAt?: number; conversationMode?: 'long' | 'short'; conversationModeUpdatedAt?: number; windowConfigUpdatedAt?: number; ccContextStateUpdatedAt?: number; id: string; updatedAt: number; messageCount?: number; title?: string; pinned?: boolean; createdAt?: number }
 
 function snapshotFromManifest(items: ManifestItem[] = []) {
   const next: Record<string, number> = {}
@@ -125,6 +126,8 @@ async function pullIncremental() {
     ...mergeConversationMode(item, null),
     ...mergeConversationRoute(item, null),
     ...mergeCcModel(item, null),
+    ...mergeChatWindowConfig(item, null),
+    ...mergeCcContextState(item, null),
     id: item.id, title: item.title || '历史对话', messages: [], pinned: !!item.pinned,
     createdAt: Number(item.createdAt) || Number(item.updatedAt) || Date.now(),
     updatedAt: Number(item.updatedAt) || 0, messageCount: Number(item.messageCount) || 0,

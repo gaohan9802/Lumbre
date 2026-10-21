@@ -20,6 +20,9 @@ export const CREATIVE_TOOL_POLICIES: ToolPolicySpec[] = [
   },
   { name: 'read_research', domain: 'research', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'write_research', domain: 'research', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_future_letter', domain: 'future-letter', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'append_future_letter', domain: 'future-letter', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'edit_future_letter_paragraph', domain: 'future-letter', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_detroit', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'play_detroit', domain: 'games', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
 ]

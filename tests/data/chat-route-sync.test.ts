@@ -13,7 +13,7 @@ test('durable append, manifest and stale snapshots preserve the selected route',
   sync.upsertSyncSessionMessage(
     'route-chat',
     { id: 'u', role: 'user', route: 'claude-code', content: 'hi', timestamp: 1 },
-    { title: 'fixture', generationRoute: 'claude-code', generationRouteUpdatedAt: 100, ccModel: 'claude-opus-5-5', ccModelUpdatedAt: 100 },
+    { title: 'fixture', generationRoute: 'claude-code', generationRouteUpdatedAt: 100, ccModel: 'claude-opus-5-5', ccModelUpdatedAt: 100, windowConfig: { systemPrompt: '本窗 SP', ccEffort: 'max' }, windowConfigUpdatedAt: 100, ccContextState: { warningLevel: 85 }, ccContextStateUpdatedAt: 100 },
   )
 
   let session = sync.loadSyncSessions(['route-chat'])[0]
@@ -22,14 +22,21 @@ test('durable append, manifest and stale snapshots preserve the selected route',
   assert.equal(sync.loadSyncManifest().sessions[0].generationRoute, 'claude-code')
   assert.equal(session.ccModel, 'claude-opus-5-5')
   assert.equal(sync.loadSyncManifest().sessions[0].ccModel, 'claude-opus-5-5')
+  assert.equal(session.windowConfig.systemPrompt, '本窗 SP')
+  assert.equal((sync.loadSyncManifest().sessions[0] as any).windowConfig, undefined)
+  assert.equal(sync.loadSyncManifest().sessions[0].windowConfigUpdatedAt, 100)
+  assert.equal(sync.loadSyncManifest().sessions[0].ccContextStateUpdatedAt, 100)
+  assert.equal(session.ccContextState.warningLevel, 85)
 
   sync.mergeSyncDelta({
-    sessions: [{ ...session, updatedAt: session.updatedAt + 1, generationRoute: undefined, generationRouteUpdatedAt: undefined, ccModel: undefined, ccModelUpdatedAt: undefined }],
+    sessions: [{ ...session, updatedAt: session.updatedAt + 1, generationRoute: undefined, generationRouteUpdatedAt: undefined, ccModel: undefined, ccModelUpdatedAt: undefined, windowConfig: undefined, windowConfigUpdatedAt: undefined }],
     tombstones: {},
   })
   session = sync.loadSyncSessions(['route-chat'])[0]
   assert.equal(session.generationRoute, 'claude-code')
   assert.equal(session.ccModel, 'claude-opus-5-5')
+  assert.equal(session.windowConfig.systemPrompt, '本窗 SP')
+  assert.equal(session.ccContextState.warningLevel, 85)
 
   sync.mergeSyncDelta({
     sessions: [{ ...session, updatedAt: session.updatedAt + 1, generationRoute: 'api', generationRouteUpdatedAt: 101 }],

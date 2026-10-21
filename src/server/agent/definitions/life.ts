@@ -988,5 +988,24 @@ export const LIFE_TOOL_DEFINITIONS = [
       },
       "required": ["type", "work_id"]
     }
+  },
+  {
+    "name": "write_opening_message",
+    "description": "给小火写一句当前开屏语，或替换你之前留下的那一句。当前内容会自动放进你的每轮可变上下文，不需要读取工具。最多两行、80个字。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "description": "想让小火下次打开 Lumbre 时看到的话" }
+      },
+      "required": ["text"]
+    }
+  },
+  {
+    "name": "clear_opening_message",
+    "description": "清空当前开屏语。旧内容仍保存在历史中；清空后开屏只显示 Leopardo 天数。",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
+    }
   }
 ] satisfies ToolDef[]

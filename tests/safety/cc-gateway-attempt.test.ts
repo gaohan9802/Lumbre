@@ -318,6 +318,76 @@ test('cache warm forks the latest session with matching tool schema and returns 
   }
 })
 
+test('manual compact resumes without tools and records a real compact boundary', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-compact-'))
+  try {
+    const calls: any[] = []
+    const sessionId = '550e8400-e29b-41d4-a716-446655440000'
+    const checkpoint = { path: '/fixture/transcript.jsonl', size: 120, offset: 0, tailHash: 'before' }
+    const ledger = new AttemptLedger(root)
+    const runtime = new GatewayRuntime({
+      ledger,
+      executor: {
+        checkpointSession: () => checkpoint,
+        restoreSession: () => true,
+        run: async (input: any) => {
+          calls.push(input)
+          if (calls.length === 1) return {
+            text: 'before', sessionId,
+            context: { usedTokens: 121_000, maxTokens: 200_000, usedPercentage: 60.5 },
+          }
+          return {
+            text: '', sessionId, compacted: true,
+            context: { usedTokens: 38_000, maxTokens: 200_000, usedPercentage: 19 },
+          }
+        },
+      },
+    })
+    const submitted = runtime.submit(fixtureInput())
+    await runtime.waitForIdle()
+    const result: any = await runtime.compact('conversation-1')
+    assert.equal(result.status, 'compacted')
+    assert.equal(result.before.usedTokens, 121_000)
+    assert.equal(result.after.usedTokens, 38_000)
+    assert.match(calls[1].prompt, /^\/compact /)
+    assert.equal(calls[1].resumeSessionId, sessionId)
+    assert.equal(calls[1].toolsEnabled, false)
+    assert.equal(ledger.get(submitted.attempt!.id)?.result?.compacted, true)
+    assert.equal(ledger.get(submitted.attempt!.id)?.result?.context?.usedTokens, 38_000)
+    assert.equal(runtime.getEvents(submitted.attempt!.id)?.at(-1)?.type, 'manual_compacted')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('manual compact restores the transcript when the CLI does not report compaction', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-compact-rollback-'))
+  try {
+    let calls = 0
+    let restored = 0
+    const sessionId = '550e8400-e29b-41d4-a716-446655440000'
+    const ledger = new AttemptLedger(root)
+    const runtime = new GatewayRuntime({
+      ledger,
+      executor: {
+        checkpointSession: () => ({ path: '/fixture/transcript.jsonl', size: 120 }),
+        restoreSession: () => { restored++; return true },
+        run: async () => {
+          calls++
+          return calls === 1 ? { text: 'before', sessionId } : { text: 'not compacted', sessionId, compacted: false }
+        },
+      },
+    })
+    const submitted = runtime.submit(fixtureInput())
+    await runtime.waitForIdle()
+    assert.equal((await runtime.compact('conversation-1')).status, 'unsupported')
+    assert.equal(restored, 1)
+    assert.equal(ledger.get(submitted.attempt!.id)?.result?.compacted, undefined)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('restart restores an interrupted transcript and keeps queued work recoverable', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-restart-'))
   try {

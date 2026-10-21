@@ -21,6 +21,7 @@ import { applyBubbleLayout, composeBubbleLayout } from '@/lib/chat-bubble-compos
 import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { SummaryDialog } from './SummaryDialog'
+import { ChatWindowSettings } from './ChatWindowSettings'
 import { MessageReceiptDialog } from './MessageReceiptDialog'
 import { TimelineTimerModal } from '@/components/timeline/TimelineTimerModal'
 import { MarkdownText } from './MarkdownText'
@@ -37,6 +38,7 @@ import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ThinkingDrawer } from '@/features/chat/components/ThinkingDrawer'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
+import { ccContextLevel } from '@/lib/chat-window-config'
 import { DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
 import { ccSystemPromptForModel } from '@/lib/cc-system-prompt'
 import { chatMessageContentForModel, isSupportedChatFile, MAX_CHAT_ATTACHMENTS, MAX_CHAT_ATTACHMENT_BYTES } from '@/lib/chat-message-sync'
@@ -60,9 +62,10 @@ const MediaLibraryView = dynamic(() => import('@/components/media/MediaLibraryVi
 const EnergyView = dynamic(() => import('@/components/energy/EnergyView').then(module => module.EnergyView), { ssr: false })
 const MemoryView = dynamic(() => import('@/components/memory/MemoryView').then(module => module.MemoryView), { ssr: false })
 const FavoritesView = dynamic(() => import('@/components/favorites/FavoritesView').then(module => module.FavoritesView), { ssr: false })
+const FutureLetterView = dynamic(() => import('@/components/future-letter/FutureLetterView').then(module => module.FutureLetterView), { ssr: false })
 
-type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'energy' | 'timeline' | 'tesis'
-const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', energy: '能量手账', timeline: 'Timeline', tesis: 'Tesis' }
+type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'future' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'energy' | 'timeline' | 'tesis'
+const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', future: '醒来以后', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', energy: '能量手账', timeline: 'Timeline', tesis: 'Tesis' }
 
 interface FavoriteSourceItem {
   kind: 'memory' | 'diary' | 'chat'
@@ -190,6 +193,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [roomPanel, setRoomPanel] = useState<RoomPanel | null>(null)
   const [chatSettingsPanel, setChatSettingsPanel] = useState<ChatSettingsPanel>('menu')
   const [ccRefreshing, setCcRefreshing] = useState(false)
+  const [windowSettingsOpen, setWindowSettingsOpen] = useState(false)
+  const [contextWarning, setContextWarning] = useState<{ sessionId: string; level: 85 | 95 } | null>(null)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number }[]>([])
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
@@ -200,8 +205,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession, setSettings,
-    renameSession, deleteSession, togglePinSession, setActiveModel,
-    setGenerationRoute, setCcModel, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary, updateStageSummary,
+    renameSession, deleteSession, togglePinSession,
+    setGenerationRoute, setCcModel, setWindowConfig, setCcContextState, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary, updateStageSummary,
   } = useChatStore()
   const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
@@ -211,6 +216,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const selectedCcModel = isCcModel(activeSession?.ccModel) ? activeSession.ccModel : undefined
   const activeCcModel = selectedCcModel || (isCcModel(ccStatus?.model) ? ccStatus.model : DEFAULT_CC_MODEL)
   const effectiveCcModel = selectedCcModel || ccStatus.model || DEFAULT_CC_MODEL
+  const activeApiProfile = settings.apiProfiles.find(profile => profile.id === activeSession?.windowConfig?.apiProfileId)
+    || getActiveProfile(settings)
+  const activeApiModel = activeApiProfile?.models.some(model => model.id === activeSession?.windowConfig?.apiModelId)
+    ? activeSession?.windowConfig?.apiModelId || settings.model
+    : activeApiProfile?.id === settings.activeProfileId ? settings.model : activeApiProfile?.defaultModel || settings.model
+  const activeCcEffort = activeSession?.windowConfig?.ccEffort || settings.ccEffort
+  const currentContextLevel = ccContextLevel(ccStatus.context.usedPercentage)
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
   const [ccRecoveryTick, setCcRecoveryTick] = useState(0)
   const bottomedSessionRef = useRef<string | null>(null)
@@ -346,6 +358,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   }, [readCcStatus, setModelPickerOpen])
   useEffect(() => { void refreshCcStatus() }, [refreshCcStatus])
   useEffect(() => { if (modelPickerOpen) void refreshCcStatus() }, [modelPickerOpen, refreshCcStatus])
+  useEffect(() => { setContextWarning(current => current?.sessionId === activeSession?.id ? current : null) }, [activeSession?.id])
   useEffect(() => {
     if (activeRoute !== 'claude-code') return
     const refresh = () => { if (document.visibilityState === 'visible') void refreshCcStatus(false) }
@@ -358,6 +371,21 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       document.removeEventListener('visibilitychange', refresh)
     }
   }, [activeRoute, ccStatus.available, ccStatus.quota.available, refreshCcStatus])
+  useEffect(() => {
+    if (!activeSession?.id || activeRoute !== 'claude-code' || !ccStatus.context.available) return
+    const level = ccContextLevel(ccStatus.context.usedPercentage)
+    const seen = activeSession.ccContextState?.warningLevel || 0
+    const justCompacted = Date.now() - Number(activeSession.ccContextState?.lastCompaction?.at || 0) < 15_000
+    if (justCompacted) return
+    if (level < 70) {
+      if (seen) setCcContextState(activeSession.id, current => ({ ...current, warningLevel: undefined }))
+      return
+    }
+    if ((level === 85 || level === 95) && level > seen) {
+      setContextWarning({ sessionId: activeSession.id, level })
+      setCcContextState(activeSession.id, current => ({ ...current, warningLevel: level }))
+    }
+  }, [activeRoute, activeSession?.id, activeSession?.ccContextState, ccStatus.context.available, ccStatus.context.usedPercentage, setCcContextState])
   useEffect(() => {
     const accept = (detail: SharedCard | string) => {
       if (typeof detail === 'string') setInput((v) => v ? v + '\n\n' + detail : detail)
@@ -552,7 +580,23 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     sessionAction?: 'rebase',
   ) => {
     const route = normalizeChatRoute(requestedRoute)
+    const ccContextBeforeTokens = route === 'claude-code' && ccStatus.context.available
+      ? ccStatus.context.usedTokens
+      : undefined
     const onDone = (data: any) => {
+      if (data.ccCompacted && activeSession?.id) {
+        setContextWarning(null)
+        setCcContextState(activeSession.id, current => ({
+          ...current,
+          warningLevel: undefined,
+          lastCompaction: {
+            at: Date.now(),
+            source: 'automatic',
+            beforeTokens: ccContextBeforeTokens,
+            afterTokens: data.ccContextAfterTokens,
+          },
+        }))
+      }
       return onResult({
         ...data,
         replyMode: 'long',
@@ -560,8 +604,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         bubbleLayout: undefined,
       })
     }
-    const profile = getActiveProfile(settings)
-    const model = settings.model
+    const profile = activeApiProfile
+    const model = activeApiModel
 
     // Build bookmark injections
     const triggered = getTriggeredBookmarks(settings.bookmarks, messages)
@@ -570,9 +614,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     const bookmarkBlock = (items: typeof triggered) => items.length
       ? `[书签提醒]\n${items.map(bookmark => bookmark.content).join('\n---\n')}`
       : ''
+    const windowPrompt = activeSession?.windowConfig?.systemPrompt
+    const basePrompt = windowPrompt || settings.systemPrompt
     const systemPrompt = (route === 'claude-code'
-      ? ccSystemPromptForModel(settings.systemPrompt, settings.ccOpus55SystemPrompt, effectiveCcModel)
-      : settings.systemPrompt) || undefined
+      ? ccSystemPromptForModel(basePrompt, windowPrompt || settings.ccOpus55SystemPrompt, effectiveCcModel)
+      : basePrompt) || undefined
     const readingInjection = contextInjection.trim()
     const statusInjection = timelineCurrent ? `[小火当前状态]\n正在做：${timelineCurrent.title}\n已持续：${Math.max(1, Math.floor((Date.now() - new Date(timelineCurrent.start_at).getTime()) / 60000))}分钟${timelineCurrent.tags?.length ? `\n标签：${timelineCurrent.tags.join('、')}` : ''}${timelineCurrent.note ? `\n开始备注：${timelineCurrent.note}` : ''}` : ''
     const summaryConfig = activeSession?.summaryConfig || { injectCount: settings.summaryInjectCount }
@@ -611,6 +657,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     let ccSessionReason: string | undefined
     let ccSessionFingerprint: string | undefined
     let ccCompacted: boolean | undefined
+    let ccContextAfterTokens: number | undefined
     let paintTimer: ReturnType<typeof setTimeout> | null = null
     const paintStream = () => {
       paintTimer = null
@@ -655,7 +702,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       const res = await chatApi.stream({
         generation_route: route,
         cc_model: route === 'claude-code' ? selectedCcModel : undefined,
-        cc_effort: route === 'claude-code' ? normalizeCcEffortForModel(effectiveCcModel, settings.ccEffort) : undefined,
+        cc_effort: route === 'claude-code' ? normalizeCcEffortForModel(effectiveCcModel, activeCcEffort) : undefined,
         turn_id: route === 'claude-code' ? turnId : undefined,
         cc_session_action: route === 'claude-code' ? sessionAction : undefined,
         messages: sendMessages,
@@ -751,6 +798,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           ccSessionMode = ['bootstrap', 'resume', 'rebase'].includes(String(evt.session_mode)) ? evt.session_mode as any : ccSessionMode
           ccSessionReason = typeof evt.session_reason === 'string' ? evt.session_reason : ccSessionReason
           ccCompacted = typeof evt.compacted === 'boolean' ? evt.compacted : ccCompacted
+          ccContextAfterTokens = Number.isFinite(evt.context?.usedTokens) ? Number(evt.context?.usedTokens) : ccContextAfterTokens
         }
       }
       if (paintTimer) clearTimeout(paintTimer)
@@ -770,6 +818,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         ccSessionMode,
         ccSessionReason,
         ccCompacted,
+        ccContextAfterTokens,
         ccModelId: typeof usage.model === 'string' ? usage.model : undefined,
       })
       if (route === 'claude-code') void refreshCcStatus()
@@ -956,6 +1005,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         ccModelUpdatedAt: session.ccModelUpdatedAt,
         conversationMode: session.conversationMode,
         conversationModeUpdatedAt: session.conversationModeUpdatedAt,
+        windowConfig: session.windowConfig,
+        windowConfigUpdatedAt: session.windowConfigUpdatedAt,
+        ccContextState: session.ccContextState,
+        ccContextStateUpdatedAt: session.ccContextStateUpdatedAt,
       })
     }
     void flushChatOutbox().catch(() => {})
@@ -964,8 +1017,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const sendMessage = async () => {
     if ((!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare) || isLoading) return
     if (activeRoute === 'claude-code') void ensureCcAvailable(activeRoute, false)
-    const profile = getActiveProfile(settings)
-    const model = settings.model
+    const profile = activeApiProfile
+    const model = activeApiModel
     const now = Date.now()
     const userMsg: ChatMessage = {
       id: now.toString(),
@@ -1065,8 +1118,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       return
     }
 
-    const profile = getActiveProfile(settings)
-    const model = settings.model
+    const profile = activeApiProfile
+    const model = activeApiModel
     setIsLoading(true)
     const currentMessages = useChatStore.getState().messages
 
@@ -1423,8 +1476,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 <span>{fmtMetricTime(ccStatus.context.collectedAt)}</span>
               </div>
               <div className="chat-theme-soft mt-1.5 h-1 overflow-hidden rounded-full">
-                <div className="chat-theme-accent-bg h-full rounded-full" style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
+                <div className={`h-full rounded-full ${currentContextLevel === 95 ? 'bg-red-500' : currentContextLevel >= 85 ? 'bg-amber-500' : 'chat-theme-accent-bg'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
               </div>
+              {currentContextLevel >= 70 && <div className={`mt-2 text-[10px] ${currentContextLevel === 95 ? 'text-red-500' : currentContextLevel >= 85 ? 'text-amber-600' : 'opacity-45'}`}>{currentContextLevel === 95 ? '接近上限 · 建议现在压缩' : currentContextLevel === 85 ? '建议近期压缩' : '已进入上下文后半程'}</div>}
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
                 <span>读缓存 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写缓存 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
                 <span className="truncate">{ccStatus.context.model || ccStatus.model || 'CC'}</span>
@@ -1439,8 +1493,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         </section>
         <div className="space-y-1.5 pt-1">
           <div className="grid grid-cols-4 gap-1.5">
-            <button type="button" onClick={() => openChatSettings('star')} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">SP</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">模型</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setWindowSettingsOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">本窗</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">模型库</button>
             <button type="button" onClick={() => openChatSettings('settings')} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">参数</button>
             <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">换窗</button>
           </div>
@@ -1457,6 +1511,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   /* ── render ───────────────────────────── */
 
+  const visibleContextWarning = contextWarning?.sessionId === activeSession?.id ? contextWarning : null
   return (
     <>
       <div className="chat-theme relative flex h-full overflow-hidden">
@@ -1480,6 +1535,15 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               <Moon size={21} strokeWidth={1.45}/>
             </button>
           </div>}
+
+          <AnimatePresence>
+            {visibleContextWarning && <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="mx-4 mb-1 flex items-center gap-2">
+              <button type="button" onClick={() => { setContextWarning(null); setWindowSettingsOpen(true) }} className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-left text-[11px] ${visibleContextWarning.level === 95 ? 'border-red-500/35 bg-red-500/10 text-red-600' : n ? 'border-amber-400/25 bg-amber-400/10 text-amber-300' : 'border-amber-600/20 bg-amber-50 text-amber-700'}`}>
+                上下文 {Math.round(ccStatus.context.usedPercentage || visibleContextWarning.level)}% · {visibleContextWarning.level === 95 ? '建议现在压缩' : '建议近期压缩'} <span className="ml-1 underline underline-offset-2">查看</span>
+              </button>
+              <button type="button" aria-label="关闭上下文预警" onClick={() => setContextWarning(null)} className="rounded-full p-1.5 opacity-45"><X size={14}/></button>
+            </motion.div>}
+          </AnimatePresence>
 
           {/* messages */}
           <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-5 space-y-4" onClick={() => { if (deleteMenuId) setDeleteMenuId(null); setMessageActionsId(null) }}>
@@ -1890,15 +1954,15 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             open={modelPickerOpen}
             isNight={n}
             choices={enabledModels}
-            activeProfileId={settings.activeProfileId}
-            activeModelId={settings.model}
+            activeProfileId={activeApiProfile?.id || settings.activeProfileId}
+            activeModelId={activeApiModel}
             activeRoute={activeRoute}
             activeCcModel={activeCcModel}
-            activeCcEffort={settings.ccEffort}
+            activeCcEffort={activeCcEffort}
             ccStatus={ccStatus}
             onSelectApiModel={(profileId, modelId) => {
               if (activeSession) setGenerationRoute(activeSession.id, 'api')
-              setActiveModel(profileId, modelId)
+              if (activeSession) setWindowConfig(activeSession.id, current => ({ ...current, apiProfileId: profileId, apiModelId: modelId }))
               setModelPickerOpen(false)
             }}
             onSelectCc={(modelId) => {
@@ -1907,8 +1971,22 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 setGenerationRoute(activeSession.id, 'claude-code')
               }
             }}
-            onSelectCcEffort={(effort) => setSettings({ ccEffort: effort })}
+            onSelectCcEffort={(effort) => {
+              if (activeSession) setWindowConfig(activeSession.id, current => ({ ...current, ccEffort: effort }))
+            }}
             onClose={() => setModelPickerOpen(false)}
+          />
+
+          <ChatWindowSettings
+            open={windowSettingsOpen}
+            session={activeSession}
+            ccStatus={ccStatus}
+            chatBusy={isLoading || sendStarting}
+            onClose={() => setWindowSettingsOpen(false)}
+            onRefreshCc={refreshCcStatus}
+            onCompacted={() => setContextWarning(null)}
+            onDefaultPrompt={() => { setWindowSettingsOpen(false); openChatSettings('star') }}
+            onSummary={() => { setWindowSettingsOpen(false); setSummaryDialogOpen(true) }}
           />
 
           <AnimatePresence>
@@ -1949,7 +2027,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <header className="flex justify-end px-3 py-1">
                     <button type="button" aria-label="关闭" onClick={() => setRoomPanel(null)} className="rounded-full p-2 opacity-55 hover:opacity-100"><X size={18}/></button>
                   </header>
-                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
+                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'future' ? <FutureLetterView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
                 </motion.section>
               </>
             )}
@@ -1974,7 +2052,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onMedia={() => setRoomPanel('media')} onEnergy={() => setRoomPanel('energy')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFutureLetter={() => setRoomPanel('future')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onMedia={() => setRoomPanel('media')} onEnergy={() => setRoomPanel('energy')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} onRegenerateStage={(stage) => { void regenerateStageSummary(stage) }} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />

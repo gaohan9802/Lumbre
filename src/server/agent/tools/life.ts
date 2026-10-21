@@ -63,4 +63,6 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'write_media_note', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'comment_media_event', domain: 'media', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'delete_media_content', domain: 'media', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除书影内容' },
+  { name: 'write_opening_message', domain: 'context', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'clear_opening_message', domain: 'context', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
 ]

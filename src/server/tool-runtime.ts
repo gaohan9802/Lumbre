@@ -51,6 +51,8 @@ import { createResearch, readResearchTopic, researchOverview, setResearchArchive
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
 import { drawPicture } from './pencil-case'
+import { clearOpeningMessage, writeOpeningMessage } from './opening-message-store'
+import { appendFutureLetterParagraph, editFutureLetterParagraph, readFutureLetter } from './future-letter-store'
 import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
@@ -392,6 +394,25 @@ export async function executeRegisteredToolHandler(
       case 'write_guestbook': return JSON.stringify({ ok: true, message: writeGuestbookMessage('star', input.content) })
       case 'reply_guestbook': return JSON.stringify({ ok: true, reply: writeGuestbookMessage('star', input.content, input.message_id, input.reply_id) })
       case 'delete_guestbook_message': return JSON.stringify({ result: deleteGuestbookMessage('star', input.message_id, input.reply_id) })
+      case 'write_opening_message': return JSON.stringify({ ok: true, message: writeOpeningMessage(input.text) })
+      case 'clear_opening_message': return JSON.stringify({ ok: true, message: clearOpeningMessage() })
+      case 'read_future_letter': {
+        const letter = readFutureLetter()
+        if (input.paragraph_id) {
+          const paragraph = letter.paragraphs.find(item => item.id === input.paragraph_id)
+          if (!paragraph) throw new Error('没有找到这段话')
+          return JSON.stringify({ paragraph, paragraph_count: letter.paragraphs.length })
+        }
+        const offset = Math.max(0, Number.isInteger(input.offset) ? input.offset : 0)
+        const limit = Math.min(100, Math.max(1, Number.isInteger(input.limit) ? input.limit : 30))
+        const paragraphs = letter.paragraphs.slice(offset, offset + limit)
+        return JSON.stringify({ paragraphs, paragraph_count: letter.paragraphs.length, offset, next_offset: offset + paragraphs.length < letter.paragraphs.length ? offset + paragraphs.length : null })
+      }
+      case 'append_future_letter': {
+        const result = appendFutureLetterParagraph(input.content, input.operation_key)
+        return JSON.stringify({ ok: true, paragraph: result.paragraph, deduplicated: result.deduplicated })
+      }
+      case 'edit_future_letter_paragraph': return JSON.stringify({ ok: true, paragraph: editFutureLetterParagraph(input.paragraph_id, input.content) })
 
       // Photos → local store
       case 'list_foto_albums': {

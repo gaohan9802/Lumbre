@@ -72,7 +72,7 @@ function jsonInit(method: 'POST' | 'DELETE', body: unknown, signal?: AbortSignal
   }
 }
 
-type SessionMeta = Pick<ChatSession, 'title' | 'pinned' | 'createdAt' | 'summaryConfig' | 'generationRoute' | 'generationRouteUpdatedAt' | 'ccModel' | 'ccModelUpdatedAt' | 'conversationMode' | 'conversationModeUpdatedAt'>
+type SessionMeta = Pick<ChatSession, 'title' | 'pinned' | 'createdAt' | 'summaryConfig' | 'generationRoute' | 'generationRouteUpdatedAt' | 'ccModel' | 'ccModelUpdatedAt' | 'conversationMode' | 'conversationModeUpdatedAt' | 'windowConfig' | 'windowConfigUpdatedAt' | 'ccContextState' | 'ccContextStateUpdatedAt'>
 
 export const chatApi = {
   stream: (body: unknown, signal: AbortSignal) =>
@@ -85,6 +85,9 @@ export const chatApi = {
     chatApiJson<{ ok: boolean; result?: string }>('/api/tools/confirm', jsonInit('POST', body), 25_000),
 
   ccStatus: (conversationId?: string) => chatApiJson<CcStatus>(`/api/chat/cc-status${conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ''}`, {}, 6_000),
+
+  compactCc: (body: { session_id: string; model?: string }) =>
+    chatApiJson<{ status: string; before?: CcStatus['context']; after?: CcStatus['context']; error?: string }>('/api/chat/cc-compact', jsonInit('POST', body), 0),
 
   cancelCcAttempt: (body: { session_id: string; turn_id: string }) =>
     chatApiJson<{ ok: boolean; attempt?: { id: string; status: string } }>('/api/chat/cc-attempt/cancel', jsonInit('POST', body), 8_000),

@@ -500,6 +500,31 @@ function actionFingerprint(name: any, input: any): string {
   return createHash('sha256').update(`${String(name)}:${JSON.stringify(stableValue(input))}`).digest('hex').slice(0, 20)
 }
 
+export function resolveWakeGenerationConfig(wakeSession: any, cfg: any, generationRoute: 'api' | 'claude-code') {
+  const windowConfig = wakeSession?.windowConfig || {}
+  const windowPrompt = typeof windowConfig.systemPrompt === 'string' && windowConfig.systemPrompt.trim()
+    ? windowConfig.systemPrompt
+    : ''
+  const basePrompt = windowPrompt || cfg?.systemPrompt || ''
+  const ccModel = isCcModel(wakeSession?.ccModel) ? wakeSession.ccModel : undefined
+  const systemPrompt = (generationRoute === 'claude-code'
+    ? ccSystemPromptForModel(basePrompt, windowPrompt || cfg?.ccOpus55SystemPrompt, ccModel)
+    : basePrompt) || undefined
+  const profiles = Array.isArray(cfg?.apiProfiles) ? cfg.apiProfiles : []
+  const active = profiles.find((profile: any) => profile.id === windowConfig.apiProfileId)
+    || profiles.find((profile: any) => profile.id === cfg?.activeProfileId)
+    || profiles[0]
+  const modelId = active?.models?.some((model: any) => model?.id === windowConfig.apiModelId)
+    ? windowConfig.apiModelId
+    : active?.id === cfg?.activeProfileId ? cfg?.model : active?.defaultModel || cfg?.model
+  return {
+    systemPrompt,
+    modelOverride: modelId || undefined,
+    ccEffort: isCcEffort(windowConfig.ccEffort) ? windowConfig.ccEffort : isCcEffort(cfg?.ccEffort) ? cfg.ccEffort : undefined,
+    apiProfile: active && modelId ? { profileId: active.id, modelId } : undefined,
+  }
+}
+
 // ── Execute wake ─────────────────────────────────────
 
 async function executeWake(config: WakeConfig, reason: string, activityAt: number, trigger: Exclude<WakeTrigger, 'warm-cache'> = 'day', alarm?: WakeAlarm): Promise<WakeLog> {
@@ -583,19 +608,11 @@ ${JSON.stringify(recentDigests)}`
   try {
     const cfg = loadSyncManifest().config
     if (cfg) {
-      systemPrompt = (generationRoute === 'claude-code'
-        ? ccSystemPromptForModel(cfg.systemPrompt || '', cfg.ccOpus55SystemPrompt, isCcModel(wakeSession?.ccModel) ? wakeSession.ccModel : undefined)
-        : cfg.systemPrompt) || undefined
-      modelOverride = cfg.model || undefined
-      ccEffort = isCcEffort(cfg.ccEffort) ? cfg.ccEffort : undefined
-      const profiles = Array.isArray(cfg.apiProfiles) ? cfg.apiProfiles : []
-      const active = profiles.find((p: any) => p.id === cfg.activeProfileId) || profiles[0]
-      if (active) {
-        apiProfile = {
-          profileId: active.id,
-          modelId: cfg.model || active.defaultModel,
-        }
-      }
+      const resolved = resolveWakeGenerationConfig(wakeSession, cfg, generationRoute)
+      systemPrompt = resolved.systemPrompt
+      modelOverride = resolved.modelOverride
+      ccEffort = resolved.ccEffort
+      apiProfile = resolved.apiProfile
       const summaryConfig = wakeSession?.summaryConfig || { injectCount: cfg.summaryInjectCount || 3 }
       const summaries = [...(wakeSession?.summaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, summaryConfig.injectCount).reverse()
       const stages = [...(wakeSession?.stageSummaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, 2).reverse()

@@ -6,15 +6,19 @@ import { getActiveSession, sortedSessions } from '@/features/chat/state/accessor
 import { normalizeSettings } from '@/features/chat/migrations/browser-state'
 import { isBlankSession, mergeChatSessionsForSync } from '@/features/chat/sessions/merge'
 import { mergeChatMessages, normalizeMessageTombstones } from '@/lib/chat-message-sync'
-import type { ChatMessage, ChatSession, ChatSettings, MessageVersion } from '@/features/chat/state/types'
+import { normalizeCcContextState, normalizeChatWindowConfig } from '@/lib/chat-window-config'
+import type { CcContextState, ChatMessage, ChatSession, ChatSettings, ChatWindowConfig, MessageVersion } from '@/features/chat/state/types'
 
 type ChatState = { settings: ChatSettings; messages: ChatMessage[] }
 type SetChatState = (updater: (state: ChatState) => Partial<ChatState> | ChatState) => void
+type ValueOrUpdater<T> = T | undefined | ((current: T | undefined) => T | undefined)
 
 export interface SessionActions {
   setGenerationRoute: (id: string, route: ChatRoute) => void
   setCcModel: (id: string, model: CcModelId) => void
   setConversationMode: (id: string, mode: ReplyMode) => void
+  setWindowConfig: (id: string, config: ValueOrUpdater<ChatWindowConfig>) => void
+  setCcContextState: (id: string, context: ValueOrUpdater<CcContextState>) => void
   createSession: () => string
   ensureSession: (id: string, title: string, activate?: boolean) => string
   setActiveSession: (id: string) => void
@@ -57,6 +61,32 @@ export function createSessionActions(set: SetChatState): SessionActions {
         conversationModeUpdatedAt: Math.max(Date.now(), (session.conversationModeUpdatedAt || 0) + 1),
         updatedAt: Math.max(Date.now(), session.updatedAt + 1),
       } : session)
+      return { settings: { ...state.settings, sessions } }
+    }),
+    setWindowConfig: (id, config) => set(state => {
+      const sessions = state.settings.sessions.map(session => {
+        if (session.id !== id) return session
+        const next = typeof config === 'function' ? config(session.windowConfig) : config
+        return {
+          ...session,
+          windowConfig: normalizeChatWindowConfig(next),
+          windowConfigUpdatedAt: Math.max(Date.now(), (session.windowConfigUpdatedAt || 0) + 1),
+          updatedAt: Math.max(Date.now(), session.updatedAt + 1),
+        }
+      })
+      return { settings: { ...state.settings, sessions } }
+    }),
+    setCcContextState: (id, context) => set(state => {
+      const sessions = state.settings.sessions.map(session => {
+        if (session.id !== id) return session
+        const next = typeof context === 'function' ? context(session.ccContextState) : context
+        return {
+          ...session,
+          ccContextState: normalizeCcContextState(next),
+          ccContextStateUpdatedAt: Math.max(Date.now(), (session.ccContextStateUpdatedAt || 0) + 1),
+          updatedAt: Math.max(Date.now(), session.updatedAt + 1),
+        }
+      })
       return { settings: { ...state.settings, sessions } }
     }),
     createSession: () => {
@@ -129,6 +159,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
           ccModelUpdatedAt: now,
           conversationMode: active.conversationMode,
           conversationModeUpdatedAt: now,
+          windowConfig: active.windowConfig ? { ...active.windowConfig } : undefined,
+          windowConfigUpdatedAt: now,
           summaryConfig: { ...(active.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount }), modeVersion: 2, anchorMessageId: active.messages[idx]?.id, anchorTimestamp: active.messages[idx]?.timestamp },
           pinned: false,
           createdAt: now,
@@ -216,6 +248,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
           ccModelUpdatedAt: now,
           conversationMode: active.conversationMode,
           conversationModeUpdatedAt: now,
+          windowConfig: active.windowConfig ? { ...active.windowConfig } : undefined,
+          windowConfigUpdatedAt: now,
           summaryConfig: { ...(active.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount }), modeVersion: 2, anchorMessageId: tail[tail.length - 1]?.id, anchorTimestamp: tail[tail.length - 1]?.timestamp },
           pinned: false,
           createdAt: now,
