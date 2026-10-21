@@ -24,7 +24,7 @@ export function StreamingReply({
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
       <div className="w-full space-y-1">
         {thinkingParts.length > 0 && (
-          <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-muted ml-3 grid h-7 w-7 place-items-center text-lg">
+          <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-muted ml-3 grid h-7 w-7 place-items-center text-base">
             <span aria-hidden="true">💭</span>
           </button>
         )}
@@ -35,7 +35,7 @@ export function StreamingReply({
             const key = `stream-tool-${block.callId || index}`
             const expanded = expandedTools.has(key)
             return (
-              <div key={key} className="chat-theme-surface chat-theme-border mr-auto w-fit max-w-[87%] rounded-xl border">
+              <div key={key} className="chat-theme-surface chat-theme-border mr-auto w-fit max-w-[90%] rounded-xl border">
                 <button onClick={() => onToggleTools(key)} className="chat-theme-muted flex w-full items-center gap-2 px-3 py-2 text-xs">
                   <span className={`${block.pending ? 'animate-pulse ' : ''}chat-theme-accent`}>🔧</span>
                   <span className="chat-theme-accent font-medium">{toolDisplayLabel(block.name)}</span>
@@ -62,14 +62,14 @@ export function StreamingReply({
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
             return (
-              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className="chat-ai-bubble relative mr-auto block w-fit max-w-[88%] whitespace-pre-wrap break-words px-4 py-3 text-left text-[14px] leading-relaxed">
+              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className="chat-ai-bubble relative mr-auto block w-fit max-w-[91%] whitespace-pre-wrap break-words px-4 py-3 text-left text-[14px] leading-relaxed">
                 {block.content}{isLast && <span className="stream-cursor">…</span>}
               </motion.div>
             )
           }
           return null
         }) : (
-          <div className="chat-ai-bubble relative mr-auto w-fit max-w-[88%] px-4 py-3">
+          <div className="chat-ai-bubble relative mr-auto w-fit max-w-[91%] px-4 py-3">
             <div className="flex gap-1">
               {[0, 1, 2].map(index => (
                 <motion.div key={index} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.2 }}

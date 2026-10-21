@@ -1597,7 +1597,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       )}
 
                       {/* timestamp */}
-                      <p className={`chat-theme-muted text-[10px] ${isUser ? 'pr-1 text-right' : 'pl-4 text-left'}`}>
+                      <p className={`chat-theme-muted text-[11px] ${isUser ? 'pr-1 text-right' : 'pl-4 text-left'}`}>
                         {fmtShortDate(msg.timestamp)}
                       </p>
 
@@ -1606,7 +1606,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           type="button"
                           aria-label="打开星星的小算盘"
                           onClick={(event) => { event.stopPropagation(); setThinkingDrawer({ id: msg.id, parts: thinkingParts }) }}
-                          className="chat-theme-muted ml-3 grid h-7 w-7 place-items-center text-lg"
+                          className="chat-theme-muted ml-3 grid h-7 w-7 place-items-center text-base"
                         >
                           <span aria-hidden="true">💭</span>
                         </button>
@@ -1621,7 +1621,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             if (block.type === 'tool_call' && block.name) {
                               const isExp = expandedTools.has(blockKey)
                               return (
-                                <div key={blockKey} className="chat-theme-surface chat-theme-border mr-auto w-fit max-w-[87%] rounded-xl border">
+                                <div key={blockKey} className="chat-theme-surface chat-theme-border mr-auto w-fit max-w-[90%] rounded-xl border">
                                   <button onClick={() => toggleTools(blockKey)} className="chat-theme-muted flex w-full items-center gap-2 px-3 py-2 text-xs">
                                     <span className="chat-theme-accent">🔧</span>
                                     <span className="chat-theme-accent font-medium">{toolDisplayLabel(block.name)}</span>
@@ -1653,7 +1653,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className="chat-ai-bubble relative mr-auto block w-fit max-w-[88%] break-words px-4 py-3 text-left text-[14px] leading-relaxed">
+                                <div key={blockKey} className="chat-ai-bubble relative mr-auto block w-fit max-w-[91%] break-words px-4 py-3 text-left text-[14px] leading-relaxed">
                                   {messageImages && bi === firstTextBlockIndex && messageImages.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {messageImages.map((src: string, ii: number) => (
@@ -1681,7 +1681,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                         <>
                           {/* Legacy: tool calls above bubble */}
                           {msg.tool_calls && msg.tool_calls.length > 0 && (
-                            <div className="w-fit max-w-[87%] mr-auto">
+                            <div className="w-fit max-w-[90%] mr-auto">
                               <button onClick={() => toggleTools(msg.id)} className="chat-theme-accent flex items-center gap-1 text-xs">
                                 <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? '' : '-rotate-90'}`} />
                                 🔧 {msg.tool_calls.map((tc: any) => toolDisplayLabel(tc.name)).join('、')}
@@ -1730,7 +1730,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'ml-auto w-fit max-w-[74%] rounded-2xl rounded-br-md' : 'mr-auto w-fit max-w-[88%] text-left'}`}>
+                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'ml-auto w-fit max-w-[77%] rounded-2xl rounded-br-md' : 'mr-auto w-fit max-w-[91%] text-left'}`}>
                           {msg.sharedCard && (
                             <div className="chat-theme-surface chat-theme-border mb-2 overflow-hidden rounded-xl border">
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>

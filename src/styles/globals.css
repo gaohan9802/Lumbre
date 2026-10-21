@@ -129,12 +129,12 @@
 
   /* Chat only: Claude's neutral surfaces with Lumbre mist rose as the sole accent. */
   .chat-theme {
-    --chat-bg: #ffffff;
-    --chat-sidebar: #f7f7f5;
-    --chat-surface: #fafaf8;
-    --chat-soft: #f0f0ee;
-    --chat-user: #f0f0ee;
-    --chat-border: #dededb;
+    --chat-bg: #faf8f3;
+    --chat-sidebar: #f5f2ec;
+    --chat-surface: #fdfbf7;
+    --chat-soft: #efede7;
+    --chat-user: #efede7;
+    --chat-border: #dedbd4;
     --chat-text: #20201e;
     --chat-muted: #77756f;
     --chat-accent: #dbb9b3;
