@@ -24,5 +24,6 @@ test('a transient CC outage keeps the turn and refreshes status automatically', 
 test('a nose poke appears before its request finishes', () => {
   const poke = source.slice(source.indexOf('const pokeLeopardNose'), source.indexOf('const readCcStatus'))
   assert.ok(poke.indexOf('setNosePokes(current => [...current, optimisticPoke])') < poke.indexOf("await fetch('/api/nose-pokes'"))
+  assert.match(poke, /JSON\.stringify\(\{ sessionId \}\)/)
   assert.match(poke, /filter\(poke => poke\.id !== optimisticPoke\.id\)/)
 })

@@ -140,7 +140,7 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
   const currentContext = [
     await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
     params.clientVolatileContext,
-    dailyCompanionContext(),
+    dailyCompanionContext(params.sessionId),
     openingMessageContext(),
     buildStarMemoryContext(lastUser, params.bookmarkInjections),
   ].filter(Boolean).join('\n\n')
@@ -240,7 +240,7 @@ export async function handleChatRequest(req: NextRequest) {
       const currentContext = [
         await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
         clientVolatileContext(body.client_volatile_context),
-        dailyCompanionContext(),
+        dailyCompanionContext(body.session_id),
         openingMessageContext(),
         buildStarMemoryContext(lastUser, body.bookmark_injections),
       ].filter(Boolean).join('\n\n')

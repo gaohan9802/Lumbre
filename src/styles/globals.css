@@ -160,6 +160,7 @@
 
   .chat-theme-sidebar { background-color: var(--chat-sidebar); }
   .chat-theme-surface { background-color: var(--chat-surface); }
+  .chat-theme-panel { background-color: color-mix(in srgb, var(--chat-surface) 55%, var(--chat-soft)); }
   .chat-theme-soft { background-color: var(--chat-soft); }
   .chat-theme-user { background-color: var(--chat-user); color: var(--chat-text); }
   .chat-theme-border { border-color: var(--chat-border); }
@@ -170,10 +171,13 @@
   .chat-theme-accent-soft { background-color: color-mix(in srgb, var(--chat-accent) 28%, transparent); }
   .chat-theme-hover:hover { background-color: var(--chat-surface); }
   .chat-theme-input {
-    background-color: var(--chat-bg);
+    background-color: var(--chat-surface);
+    background-color: color-mix(in srgb, var(--chat-surface) 74%, transparent);
     border-color: var(--chat-border);
     color: var(--chat-text);
     box-shadow: 0 8px 24px rgba(25, 24, 22, 0.08);
+    -webkit-backdrop-filter: blur(18px) saturate(120%);
+    backdrop-filter: blur(18px) saturate(120%);
   }
   .dark .chat-theme-input { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
   .chat-theme-input:focus-within { border-color: color-mix(in srgb, var(--chat-accent) 72%, var(--chat-border)); }

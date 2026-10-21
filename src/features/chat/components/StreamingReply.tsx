@@ -24,7 +24,7 @@ export function StreamingReply({
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
       <div className="w-full space-y-1">
         {thinkingParts.length > 0 && (
-          <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-muted ml-3 grid h-7 w-7 place-items-center text-base">
+          <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-muted ml-3 grid h-7 w-7 place-items-center text-sm">
             <span aria-hidden="true">💭</span>
           </button>
         )}

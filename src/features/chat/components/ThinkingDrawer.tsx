@@ -44,7 +44,7 @@ export function ThinkingDrawer({ open, parts, streaming = false, onClose }: Thin
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             className="chat-theme-surface absolute inset-x-0 bottom-0 mx-auto flex h-[75dvh] max-h-[48rem] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] shadow-2xl"
           >
-            <div className="grid h-11 w-full shrink-0 place-items-start pt-3">
+            <div className="grid h-9 w-full shrink-0 place-items-start pt-3">
               <span aria-hidden="true" className="chat-theme-muted h-1.5 w-11 rounded-full opacity-35" />
             </div>
             <h2 id="thinking-drawer-title" className="shrink-0 pb-6 text-center text-base font-medium">星星的小算盘</h2>

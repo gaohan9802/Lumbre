@@ -11,10 +11,11 @@ import { CC_EFFORTS, CC_MODELS, ccEffortsForModel, normalizeCcEffortForModel, ty
 type ModelChoice = { profile: ApiProfile; model: ProviderModel }
 
 export function ChatRouteChip({
-  route,
+  route, detail,
   onClick,
 }: {
   route: ChatRoute
+  detail: string
   isNight: boolean
   onClick: () => void
 }) {
@@ -25,7 +26,7 @@ export function ChatRouteChip({
       onClick={onClick}
       className="chat-theme-surface chat-theme-border chat-theme-muted inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[10px] transition hover:opacity-80"
     >
-      <span className="font-semibold tracking-[0.12em]">{route === 'claude-code' ? 'CC' : 'API'}</span>
+      <span className="max-w-[6.5rem] truncate font-semibold tracking-[0.04em]">{route === 'claude-code' ? 'CC' : 'API'} {detail}</span>
       <ChevronDown size={11} className="flex-shrink-0 opacity-45" />
     </button>
   )

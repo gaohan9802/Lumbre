@@ -39,7 +39,7 @@ import { ThinkingDrawer } from '@/features/chat/components/ThinkingDrawer'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
 import { ccContextLevel } from '@/lib/chat-window-config'
-import { DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
+import { CC_MODELS, DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
 import { ccSystemPromptForModel } from '@/lib/cc-system-prompt'
 import { chatMessageContentForModel, isSupportedChatFile, MAX_CHAT_ATTACHMENTS, MAX_CHAT_ATTACHMENT_BYTES } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
@@ -196,7 +196,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [windowSettingsOpen, setWindowSettingsOpen] = useState(false)
   const [contextWarning, setContextWarning] = useState<{ sessionId: string; level: 85 | 95 } | null>(null)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
-  const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number }[]>([])
+  const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number; sessionId: string }[]>([])
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
   const [favoriteChatKeys, setFavoriteChatKeys] = useState<Set<string>>(new Set())
   const [favoriteChatContext, setFavoriteChatContext] = useState<FavoriteChatContext | null>(null)
@@ -286,13 +286,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     return () => window.removeEventListener('lumbre-open-favorite-source', openSource)
   }, [])
   useEffect(() => {
+    const sessionId = activeSession?.id
+    setNosePokes([])
+    if (!sessionId) return
     let cancelled = false
-    fetch('/api/nose-pokes', { cache: 'no-store' })
+    fetch(`/api/nose-pokes?sessionId=${encodeURIComponent(sessionId)}`, { cache: 'no-store' })
       .then(response => response.ok ? response.json() : null)
       .then(data => { if (!cancelled && Array.isArray(data?.events)) setNosePokes(data.events) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [])
+  }, [activeSession?.id])
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
     const scheduleReset = () => {
@@ -307,16 +310,17 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   }, [])
 
   const pokeLeopardNose = async () => {
-    if (nosePokeBusy) return
+    const sessionId = activeSession?.id
+    if (nosePokeBusy || !sessionId) return
     setNosePokeBusy(true)
-    const optimisticPoke = { id: `pending-${crypto.randomUUID()}`, timestamp: Date.now() }
+    const optimisticPoke = { id: `pending-${crypto.randomUUID()}`, timestamp: Date.now(), sessionId }
     setNosePokes(current => [...current, optimisticPoke])
     navigator.vibrate?.(12)
     try {
-      const response = await fetch('/api/nose-pokes', { method: 'POST' })
+      const response = await fetch('/api/nose-pokes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }) })
       if (!response.ok) throw new Error('戳鼻子失败')
       const data = await response.json()
-      if (Array.isArray(data.events)) setNosePokes(data.events)
+      if (useChatStore.getState().settings.activeSessionId === sessionId && Array.isArray(data.events)) setNosePokes(data.events)
     } catch {
       setNosePokes(current => current.filter(poke => poke.id !== optimisticPoke.id))
       window.alert('豹子刚才躲过去了，再戳一下试试。')
@@ -439,7 +443,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     stickBottomRef.current = true
     bottomedSessionRef.current = sessionId
   }, [activeSession?.id, activeSession?.messageCount, mounted, visibleMessages.length])
-  const nosePokeLine = (poke: { id: string; timestamp: number }) => (
+  const nosePokeLine = (poke: { id: string; timestamp: number; sessionId: string }) => (
     <motion.p
       key={poke.id}
       initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
@@ -1362,7 +1366,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {n ? <Sun size={17} strokeWidth={1.45}/> : <Moon size={17} strokeWidth={1.45}/>}
           </motion.button>
         </div>
-        <section className="chat-theme-surface chat-theme-border rounded-xl border px-2.5 py-2">
+        <section className="chat-theme-panel chat-theme-border rounded-xl border px-2.5 py-2">
           <div className="flex items-center gap-2">
             <span className="w-5 shrink-0 text-center text-base leading-none">{weather?.updatedAt ? weatherEmoji(weather.code) : '📍'}</span>
             {weather?.updatedAt ? (
@@ -1423,7 +1427,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         })}
       </div>
       <div className="chat-theme-border relative z-10 shrink-0 space-y-2 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-        <section className="chat-theme-surface chat-theme-border rounded-xl border p-3">
+        <section className="chat-theme-panel chat-theme-border rounded-xl border p-3">
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CLAUDE 额度 · 订阅</span>
             <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="p-1 -m-1 hover:opacity-100 disabled:opacity-70">
@@ -1463,7 +1467,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )}
         </section>
 
-        <section className="chat-theme-surface chat-theme-border rounded-xl border p-3">
+        <section className="chat-theme-panel chat-theme-border rounded-xl border p-3">
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CC CONTEXT · 当前对话</span>
             <span className={ccStatus.context.available ? 'chat-theme-accent' : ''}>●</span>
@@ -1493,16 +1497,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         </section>
         <div className="space-y-1.5 pt-1">
           <div className="grid grid-cols-4 gap-1.5">
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setWindowSettingsOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">本窗</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">模型库</button>
-            <button type="button" onClick={() => openChatSettings('settings')} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">参数</button>
-            <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">换窗</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setWindowSettingsOpen(true) }} className="chat-theme-panel chat-theme-border rounded-lg border py-2 text-[10px]">本窗</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-theme-panel chat-theme-border rounded-lg border py-2 text-[10px]">模型库</button>
+            <button type="button" onClick={() => openChatSettings('settings')} className="chat-theme-panel chat-theme-border rounded-lg border py-2 text-[10px]">参数</button>
+            <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className="chat-theme-panel chat-theme-border rounded-lg border py-2 text-[10px]">换窗</button>
           </div>
           <div className="grid grid-cols-4 gap-1.5">
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">摘要</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">书签</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">唤醒</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">记忆</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className="chat-theme-panel chat-theme-border rounded-lg border py-2 text-[10px]">摘要</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className="chat-theme-panel chat-theme-border rounded-lg border py-2 text-[10px]">书签</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className="chat-theme-panel chat-theme-border rounded-lg border py-2 text-[10px]">唤醒</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className="chat-theme-panel chat-theme-border rounded-lg border py-2 text-[10px]">记忆</button>
           </div>
         </div>
       </div>
@@ -1546,7 +1550,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* messages */}
-          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-5 space-y-4" onClick={() => { if (deleteMenuId) setDeleteMenuId(null); setMessageActionsId(null) }}>
+          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 pb-28 pt-5 md:px-6 space-y-4" onClick={() => { if (deleteMenuId) setDeleteMenuId(null); setMessageActionsId(null) }}>
             {messages.length === 0 && (
               <div className="flex items-center justify-center h-full text-center opacity-40">
                 <span className="text-4xl" aria-label="等待对话">🐆</span>
@@ -1606,7 +1610,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           type="button"
                           aria-label="打开星星的小算盘"
                           onClick={(event) => { event.stopPropagation(); setThinkingDrawer({ id: msg.id, parts: thinkingParts }) }}
-                          className="chat-theme-muted ml-3 grid h-7 w-7 place-items-center text-base"
+                          className="chat-theme-muted ml-3 grid h-7 w-7 place-items-center text-sm"
                         >
                           <span aria-hidden="true">💭</span>
                         </button>
@@ -1850,7 +1854,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
 
           {/* footer */}
-          <div className="chat-footer chat-theme relative px-3 pt-1">
+          <div className="chat-footer relative z-20 -mt-24 px-3 pt-1">
             {/* pending shared card */}
             {pendingShare && (
               <div className="chat-theme-surface chat-theme-border mx-1 mb-2 overflow-hidden rounded-xl border">
@@ -1908,7 +1912,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                     <span aria-hidden="true">🐆</span>
                   </motion.button>
                   <button type="button" aria-label="打开今天怎么操" title="今天怎么操" onClick={() => setWheelOpen(true)} className="grid h-8 w-8 place-items-center rounded-full"><Dices size={17}/></button>
-                  <ChatRouteChip route={activeRoute} isNight={n} onClick={() => setModelPickerOpen(true)} />
+                  <ChatRouteChip route={activeRoute} detail={activeRoute === 'claude-code' ? (CC_MODELS.find(model => model.id === effectiveCcModel)?.name || effectiveCcModel) : activeApiModel} isNight={n} onClick={() => setModelPickerOpen(true)} />
                   <span className="flex-1" />
                   {isLoading ? (
                     <button onClick={() => { void handleStopGeneration() }} title="停止生成" className="chat-theme-accent-bg grid h-8 w-8 place-items-center rounded-full text-[#3f2c29]">

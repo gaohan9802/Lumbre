@@ -160,6 +160,7 @@ test('star replies stay left aligned and thinking opens in one bottom drawer', (
   const chat = read('../../src/components/chat/ChatView.tsx')
   const streaming = read('../../src/features/chat/components/StreamingReply.tsx')
   const drawer = read('../../src/features/chat/components/ThinkingDrawer.tsx')
+  const styles = read('../../src/styles/globals.css')
 
   assert.doesNotMatch(chat, /text-justify \[text-justify:inter-ideograph\]/)
   assert.doesNotMatch(streaming, /text-justify \[text-justify:inter-ideograph\]/)
@@ -171,9 +172,12 @@ test('star replies stay left aligned and thinking opens in one bottom drawer', (
   assert.match(drawer, />星星的小算盘<\/h2>/)
   assert.match(drawer, /initial=\{\{ y: '100%' \}\}/)
   assert.match(drawer, /h-\[75dvh\]/)
+  assert.match(drawer, /grid h-9 w-full/)
   assert.doesNotMatch(drawer, /grid-cols-\[1rem_1fr\]|chat-theme-accent-bg mt-1\.5 h-2\.5/)
   assert.match(drawer, /<MarkdownText content=\{part\} cursor=\{streaming && index === parts\.length - 1\} \/>/)
   assert.doesNotMatch(drawer, /<X\b/)
+  assert.match(chat, /chat-footer relative z-20 -mt-24/)
+  assert.match(styles, /backdrop-filter: blur\(18px\) saturate\(120%\)/)
   assert.match(chat, /useLayoutEffect\(\(\) => \{[\s\S]*el\.scrollTop = el\.scrollHeight[\s\S]*bottomedSessionRef\.current = sessionId/)
 })
 
