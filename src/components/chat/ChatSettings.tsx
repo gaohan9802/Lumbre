@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useTheme } from '@/lib/theme'
 import { useChatStore } from '@/lib/chatStore'
 import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
@@ -32,8 +31,6 @@ interface Props {
 
 export function ChatSettings(props: Props) {
   const { open, onClose, initialPanel = 'menu' } = props
-  const { theme } = useTheme()
-  const night = theme === 'night'
   const { settings, setSettings } = useChatStore()
   const [panel, setPanel] = useState<ChatSettingsPanel>(initialPanel)
   const [promptTarget, setPromptTarget] = useState<'base' | 'opus55'>('base')
@@ -88,8 +85,8 @@ export function ChatSettings(props: Props) {
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('lumbre-guestbook-read', clear) }
   }, [open, panel])
   if (!open) return null
-  const card = night ? 'bg-night-card' : 'chat-dialog-card'
-  const button = `px-4 py-2.5 rounded-xl text-sm ${card}`
+  const card = 'chat-theme-panel chat-theme-border border'
+  const button = `chat-theme-hover px-4 py-2.5 rounded-xl text-sm ${card}`
   const titles = { menu: '房间', star: 'SP', settings: '参数' }
   const navigate = (action?: () => void) => { onClose(); action?.() }
   const openRoom = (room: RoomUnreadKey, action?: () => void) => {
@@ -97,12 +94,12 @@ export function ChatSettings(props: Props) {
     void apiRequest('/api/room-unread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room }) }).catch(() => {})
     navigate(action)
   }
-  const row = (label: string, action: () => void, detail?: string, badge = 0) => <button key={label} onClick={action} className={`flex min-h-[50px] w-full items-center gap-2 px-3 py-2.5 text-left ${night ? 'rounded-xl bg-night-card/70' : 'border-b chat-dialog-line last:border-b-0'}`}>
-    <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="text-sm leading-5">{label}</span>{detail && <span className="truncate text-[10px] leading-4 opacity-40">{detail}</span>}</span>{badge > 0 && <span aria-label={`${badge} 条未读`} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${night ? 'bg-night-amber text-night-bg' : 'bg-[#DBB9B3] text-white'}`}>{badge > 99 ? '99+' : `+${badge}`}</span>}<ChevronRight className="shrink-0 opacity-45" size={15}/>
+  const row = (label: string, action: () => void, badge = 0) => <button key={label} onClick={action} className="chat-theme-hover chat-theme-border flex min-h-11 w-full items-center gap-2 border-b px-3 py-2 text-left last:border-b-0">
+    <span className="min-w-0 flex-1 truncate text-sm leading-5">{label}</span>{badge > 0 && <span aria-label={`${badge} 条未读`} className="chat-theme-accent-bg rounded-full px-2 py-0.5 text-[10px] font-medium text-[#3f2c29]">{badge > 99 ? '99+' : `+${badge}`}</span>}<ChevronRight className="chat-theme-muted shrink-0" size={15}/>
   </button>
-  const roomGroup = (title: string, items: React.ReactNode) => <section className="space-y-1.5"><h3 className="px-2 text-[10px] tracking-[.18em] opacity-35">{title}</h3><div className={night ? 'space-y-1.5' : 'overflow-hidden rounded-2xl border chat-dialog-line bg-white/20'}>{items}</div></section>
+  const roomGroup = (title: string, items: React.ReactNode) => <section className="space-y-1.5"><h3 className="chat-theme-muted px-2 text-[10px] tracking-[.18em]">{title}</h3><div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">{items}</div></section>
   const slider = (label: string, value: number, change: (v: number) => void, min = 0, max = 1, step = .05, display?: string) => <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>{label}</span><span className="opacity-60">{display || `${Math.round(value * 100)}%`}</span></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))} className="w-full"/></label>
-  const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? (night ? 'bg-night-muted' : 'bg-[#DBB9B3]') : 'bg-gray-400/40'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
+  const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? 'chat-theme-accent-bg' : 'chat-theme-soft'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
   const promptEditor = (target: 'base' | 'opus55', label: string, value: string, empty: string) => <section className="space-y-3">
     <div className="flex items-center justify-between gap-2"><span className="text-sm">{label}</span>{!editing && <button className={button} onClick={() => { setOriginal(value); setDraft(value); setEditing(target); setError('') }}>编辑</button>}</div>
     {editing === target ? <textarea autoFocus aria-label={`编辑${label}`} value={draft} onChange={e => setDraft(e.target.value)} className={`w-full min-h-[50dvh] rounded-2xl p-4 text-sm leading-7 outline-none ${card}`}/> : <div className={`whitespace-pre-wrap break-words min-h-40 rounded-2xl p-4 text-sm leading-7 ${card}`}>{value || empty}</div>}
@@ -117,38 +114,38 @@ export function ChatSettings(props: Props) {
   </section>
   return <>
     <div className="fixed inset-0 z-[70] bg-black/30" onClick={close}/>
-    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`fixed ${panel !== 'menu' ? 'inset-x-4 mx-auto top-[8dvh] max-h-[84dvh] max-w-[640px] rounded-2xl' : 'right-0 top-0 bottom-0 w-[86vw] max-w-[340px]'} z-[71] flex flex-col overflow-hidden outline-none ${night ? 'bg-night-surface text-night-text shadow-2xl' : `chat-dialog ${panel === 'menu' ? 'border-y-0 border-r-0' : ''}`}`}>
-      <div className={`relative z-10 flex items-center gap-3 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] border-b ${night ? 'border-current/10' : 'chat-dialog-line'}`}>
+    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`chat-theme chat-theme-ui chat-theme-border fixed ${panel !== 'menu' ? 'chat-theme-surface inset-x-4 mx-auto top-[8dvh] max-h-[84dvh] max-w-[640px] rounded-2xl border' : 'chat-theme-sidebar bottom-0 right-0 top-0 w-[86vw] max-w-[340px] border-l'} z-[71] flex flex-col overflow-hidden shadow-2xl outline-none`}>
+      <div className="chat-theme-border relative z-10 flex items-center gap-3 border-b px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
         {panel !== 'menu' && <button aria-label={initialPanel === 'menu' ? '返回房间' : '关闭'} onClick={() => initialPanel === 'menu' ? confirm(() => setPanel('menu')) : close()} className="p-2"><ChevronLeft size={20}/></button>}
         <h2 id="chat-menu-title" className="flex-1 font-medium">{titles[panel]}</h2>
       </div>
       <div className={`flex-1 min-h-0 overflow-y-auto p-5 ${panel === 'menu' ? 'space-y-5' : 'space-y-4'}`}>
         {panel === 'menu' && <>
           {roomGroup('一起生活', <>
-            {row('券包', () => openRoom('coupons', props.onCoupons), '承诺与小特权', roomUnread.coupons)}
-            {row('Todo', () => openRoom('todo', props.onTodo), '一起做的事', roomUnread.todo)}
-            {row('小纸条', () => openRoom('notes', props.onNotes), '留言与告状簿', roomUnread.notes)}
-            {row('日记', () => openRoom('diary', props.onDiary), '两个人的日记', roomUnread.diary)}
-            {row('愿望清单', () => openRoom('wishlist', props.onWishlist), '想要与想做', roomUnread.wishlist)}
+            {row('券包', () => openRoom('coupons', props.onCoupons), roomUnread.coupons)}
+            {row('Todo', () => openRoom('todo', props.onTodo), roomUnread.todo)}
+            {row('小纸条', () => openRoom('notes', props.onNotes), roomUnread.notes)}
+            {row('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}
+            {row('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}
           </>)}
           {roomGroup('收藏与记录', <>
-            {row('照片', () => openRoom('photos', props.onPhotos), '相册与旅行', roomUnread.photos)}
-            {row('收藏夹', () => openRoom('favorites', props.onFavorites), '留下喜欢的片段', roomUnread.favorites)}
-            {row('书影记录', () => openRoom('media', props.onMedia), '阅读、观影与共读', roomUnread.media)}
-            {row('饮食运动', () => openRoom('energy', props.onEnergy), '吃喝、运动与目标', roomUnread.energy)}
-            {row('Timeline', () => openRoom('timeline', props.onTimeline), '时间与日常记录', roomUnread.timeline)}
+            {row('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}
+            {row('收藏夹', () => openRoom('favorites', props.onFavorites), roomUnread.favorites)}
+            {row('书影记录', () => openRoom('media', props.onMedia), roomUnread.media)}
+            {row('饮食运动', () => openRoom('energy', props.onEnergy), roomUnread.energy)}
+            {row('Timeline', () => openRoom('timeline', props.onTimeline), roomUnread.timeline)}
           </>)}
           {roomGroup('一起创作', <>
-            {row('共诗', () => openRoom('poems', props.onPoems), '轮流写一首诗', roomUnread.poems)}
-            {row('枕边集', () => openRoom('stories', props.onStories), '故事与长文', roomUnread.stories)}
-            {row('星野手记', () => openRoom('research', props.onResearch), '研究与灵感', roomUnread.research)}
-            {row('醒来以后', () => openRoom('future', props.onFutureLetter), '写给下一个醒来的自己', roomUnread.future)}
-            {row('Tesis', () => openRoom('tesis', props.onTesis), '论文进度', roomUnread.tesis)}
+            {row('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}
+            {row('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}
+            {row('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}
+            {row('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}
+            {row('Tesis', () => openRoom('tesis', props.onTesis), roomUnread.tesis)}
           </>)}
         </>}
         {panel === 'star' && <>
           <div role="tablist" aria-label="选择模型人设" className={`grid grid-cols-2 gap-1 rounded-2xl p-1 ${card}`}>
-            {([['base', 'Opus 4.6'], ['opus55', 'Opus 5.5']] as const).map(([target, label]) => <button key={target} role="tab" aria-selected={promptTarget === target} onClick={() => confirm(() => setPromptTarget(target))} className={`rounded-xl px-3 py-2 text-sm ${promptTarget === target ? (night ? 'bg-white/10' : 'bg-white/70 shadow-sm') : 'opacity-55'}`}>{label}</button>)}
+            {([['base', 'Opus 4.6'], ['opus55', 'Opus 5.5']] as const).map(([target, label]) => <button key={target} role="tab" aria-selected={promptTarget === target} onClick={() => confirm(() => setPromptTarget(target))} className={`rounded-xl px-3 py-2 text-sm ${promptTarget === target ? 'chat-theme-surface shadow-sm' : 'opacity-55'}`}>{label}</button>)}
           </div>
           {promptTarget === 'base'
             ? promptEditor('base', '现有人设（保持原样）', settings.systemPrompt, '尚未设置人设')
@@ -162,7 +159,7 @@ export function ChatSettings(props: Props) {
           {slider('上下文条数', settings.contextLength, v => setSettings({ contextLength: v }), 4, 200, 2, String(settings.contextLength))}
         </>}
       </div>
-      {pendingDiscard && <div className="absolute inset-0 z-10 bg-black/40 flex items-center justify-center p-5 rounded-inherit"><div ref={discardRef} role="alertdialog" aria-modal="true" aria-label="放弃未保存的修改？" className={`w-full rounded-2xl p-5 ${night ? 'bg-night-card shadow-xl' : 'chat-dialog'}`}><p className="text-sm">放弃未保存的修改？</p><div className="mt-5 flex justify-end gap-3"><button className={button} onClick={() => { setPendingDiscard(null); dialog.current?.focus() }}>继续编辑</button><button className={button} onClick={() => { const action = pendingDiscard; setPendingDiscard(null); action() }}>放弃修改</button></div></div></div>}
+      {pendingDiscard && <div className="absolute inset-0 z-10 bg-black/40 flex items-center justify-center p-5 rounded-inherit"><div ref={discardRef} role="alertdialog" aria-modal="true" aria-label="放弃未保存的修改？" className="chat-theme-surface chat-theme-border w-full rounded-2xl border p-5 shadow-xl"><p className="text-sm">放弃未保存的修改？</p><div className="mt-5 flex justify-end gap-3"><button className={button} onClick={() => { setPendingDiscard(null); dialog.current?.focus() }}>继续编辑</button><button className={button} onClick={() => { const action = pendingDiscard; setPendingDiscard(null); action() }}>放弃修改</button></div></div></div>}
     </div>
   </>
 }

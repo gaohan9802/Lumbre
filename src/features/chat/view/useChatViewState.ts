@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, type SetStateAction } from 'react'
 import type { TimelineCurrent } from '@/components/timeline/TimelineTimerModal'
-import type { SharedCard } from '@/lib/share'
-import type { ChatAttachment, ContentBlock } from '@/features/chat/state/types'
+import type { ContentBlock } from '@/features/chat/state/types'
+import { EMPTY_CHAT_COMPOSER_DRAFT, updateComposerDraft, type ChatComposerDraft } from './composerDrafts'
 
 export const CHAT_PAGE_SIZE = 50
 
@@ -18,12 +18,20 @@ function useConfirm() {
 }
 
 /** Ephemeral view state only. Nothing here is persisted or synced. */
-export function useChatViewState() {
-  const [input, setInput] = useState('')
+export function useChatViewState(sessionId: string) {
+  const [composerDrafts, setComposerDrafts] = useState<Record<string, ChatComposerDraft>>({})
+  const composerDraft = composerDrafts[sessionId] || EMPTY_CHAT_COMPOSER_DRAFT
+  const setDraftField = useCallback(<K extends keyof ChatComposerDraft>(field: K, action: SetStateAction<ChatComposerDraft[K]>) => {
+    setComposerDrafts(current => updateComposerDraft(current, sessionId, field, action))
+  }, [sessionId])
+  const setInput = useCallback((value: SetStateAction<string>) => setDraftField('input', value), [setDraftField])
+  const setPendingImages = useCallback((value: SetStateAction<string[]>) => setDraftField('pendingImages', value), [setDraftField])
+  const setPendingAttachments = useCallback((value: SetStateAction<ChatComposerDraft['pendingAttachments']>) => setDraftField('pendingAttachments', value), [setDraftField])
+  const setPendingShare = useCallback((value: SetStateAction<ChatComposerDraft['pendingShare']>) => setDraftField('pendingShare', value), [setDraftField])
+  const { input, pendingImages, pendingAttachments, pendingShare } = composerDraft
   const [isLoading, setIsLoading] = useState(false)
   const [sendStarting, setSendStarting] = useState(false)
   const [streamText, setStreamText] = useState('')
-  const [streamThinking, setStreamThinking] = useState('')
   const [streamBlocks, setStreamBlocks] = useState<ContentBlock[]>([])
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -38,7 +46,6 @@ export function useChatViewState() {
   const stageAttemptRef = useRef('')
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [timelineCurrent, setTimelineCurrent] = useState<TimelineCurrent | null>(null)
-  const [timelineNow, setTimelineNow] = useState(Date.now())
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
@@ -48,9 +55,6 @@ export function useChatViewState() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   const [uploadingImg, setUploadingImg] = useState(false)
-  const [pendingImages, setPendingImages] = useState<string[]>([])
-  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([])
-  const [pendingShare, setPendingShare] = useState<SharedCard | null>(null)
   const [visibleCount, setVisibleCount] = useState(CHAT_PAGE_SIZE)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [photoPrompt, setPhotoPrompt] = useState<{ messageId: string; images: string[] } | null>(null)
@@ -72,13 +76,13 @@ export function useChatViewState() {
 
   return {
     input, setInput, isLoading, setIsLoading, sendStarting, setSendStarting,
-    streamText, setStreamText, streamThinking, setStreamThinking, streamBlocks, setStreamBlocks,
+    streamText, setStreamText, streamBlocks, setStreamBlocks,
     expandedTools, setExpandedTools,
     settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
     bookmarkDialogOpen, setBookmarkDialogOpen, summaryDialogOpen, setSummaryDialogOpen,
     summaryGenerating, setSummaryGenerating, summaryError, setSummaryError, summaryGeneratingRef, summaryAttemptRef,
     stageSummaryGenerating, setStageSummaryGenerating, stageAttemptRef,
-    timelineOpen, setTimelineOpen, timelineCurrent, setTimelineCurrent, timelineNow, setTimelineNow,
+    timelineOpen, setTimelineOpen, timelineCurrent, setTimelineCurrent,
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
     editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,

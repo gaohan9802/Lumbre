@@ -155,9 +155,9 @@
     --chat-muted: #aaa8a1;
     --chat-accent: #dbb9b3;
     --chat-accent-ink: #e2c4bf;
-    font-family: Inter, system-ui, -apple-system, sans-serif;
   }
 
+  .chat-theme-ui { font-family: Inter, system-ui, -apple-system, sans-serif; }
   .chat-theme-sidebar { background-color: var(--chat-sidebar); }
   .chat-theme-surface { background-color: var(--chat-surface); }
   .chat-theme-panel { background-color: color-mix(in srgb, var(--chat-surface) 55%, var(--chat-soft)); }
@@ -170,6 +170,15 @@
   .chat-theme-accent-bg { background-color: var(--chat-accent); }
   .chat-theme-accent-soft { background-color: color-mix(in srgb, var(--chat-accent) 28%, transparent); }
   .chat-theme-hover:hover { background-color: var(--chat-surface); }
+  .chat-theme-icon { transition: background-color 150ms ease, color 150ms ease, opacity 150ms ease; }
+  .chat-theme-icon:hover { background-color: color-mix(in srgb, var(--chat-accent) 24%, transparent); }
+  .chat-theme button:focus-visible,
+  .chat-theme input:focus-visible,
+  .chat-theme textarea:focus-visible,
+  .chat-theme select:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--chat-accent) 76%, transparent);
+    outline-offset: 2px;
+  }
   .chat-theme-input {
     background-color: var(--chat-surface);
     background-color: color-mix(in srgb, var(--chat-surface) 74%, transparent);
@@ -182,6 +191,10 @@
   .dark .chat-theme-input { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
   .chat-theme-input:focus-within { border-color: color-mix(in srgb, var(--chat-accent) 72%, var(--chat-border)); }
   .chat-theme-placeholder::placeholder { color: var(--chat-muted); }
+  .chat-theme,
+  .chat-theme * { scrollbar-color: var(--chat-border) transparent; }
+  .chat-theme ::-webkit-scrollbar-track { background: transparent; }
+  .chat-theme ::-webkit-scrollbar-thumb { background: var(--chat-border); }
 
 }
 

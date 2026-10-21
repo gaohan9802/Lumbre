@@ -68,14 +68,16 @@ export function Sidebar() {
             className="relative h-[min(78dvh,52rem)] w-full max-w-5xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F6958]/45 disabled:cursor-wait"
           >
             {openingMessage && (
-              <motion.p
-                key={openingMessage}
-                initial={reduceMotion ? false : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="absolute left-1/2 top-[7%] w-[82%] -translate-x-1/2 whitespace-pre-line text-center font-serif text-[clamp(15px,3.8vw,25px)] leading-[1.9] tracking-[0.08em] text-[#554A43]/85"
-              >
-                {openingMessage}
-              </motion.p>
+              <div className="absolute inset-x-0 top-[7%] flex justify-center">
+                <motion.p
+                  key={openingMessage}
+                  initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-[82%] whitespace-pre-line text-center font-serif text-[clamp(15px,3.8vw,25px)] leading-[1.9] tracking-[0.08em] text-[#554A43]/85"
+                >
+                  {openingMessage}
+                </motion.p>
+              </div>
             )}
 
             <span className="absolute inset-x-[2%] bottom-[16%] top-[31%]">
@@ -90,7 +92,7 @@ export function Sidebar() {
               />
             </span>
 
-            <p className="absolute bottom-[7.5%] left-1/2 w-[80%] -translate-x-1/2 text-center font-receipt text-[clamp(10px,2.5vw,18px)] tracking-[0.12em] text-[#554A43]/80">
+            <p className="absolute bottom-[13.5%] left-1/2 w-[80%] -translate-x-1/2 text-center font-receipt text-[clamp(10px,2.5vw,18px)] tracking-[0.12em] text-[#554A43]/80">
               Leopardo 第{togetherDays}天
             </p>
 
