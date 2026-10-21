@@ -113,35 +113,42 @@ test('CC controls stay compact until expanded', () => {
   assert.doesNotMatch(picker, /Claude Code · \{model\.name\}/)
 })
 
-test('night chat uses the ink blue paper palette', () => {
-  const palette = read('../../tailwind.config.ts')
+test('chat uses Claude neutral surfaces with mist rose as its only accent', () => {
   const styles = read('../../src/styles/globals.css')
   const chat = read('../../src/components/chat/ChatView.tsx')
+  const streaming = read('../../src/features/chat/components/StreamingReply.tsx')
 
-  assert.match(palette, /bg: '#111B25'/)
-  assert.match(palette, /surface: '#182632'/)
-  assert.match(palette, /amber: '#CFA7A2'/)
-  assert.match(palette, /text: '#F2EEE7'/)
-  assert.match(styles, /\.dark \.bg-night-bg[\s\S]*repeating-linear-gradient/)
-  assert.match(chat, /n \? 'bg-night-amber\/45 text-night-text'/)
-  assert.match(chat, /border-night-amber\/40/)
+  assert.match(styles, /\.chat-theme[\s\S]*--chat-bg: #ffffff/)
+  assert.match(styles, /--chat-user: #f0f0ee/)
+  assert.match(styles, /--chat-border: #dededb/)
+  assert.match(styles, /--chat-accent: #dbb9b3/)
+  assert.match(styles, /\.dark \.chat-theme[\s\S]*--chat-bg: #141413/)
+  assert.match(styles, /--chat-user: #262624/)
+  assert.match(chat, /chat-theme-user/)
+  assert.match(chat, /chat-theme-input/)
+  assert.match(streaming, /chat-theme-accent/)
+  assert.doesNotMatch(`${styles}\n${chat}\n${streaming}`, /#d97757/i)
   assert.match(chat, /aria-label=\{n \? '切换到日间模式' : '切换到夜间模式'\}/)
   assert.match(chat, /onClick=\{toggleTheme\}/)
 })
 
-test('star replies and thinking stay left aligned on transparent paper', () => {
+test('star replies stay left aligned and thinking opens in one bottom drawer', () => {
   const chat = read('../../src/components/chat/ChatView.tsx')
   const streaming = read('../../src/features/chat/components/StreamingReply.tsx')
+  const drawer = read('../../src/features/chat/components/ThinkingDrawer.tsx')
 
   assert.doesNotMatch(chat, /text-justify \[text-justify:inter-ideograph\]/)
   assert.doesNotMatch(streaming, /text-justify \[text-justify:inter-ideograph\]/)
-  assert.doesNotMatch(chat, /text-\[13px\] p-2 rounded-lg overflow-hidden whitespace-pre-wrap/)
-  assert.doesNotMatch(streaming, /text-\[13px\] p-2 rounded-lg whitespace-pre-wrap/)
-  assert.match(chat, /<MarkdownText content=\{block\.content\}\/>/)
-  assert.match(chat, /<MarkdownText content=\{msg\.thinking\}\/>/)
-  assert.match(streaming, /<MarkdownText content=\{block\.content\} cursor=\{isLast\}\/>/)
+  assert.match(chat, /aria-label="打开星星的小算盘"[\s\S]*aria-hidden="true">💭/)
+  assert.match(streaming, /aria-label="打开星星的小算盘"[\s\S]*aria-hidden="true">💭/)
+  assert.match(chat, /if \(block\.type === 'thinking'\) return null/)
+  assert.match(streaming, /if \(block\.type === 'thinking'\) return null/)
+  assert.match(drawer, /aria-label="收起星星的小算盘"/)
+  assert.match(drawer, />星星的小算盘<\/h2>/)
+  assert.match(drawer, /initial=\{\{ y: '100%' \}\}/)
+  assert.match(drawer, /<MarkdownText content=\{part\} cursor=\{streaming && index === parts\.length - 1\} \/>/)
+  assert.doesNotMatch(drawer, /<X\b/)
   assert.match(chat, /useLayoutEffect\(\(\) => \{[\s\S]*el\.scrollTop = el\.scrollHeight[\s\S]*bottomedSessionRef\.current = sessionId/)
-  assert.match(chat, /const toggleThinking = \(id: string\) => \{[\s\S]*stickBottomRef\.current = false[\s\S]*scrollRef\.current\.scrollTop = top/)
 })
 
 test('chat rooms keep the night palette and compact reading type', () => {

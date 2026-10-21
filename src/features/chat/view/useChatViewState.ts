@@ -25,7 +25,6 @@ export function useChatViewState() {
   const [streamText, setStreamText] = useState('')
   const [streamThinking, setStreamThinking] = useState('')
   const [streamBlocks, setStreamBlocks] = useState<ContentBlock[]>([])
-  const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set())
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [modelDialogOpen, setModelDialogOpen] = useState(false)
@@ -74,7 +73,7 @@ export function useChatViewState() {
   return {
     input, setInput, isLoading, setIsLoading, sendStarting, setSendStarting,
     streamText, setStreamText, streamThinking, setStreamThinking, streamBlocks, setStreamBlocks,
-    expandedThinking, setExpandedThinking, expandedTools, setExpandedTools,
+    expandedTools, setExpandedTools,
     settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
     bookmarkDialogOpen, setBookmarkDialogOpen, summaryDialogOpen, setSummaryDialogOpen,
     summaryGenerating, setSummaryGenerating, summaryError, setSummaryError, summaryGeneratingRef, summaryAttemptRef,

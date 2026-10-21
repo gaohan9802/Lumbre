@@ -34,6 +34,7 @@ import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
 import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
+import { ThinkingDrawer } from '@/features/chat/components/ThinkingDrawer'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
 import { DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
@@ -195,6 +196,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [favoriteChatKeys, setFavoriteChatKeys] = useState<Set<string>>(new Set())
   const [favoriteChatContext, setFavoriteChatContext] = useState<FavoriteChatContext | null>(null)
   const [savedDrawings, setSavedDrawings] = useState<Set<string>>(new Set())
+  const [thinkingDrawer, setThinkingDrawer] = useState<{ id: string; parts: string[] } | null>(null)
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession, setSettings,
@@ -216,7 +218,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const {
     input, setInput, isLoading, setIsLoading, sendStarting, setSendStarting,
     streamText, setStreamText, streamThinking, setStreamThinking, streamBlocks, setStreamBlocks,
-    expandedThinking, setExpandedThinking, expandedTools, setExpandedTools,
+    expandedTools, setExpandedTools,
     settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
     bookmarkDialogOpen, setBookmarkDialogOpen, summaryDialogOpen, setSummaryDialogOpen,
     summaryGenerating, setSummaryGenerating, summaryError, setSummaryError, summaryGeneratingRef, summaryAttemptRef,
@@ -235,6 +237,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   } = useChatViewState()
 
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    if (thinkingDrawer?.id !== 'stream') return
+    const parts = streamBlocks
+      .filter((block): block is ContentBlock & { content: string } => block.type === 'thinking' && typeof block.content === 'string' && !!block.content.trim())
+      .map(block => block.content)
+    if (parts.length > 0) setThinkingDrawer(current => current?.id === 'stream' ? { ...current, parts } : current)
+  }, [streamBlocks, thinkingDrawer?.id])
   useEffect(() => {
     apiRequest('/api/favorites?kind=chat').then((items: any[]) => setFavoriteChatKeys(new Set((Array.isArray(items) ? items : []).map(item => item.targetKey)))).catch(() => {})
   }, [])
@@ -406,7 +415,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     <motion.p
       key={poke.id}
       initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-      className={`my-3 text-center text-[11px] tracking-[0.08em] ${n ? 'text-night-muted' : 'text-[#9f302b]/70'}`}
+      className="chat-theme-muted my-3 text-center text-[11px] tracking-[0.08em]"
     >
       {fmtShortDate(poke.timestamp)} 你戳了一下豹子的鼻子
     </motion.p>
@@ -1248,13 +1257,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   /* ── key handling ─────────────────────── */
 
-  const toggleThinking = (id: string) => {
-    const el = scrollRef.current
-    const top = el?.scrollTop
-    stickBottomRef.current = false
-    setExpandedThinking(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
-    if (el && top != null) requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = top })
-  }
   const toggleTools = (id: string) => {
     setExpandedTools(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   }
@@ -1289,8 +1291,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   /* ── sidebar ──────────────────────────── */
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
-    <div className={`relative h-full w-[86vw] max-w-[340px] flex flex-col overflow-hidden ${n ? 'bg-night-card border-night-border' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29]'} border-r`}>
-      <div className={`relative z-10 px-4 pb-3 space-y-2.5 border-b ${mobile ? 'pt-[max(3.5rem,calc(env(safe-area-inset-top)+1rem))]' : 'pt-14'} ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
+    <div className="chat-theme chat-theme-sidebar chat-theme-border relative flex h-full w-[86vw] max-w-[340px] flex-col overflow-hidden border-r">
+      <div className={`chat-theme-border relative z-10 space-y-2.5 border-b px-4 pb-3 ${mobile ? 'pt-[max(3.5rem,calc(env(safe-area-inset-top)+1rem))]' : 'pt-14'}`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-base font-medium">会话</div>
@@ -1302,12 +1304,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             title={n ? '切换到日间模式' : '切换到夜间模式'}
             onClick={toggleTheme}
             whileTap={{ scale: .82, rotate: n ? 18 : -18 }}
-            className={`grid h-9 w-9 place-items-center rounded-full border ${n ? 'border-night-amber/35 text-night-amber' : 'border-[#a73a32]/20 text-[#9f302b]'}`}
+            className="chat-theme-accent chat-theme-border grid h-9 w-9 place-items-center rounded-full border"
           >
             {n ? <Sun size={17} strokeWidth={1.45}/> : <Moon size={17} strokeWidth={1.45}/>}
           </motion.button>
         </div>
-        <section className={`rounded-xl border px-2.5 py-2 ${n ? 'border-night-border bg-night-surface/35' : 'border-[#a73a32]/15 bg-[#fffaf5]/45'}`}>
+        <section className="chat-theme-surface chat-theme-border rounded-xl border px-2.5 py-2">
           <div className="flex items-center gap-2">
             <span className="w-5 shrink-0 text-center text-base leading-none">{weather?.updatedAt ? weatherEmoji(weather.code) : '📍'}</span>
             {weather?.updatedAt ? (
@@ -1324,7 +1326,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             ) : (
               <div className="min-w-0 flex-1 text-[11px] opacity-50">尚未定位</div>
             )}
-            <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border transition hover:opacity-100 disabled:opacity-70 ${n ? 'border-night-border/80' : 'border-[#a73a32]/15'}`}>
+            <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className="chat-theme-border grid h-7 w-7 shrink-0 place-items-center rounded-full border transition hover:opacity-100 disabled:opacity-70">
               <RotateCcw size={12} className={locationRefreshing ? 'animate-spin' : ''} />
             </button>
           </div>
@@ -1336,16 +1338,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           const active = s.id === settings.activeSessionId
           return (
             <div key={s.id} onClick={() => { setActiveSession(s.id); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
-              className={`group p-3 rounded-xl cursor-pointer transition ${active ? (n ? 'bg-night-muted/15 text-night-text' : 'bg-[#DBB9B3]/45 text-[#3f2c29]') : (n ? 'hover:bg-night-surface' : 'hover:bg-[#fffaf5]/70')}`}>
+              className={`group cursor-pointer rounded-xl p-3 transition ${active ? 'chat-theme-soft' : 'chat-theme-hover'}`}>
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   {editingSessionId === s.id ? (
                     <input value={editingTitle} autoFocus onChange={(e) => setEditingTitle(e.target.value)}
                       onBlur={finishRename} onKeyDown={(e) => { if (e.key === 'Enter' && !(e.nativeEvent as any).isComposing) finishRename(); if (e.key === 'Escape') setEditingSessionId(null) }}
-                      onClick={(e) => e.stopPropagation()} className={`w-full px-2 py-1 rounded text-xs outline-none ${n ? 'bg-night-card' : 'bg-white'}`} />
+                      onClick={(e) => e.stopPropagation()} className="chat-theme-surface w-full rounded px-2 py-1 text-xs outline-none" />
                   ) : (
                     <div className="text-sm font-medium truncate flex items-center gap-1">
-                      {s.pinned && <Pin size={11} className={n ? 'text-night-muted' : 'text-[#DBB9B3]'} />}
+                      {s.pinned && <Pin size={11} className="chat-theme-accent" />}
                       {s.title}
                     </div>
                   )}
@@ -1356,7 +1358,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 </div>
                 <div className="relative" onClick={(e) => e.stopPropagation()}>
                   <button aria-label="会话操作" onClick={() => setSessionActionsId(current => current === s.id ? null : s.id)} className="p-1.5 opacity-45 hover:opacity-100"><MoreHorizontal size={14}/></button>
-                  {sessionActionsId === s.id && <div className={`absolute right-0 top-full z-20 mt-1 min-w-28 rounded-xl border py-1 shadow-lg ${n ? 'border-night-border bg-night-card' : 'border-[#a73a32]/15 bg-[#faf8f3]'}`}>
+                  {sessionActionsId === s.id && <div className="chat-theme-surface chat-theme-border absolute right-0 top-full z-20 mt-1 min-w-28 rounded-xl border py-1 shadow-lg">
                     <button onClick={() => { togglePinSession(s.id); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"><Pin size={12}/>{s.pinned ? '取消置顶' : '置顶'}</button>
                     <button onClick={() => { startRename(s.id, s.title); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"><Pencil size={12}/>重命名</button>
                     <button onClick={async () => { const ok = await ask('删除这条对话？'); if (ok) deleteSession(s.id); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-500"><Trash2 size={12}/>删除</button>
@@ -1367,8 +1369,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )
         })}
       </div>
-      <div className={`relative z-10 shrink-0 px-3 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-2 ${n ? 'border-current/5' : 'border-[#a73a32]/20'}`}>
-        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>
+      <div className="chat-theme-border relative z-10 shrink-0 space-y-2 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <section className="chat-theme-surface chat-theme-border rounded-xl border p-3">
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CLAUDE 额度 · 订阅</span>
             <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="p-1 -m-1 hover:opacity-100 disabled:opacity-70">
@@ -1379,7 +1381,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             <>
               <div className="mt-1.5 flex items-end justify-between gap-2">
                 <div className="text-xl leading-none tabular-nums">余 {Math.max(0, Math.round(100 - ccStatus.quota.fiveHour.usedPercentage))}%</div>
-                <span className={`text-[10px] ${ccStatus.quota.stale ? 'opacity-45' : (n ? 'text-night-muted' : 'text-[#DBB9B3]')}`}>
+                <span className={`text-[10px] ${ccStatus.quota.stale ? 'opacity-45' : 'chat-theme-accent'}`}>
                   {ccStatus.quota.stale ? '● 上次读数' : '● 已读取'}
                 </span>
               </div>
@@ -1387,8 +1389,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 <span>5 小时已用 {Math.round(ccStatus.quota.fiveHour.usedPercentage)}%{ccStatus.quota.fiveHour.requestCount != null ? ` · ${ccStatus.quota.fiveHour.requestCount} 次` : ''}</span>
                 <span>重置 {fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
               </div>
-              <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
-                <div className={`h-full rounded-full ${n ? 'bg-night-muted' : 'bg-[#DBB9B3]'}`} style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
+              <div className="chat-theme-soft mt-1.5 h-1 overflow-hidden rounded-full">
+                <div className="chat-theme-accent-bg h-full rounded-full" style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
               </div>
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
                 <span>{ccStatus.quota.sevenDay ? `7 天剩余 ${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '7 天额度暂缺'}</span>
@@ -1399,7 +1401,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             <>
               <div className="mt-1.5 flex items-end justify-between gap-2">
                 <div className="text-xl leading-none">暂不可读</div>
-                <span className={`text-[10px] ${ccStatus.available ? (n ? 'text-night-muted' : 'text-[#DBB9B3]') : 'text-red-500'}`}>
+                <span className={`text-[10px] ${ccStatus.available ? 'chat-theme-accent' : 'text-red-500'}`}>
                   {ccStatus.available ? '● 线路在线' : '● 线路离线'}
                 </span>
               </div>
@@ -1408,10 +1410,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           )}
         </section>
 
-        <section className={`rounded-xl border p-3 ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>
+        <section className="chat-theme-surface chat-theme-border rounded-xl border p-3">
           <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
             <span>CC CONTEXT · 当前对话</span>
-            <span className={ccStatus.context.available ? (n ? 'text-night-muted' : 'text-[#DBB9B3]') : ''}>●</span>
+            <span className={ccStatus.context.available ? 'chat-theme-accent' : ''}>●</span>
           </div>
           {ccStatus.context.available ? (
             <>
@@ -1420,8 +1422,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 <span>上下文水位 · {ccStatus.context.usedPercentage ?? '—'}%</span>
                 <span>{fmtMetricTime(ccStatus.context.collectedAt)}</span>
               </div>
-              <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${n ? 'bg-night-card' : 'bg-black/5'}`}>
-                <div className={`h-full rounded-full ${n ? 'bg-night-muted' : 'bg-[#DBB9B3]'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
+              <div className="chat-theme-soft mt-1.5 h-1 overflow-hidden rounded-full">
+                <div className="chat-theme-accent-bg h-full rounded-full" style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
               </div>
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
                 <span>读缓存 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写缓存 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
@@ -1437,16 +1439,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         </section>
         <div className="space-y-1.5 pt-1">
           <div className="grid grid-cols-4 gap-1.5">
-            <button type="button" onClick={() => openChatSettings('star')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>SP</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>模型</button>
-            <button type="button" onClick={() => openChatSettings('settings')} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>参数</button>
-            <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>换窗</button>
+            <button type="button" onClick={() => openChatSettings('star')} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">SP</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">模型</button>
+            <button type="button" onClick={() => openChatSettings('settings')} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">参数</button>
+            <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">换窗</button>
           </div>
           <div className="grid grid-cols-4 gap-1.5">
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>摘要</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>书签</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>唤醒</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className={`rounded-lg border py-2 text-[10px] ${n ? 'border-night-border bg-night-surface/45' : 'border-[#a73a32]/15 bg-[#fffaf5]/55'}`}>记忆</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">摘要</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">书签</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">唤醒</button>
+            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className="chat-theme-surface chat-theme-border rounded-lg border py-2 text-[10px]">记忆</button>
           </div>
         </div>
       </div>
@@ -1457,13 +1459,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   return (
     <>
-      <div className={`flex h-full relative overflow-hidden ${n ? 'bg-night-bg' : 'chat-paper text-[#3f2c29]'}`}>
+      <div className="chat-theme relative flex h-full overflow-hidden">
         {!embedded && <div className="hidden lg:block h-full relative z-10">
           <SidebarContent />
         </div>}
 
         <div className="flex flex-col h-full flex-1 min-w-0 relative z-10">
-          {!embedded && <div className={`grid grid-cols-3 items-center px-4 pt-[max(.65rem,env(safe-area-inset-top))] pb-1 ${n ? 'text-night-muted' : 'text-[#9f302b]'}`}>
+          {!embedded && <div className="chat-theme-accent grid grid-cols-3 items-center px-4 pb-1 pt-[max(.65rem,env(safe-area-inset-top))]">
             <button onClick={() => setSessionDrawerOpen(true)} aria-label="打开会话" className="justify-self-start p-2 lg:invisible">
               <Menu size={22} strokeWidth={1.45}/>
             </button>
@@ -1490,7 +1492,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {(hiddenCount > 0 || serverHiddenCount > 0) && (
               <div className="flex justify-center pb-2">
                 <button onClick={() => void handleLoadEarlier()} disabled={historyLoading}
-                  className={`text-[11px] px-3 py-1.5 rounded-full opacity-60 hover:opacity-100 ${n ? 'bg-night-surface' : 'bg-gray-100'}`}>
+                  className="chat-theme-soft rounded-full px-3 py-1.5 text-[11px] opacity-60 hover:opacity-100">
                   {historyLoading ? '加载中…' : `加载更早的 ${Math.min(CHAT_PAGE_SIZE, hiddenCount || serverHiddenCount)} 条（还有 ${hiddenCount + serverHiddenCount} 条）`}
                 </button>
               </div>
@@ -1514,6 +1516,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 const firstTextBlockIndex = displayContentBlocks?.findIndex(block => block.type === 'text' && !!block.content?.trim()) ?? -1
                 const pencilDrawing = !isUser ? pencilDrawingForMessage(msg) : null
                 const messageImages = pencilDrawing ? [pencilDrawing.imageUrl] : msg.images
+                const blockThinkingParts = displayContentBlocks
+                  ?.filter((block): block is ContentBlock & { content: string } => block.type === 'thinking' && typeof block.content === 'string' && !!block.content.trim())
+                  .map(block => block.content) || []
+                const thinkingParts = blockThinkingParts.length > 0 ? blockThinkingParts : (msg.thinking?.trim() ? [msg.thinking] : [])
                 return (
                   <Fragment key={msg.id}>
                   {precedingPokes.map(nosePokeLine)}
@@ -1521,46 +1527,40 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                     <div className="w-full space-y-1">
                       {/* wake indicator */}
                       {(msg as any)._wake && (
-                        <div className={`flex items-center gap-1.5 text-[10px] px-1 mb-0.5 ${n ? 'text-night-muted' : 'text-day-pink/70'}`}>
+                        <div className="chat-theme-accent mb-0.5 flex items-center gap-1.5 px-1 text-[10px]">
                           <span>💓</span> <span>心跳唤醒</span>
                         </div>
                       )}
 
                       {/* timestamp */}
-                      <p className={`text-[10px] ${isUser ? 'pr-1 text-right' : 'pl-4 text-left'} ${n ? 'text-night-muted' : 'text-[#8b6258]'}`}>
+                      <p className={`chat-theme-muted text-[10px] ${isUser ? 'pr-1 text-right' : 'pl-4 text-left'}`}>
                         {fmtShortDate(msg.timestamp)}
                       </p>
+
+                      {!isUser && thinkingParts.length > 0 && (
+                        <button
+                          type="button"
+                          aria-label="打开星星的小算盘"
+                          onClick={(event) => { event.stopPropagation(); setThinkingDrawer({ id: msg.id, parts: thinkingParts }) }}
+                          className="chat-theme-muted ml-3 grid h-7 w-7 place-items-center text-lg"
+                        >
+                          <span aria-hidden="true">💭</span>
+                        </button>
+                      )}
 
                       {/* Inline content blocks — interleaved thinking/tool/text */}
                       {!isUser && displayContentBlocks && displayContentBlocks.length > 0 ? (
                         <>
                           {displayContentBlocks.map((block: ContentBlock, bi: number) => {
                             const blockKey = `${msg.id}-b${bi}`
-                            if (block.type === 'thinking' && block.content) {
-                              const isExp = expandedThinking.has(blockKey)
-                              return (
-                                <div key={blockKey}>
-                                  <button onClick={() => toggleThinking(blockKey)} className={`ml-4 flex max-w-full items-center gap-1 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                                    <span className="truncate">💭星星的小算盘</span>
-                                  </button>
-                                  <AnimatePresence>
-                                    {isExp && (
-                                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                                        className={`ml-4 mt-1 max-w-[calc(88%_-_1rem)] overflow-hidden text-left text-[13px] leading-relaxed ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                                        <MarkdownText content={block.content}/>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                              )
-                            }
+                            if (block.type === 'thinking') return null
                             if (block.type === 'tool_call' && block.name) {
                               const isExp = expandedTools.has(blockKey)
                               return (
-                                <div key={blockKey} className={`w-fit max-w-[87%] mr-auto rounded-xl border ${n ? 'border-night-border bg-night-surface/40' : 'border-gray-200 bg-gray-50/60'}`}>
-                                  <button onClick={() => toggleTools(blockKey)} className={`w-full flex items-center gap-2 px-3 py-2 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                                    <span className={`${n ? 'text-night-muted' : 'text-day-pink'}`}>🔧</span>
-                                    <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{toolDisplayLabel(block.name)}</span>
+                                <div key={blockKey} className="chat-theme-surface chat-theme-border mr-auto w-fit max-w-[87%] rounded-xl border">
+                                  <button onClick={() => toggleTools(blockKey)} className="chat-theme-muted flex w-full items-center gap-2 px-3 py-2 text-xs">
+                                    <span className="chat-theme-accent">🔧</span>
+                                    <span className="chat-theme-accent font-medium">{toolDisplayLabel(block.name)}</span>
                                     <ChevronDown size={12} className={`ml-auto transition-transform flex-shrink-0 ${isExp ? '' : '-rotate-90'}`} />
                                   </button>
                                   <AnimatePresence>
@@ -1568,14 +1568,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                                         <div className={`px-3 pb-2 text-xs space-y-1.5`}>
                                           {block.input && Object.keys(block.input).length > 0 && (
-                                            <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-card text-night-muted' : 'bg-white text-day-muted'}`}>
+                                            <pre className="chat-theme chat-theme-muted rounded p-1.5 text-[10px] leading-relaxed whitespace-pre-wrap break-all">
                                               {JSON.stringify(toolDisplayInput(block.name, block.input), null, 2)}
                                             </pre>
                                           )}
                                           {block.result && (
-                                            <div className={`pt-1 border-t ${n ? 'border-night-border' : 'border-gray-200'}`}>
+                                            <div className="chat-theme-border border-t pt-1">
                                               <span className="text-[10px] opacity-40 block mb-1">返回结果</span>
-                                              <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded max-h-[200px] overflow-y-auto ${n ? 'bg-night-card text-night-muted' : 'bg-white text-day-muted'}`}>
+                                              <pre className="chat-theme chat-theme-muted max-h-[200px] overflow-y-auto rounded p-1.5 text-[10px] leading-relaxed whitespace-pre-wrap break-all">
                                                 {block.result}
                                               </pre>
                                             </div>
@@ -1589,7 +1589,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className={`chat-ai-bubble relative mr-auto block w-fit max-w-[88%] break-words px-4 py-3 text-left text-[14px] leading-relaxed ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}>
+                                <div key={blockKey} className="chat-ai-bubble relative mr-auto block w-fit max-w-[88%] break-words px-4 py-3 text-left text-[14px] leading-relaxed">
                                   {messageImages && bi === firstTextBlockIndex && messageImages.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {messageImages.map((src: string, ii: number) => (
@@ -1615,48 +1615,31 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                         </>
                       ) : (
                         <>
-                          {/* Legacy: thinking above bubble */}
-                          {msg.thinking && (
-                            <>
-                              <button onClick={() => toggleThinking(msg.id)} className={`ml-4 flex max-w-full items-center gap-1 text-xs ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                                <span className="truncate">💭星星的小算盘</span>
-                              </button>
-                              <AnimatePresence>
-                                {expandedThinking.has(msg.id) && (
-                                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                                    className={`ml-4 mt-1 max-w-[calc(88%_-_1rem)] overflow-hidden text-left text-[13px] leading-relaxed ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                                    <MarkdownText content={msg.thinking}/>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </>
-                          )}
-
                           {/* Legacy: tool calls above bubble */}
                           {msg.tool_calls && msg.tool_calls.length > 0 && (
                             <div className="w-fit max-w-[87%] mr-auto">
-                              <button onClick={() => toggleTools(msg.id)} className={`text-xs flex items-center gap-1 ${n ? 'text-night-muted' : 'text-day-pink/70'}`}>
+                              <button onClick={() => toggleTools(msg.id)} className="chat-theme-accent flex items-center gap-1 text-xs">
                                 <ChevronDown size={12} className={`transition-transform ${expandedTools.has(msg.id) ? '' : '-rotate-90'}`} />
                                 🔧 {msg.tool_calls.map((tc: any) => toolDisplayLabel(tc.name)).join('、')}
                               </button>
                               <AnimatePresence>
                                 {expandedTools.has(msg.id) && (
                                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                                    <div className={`text-xs space-y-1.5 p-2 rounded-xl ${n ? 'bg-night-surface/80' : 'bg-gray-50'}`}>
+                                    <div className="chat-theme-surface space-y-1.5 rounded-xl p-2 text-xs">
                                       {msg.tool_calls.map((tc: any, i: number) => (
-                                        <div key={i} className={`p-2 rounded-lg space-y-1.5 ${n ? 'bg-night-card' : 'bg-white'}`}>
+                                        <div key={i} className="chat-theme space-y-1.5 rounded-lg p-2">
                                           <div>
-                                            <span className={`font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>{toolDisplayLabel(tc.name)}</span>
+                                            <span className="chat-theme-accent font-medium">{toolDisplayLabel(tc.name)}</span>
                                           </div>
                                           {tc.input && Object.keys(tc.input).length > 0 && (
-                                            <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
+                                            <pre className="chat-theme-soft chat-theme-muted rounded p-1.5 text-[10px] leading-relaxed whitespace-pre-wrap break-all">
                                               {JSON.stringify(toolDisplayInput(tc.name, tc.input), null, 2)}
                                             </pre>
                                           )}
                                           {tc.result && (
-                                            <div className={`mt-1 pt-1.5 border-t ${n ? 'border-night-border' : 'border-gray-200'}`}>
+                                            <div className="chat-theme-border mt-1 border-t pt-1.5">
                                               <span className="text-[10px] opacity-40 block mb-1">返回结果</span>
-                                              <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-all p-1.5 rounded max-h-[300px] overflow-y-auto ${n ? 'bg-night-surface text-night-muted' : 'bg-gray-100 text-day-muted'}`}>
+                                              <pre className="chat-theme-soft chat-theme-muted max-h-[300px] overflow-y-auto rounded p-1.5 text-[10px] leading-relaxed whitespace-pre-wrap break-all">
                                                 {tc.result}
                                               </pre>
                                             </div>
@@ -1676,16 +1659,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       {isEditing ? (
                         <div className={`rounded-2xl overflow-hidden ${isUser ? 'rounded-br-md' : 'rounded-bl-md'}`}>
                           <textarea value={editingMsgText} onChange={(e) => setEditingMsgText(e.target.value)}
-                            className={`w-full p-3 text-sm outline-none resize-y ${n ? 'bg-night-surface text-night-text' : 'bg-gray-50 text-day-text'}`} rows={3} autoFocus />
-                          <div className={`flex gap-2 justify-end px-3 py-2 ${n ? 'bg-night-surface' : 'bg-gray-50'}`}>
+                            className="chat-theme-surface w-full resize-y p-3 text-sm outline-none" rows={3} autoFocus />
+                          <div className="chat-theme-surface flex justify-end gap-2 px-3 py-2">
                             <button onClick={() => { setEditingMsgId(null); setEditingMsgText('') }} className="text-xs opacity-60">取消</button>
-                            <button onClick={finishEditMsg} className={`text-xs font-medium ${n ? 'text-night-muted' : 'text-day-pink'}`}>保存</button>
+                            <button onClick={finishEditMsg} className="chat-theme-accent text-xs font-medium">保存</button>
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard)) ? (
-                        <div className={`${isUser ? '' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? `ml-auto w-fit max-w-[74%] rounded-2xl rounded-br-md ${n ? 'bg-night-amber/45 text-night-text' : 'bg-[#DBB9B3]/60 text-[#3f2c29]'}` : `mr-auto w-fit max-w-[88%] text-left ${n ? 'text-night-text' : 'text-[#3f2c29]'}`}`}>
+                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'ml-auto w-fit max-w-[74%] rounded-2xl rounded-br-md' : 'mr-auto w-fit max-w-[88%] text-left'}`}>
                           {msg.sharedCard && (
-                            <div className={`mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface/70' : 'border-day-pink/20 bg-white/70'}`}>
+                            <div className="chat-theme-surface chat-theme-border mb-2 overflow-hidden rounded-xl border">
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
                               {msg.sharedCard.imageUrl && <img src={msg.sharedCard.imageUrl} alt="" className="w-full max-h-48 object-contain" />}
                               <div className="px-3 pb-2 text-[11px] whitespace-pre-wrap">{msg.sharedCard.subtitle}{msg.sharedCard.body ? `\n${msg.sharedCard.body}` : ''}</div>
@@ -1711,7 +1694,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           {msg.attachments && msg.attachments.length > 0 && (
                             <div className="mb-1.5 flex flex-col gap-1.5">
                               {msg.attachments.map((file, index) => (
-                                <div key={`${file.name}-${index}`} className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs ${n ? 'border-night-muted/25 bg-night-surface/60' : 'border-[#a73a32]/15 bg-white/55'}`}>
+                                <div key={`${file.name}-${index}`} className="chat-theme-surface chat-theme-border flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs">
                                   <Paperclip size={14} className="shrink-0 opacity-60" />
                                   <span className="min-w-0 truncate">{file.name}</span>
                                   <span className="shrink-0 opacity-45">{Math.max(1, Math.ceil(file.size / 1024))} KB</span>
@@ -1724,11 +1707,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       ) : null}
 
                       {photoPrompt?.messageId === msg.id && (
-                        <div className={`ml-auto w-fit max-w-[86%] rounded-xl px-3 py-2 text-xs ${n ? 'bg-night-surface' : 'border border-[#a73a32]/35 bg-[#fffaf5]/75 text-[#70473f]'}`} onClick={event => event.stopPropagation()}>
+                        <div className="chat-theme-surface chat-theme-border ml-auto w-fit max-w-[86%] rounded-xl border px-3 py-2 text-xs" onClick={event => event.stopPropagation()}>
                           <p>要收藏进照片墙吗？</p>
                           <div className="mt-2 flex items-center justify-end gap-3">
-                            <button onClick={() => void handlePhotoPromptChoice('public')} className="text-[#a73a32]">公开</button>
-                            <button onClick={() => void handlePhotoPromptChoice('locked')} className="text-[#a73a32]">上锁</button>
+                            <button onClick={() => void handlePhotoPromptChoice('public')} className="chat-theme-accent">公开</button>
+                            <button onClick={() => void handlePhotoPromptChoice('locked')} className="chat-theme-accent">上锁</button>
                             <button onClick={() => void handlePhotoPromptChoice('no')} className="opacity-50">不用</button>
                           </div>
                         </div>
@@ -1736,7 +1719,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
                       {/* AI route; session and cache details unfold with message actions. */}
                       {!isUser && messageActionsId === msg.id && (
-                        <div onClick={event => event.stopPropagation()} className={`text-[10px] pl-4 flex flex-wrap items-center gap-x-2 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                        <div onClick={event => event.stopPropagation()} className="chat-theme-muted flex flex-wrap items-center gap-x-2 pl-4 text-[10px]">
                           <span className="opacity-40">{chatRouteLabel(msg.route)}</span>
                           {msg.ccSessionFingerprint && <span className="opacity-35" title={`${msg.ccSessionMode || 'session'} · ${msg.ccSessionReason || 'normal'}${msg.ccCompacted ? ' · compacted' : ''}`}>会话 {msg.ccSessionFingerprint}{msg.ccCompacted ? ' · 已整理' : ''}</span>}
                           {(msg.input_tokens != null && msg.input_tokens > 0) && (() => {
@@ -1764,16 +1747,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                         {!isUser && !!msg.content.trim() && <button onClick={() => toggleChatFavorite(msg)} title={activeSession && favoriteChatKeys.has(`${activeSession.id}:${msg.id}`) ? '取消收藏' : '收藏'} className="p-1"><Heart size={12} fill={activeSession && favoriteChatKeys.has(`${activeSession.id}:${msg.id}`) ? 'currentColor' : 'none'} /></button>}
                         {isUser && <button onClick={() => startEditMsg(msg)} title="修改" className="p-1"><Pencil size={12} /></button>}
                         {deleteMenuId === msg.id && (
-                          <div className={`absolute ${isUser ? 'right-0' : 'left-0'} top-full mt-1 z-20 rounded-xl shadow-lg border py-1 min-w-[160px] ${n ? 'bg-night-card border-night-border' : 'bg-white border-gray-200'}`}>
-                            <button onClick={() => doDeleteVersion(msg)} className={`w-full text-left px-3 py-2 text-xs ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除此版本{(msg.versions?.length || 0) > 1 ? ` (${(msg.versionIndex ?? 0) + 1}/${msg.versions!.length})` : ''}</button>
-                            <button onClick={() => doDeleteAllVersions(msg.id)} className={`w-full text-left px-3 py-2 text-xs text-red-500 ${n ? 'hover:bg-night-surface' : 'hover:bg-gray-50'}`}>删除全部版本</button>
+                          <div className={`chat-theme-surface chat-theme-border absolute ${isUser ? 'right-0' : 'left-0'} top-full z-20 mt-1 min-w-[160px] rounded-xl border py-1 shadow-lg`}>
+                            <button onClick={() => doDeleteVersion(msg)} className="chat-theme-hover w-full px-3 py-2 text-left text-xs">删除此版本{(msg.versions?.length || 0) > 1 ? ` (${(msg.versionIndex ?? 0) + 1}/${msg.versions!.length})` : ''}</button>
+                            <button onClick={() => doDeleteAllVersions(msg.id)} className="chat-theme-hover w-full px-3 py-2 text-left text-xs text-red-500">删除全部版本</button>
                           </div>
                         )}
                       </div>}
 
                       {/* version switcher */}
                       {hasVersions && (
-                        <div className={`flex items-center gap-2 text-[10px] ${isUser ? 'justify-end' : 'justify-start'} ${n ? 'text-night-muted' : 'text-day-muted'}`}>
+                        <div className={`chat-theme-muted flex items-center gap-2 text-[10px] ${isUser ? 'justify-end' : 'justify-start'}`}>
                           <button disabled={vIdx <= 0} onClick={() => switchMessageVersion(msg.id, vIdx - 1)} className="p-0.5 disabled:opacity-20"><ChevronLeft size={11} /></button>
                           <span>{vIdx + 1}/{versions.length}</span>
                           <button disabled={vIdx >= versions.length - 1} onClick={() => switchMessageVersion(msg.id, vIdx + 1)} className="p-0.5 disabled:opacity-20"><ChevronRight size={11} /></button>
@@ -1792,11 +1775,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {isLoading && (
               <StreamingReply
                 blocks={streamBlocks}
-                expandedThinking={expandedThinking}
-                onToggleThinking={toggleThinking}
+                onOpenThinking={(parts) => setThinkingDrawer({ id: 'stream', parts })}
                 expandedTools={expandedTools}
                 onToggleTools={toggleTools}
-                isNight={n}
               />
             )}
 
@@ -1805,10 +1786,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
 
           {/* footer */}
-          <div className={`chat-footer relative px-3 pt-1 ${n ? 'bg-night-bg' : 'chat-paper'}`}>
+          <div className="chat-footer chat-theme relative px-3 pt-1">
             {/* pending shared card */}
             {pendingShare && (
-              <div className={`mx-1 mb-2 rounded-xl border overflow-hidden ${n ? 'border-night-muted/30 bg-night-surface' : 'border-day-pink/20 bg-white'}`}>
+              <div className="chat-theme-surface chat-theme-border mx-1 mb-2 overflow-hidden rounded-xl border">
                 <div className="flex items-center justify-between px-3 py-2 text-xs">
                   <span>📎 已带入 {pendingShare.title}</span>
                   <button onClick={() => setPendingShare(null)} className="opacity-50"><X size={14} /></button>
@@ -1838,7 +1819,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {pendingAttachments.length > 0 && (
               <div className="mb-2 flex flex-col gap-1.5 px-1">
                 {pendingAttachments.map((file, index) => (
-                  <div key={`${file.name}-${index}`} className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${n ? 'border-night-muted/25 bg-night-surface' : 'border-[#a73a32]/20 bg-white/80'}`}>
+                  <div key={`${file.name}-${index}`} className="chat-theme-surface chat-theme-border flex items-center gap-2 rounded-xl border px-3 py-2 text-xs">
                     <Paperclip size={14} className="shrink-0 opacity-60" />
                     <span className="min-w-0 flex-1 truncate">{file.name}</span>
                     <span className="opacity-45">{Math.max(1, Math.ceil(file.size / 1024))} KB</span>
@@ -1849,13 +1830,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             )}
 
             <div className="chat-compose-shell relative">
-              <div className={`chat-input-tray rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200 ${n ? 'bg-night-surface/95 border-night-amber/40 shadow-[0_8px_24px_rgba(3,10,16,0.26)] focus-within:border-night-amber/70' : 'chat-paper border-[#a73a32]/30 text-[#3f2c29] focus-within:border-[#a73a32]/45'}`}>
+              <div className="chat-input-tray chat-theme-input rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200">
                 <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => setMessageActionsId(null)}
                   placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
-                  className={`no-frame block min-h-10 w-full resize-none bg-transparent px-1 py-1 text-base outline-none max-h-40 md:text-sm ${n ? 'text-night-text placeholder:text-night-muted' : 'text-[#3f2c29] placeholder:text-[#9a766d]'}`} />
+                  className="no-frame chat-theme-text chat-theme-placeholder block min-h-10 max-h-40 w-full resize-none bg-transparent px-1 py-1 text-base outline-none md:text-sm" />
                 <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={handleUploadImage} />
                 <input ref={fileInputRef} type="file" multiple accept="text/*,.md,.markdown,.csv,.json,.yaml,.yml,.xml,.rtf,.js,.jsx,.ts,.tsx,.py,.css,.scss,.sql,.sh,.log,.java,.c,.cc,.cpp,.h,.hpp,.go,.rs,.swift,.kt,.kts" hidden onChange={handleUploadFile} />
-                <div className={`mt-1 flex items-center gap-0.5 ${n ? 'text-night-amber/85' : 'text-[#a73a32]/55'}`}>
+                <div className="chat-theme-accent mt-1 flex items-center gap-0.5">
                   <button type="button" aria-label={uploadingImg ? '正在处理照片' : '上传照片'} title="照片" disabled={uploadingImg} onClick={() => imgInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full disabled:opacity-35"><ImagePlus size={17}/></button>
                   <button type="button" aria-label="添加文件" title="文件" onClick={() => fileInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-full"><Paperclip size={17}/></button>
                   <button type="button" aria-label="打开 Timeline" title={timelineCurrent ? `${timelineCurrent.title} · ${timelineElapsedText}` : 'Timeline'} onClick={() => setTimelineOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-full"><Clock3 size={17}/>{timelineCurrent && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#DBB9B3]"/>}</button>
@@ -1866,12 +1847,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <ChatRouteChip route={activeRoute} isNight={n} onClick={() => setModelPickerOpen(true)} />
                   <span className="flex-1" />
                   {isLoading ? (
-                    <button onClick={() => { void handleStopGeneration() }} title="停止生成" className={`grid h-8 w-8 place-items-center rounded-full ${n ? 'bg-night-amber text-night-bg' : 'bg-[#DBB9B3] text-white'}`}>
+                    <button onClick={() => { void handleStopGeneration() }} title="停止生成" className="chat-theme-accent-bg grid h-8 w-8 place-items-center rounded-full text-[#3f2c29]">
                       <Square size={14} fill="currentColor" />
                     </button>
                   ) : (
                     <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare)}
-                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingAttachments.length || pendingShare) ? (n ? 'bg-night-amber text-night-bg hover:bg-night-amberGlow' : 'bg-[#DBB9B3] text-white hover:bg-[#DBB9B3]/80') : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
+                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingAttachments.length || pendingShare) ? 'chat-theme-accent-bg text-[#3f2c29] hover:opacity-80' : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
                       <Send size={15} />
                     </button>
                   )}
@@ -1886,6 +1867,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       {/* ── portals ────────────────────────── */}
       {mounted && createPortal(
         <>
+          <ThinkingDrawer
+            open={!!thinkingDrawer}
+            parts={thinkingDrawer?.parts || []}
+            streaming={thinkingDrawer?.id === 'stream' && isLoading}
+            onClose={() => setThinkingDrawer(null)}
+          />
+
           {/* session drawer */}
           <AnimatePresence>
             {sessionDrawerOpen && (
@@ -1927,14 +1915,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {favoriteChatContext && (
               <>
                 <motion.button type="button" aria-label="关闭原聊天" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setFavoriteChatContext(null)} className="fixed inset-0 z-[76] bg-black/45 backdrop-blur-[2px]" />
-                <motion.section role="dialog" aria-modal="true" aria-label="收藏的原聊天" initial={{ opacity: 0, scale: .97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .97, y: 8 }} className={`fixed inset-x-3 bottom-3 top-[max(.75rem,env(safe-area-inset-top))] z-[77] mx-auto flex max-w-2xl flex-col overflow-hidden rounded-[28px] ${n ? 'border border-night-border bg-night-surface text-night-text shadow-2xl' : 'chat-dialog'}`}>
+                <motion.section role="dialog" aria-modal="true" aria-label="收藏的原聊天" initial={{ opacity: 0, scale: .97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .97, y: 8 }} className="chat-theme chat-theme-border fixed inset-x-3 bottom-3 top-[max(.75rem,env(safe-area-inset-top))] z-[77] mx-auto flex max-w-2xl flex-col overflow-hidden rounded-[28px] border shadow-2xl">
                   <header className="flex items-start justify-between gap-3 border-b border-current/10 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{favoriteChatContext.sessionTitle}</p><p className="mt-0.5 text-[9px] opacity-40">原聊天 · 第 {favoriteChatContext.targetIndex + 1}/{favoriteChatContext.total} 条附近</p></div><button type="button" aria-label="关闭" onClick={() => setFavoriteChatContext(null)} className="rounded-full p-1.5 opacity-55"><X size={16}/></button></header>
                   <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">{favoriteChatContext.messages.map(message => {
                     const target = message.id === favoriteChatContext.targetMessageId
-                    return <article key={message.id} className={`rounded-2xl border px-3 py-2.5 ${target ? (n ? 'border-night-amber/65 bg-night-amber/10' : 'border-[#a73a32]/35 bg-[#DBB9B3]/20') : 'border-current/10'}`}>
+                    return <article key={message.id} className={`rounded-2xl border px-3 py-2.5 ${target ? 'chat-theme-border chat-theme-accent-soft' : 'border-current/10'}`}>
                       <div className="mb-1 flex items-center justify-between text-[9px] opacity-45"><span>{message.role === 'user' ? '🦦 小火' : '🐆 星星'}</span><span>{fmtFullTs(message.timestamp)}</span></div>
                       <div className="text-xs leading-6"><MarkdownText content={message.content || '（这条消息没有文字内容）'}/></div>
-                      {target && <div className={`mt-2 text-right text-[9px] ${n ? 'text-night-amber' : 'text-[#9f302b]'}`}>收藏原文</div>}
+                      {target && <div className="chat-theme-accent mt-2 text-right text-[9px]">收藏原文</div>}
                     </article>
                   })}</div>
                 </motion.section>
@@ -1973,12 +1961,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               <>
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" onClick={() => answer(false)} />
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-                  className={`fixed z-[71] inset-x-0 mx-auto w-[min(340px,calc(100vw-3rem))] rounded-2xl p-6 ${n ? 'bg-night-card text-night-text shadow-2xl' : 'chat-dialog'}`}
+                  className="chat-theme chat-theme-border fixed inset-x-0 z-[71] mx-auto w-[min(340px,calc(100vw-3rem))] rounded-2xl border p-6 shadow-2xl"
                   style={{ top: 'max(env(safe-area-inset-top, 0px) + 30dvh, 30dvh)', transform: 'translateY(-50%)' }}>
                   <p className="text-sm mb-6">{confirmState.msg}</p>
                   <div className="flex justify-end gap-3">
                     <button onClick={() => answer(false)} className="px-4 py-2 text-sm opacity-60 hover:opacity-100">取消</button>
-                    <button onClick={() => answer(true)} className={`px-4 py-2 text-sm font-medium rounded-lg ${n ? 'bg-night-muted text-night-bg' : 'chat-dialog-accent'}`}>确认</button>
+                    <button onClick={() => answer(true)} className="chat-theme-accent-bg rounded-lg px-4 py-2 text-sm font-medium text-[#3f2c29]">确认</button>
                   </div>
                 </motion.div>
               </>

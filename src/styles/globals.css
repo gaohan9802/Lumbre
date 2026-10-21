@@ -127,6 +127,58 @@
     padding-bottom: 0.25rem;
   }
 
+  /* Chat only: Claude's neutral surfaces with Lumbre mist rose as the sole accent. */
+  .chat-theme {
+    --chat-bg: #ffffff;
+    --chat-sidebar: #f7f7f5;
+    --chat-surface: #fafaf8;
+    --chat-soft: #f0f0ee;
+    --chat-user: #f0f0ee;
+    --chat-border: #dededb;
+    --chat-text: #20201e;
+    --chat-muted: #77756f;
+    --chat-accent: #dbb9b3;
+    --chat-accent-ink: #765753;
+    background-color: var(--chat-bg);
+    color: var(--chat-text);
+    font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  }
+
+  .dark .chat-theme {
+    --chat-bg: #141413;
+    --chat-sidebar: #1f1f1d;
+    --chat-surface: #20201e;
+    --chat-soft: #2a2926;
+    --chat-user: #262624;
+    --chat-border: #393936;
+    --chat-text: #f1efe9;
+    --chat-muted: #aaa8a1;
+    --chat-accent: #dbb9b3;
+    --chat-accent-ink: #e2c4bf;
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+  }
+
+  .chat-theme-sidebar { background-color: var(--chat-sidebar); }
+  .chat-theme-surface { background-color: var(--chat-surface); }
+  .chat-theme-soft { background-color: var(--chat-soft); }
+  .chat-theme-user { background-color: var(--chat-user); color: var(--chat-text); }
+  .chat-theme-border { border-color: var(--chat-border); }
+  .chat-theme-text { color: var(--chat-text); }
+  .chat-theme-muted { color: var(--chat-muted); }
+  .chat-theme-accent { color: var(--chat-accent-ink); }
+  .chat-theme-accent-bg { background-color: var(--chat-accent); }
+  .chat-theme-accent-soft { background-color: color-mix(in srgb, var(--chat-accent) 28%, transparent); }
+  .chat-theme-hover:hover { background-color: var(--chat-surface); }
+  .chat-theme-input {
+    background-color: var(--chat-bg);
+    border-color: var(--chat-border);
+    color: var(--chat-text);
+    box-shadow: 0 8px 24px rgba(25, 24, 22, 0.08);
+  }
+  .dark .chat-theme-input { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
+  .chat-theme-input:focus-within { border-color: color-mix(in srgb, var(--chat-accent) 72%, var(--chat-border)); }
+  .chat-theme-placeholder::placeholder { color: var(--chat-muted); }
+
 }
 
 ::-webkit-scrollbar {
