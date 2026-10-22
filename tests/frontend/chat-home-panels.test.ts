@@ -39,9 +39,11 @@ test('home rooms open separately from chat settings, not the home directory', ()
   assert.doesNotMatch(sidebar, /id: 'dreams'/)
   assert.doesNotMatch(sidebar, /id: 'memory'/)
   assert.match(settings, /row\('小纸条'.*onNotes/)
-  assert.match(settings, /roomGroup\('一起生活'/)
-  assert.match(settings, /roomGroup\('收藏与记录'/)
-  assert.match(settings, /roomGroup\('一起创作'/)
+  assert.doesNotMatch(settings, /一起生活|收藏与记录|一起创作|roomGroup/)
+  const roomOrder = ['日记', 'Todo', '小纸条', '照片', '书影记录', '饮食运动', 'Timeline', 'Tesis', '券包', '共诗', '枕边集', '星野手记', '收藏夹', '醒来以后', '愿望清单']
+  for (let index = 1; index < roomOrder.length; index++) {
+    assert.ok(settings.indexOf(`row('${roomOrder[index - 1]}'`) < settings.indexOf(`row('${roomOrder[index]}'`), `${roomOrder[index - 1]} should appear before ${roomOrder[index]}`)
+  }
   assert.match(settings, /row\('小纸条'.*roomUnread\.notes/)
   assert.match(settings, /row\('书影记录'.*roomUnread\.media/)
   assert.doesNotMatch(settings, /承诺与小特权|留言与告状簿|阅读、观影与共读/)

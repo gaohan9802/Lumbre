@@ -189,7 +189,8 @@
     backdrop-filter: blur(18px) saturate(120%);
   }
   .dark .chat-theme-input { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
-  .chat-theme-input:focus-within { border-color: color-mix(in srgb, var(--chat-accent) 72%, var(--chat-border)); }
+  .chat-theme-input:focus-within { border-color: color-mix(in srgb, var(--chat-text) 18%, var(--chat-border)); }
+  .chat-input-tray textarea:focus-visible { outline: none; }
   .chat-theme-placeholder::placeholder { color: var(--chat-muted); }
   .chat-theme,
   .chat-theme * { scrollbar-color: var(--chat-border) transparent; }
@@ -197,6 +198,15 @@
   .chat-theme ::-webkit-scrollbar-thumb { background: var(--chat-border); }
 
 }
+
+/* Keep 星星's long replies a touch larger and denser than the surrounding UI. */
+.chat-ai-bubble {
+  font-size: 0.9375rem;
+  line-height: 1.58;
+  letter-spacing: 0;
+}
+
+.chat-ai-bubble .markdown-text p { line-height: inherit; }
 
 ::-webkit-scrollbar {
   width: 4px;

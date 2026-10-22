@@ -97,7 +97,6 @@ export function ChatSettings(props: Props) {
   const row = (label: string, action: () => void, badge = 0) => <button key={label} onClick={action} className="chat-theme-hover chat-theme-border flex min-h-11 w-full items-center gap-2 border-b px-3 py-2 text-left last:border-b-0">
     <span className="min-w-0 flex-1 truncate text-sm leading-5">{label}</span>{badge > 0 && <span aria-label={`${badge} 条未读`} className="chat-theme-accent-bg rounded-full px-2 py-0.5 text-[10px] font-medium text-[#3f2c29]">{badge > 99 ? '99+' : `+${badge}`}</span>}<ChevronRight className="chat-theme-muted shrink-0" size={15}/>
   </button>
-  const roomGroup = (title: string, items: React.ReactNode) => <section className="space-y-1.5"><h3 className="chat-theme-muted px-2 text-[10px] tracking-[.18em]">{title}</h3><div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">{items}</div></section>
   const slider = (label: string, value: number, change: (v: number) => void, min = 0, max = 1, step = .05, display?: string) => <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>{label}</span><span className="opacity-60">{display || `${Math.round(value * 100)}%`}</span></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))} className="w-full"/></label>
   const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? 'chat-theme-accent-bg' : 'chat-theme-soft'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
   const promptEditor = (target: 'base' | 'opus55', label: string, value: string, empty: string) => <section className="space-y-3">
@@ -121,27 +120,23 @@ export function ChatSettings(props: Props) {
       </div>
       <div className={`flex-1 min-h-0 overflow-y-auto p-5 ${panel === 'menu' ? 'space-y-5' : 'space-y-4'}`}>
         {panel === 'menu' && <>
-          {roomGroup('一起生活', <>
-            {row('券包', () => openRoom('coupons', props.onCoupons), roomUnread.coupons)}
+          <div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">
+            {row('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}
             {row('Todo', () => openRoom('todo', props.onTodo), roomUnread.todo)}
             {row('小纸条', () => openRoom('notes', props.onNotes), roomUnread.notes)}
-            {row('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}
-            {row('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}
-          </>)}
-          {roomGroup('收藏与记录', <>
             {row('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}
-            {row('收藏夹', () => openRoom('favorites', props.onFavorites), roomUnread.favorites)}
             {row('书影记录', () => openRoom('media', props.onMedia), roomUnread.media)}
             {row('饮食运动', () => openRoom('energy', props.onEnergy), roomUnread.energy)}
             {row('Timeline', () => openRoom('timeline', props.onTimeline), roomUnread.timeline)}
-          </>)}
-          {roomGroup('一起创作', <>
+            {row('Tesis', () => openRoom('tesis', props.onTesis), roomUnread.tesis)}
+            {row('券包', () => openRoom('coupons', props.onCoupons), roomUnread.coupons)}
             {row('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}
             {row('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}
             {row('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}
+            {row('收藏夹', () => openRoom('favorites', props.onFavorites), roomUnread.favorites)}
             {row('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}
-            {row('Tesis', () => openRoom('tesis', props.onTesis), roomUnread.tesis)}
-          </>)}
+            {row('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}
+          </div>
         </>}
         {panel === 'star' && <>
           <div role="tablist" aria-label="选择模型人设" className={`grid grid-cols-2 gap-1 rounded-2xl p-1 ${card}`}>
