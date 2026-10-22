@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test, { after, before } from 'node:test'
@@ -43,6 +43,15 @@ test('an ancient favorite locates its bounded original chat context', () => {
   assert.equal(sync.loadSyncMessageContext('legacy-session', 'missing-message'), null)
 })
 
+test('a deleted session cannot be reopened through its retained recovery backup', () => {
+  const id = 'deleted-session'
+  sync.upsertSyncSessionMessage(id, { id: 'deleted-message', role: 'user', content: 'gone', timestamp: 1 })
+  const deletedAt = Date.now() + 100
+  sync.mergeSyncDelta({ sessions: [], tombstones: { [id]: deletedAt } })
+
+  assert.equal(sync.loadSyncMessageContext(id, 'deleted-message'), null)
+})
+
 test('session updates retain the historical backup layout and recover corrupt primary JSON', () => {
   const id = 'fixture-session'
   sync.upsertSyncSessionMessage(id, { id: 'one', role: 'user', content: 'one', timestamp: 10 }, { title: 'fixture' })
@@ -50,8 +59,8 @@ test('session updates retain the historical backup layout and recover corrupt pr
 
   const file = path.join(root, 'chat', 'sessions', `${encoded(id)}.json`)
   const backup = path.join(root, 'chat', 'sessions', `${encoded(id)}.bak`)
-  assert.equal(JSON.parse(readFileSync(file, 'utf8')).messages.length, 2)
-  assert.equal(JSON.parse(readFileSync(backup, 'utf8')).messages.length, 1)
+  assert.equal(JSON.parse(readFileSync(file, 'utf8'))._messageStore.messageCount, 2)
+  assert.equal(JSON.parse(readFileSync(backup, 'utf8'))._messageStore.messageCount, 1)
 
   writeFileSync(file, '{broken session json', 'utf8')
   assert.equal(sync.loadSyncSessions([id])[0]?.messages.length, 1)
@@ -67,6 +76,52 @@ test('chat images are stored outside the session JSON and remain readable by ref
   assert.doesNotMatch(readFileSync(path.join(root, 'chat', 'sessions', `${encoded('image-session')}.json`), 'utf8'), /aGVsbG8=/)
   const assets = await import('../../src/server/data/repositories/chat-assets')
   assert.equal(assets.chatImageDataUrl(stored), image)
+})
+
+test('long sessions read and append only bounded message chunks', () => {
+  const id = 'long-session'
+  const messages = Array.from({ length: 600 }, (_, index) => ({
+    id: `message-${index}`, role: index % 2 ? 'assistant' : 'user', content: String(index), timestamp: index + 1,
+  }))
+  sync.mergeSyncDelta({
+    sessions: [{ id, title: 'long', createdAt: 1, updatedAt: 600, messages }],
+    tombstones: {},
+  })
+  const chunks = path.join(root, 'chat', 'session-chunks', encoded(id))
+  const generation = readdirSync(chunks)[0]
+  const firstChunk = path.join(chunks, generation, '000000.json')
+  const before = readFileSync(firstChunk, 'utf8')
+
+  sync.upsertSyncSessionMessage(id, { id: 'message-600', role: 'user', content: '600', timestamp: 601 })
+
+  assert.equal(readFileSync(firstChunk, 'utf8'), before)
+  assert.equal(readdirSync(path.join(chunks, generation)).filter(file => /^\d{6}\.json$/.test(file)).length, 3)
+  assert.equal('_messageStore' in sync.loadSyncSessionTails([id], 20)[0], false)
+  assert.deepEqual(sync.loadSyncSessionTails([id], 20)[0].messages.map((message: any) => message.id),
+    Array.from({ length: 20 }, (_, index) => `message-${581 + index}`))
+  assert.deepEqual(sync.loadSyncSessionHistory(id, 581, 50)?.messages.map((message: any) => message.id),
+    Array.from({ length: 50 }, (_, index) => `message-${531 + index}`))
+})
+
+test('a duplicate retry repairs a manifest left stale after the chunk was committed', async () => {
+  const id = 'manifest-repair-session'
+  sync.upsertSyncSessionMessage(id, { id: 'first', role: 'user', content: 'first', timestamp: 1 })
+  const repository = await import('../../src/server/data/repositories/chat')
+  const header = repository.readChatSessionHeader(id) as any
+  const updatedAt = Number(header.updatedAt) + 1
+  repository.appendChatSessionMessage(
+    id,
+    { id: 'second', role: 'assistant', content: 'second', timestamp: updatedAt },
+    { ...header, updatedAt },
+    '2026-10-22',
+    false,
+  )
+
+  assert.equal(sync.loadSyncManifest().sessions.find(session => session.id === id)?.messageCount, 1)
+  const result = sync.upsertSyncSessionMessage(id, { id: 'second', role: 'assistant', content: 'second', timestamp: updatedAt })
+
+  assert.equal(result.appended, false)
+  assert.equal(sync.loadSyncManifest().sessions.find(session => session.id === id)?.messageCount, 2)
 })
 
 test('encoded client ids cannot escape the sessions directory and invalid ids are rejected', () => {
@@ -104,7 +159,13 @@ test('chat repository serializes concurrent messages without losing any', async 
 
   const manifest = JSON.parse(readFileSync(path.join(childRoot, 'chat', 'manifest.json'), 'utf8'))
   const session = JSON.parse(readFileSync(path.join(childRoot, 'chat', 'sessions', `${encoded(sessionId)}.json`), 'utf8'))
+  const chunksRoot = path.join(childRoot, 'chat', 'session-chunks', encoded(sessionId))
+  const generation = readdirSync(chunksRoot)[0]
+  const chunks = readdirSync(path.join(chunksRoot, generation))
+    .filter(file => /^\d{6}\.json$/.test(file)).sort()
+    .flatMap(file => JSON.parse(readFileSync(path.join(chunksRoot, generation, file), 'utf8')))
   assert.equal(manifest.sessions[0]?.messageCount, 40)
-  assert.equal(session.messages.length, 40)
-  assert.equal(new Set(session.messages.map((message: any) => message.id)).size, 40)
+  assert.equal(session._messageStore.messageCount, 40)
+  assert.equal(chunks.length, 40)
+  assert.equal(new Set(chunks.map((message: any) => message.id)).size, 40)
 })

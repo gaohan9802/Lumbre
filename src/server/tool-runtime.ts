@@ -43,7 +43,7 @@ import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, request
 import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
 import { getUserContext as readUserContext } from './agent/tools/user-context'
 import type { ToolCallContext } from './agent/context'
-import { loadSyncSessions } from './chat-sync'
+import { loadSyncSessionTails } from './chat-sync'
 import { chatImageDataUrl } from './data/repositories/chat-assets'
 import { appendPoemLine, createPoem, deletePoem, deletePoemLine, editPoemLine, getPoem, listPoems, updatePoem } from './poem-store'
 import { addWheelOption, deleteWheelOption, editWheelOption, readWheel, spinWheel } from './intimacy-wheel-store'
@@ -70,7 +70,7 @@ export interface ToolCallResult {
 
 function chatPhoto(input: Record<string, any>, context?: ToolCallContext): { photo: PhotoEntry | null; ref: string | null; index: number } {
   if (!context?.sessionId || typeof input.message_id !== 'string') return { photo: null, ref: null, index: 0 }
-  const session = loadSyncSessions([context.sessionId])[0]
+  const session = loadSyncSessionTails([context.sessionId], 200)[0]
   const message = session?.messages?.find((item: any) => item?.id === input.message_id)
   const index = Number.isInteger(input.image_index) ? input.image_index : 0
   const ref = index >= 0 && index < 4 && typeof message?.images?.[index] === 'string' ? message.images[index] : null
@@ -101,7 +101,7 @@ export async function executeRegisteredToolHandler(
     if (name === 'remember') {
       const decision = String(input.decision || '')
       if (!['short_term', 'approve', 'ask_fire', 'later'].includes(decision)) throw new Error('decision must be short_term, approve, ask_fire, or later')
-      const session = context?.sessionId ? loadSyncSessions([context.sessionId])[0] : undefined
+      const session = context?.sessionId ? loadSyncSessionTails([context.sessionId], 200)[0] : undefined
       const messages = Array.isArray(session?.messages)
         ? session.messages.filter((message: any) => typeof message?.id === 'string' && ['user', 'assistant'].includes(message.role))
         : []

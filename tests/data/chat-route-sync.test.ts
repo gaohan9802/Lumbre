@@ -43,6 +43,13 @@ test('durable append, manifest and stale snapshots preserve the selected route',
     tombstones: {},
   })
   assert.equal(sync.loadSyncSessions(['route-chat'])[0].generationRoute, 'api')
+
+  session = sync.loadSyncSessions(['route-chat'])[0]
+  sync.mergeSyncDelta({
+    sessions: [{ ...session, partial: true, updatedAt: session.updatedAt - 1, generationRoute: 'claude-code', generationRouteUpdatedAt: 102 }],
+    tombstones: {},
+  })
+  assert.equal(sync.loadSyncSessions(['route-chat'])[0].generationRoute, 'claude-code')
 })
 
 test('a route choice keeps a new empty conversation syncable', async () => {

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { addToolResultsToAudit, type MessageRequestAudit } from '@/lib/chat-receipt'
 import { chatMessageContentForModel } from '@/lib/chat-message-sync'
-import { loadSyncSessions } from '@/server/chat-sync'
+import { loadSyncSessionTails } from '@/server/chat-sync'
 import { isCcEffort, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
 
 type FetchLike = typeof fetch
@@ -120,7 +120,7 @@ function validateTurn(sessionId: unknown, turnId: unknown) {
 function canonicalContextMessages(body: any, sessionId: string, turnId: string) {
   const submitted = Array.isArray(body.messages) ? body.messages : []
   let durable: any
-  try { durable = loadSyncSessions([sessionId])[0] } catch { return submitted }
+  try { durable = loadSyncSessionTails([sessionId], Math.max(20, submitted.length))[0] } catch { return submitted }
   const storedById = new Map((durable?.messages || []).map((message: any) => [message.id, message]))
   return submitted.map((client: any) => {
     const stored: any = storedById.get(client?.id)

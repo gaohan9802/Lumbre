@@ -20,13 +20,17 @@ import { sanitizeChatConfig } from './chat/credentials'
 import { storeChatImage } from './data/repositories/chat-assets'
 import {
   archiveLegacyChatState,
+  appendChatSessionMessage,
   chatManifestExists,
   chatManifestMtime,
   ensureChatStorage,
   isValidChatSessionId,
   readChatManifest,
   readChatSession,
+  readChatSessionHeader,
+  readChatSessionPage,
   readChatSessionRecoveryCopies,
+  readChatSessionTail,
   readLegacyChatStates,
   removeChatSession,
   withChatStoreLock,
@@ -226,6 +230,16 @@ function writeSession(session: any, snapshot = true) {
   return stored
 }
 
+function ensureSegmentedSession(id: string): any | null {
+  const header = readChatSessionHeader(id)
+  if (!header) return null
+  if (header?._messageStore?.version === 1) return header
+  const session = readChatSession(id) as any
+  if (!session?.id) return null
+  writeSession(externalizeSessionImages(session), false)
+  return readChatSessionHeader(id)
+}
+
 function removeSession(id: string) {
   try { removeChatSession(id) } catch {}
 }
@@ -233,6 +247,31 @@ function removeSession(id: string) {
 function saveManifest(manifest: SyncManifest) {
   const mtimeMs = writeChatManifest(manifest, madridDateKey())
   manifestCache = mtimeMs === null ? null : { mtimeMs, value: manifest }
+}
+
+function sessionManifestItem(session: any, messageCount: number): SessionManifestItem {
+  return {
+    ...mergeConversationMode(session, null),
+    ...mergeConversationRoute(session, null),
+    ...mergeCcModel(session, null),
+    windowConfigUpdatedAt: Math.max(0, Number(session.windowConfigUpdatedAt) || 0),
+    ccContextStateUpdatedAt: Math.max(0, Number(session.ccContextStateUpdatedAt) || 0),
+    id: session.id,
+    updatedAt: Number(session.updatedAt) || 0,
+    messageCount,
+    title: session.title,
+    pinned: !!session.pinned,
+    createdAt: Number(session.createdAt) || 0,
+  }
+}
+
+function repairManifestSession(manifest: SyncManifest, session: any, messageCount: number): void {
+  const current = manifest.sessions.find(item => item.id === session.id)
+  if (!current || (current.updatedAt === Number(session.updatedAt) && current.messageCount === messageCount)) return
+  saveManifest({
+    ...manifest,
+    sessions: manifest.sessions.map(item => item.id === session.id ? sessionManifestItem(session, messageCount) : item),
+  })
 }
 
 function legacyState(): SyncState | null {
@@ -306,52 +345,52 @@ export function loadSyncSessions(ids: string[]): any[] {
  * until the user explicitly asks for older messages. */
 export function loadSyncSessionTails(ids: string[], requestedLimit = 120): any[] {
   const limit = Math.max(20, Math.min(200, Math.floor(requestedLimit) || 120))
-  return loadSyncSessions(ids).map((session) => {
-    const messages = Array.isArray(session?.messages) ? session.messages : []
-    if (messages.length <= limit) return { ...session, messageCount: messages.length, partial: false }
-    return {
-      ...session,
-      messages: messages.slice(-limit),
-      messageCount: messages.length,
-      partial: true,
-    }
+  const manifest = loadSyncManifest()
+  const allowed = new Set(manifest.sessions.map(session => session.id))
+  return ids.flatMap(id => {
+    if (!allowed.has(id) || !ensureSegmentedSession(id)) return []
+    const session = readChatSessionTail(id, limit)
+    return session ? [session] : []
   })
 }
 
 /** Read one bounded page immediately before `before` (an index in the durable
  * message array). This keeps mobile clients from ever parsing a whole archive. */
 export function loadSyncSessionHistory(id: string, requestedBefore: number, requestedLimit = 50) {
-  const session = loadSyncSessions([id])[0]
-  if (!session) return null
-  const messages = Array.isArray(session.messages) ? session.messages : []
-  const total = messages.length
-  const before = Math.max(0, Math.min(total, Math.floor(requestedBefore) || 0))
+  const manifest = loadSyncManifest()
+  if (!manifest.sessions.some(session => session.id === id) || !ensureSegmentedSession(id)) return null
   const limit = Math.max(10, Math.min(100, Math.floor(requestedLimit) || 50))
-  const start = Math.max(0, before - limit)
+  const page = readChatSessionPage(id, requestedBefore, limit)
+  if (!page) return null
   return {
     sessionId: id,
-    messages: messages.slice(start, before),
-    start,
-    total,
-    hasMore: start > 0,
+    messages: page.messages,
+    start: page.start,
+    total: page.total,
+    hasMore: page.start > 0,
   }
 }
 
 /** Locate one durable message without sending the whole conversation to a phone. */
 export function loadSyncMessageContext(id: string, messageId: string, requestedRadius = 4) {
   if (!messageId || messageId.length > 200) return null
-  const session = loadSyncSessions([id])[0]
-  if (!session) return null
-  const messages = Array.isArray(session.messages) ? session.messages : []
-  const targetIndex = messages.findIndex((message: any) => message?.id === messageId)
+  if (!loadSyncManifest().sessions.some(session => session.id === id)) return null
+  const header = ensureSegmentedSession(id)
+  const ids = Array.isArray(header?._messageStore?.ids) ? header._messageStore.ids : []
+  const targetIndex = ids.indexOf(messageId)
   if (targetIndex < 0) return null
   const radius = Math.max(2, Math.min(10, Math.floor(requestedRadius) || 4))
+  const total = Number(header._messageStore.messageCount) || 0
+  const start = Math.max(0, targetIndex - radius)
+  const end = Math.min(total, targetIndex + radius + 1)
+  const page = readChatSessionPage(id, end, end - start)
+  if (!page) return null
   return {
     sessionId: id,
-    sessionTitle: typeof session.title === 'string' ? session.title : '原聊天',
+    sessionTitle: typeof header.title === 'string' ? header.title : '原聊天',
     targetIndex,
-    total: messages.length,
-    messages: messages.slice(Math.max(0, targetIndex - radius), targetIndex + radius + 1),
+    total,
+    messages: page.messages,
   }
 }
 
@@ -383,6 +422,17 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
   for (const incoming of client.sessions || []) {
     if (!incoming?.id) continue
     const existingMeta = meta.get(incoming.id)
+    const submittedMetadataIsStale = existingMeta
+      && (Number(incoming.conversationModeUpdatedAt) || 0) <= (existingMeta.conversationModeUpdatedAt || 0)
+      && (Number(incoming.generationRouteUpdatedAt) || 0) <= (existingMeta.generationRouteUpdatedAt || 0)
+      && (Number(incoming.ccModelUpdatedAt) || 0) <= (existingMeta.ccModelUpdatedAt || 0)
+      && (Number(incoming.windowConfigUpdatedAt) || 0) <= (existingMeta.windowConfigUpdatedAt || 0)
+      && (Number(incoming.ccContextStateUpdatedAt) || 0) <= (existingMeta.ccContextStateUpdatedAt || 0)
+    if (existingMeta && submittedMetadataIsStale && incoming.partial && (Number(incoming.updatedAt) || 0) <= existingMeta.updatedAt) {
+      const header = ensureSegmentedSession(incoming.id)
+      const ids = new Set(Array.isArray(header?._messageStore?.ids) ? header._messageStore.ids : [])
+      if ((incoming.messages || []).every((message: any) => ids.has(String(message?.id || '')))) continue
+    }
     const existing = existingMeta ? loadSyncSessions([incoming.id])[0] : null
     const winner = existing ? pickSession(existing, incoming) : incoming
     const deletedAt = tombstones[winner.id] || 0
@@ -436,28 +486,30 @@ export function appendSyncSessionMessage(sessionId: string, message: any): { app
     const manifest = loadSyncManifest()
     const meta = manifest.sessions.find(item => item.id === sessionId)
     if (!meta) throw new Error(`wake session not found: ${sessionId}`)
-    const session = readChatSession(sessionId) as any
+    const session = ensureSegmentedSession(sessionId)
     if (!session?.id) throw new Error(`wake session unreadable: ${sessionId}`)
-    const messages = Array.isArray(session.messages) ? session.messages : []
+    const messageCount = Number(session?._messageStore?.messageCount) || 0
     const messageTombstones = normalizeMessageTombstones(session.messageTombstones)
     const deletedAt = messageDeletedAt(messageTombstones, String(message?.id || ''))
     if (deletedAt > 0 && deletedAt >= (Number(message?.timestamp) || 0)) {
-      return { appended: false, sessionUpdatedAt: Number(session.updatedAt) || 0, messageCount: messages.length }
+      return { appended: false, sessionUpdatedAt: Number(session.updatedAt) || 0, messageCount }
     }
-    if (messages.some((item: any) => item?.id === message?.id)) {
-      return { appended: false, sessionUpdatedAt: Number(session.updatedAt) || 0, messageCount: messages.length }
+    if (session._messageStore.ids.includes(String(message?.id || ''))) {
+      repairManifestSession(manifest, session, messageCount)
+      return { appended: false, sessionUpdatedAt: Number(session.updatedAt) || 0, messageCount }
     }
     const now = Math.max(Date.now(), (Number(session.updatedAt) || 0) + 1, Number(message?.timestamp) || 0)
-    const updated = { ...session, messages: [...messages, message], updatedAt: now }
-    writeSession(updated)
+    const storedMessage = externalizeSessionImages({ messages: [message] }).messages[0]
+    const updated = { ...session, updatedAt: now }
+    appendChatSessionMessage(sessionId, storedMessage, updated, madridDateKey())
     const next: SyncManifest = {
       ...manifest,
       sessions: manifest.sessions.map(item => item.id === sessionId
-        ? { ...mergeConversationMode(updated, null), ...mergeConversationRoute(updated, null), ...mergeCcModel(updated, null), windowConfigUpdatedAt: Math.max(0, Number(updated.windowConfigUpdatedAt) || 0), ccContextStateUpdatedAt: Math.max(0, Number(updated.ccContextStateUpdatedAt) || 0), id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
+        ? sessionManifestItem(updated, messageCount + 1)
         : item),
     }
     saveManifest(next)
-    return { appended: true, sessionUpdatedAt: now, messageCount: updated.messages.length }
+    return { appended: true, sessionUpdatedAt: now, messageCount: messageCount + 1 }
   })
 }
 
@@ -468,7 +520,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
     manifestCache = null
     const manifest = loadSyncManifest()
     const oldMeta = manifest.sessions.find(item => item.id === sessionId)
-    const existing = oldMeta ? readChatSession(sessionId) as any : null
+    const existing = oldMeta ? ensureSegmentedSession(sessionId) : null
     const base = existing?.id ? existing : {
       id: sessionId,
       title: meta.title || '新的对话',
@@ -485,14 +537,15 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       ...mergeChatWindowConfig(meta, null),
       ...mergeCcContextState(meta, null),
     }
-    const messages = Array.isArray(base.messages) ? base.messages : []
+    const messageCount = Number(base?._messageStore?.messageCount) || (Array.isArray(base.messages) ? base.messages.length : 0)
     const messageTombstones = normalizeMessageTombstones(base.messageTombstones)
     const deletedAt = messageDeletedAt(messageTombstones, String(message?.id || ''))
     if (deletedAt > 0 && deletedAt >= (Number(message?.timestamp) || 0)) {
-      return { appended: false, sessionUpdatedAt: Number(base.updatedAt) || 0, messageCount: messages.length }
+      return { appended: false, sessionUpdatedAt: Number(base.updatedAt) || 0, messageCount }
     }
-    if (messages.some((item: any) => item?.id === message?.id)) {
-      return { appended: false, sessionUpdatedAt: Number(base.updatedAt) || 0, messageCount: messages.length }
+    if (base?._messageStore?.ids?.includes(String(message?.id || '')) || base.messages?.some((item: any) => item?.id === message?.id)) {
+      if (oldMeta) repairManifestSession(manifest, base, messageCount)
+      return { appended: false, sessionUpdatedAt: Number(base.updatedAt) || 0, messageCount }
     }
     const now = Math.max(Date.now(), (Number(base.updatedAt) || 0) + 1, Number(message?.timestamp) || 0)
     const updated = {
@@ -504,16 +557,19 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       ...mergeCcContextState(base, meta),
       title: meta.title || base.title,
       pinned: meta.pinned !== undefined ? !!meta.pinned : !!base.pinned,
-      messages: [...messages, message],
-      messageCount: messages.length + 1,
+      messages: oldMeta ? undefined : [message],
+      messageCount: messageCount + 1,
       partial: false,
       updatedAt: now,
     }
-    writeSession(updated)
-    const item = { ...mergeConversationMode(updated, null), ...mergeConversationRoute(updated, null), ...mergeCcModel(updated, null), windowConfigUpdatedAt: Math.max(0, Number(updated.windowConfigUpdatedAt) || 0), ccContextStateUpdatedAt: Math.max(0, Number(updated.ccContextStateUpdatedAt) || 0), id: sessionId, updatedAt: now, messageCount: updated.messages.length, title: updated.title, pinned: !!updated.pinned, createdAt: Number(updated.createdAt) || 0 }
+    if (oldMeta) {
+      const storedMessage = externalizeSessionImages({ messages: [message] }).messages[0]
+      appendChatSessionMessage(sessionId, storedMessage, updated, madridDateKey())
+    } else writeSession(updated)
+    const item = sessionManifestItem(updated, messageCount + 1)
     const next: SyncManifest = { ...manifest, sessions: oldMeta ? manifest.sessions.map(x => x.id === sessionId ? item : x) : [...manifest.sessions, item] }
     saveManifest(next)
-    return { appended: true, sessionUpdatedAt: now, messageCount: updated.messages.length }
+    return { appended: true, sessionUpdatedAt: now, messageCount: messageCount + 1 }
   })
 }
 

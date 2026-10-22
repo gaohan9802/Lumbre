@@ -16,7 +16,7 @@ import { addMadridDays, madridDateKey, parseMadridDateTime } from '@/lib/madrid-
 import { isCcEffort, isCcModel, type CcEffort } from '@/lib/cc-model'
 import { ccSystemPromptForModel, OPUS_55_MODEL } from '@/lib/cc-system-prompt'
 import { readChatEventStream } from '@/features/chat/api/event-stream'
-import { appendSyncSessionMessage, loadSyncManifest, loadSyncSessions } from './chat-sync'
+import { appendSyncSessionMessage, loadSyncManifest, loadSyncSessionTails } from './chat-sync'
 import {
   acquireWakeLeaseData,
   appendWakeLogData,
@@ -353,7 +353,7 @@ function madridTimeStr(ts: number): string {
 function latestSessionUserAt(sessionId: string | null): number {
   if (!sessionId) return 0
   try {
-    const session = loadSyncSessions([sessionId])[0]
+    const session = loadSyncSessionTails([sessionId], 50)[0]
     const messages = Array.isArray(session?.messages) ? session.messages : []
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i]?.role === 'user') return Number(messages[i].timestamp) || 0
@@ -544,7 +544,7 @@ async function executeWake(config: WakeConfig, reason: string, activityAt: numbe
   let wakeSession: any = null
   let contextMessages: any[] = []
   try {
-    wakeSession = config.sessionId ? loadSyncSessions([config.sessionId])[0] : null
+    wakeSession = config.sessionId ? loadSyncSessionTails([config.sessionId], 50)[0] : null
     if (wakeSession?.messages) {
       contextMessages = wakeSession.messages.slice(-50).map((m: any, index: number) => ({
         id: typeof m.id === 'string' && m.id ? m.id : `wake-history-${index}-${Number(m.timestamp) || 0}`,
