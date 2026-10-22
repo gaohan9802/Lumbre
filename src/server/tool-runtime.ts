@@ -44,6 +44,7 @@ import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
 import { getUserContext as readUserContext } from './agent/tools/user-context'
 import type { ToolCallContext } from './agent/context'
 import { loadSyncSessions } from './chat-sync'
+import { chatImageDataUrl } from './data/repositories/chat-assets'
 import { appendPoemLine, createPoem, deletePoem, deletePoemLine, editPoemLine, getPoem, listPoems, updatePoem } from './poem-store'
 import { addWheelOption, deleteWheelOption, editWheelOption, readWheel, spinWheel } from './intimacy-wheel-store'
 import { appendStorySection, createStory, deleteStory, getStory, listStories, updateStory, updateStorySection } from './story-store'
@@ -74,8 +75,9 @@ function chatPhoto(input: Record<string, any>, context?: ToolCallContext): { pho
   const index = Number.isInteger(input.image_index) ? input.image_index : 0
   const ref = index >= 0 && index < 4 && typeof message?.images?.[index] === 'string' ? message.images[index] : null
   const storedId = ref ? /^\/api\/photos\/raw\/([A-Za-z0-9_-]{1,128})$/.exec(ref)?.[1] : null
-  const photo = storedId ? getPhoto(storedId) : ref && /^data:image\/[a-z0-9.+-]+;base64,/i.test(ref)
-    ? { id: `${input.message_id}:${index}`, author: 'fire', caption: '', url: ref, comments: [], created_at: '', updated_at: null }
+  const chatImage = ref ? chatImageDataUrl(ref) : null
+  const photo = storedId ? getPhoto(storedId) : ref && (/^data:image\/[a-z0-9.+-]+;base64,/i.test(ref) || chatImage)
+    ? { id: `${input.message_id}:${index}`, author: 'fire', caption: '', url: chatImage || ref, comments: [], created_at: '', updated_at: null }
     : null
   return { photo, ref, index }
 }
@@ -465,7 +467,7 @@ export async function executeRegisteredToolHandler(
           if (input.album_id || typeof input.caption === 'string') editPhoto(storedId, { albumId: input.album_id, caption: input.caption })
           return JSON.stringify({ ok: true, id: storedId, already_saved: true })
         }
-        const saved = writePhoto({ author: 'star', url: resolved.ref, caption: input.caption || '', source, albumId: input.album_id, zone: 'wall' })
+        const saved = writePhoto({ author: 'star', url: chatImageDataUrl(resolved.ref) || resolved.ref, caption: input.caption || '', source, albumId: input.album_id, zone: 'wall' })
         return JSON.stringify({ ok: true, id: saved.id, album_id: saved.album_id })
       }
       case 'edit_foto': {

@@ -57,6 +57,18 @@ test('session updates retain the historical backup layout and recover corrupt pr
   assert.equal(sync.loadSyncSessions([id])[0]?.messages.length, 1)
 })
 
+test('chat images are stored outside the session JSON and remain readable by reference', async () => {
+  const image = 'data:image/png;base64,aGVsbG8='
+  sync.upsertSyncSessionMessage('image-session', {
+    id: 'image-message', role: 'user', content: 'image', images: [image], timestamp: 30,
+  })
+  const stored = sync.loadSyncSessions(['image-session'])[0].messages[0].images[0]
+  assert.match(stored, /^\/api\/chat-assets\/[a-f0-9]{64}\.png$/)
+  assert.doesNotMatch(readFileSync(path.join(root, 'chat', 'sessions', `${encoded('image-session')}.json`), 'utf8'), /aGVsbG8=/)
+  const assets = await import('../../src/server/data/repositories/chat-assets')
+  assert.equal(assets.chatImageDataUrl(stored), image)
+})
+
 test('encoded client ids cannot escape the sessions directory and invalid ids are rejected', () => {
   const id = '../still-inside-chat'
   sync.upsertSyncSessionMessage(id, { id: 'safe', role: 'user', content: 'safe', timestamp: 1 })

@@ -118,6 +118,10 @@ test('structured output parsing records usage without exposing full session ids'
   ].join('\n'))
   assert.equal(findSessionId([envelope]), sessionId)
   assert.equal(findResultText(stream), 'DONE')
+  assert.equal(findResultText([
+    { type: 'assistant', session_id: sessionId, message: { content: [{ type: 'thinking', thinking: 'hidden' }, { type: 'text', text: 'assistant fallback' }] } },
+    { type: 'result', result: '', session_id: sessionId },
+  ]), 'assistant fallback')
   assert.equal(collectUsage(stream)?.output_tokens, 2)
   assert.deepEqual(collectUsage([envelope]), {
     input_tokens: 9,

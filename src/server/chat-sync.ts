@@ -17,6 +17,7 @@ import { mergeChatMessages, mergeMessageTombstones, messageDeletedAt, normalizeM
  */
 import { madridDateKey } from '@/lib/madrid-time'
 import { sanitizeChatConfig } from './chat/credentials'
+import { storeChatImage } from './data/repositories/chat-assets'
 import {
   archiveLegacyChatState,
   chatManifestExists,
@@ -200,8 +201,29 @@ function pickSession(a: any, b: any) {
   return { ...merged, ...mode, ...route, ...ccModel, ...windowConfig, ...ccContextState, updatedAt: Math.max(Number(a.updatedAt) || 0, Number(b.updatedAt) || 0) + 1 }
 }
 
+function externalizeSessionImages(session: any): any {
+  if (!Array.isArray(session?.messages)) return session
+  let changed = false
+  const messages = session.messages.map((message: any) => {
+    if (!Array.isArray(message?.images)) return message
+    let imagesChanged = false
+    const images = message.images.map((image: unknown) => {
+      if (typeof image !== 'string' || !image.startsWith('data:image/')) return image
+      const stored = storeChatImage(image)
+      if (stored !== image) imagesChanged = true
+      return stored
+    })
+    if (!imagesChanged) return message
+    changed = true
+    return { ...message, images }
+  })
+  return changed ? { ...session, messages } : session
+}
+
 function writeSession(session: any, snapshot = true) {
-  writeChatSession(session.id, session, madridDateKey(), snapshot)
+  const stored = externalizeSessionImages(session)
+  writeChatSession(stored.id, stored, madridDateKey(), snapshot)
+  return stored
 }
 
 function removeSession(id: string) {
@@ -272,7 +294,7 @@ export function loadSyncSessions(ids: string[]): any[] {
     if (!allowed.has(id)) continue
     const raw = readChatSession(id) as any
     if (raw?.id === id) {
-      const session = recoverMissingSummaries(raw)
+      const session = recoverMissingSummaries(externalizeSessionImages(raw))
       if (session !== raw) writeSession(session, false)
       result.push(session)
     }

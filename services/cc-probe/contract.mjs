@@ -157,7 +157,18 @@ export function findSessionId(values) {
 export function findResultText(values) {
   for (let index = values.length - 1; index >= 0; index--) {
     const value = values[index]
-    if (typeof value?.result === 'string') return value.result
+    if (typeof value?.result === 'string' && value.result) return value.result
+  }
+  // Some Claude Code builds omit the final result envelope after emitting a
+  // valid assistant message. Keep that answer instead of completing empty.
+  for (let index = values.length - 1; index >= 0; index--) {
+    const value = values[index]
+    if (value?.type !== 'assistant' || !Array.isArray(value?.message?.content)) continue
+    const text = value.message.content
+      .filter(block => block?.type === 'text' && typeof block.text === 'string')
+      .map(block => block.text)
+      .join('')
+    if (text) return text
   }
   return ''
 }
