@@ -7,7 +7,7 @@ import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
-type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'timeline' | 'poems' | 'stories' | 'research' | 'tesis' | 'future'
+type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'timeline' | 'poems' | 'stories' | 'research' | 'tesis' | 'future' | 'dictionary'
 interface Props {
   open: boolean
   onClose: () => void
@@ -23,6 +23,7 @@ interface Props {
   onStories?: () => void
   onResearch?: () => void
   onFutureLetter?: () => void
+  onDictionary?: () => void
   onWishlist?: () => void
   onMedia?: () => void
   onEnergy?: () => void
@@ -134,6 +135,7 @@ export function ChatSettings(props: Props) {
             {row('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}
             {row('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}
             {row('收藏夹', () => openRoom('favorites', props.onFavorites), roomUnread.favorites)}
+            {row('小火辞典', () => openRoom('dictionary', props.onDictionary), roomUnread.dictionary)}
             {row('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}
             {row('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}
           </div>

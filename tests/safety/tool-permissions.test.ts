@@ -26,15 +26,15 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 119)
-  assert.equal(registry.ALL_TOOLS.length, 119)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 119)
+  assert.equal(registry.registeredToolCount(), 123)
+  assert.equal(registry.ALL_TOOLS.length, 123)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 123)
   assert.deepEqual(registry.ALL_TOOLS.slice(0, 6).map(tool => tool.name), ['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_energy_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-9).map(tool => tool.name), ['read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message', 'write_opening_message', 'clear_opening_message', 'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-13).map(tool => tool.name), ['read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message', 'write_opening_message', 'clear_opening_message', 'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph', 'read_fire_dictionary', 'create_fire_dictionary_entry', 'update_fire_dictionary_entry', 'delete_fire_dictionary_entry'])
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
 
@@ -51,6 +51,9 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   const clearOpening = registry.getRegisteredTool('clear_opening_message')!
   const readFutureLetter = registry.getRegisteredTool('read_future_letter')!
   const appendFutureLetter = registry.getRegisteredTool('append_future_letter')!
+  const readDictionary = registry.getRegisteredTool('read_fire_dictionary')!
+  const writeDictionary = registry.getRegisteredTool('create_fire_dictionary_entry')!
+  const deleteDictionary = registry.getRegisteredTool('delete_fire_dictionary_entry')!
 
   assert.deepEqual(policy.evaluateToolPolicy(read, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(write, {}, chat), { allowed: true, level: 'yellow' })
@@ -64,6 +67,9 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.deepEqual(policy.evaluateToolPolicy(clearOpening, {}, chat), { allowed: true, level: 'yellow' })
   assert.deepEqual(policy.evaluateToolPolicy(readFutureLetter, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(appendFutureLetter, {}, chat), { allowed: true, level: 'yellow' })
+  assert.deepEqual(policy.evaluateToolPolicy(readDictionary, {}, chat), { allowed: true, level: 'green' })
+  assert.deepEqual(policy.evaluateToolPolicy(writeDictionary, {}, chat), { allowed: true, level: 'yellow' })
+  assert.equal(policy.evaluateToolPolicy(deleteDictionary, {}, chat).requiresConfirmation, true)
 })
 
 test('unattended wake receives every registered Lumbre tool including destructive actions', () => {
@@ -151,6 +157,7 @@ test('audit log records actor, source, tool and outcome without content values',
 test('successful star writes add one room unread while reads and confirmations do not', async () => {
   roomUnread.markRoomRead('notes')
   roomUnread.markRoomRead('future')
+  roomUnread.markRoomRead('dictionary')
   const context = contextModule.createToolContext({ source: 'chat', actorId: 'fixture-user', sessionId: 'unread-session' })
   const created = JSON.parse(await executor.executeTool('write_note', { author: 'star', content: '新的小纸条' }, context))
   assert.equal(roomUnread.readRoomUnreadCounts().notes, 1)
@@ -167,4 +174,13 @@ test('successful star writes add one room unread while reads and confirmations d
   assert.equal(roomUnread.readRoomUnreadCounts().future, 1)
   await executor.executeTool('edit_future_letter_paragraph', { paragraph_id: appended.paragraph.id, content: '写给下次醒来的我：要记得回家。' }, context)
   assert.equal(roomUnread.readRoomUnreadCounts().future, 2)
+  const dictionary = JSON.parse(await executor.executeTool('create_fire_dictionary_entry', {
+    word: '抱抱税', pinyin: 'bào bào shuì', definition: '回家先抱一下。', examples: ['今天也要交抱抱税。'],
+  }, context))
+  assert.equal(dictionary.ok, true)
+  assert.equal(roomUnread.readRoomUnreadCounts().dictionary, 1)
+  await executor.executeTool('read_fire_dictionary', {}, context)
+  assert.equal(roomUnread.readRoomUnreadCounts().dictionary, 1)
+  await executor.executeTool('update_fire_dictionary_entry', { entry_id: dictionary.entry.id, definition: '回家先抱两下。' }, context)
+  assert.equal(roomUnread.readRoomUnreadCounts().dictionary, 2)
 })

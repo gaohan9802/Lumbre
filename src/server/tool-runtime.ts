@@ -54,6 +54,7 @@ import { sendPushMessages } from './push'
 import { drawPicture } from './pencil-case'
 import { clearOpeningMessage, writeOpeningMessage } from './opening-message-store'
 import { appendFutureLetterParagraph, editFutureLetterParagraph, readFutureLetter } from './future-letter-store'
+import { createFireDictionaryEntry, deleteFireDictionaryEntry, readFireDictionary, updateFireDictionaryEntry } from './fire-dictionary-store'
 import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
@@ -415,6 +416,14 @@ export async function executeRegisteredToolHandler(
         return JSON.stringify({ ok: true, paragraph: result.paragraph, deduplicated: result.deduplicated })
       }
       case 'edit_future_letter_paragraph': return JSON.stringify({ ok: true, paragraph: editFutureLetterParagraph(input.paragraph_id, input.content) })
+      case 'read_fire_dictionary': return JSON.stringify(input.entry_id
+        ? { entry: readFireDictionary({ entryId: input.entry_id }) }
+        : { entries: readFireDictionary({ query: input.query, letter: input.letter, limit: input.limit ?? 100 }) })
+      case 'create_fire_dictionary_entry': return JSON.stringify({ ok: true, entry: createFireDictionaryEntry('star', {
+        word: input.word, pinyin: input.pinyin, definition: input.definition, phrases: input.phrases, examples: input.examples,
+      }) })
+      case 'update_fire_dictionary_entry': return JSON.stringify({ ok: true, entry: updateFireDictionaryEntry('star', input.entry_id, input) })
+      case 'delete_fire_dictionary_entry': return JSON.stringify({ ok: true, deleted: deleteFireDictionaryEntry(input.entry_id) })
 
       // Photos → local store
       case 'list_foto_albums': {

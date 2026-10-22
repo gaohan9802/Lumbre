@@ -26,6 +26,7 @@ export type ToolDomain =
   | 'games'
   | 'media'
   | 'future-letter'
+  | 'dictionary'
 
 export interface ToolDef {
   name: string

@@ -15,6 +15,7 @@ after(() => rmSync(root, { recursive: true, force: true }))
 test('room unread counts persist per room and clear independently', () => {
   assert.equal(unread.readRoomUnreadCounts().photos, 0)
   assert.equal(unread.readRoomUnreadCounts().future, 0)
+  assert.equal(unread.readRoomUnreadCounts().dictionary, 0)
   unread.incrementRoomUnread('photos')
   unread.incrementRoomUnread('photos')
   unread.incrementRoomUnread('diary')
@@ -22,6 +23,8 @@ test('room unread counts persist per room and clear independently', () => {
   assert.equal(unread.readRoomUnreadCounts().diary, 1)
   unread.incrementRoomUnread('future')
   assert.equal(unread.readRoomUnreadCounts().future, 1)
+  unread.incrementRoomUnread('dictionary')
+  assert.equal(unread.readRoomUnreadCounts().dictionary, 1)
 
   unread.markRoomRead('photos')
   assert.equal(unread.readRoomUnreadCounts().photos, 0)

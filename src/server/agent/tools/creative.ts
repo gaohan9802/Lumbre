@@ -23,6 +23,10 @@ export const CREATIVE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'read_future_letter', domain: 'future-letter', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'append_future_letter', domain: 'future-letter', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'edit_future_letter_paragraph', domain: 'future-letter', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_fire_dictionary', domain: 'dictionary', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'create_fire_dictionary_entry', domain: 'dictionary', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'update_fire_dictionary_entry', domain: 'dictionary', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'delete_fire_dictionary_entry', domain: 'dictionary', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '彻底删除这个小火词条' },
   { name: 'read_detroit', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'play_detroit', domain: 'games', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
 ]

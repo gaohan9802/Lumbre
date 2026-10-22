@@ -5,7 +5,7 @@ import { resolveDataPath } from './data/safe-path'
 export const ROOM_UNREAD_KEYS = [
   'coupons', 'todo', 'notes', 'diary', 'wishlist', 'photos', 'favorites',
   'media', 'energy', 'timeline', 'poems', 'stories', 'research', 'tesis',
-  'future',
+  'future', 'dictionary',
 ] as const
 
 export type RoomUnreadKey = typeof ROOM_UNREAD_KEYS[number]

@@ -172,4 +172,48 @@ export const CREATIVE_TOOL_DEFINITIONS = [
       required: ['action'],
     },
   },
+  {
+    name: 'read_fire_dictionary',
+    description: '翻阅“小火辞典”。可按词条 id 精确读取，或按关键词、首字母搜索词语、拼音、小火释义、词组和例句。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entry_id: { type: 'string', description: '可选；精确读取一个词条' },
+        query: { type: 'string', description: '可选；搜索词语、拼音、释义、词组或例句' },
+        letter: { type: 'string', description: '可选；A-Z 或 #' },
+        limit: { type: 'integer', description: '最多返回多少条，默认及上限 100' },
+      },
+    },
+  },
+  {
+    name: 'create_fire_dictionary_entry',
+    description: '给“小火辞典”新建一个词条。平时如果发现小火对某个词有新颖、好玩、很有个人味道的解释，或创造了可爱的胡说八道，可以主动记录下来。每个词需要拼音、小火自己的释义和至少一个例句；组词可以为空。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        word: { type: 'string' }, pinyin: { type: 'string' }, definition: { type: 'string' },
+        phrases: { type: 'array', items: { type: 'string' } },
+        examples: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['word', 'pinyin', 'definition', 'examples'],
+    },
+  },
+  {
+    name: 'update_fire_dictionary_entry',
+    description: '按稳定 entry_id 修改“小火辞典”的词语、拼音、释义、组词或例句。只提供需要修改的字段；先读取确认 id。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entry_id: { type: 'string' }, word: { type: 'string' }, pinyin: { type: 'string' }, definition: { type: 'string' },
+        phrases: { type: 'array', items: { type: 'string' } },
+        examples: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['entry_id'],
+    },
+  },
+  {
+    name: 'delete_fire_dictionary_entry',
+    description: '按稳定 entry_id 永久删除“小火辞典”的一个词条。先读取确认词条；删除后不会保留占位。',
+    input_schema: { type: 'object', properties: { entry_id: { type: 'string' } }, required: ['entry_id'] },
+  },
 ] satisfies ToolDef[]
