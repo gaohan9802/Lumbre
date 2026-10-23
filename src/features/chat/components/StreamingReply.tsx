@@ -5,6 +5,7 @@ import { ChevronDown } from 'lucide-react'
 import type { ContentBlock } from '@/features/chat/state/types'
 import { MarkdownText } from '@/components/chat/MarkdownText'
 import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
+import { ToolSticker } from '@/components/chat/StickerPicker'
 
 interface StreamingReplyProps {
   blocks: ContentBlock[]
@@ -33,6 +34,7 @@ export function StreamingReply({
           if (block.type === 'thinking') return null
           if (block.type === 'tool_call' && block.name) {
             const key = `stream-tool-${block.callId || index}`
+            if (block.name === 'send_sticker') return <ToolSticker key={key} input={block.input} pending={block.pending} />
             const expanded = expandedTools.has(key)
             return (
               <div key={key} className="chat-theme-surface chat-theme-border mr-auto w-fit max-w-[90%] rounded-xl border">

@@ -37,6 +37,7 @@ import { prepareChatMessage, type PencilDrawingResult } from '@/features/chat/vi
 import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ThinkingDrawer } from '@/features/chat/components/ThinkingDrawer'
+import { StickerArt, StickerPicker, ToolSticker, StickerVisit } from '@/components/chat/StickerPicker'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
 import { ccContextLevel } from '@/lib/chat-window-config'
@@ -44,6 +45,7 @@ import { CC_MODELS, DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } fro
 import { ccSystemPromptForModel } from '@/lib/cc-system-prompt'
 import { chatMessageContentForModel, isSupportedChatFile, MAX_CHAT_ATTACHMENTS, MAX_CHAT_ATTACHMENT_BYTES } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
+import { sticker, stickerFromToolInput, type StickerRef } from '@/lib/stickers'
 import { IntimacyWheelModal } from './IntimacyWheelModal'
 import { TodoView } from '@/components/todo/TodoView'
 import { useWeather, weatherEmoji } from '@/lib/useWeather'
@@ -201,6 +203,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [favoriteChatContext, setFavoriteChatContext] = useState<FavoriteChatContext | null>(null)
   const [savedDrawings, setSavedDrawings] = useState<Set<string>>(new Set())
   const [thinkingDrawer, setThinkingDrawer] = useState<{ id: string; parts: string[] } | null>(null)
+  const [stickerPickerOpen, setStickerPickerOpen] = useState(false)
+  const [stickerVisit, setStickerVisit] = useState<StickerRef | null>(null)
+  const clearStickerVisit = useCallback(() => setStickerVisit(null), [])
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession, setSettings,
@@ -241,7 +246,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
     copiedId, setCopiedId, mounted, setMounted,
-    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingAttachments, setPendingAttachments, pendingShare, setPendingShare,
+    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingAttachments, setPendingAttachments, pendingShare, setPendingShare, pendingSticker, setPendingSticker,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
     messagesEndRef, inputRef, imgInputRef, fileInputRef, scrollRef, stickBottomRef, abortControllerRef,
@@ -785,6 +790,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           appendContentBlock({ type: 'thinking', content: chunk })
         } else if (evt.type === 'tool_start') {
           if (evt.name === 'view_foto' && typeof (evt.input as any)?.message_id === 'string') continue
+          if (evt.name === 'send_sticker') {
+            const selected = stickerFromToolInput(evt.input && typeof evt.input === 'object' ? evt.input as Record<string, unknown> : undefined)
+            if (selected?.entrance === 'visit') setStickerVisit(selected)
+          }
           appendContentBlock({
             type: 'tool_call',
             callId: String(evt.call_id || ''),
@@ -1040,7 +1049,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   }, [])
 
   const sendMessage = async () => {
-    if ((!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare) || isLoading) return
+    if ((!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare && !pendingSticker) || isLoading) return
     if (activeRoute === 'claude-code') void ensureCcAvailable(activeRoute, false)
     const profile = activeApiProfile
     const model = activeApiModel
@@ -1055,6 +1064,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       images: pendingImages.length ? pendingImages : undefined,
       attachments: pendingAttachments.length ? pendingAttachments : undefined,
       sharedCard: pendingShare || undefined,
+      sticker: pendingSticker || undefined,
       ccGenerationState: activeRoute === 'claude-code' ? 'pending' : undefined,
       providerId: activeRoute === 'claude-code' ? 'claude-code' : profile?.id,
       modelId: activeRoute === 'claude-code' ? effectiveCcModel : model,
@@ -1069,6 +1079,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     setPendingImages([])
     setPendingAttachments([])
     setPendingShare(null)
+    setPendingSticker(null)
     setIsLoading(true)
 
     // Paint and persist the message first; refresh stale GPS before the model
@@ -1631,6 +1642,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             const blockKey = `${msg.id}-b${bi}`
                             if (block.type === 'thinking') return null
                             if (block.type === 'tool_call' && block.name) {
+                              if (block.name === 'send_sticker') return <ToolSticker key={blockKey} input={block.input} pending={block.pending} />
                               const isExp = expandedTools.has(blockKey)
                               return (
                                 <div key={blockKey} className="chat-theme-surface chat-theme-border mr-auto w-fit max-w-[90%] rounded-xl border">
@@ -1741,8 +1753,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             <button onClick={finishEditMsg} className="chat-theme-accent text-xs font-medium">保存</button>
                           </div>
                         </div>
-                      ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard)) ? (
+                      ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard || !!msg.sticker)) ? (
                         <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'ml-auto w-fit max-w-[77%] rounded-2xl rounded-br-md' : 'mr-auto w-fit max-w-[91%] text-left'}`}>
+                          {msg.sticker && sticker(msg.sticker.id) && (
+                            <StickerArt id={msg.sticker.id} className="mx-auto mb-1 h-28 w-28" />
+                          )}
                           {msg.sharedCard && (
                             <div className="chat-theme-surface chat-theme-border mb-2 overflow-hidden rounded-xl border">
                               <div className="px-3 py-2 text-xs font-medium">📎 {msg.sharedCard.title}</div>
@@ -1863,6 +1878,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
           {/* footer */}
           <div ref={footerRef} className="chat-footer absolute inset-x-0 bottom-0 z-20 px-3 pt-1">
+            {stickerVisit && <StickerVisit value={stickerVisit} onDone={clearStickerVisit} />}
+            {pendingSticker && (
+              <div className="chat-theme-surface chat-theme-border mx-1 mb-2 flex w-fit items-center gap-2 rounded-2xl border px-2 py-1.5">
+                <StickerArt id={pendingSticker.id} className="h-14 w-14" />
+                <span className="text-xs">{sticker(pendingSticker.id)?.label}</span>
+                <button type="button" aria-label="移除表情包" onClick={() => setPendingSticker(null)} className="chat-theme-icon grid h-7 w-7 place-items-center rounded-full"><X size={13}/></button>
+              </div>
+            )}
             {/* pending shared card */}
             {pendingShare && (
               <div className="chat-theme-surface chat-theme-border mx-1 mb-2 overflow-hidden rounded-xl border">
@@ -1919,6 +1942,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <motion.button type="button" aria-label="戳豹子鼻子" title="戳豹子鼻子" disabled={nosePokeBusy} onPointerDown={event => event.preventDefault()} onClick={() => void pokeLeopardNose()} whileTap={{ scale: .9 }} className="chat-theme-icon grid h-8 w-8 place-items-center rounded-full text-[18px] leading-none disabled:opacity-35">
                     <span aria-hidden="true">🐆</span>
                   </motion.button>
+                  <button type="button" aria-label="选择表情包" title="我们的表情包" onClick={() => setStickerPickerOpen(true)} className="chat-theme-icon grid h-8 w-8 place-items-center rounded-full text-[16px] leading-none"><span aria-hidden="true">🐾</span></button>
                   <button type="button" aria-label="打开今天怎么操" title="今天怎么操" onClick={() => setWheelOpen(true)} className="chat-theme-icon grid h-8 w-8 place-items-center rounded-full"><Dices size={17}/></button>
                   <ChatRouteChip route={activeRoute} detail={activeRoute === 'claude-code' ? (CC_MODELS.find(model => model.id === effectiveCcModel)?.name || effectiveCcModel) : activeApiModel} isNight={n} onClick={() => setModelPickerOpen(true)} />
                   <span className="flex-1" />
@@ -1927,8 +1951,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       <Square size={14} fill="currentColor" />
                     </button>
                   ) : (
-                    <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare)}
-                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingAttachments.length || pendingShare) ? 'chat-theme-accent-bg text-[#3f2c29] hover:opacity-80' : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
+                    <button aria-label={sendStarting ? '正在发送消息' : '发送消息'} aria-busy={sendStarting} onClick={handleSend} disabled={sendStarting || (!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare && !pendingSticker)}
+                      className={`grid h-8 w-8 place-items-center rounded-full transition-all ${!sendStarting && (input.trim() || pendingImages.length || pendingAttachments.length || pendingShare || pendingSticker) ? 'chat-theme-accent-bg text-[#3f2c29] hover:opacity-80' : `opacity-30 ${sendStarting ? 'cursor-wait' : 'cursor-not-allowed'}`}`}>
                       <Send size={15} />
                     </button>
                   )}
@@ -1941,6 +1965,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       </div>
 
       {/* ── portals ────────────────────────── */}
+      <StickerPicker open={stickerPickerOpen} onClose={() => setStickerPickerOpen(false)} onSelect={setPendingSticker} />
       {mounted && createPortal(
         <>
           <ThinkingDrawer

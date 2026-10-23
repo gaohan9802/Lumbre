@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import test from 'node:test'
 import { isRecoverableChatDisconnect, mergeConversationRoute, normalizeChatRoute } from '../../src/lib/chat-route'
 import { normalizeSettings } from '../../src/features/chat/migrations/browser-state'
@@ -6,6 +8,7 @@ import { snapshotOfMessage } from '../../src/features/chat/sessions/messages'
 import { ccEffortsForModel, isCcModel, mergeCcModel, normalizeCcEffortForModel } from '../../src/lib/cc-model'
 import { chatMessageContentForModel, isSupportedChatFile } from '../../src/lib/chat-message-sync'
 import { ccContextLevel, mergeCcContextState, mergeChatWindowConfig, normalizeCcContextState, normalizeChatWindowConfig } from '../../src/lib/chat-window-config'
+import { STICKERS } from '../../src/lib/stickers'
 
 test('old conversations and message versions normalize to the API route', () => {
   const settings = normalizeSettings({
@@ -100,6 +103,33 @@ test('text files become stable model context without changing chat routing', () 
   assert.match(content, /# 星星\n你好/)
   assert.equal(isSupportedChatFile('notes.md', ''), true)
   assert.equal(isSupportedChatFile('archive.zip', 'application/zip'), false)
+})
+
+test('Sticker messages persist as compact semantic context instead of artwork', () => {
+  assert.equal(chatMessageContentForModel({ content: '来抱抱', sticker: { id: 'duo-hug' } }), '来抱抱\n[表情包：抱抱]')
+  assert.equal(chatMessageContentForModel({
+    content: '',
+    tool_calls: [{ name: 'send_sticker', input: { sticker_id: 'duo-sleeping', entrance: 'visit' }, result: '{"ok":true}' }],
+  }), '\n[表情包：睡觉]')
+  const normalized = normalizeSettings({
+    activeSessionId: 'stickers',
+    sessions: [{
+      id: 'stickers', title: 'stickers', pinned: false, createdAt: 1, updatedAt: 1,
+      messages: [{ id: 'm', role: 'user', route: 'api', content: '', timestamp: 1, sticker: { id: 'duo-kiss-nose', entrance: 'message' } }],
+    }],
+  })
+  assert.deepEqual(normalized.sessions[0].messages[0].sticker, { id: 'duo-kiss-nose', entrance: 'message' })
+})
+
+test('sticker catalog has unique ids and both lightweight and original artwork', () => {
+  assert.equal(STICKERS.length, 46)
+  assert.equal(new Set(STICKERS.map(item => item.id)).size, STICKERS.length)
+  assert.equal(STICKERS.find(item => item.id === 'duo-selfie')?.label, '自拍')
+  assert.equal(STICKERS.find(item => item.id === 'duo-face-mask')?.label, '敷面膜')
+  for (const item of STICKERS) {
+    assert.equal(existsSync(path.join(process.cwd(), 'public', item.asset.replace(/^\//, ''))), true, item.asset)
+    assert.equal(existsSync(path.join(process.cwd(), 'public', item.original.replace(/^\//, ''))), true, item.original)
+  }
 })
 
 test('route persists through store continuation, stale sync and message versions', async () => {

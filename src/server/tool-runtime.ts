@@ -55,6 +55,7 @@ import { drawPicture } from './pencil-case'
 import { clearOpeningMessage, writeOpeningMessage } from './opening-message-store'
 import { appendFutureLetterParagraph, editFutureLetterParagraph, readFutureLetter } from './future-letter-store'
 import { createFireDictionaryEntry, deleteFireDictionaryEntry, readFireDictionary, updateFireDictionaryEntry } from './fire-dictionary-store'
+import { findStickers, sticker } from '@/lib/stickers'
 import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
@@ -776,6 +777,28 @@ export async function executeRegisteredToolHandler(
       case 'bite_otter_nape': {
         const push = await sendPushMessages(['星星咬了水獭后颈一口。'], '被咬了一口')
         return JSON.stringify({ ok: push.sent > 0, ...push })
+      }
+
+      case 'list_stickers': {
+        const stickers = findStickers(input.category, input.query)
+        return JSON.stringify({
+          ok: true,
+          count: stickers.length,
+          stickers: stickers.map(item => ({
+            id: item.id,
+            label: item.label,
+            category: item.category,
+            description: item.description,
+            keywords: item.keywords,
+          })),
+        })
+      }
+
+      case 'send_sticker': {
+        const selected = sticker(input.sticker_id)
+        if (!selected) throw new Error('未知的表情；请先调用 list_stickers 获取可用 ID')
+        const caption = typeof input.caption === 'string' ? input.caption.trim().slice(0, 80) : ''
+        return JSON.stringify({ ok: true, sticker_id: selected.id, label: selected.label, caption: caption || undefined, entrance: input.entrance === 'visit' ? 'visit' : 'message' })
       }
 
       // Wake alarm

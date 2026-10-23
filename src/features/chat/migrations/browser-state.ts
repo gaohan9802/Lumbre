@@ -4,6 +4,7 @@ import { normalizeChatRoute } from '@/lib/chat-route'
 import { normalizeCcContextState, normalizeChatWindowConfig } from '@/lib/chat-window-config'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 import { mergeChatMessages, normalizeChatAttachments, normalizeMessageTombstones } from '@/lib/chat-message-sync'
+import { normalizeStickerRef } from '@/lib/stickers'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import type {
   ApiProfile, ApiProvider, BubbleLayout, ChatMessage, ChatSettings, ChatSummary, ContentBlock,
@@ -57,6 +58,7 @@ function normalizeVersion(version: any): MessageVersion {
       result: safeText(call?.result),
     })) : undefined,
     sharedCard: version?.sharedCard && typeof version.sharedCard === 'object' ? version.sharedCard : undefined,
+    sticker: normalizeStickerRef(version?.sticker),
     content_blocks: Array.isArray(version?.content_blocks)
       ? version.content_blocks.map(normalizeContentBlock).filter(Boolean) as ContentBlock[]
       : undefined,
@@ -81,11 +83,13 @@ function normalizeMessage(message: any): ChatMessage | null {
   const attachments = normalizeChatAttachments(message.attachments)
   const attachmentsValid = !message.attachments || (!!attachments && attachments.length === message.attachments.length && attachments.every((file, index) =>
     file.name === message.attachments[index].name && file.type === message.attachments[index].type && file.size === message.attachments[index].size && file.text === message.attachments[index].text))
+  const sticker = normalizeStickerRef(message.sticker)
+  const stickerValid = !message.sticker || (!!sticker && sticker.id === message.sticker.id && sticker.entrance === (message.sticker.entrance === 'visit' ? 'visit' : 'message'))
   const routeValid = message.route === 'api' || message.route === 'claude-code'
   // Keep object identity on the normal path; this runs for every store update.
   if (typeof message.id === 'string' && typeof message.content === 'string' &&
       (message.thinking == null || typeof message.thinking === 'string') &&
-      routeValid && blocksValid && versionsValid && layoutValid && imagesValid && attachmentsValid) return message as ChatMessage
+      routeValid && blocksValid && versionsValid && layoutValid && imagesValid && attachmentsValid && stickerValid) return message as ChatMessage
   const normalized = normalizeVersion(message)
   const versions = Array.isArray(message.versions) ? message.versions.map(normalizeVersion) : undefined
   return {
@@ -96,6 +100,7 @@ function normalizeMessage(message: any): ChatMessage | null {
     images: Array.isArray(message.images) ? message.images.filter((image: any) => typeof image === 'string') : undefined,
     attachments,
     sharedCard: message.sharedCard && typeof message.sharedCard === 'object' ? message.sharedCard : undefined,
+    sticker,
     versions,
     versionIndex: versions?.length ? Math.max(0, Math.min(Number(message.versionIndex) || 0, versions.length - 1)) : undefined,
   }

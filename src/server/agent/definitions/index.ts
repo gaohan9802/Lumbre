@@ -41,6 +41,7 @@ const TOOL_ORDER = [
   'write_opening_message', 'clear_opening_message',
   'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph',
   'read_fire_dictionary', 'create_fire_dictionary_entry', 'update_fire_dictionary_entry', 'delete_fire_dictionary_entry',
+  'list_stickers', 'send_sticker',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

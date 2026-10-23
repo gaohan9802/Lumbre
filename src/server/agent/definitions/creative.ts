@@ -216,4 +216,28 @@ export const CREATIVE_TOOL_DEFINITIONS = [
     description: '按稳定 entry_id 永久删除“小火辞典”的一个词条。先读取确认词条；删除后不会保留占位。',
     input_schema: { type: 'object', properties: { entry_id: { type: 'string' } }, required: ['entry_id'] },
   },
+  {
+    name: 'list_stickers',
+    description: '查看可用的雪豹、水獭和双人互动表情。准备发图但不确定 sticker_id 时先查；可以按角色分类或用中文情绪、动作检索。新增图片会自动出现在这里，不需要猜 ID。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['duo', 'otter', 'leopard'], description: '可选；双人、水獭或雪豹' },
+        query: { type: 'string', description: '可选；情绪或动作关键词，例如抱抱、委屈、吃饭' },
+      },
+    },
+  },
+  {
+    name: 'send_sticker',
+    description: '给小火发一张雪豹水獭表情。你是雪豹，小火是水獭；注意图中动作方向。图片和本轮文字算同一条回复，caption 只写很短的一句话，不需要时省略。entrance=message 正常出现在聊天里；entrance=visit 会先在输入框旁短暂出现，再保留为聊天表情。只在自己真的想表达动作或情绪时使用，不要每轮都发；不确定 ID 时先调用 list_stickers。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sticker_id: { type: 'string', description: 'list_stickers 返回的稳定 ID' },
+        caption: { type: 'string', description: '可选；表情旁的一句短话，最多 80 字' },
+        entrance: { type: 'string', enum: ['message', 'visit'], description: '可选；默认 message' },
+      },
+      required: ['sticker_id'],
+    },
+  },
 ] satisfies ToolDef[]

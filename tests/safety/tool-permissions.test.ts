@@ -26,15 +26,15 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 123)
-  assert.equal(registry.ALL_TOOLS.length, 123)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 123)
+  assert.equal(registry.registeredToolCount(), 125)
+  assert.equal(registry.ALL_TOOLS.length, 125)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 125)
   assert.deepEqual(registry.ALL_TOOLS.slice(0, 6).map(tool => tool.name), ['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_energy_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-13).map(tool => tool.name), ['read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message', 'write_opening_message', 'clear_opening_message', 'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph', 'read_fire_dictionary', 'create_fire_dictionary_entry', 'update_fire_dictionary_entry', 'delete_fire_dictionary_entry'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-15).map(tool => tool.name), ['read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message', 'write_opening_message', 'clear_opening_message', 'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph', 'read_fire_dictionary', 'create_fire_dictionary_entry', 'update_fire_dictionary_entry', 'delete_fire_dictionary_entry', 'list_stickers', 'send_sticker'])
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
 
@@ -54,6 +54,7 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   const readDictionary = registry.getRegisteredTool('read_fire_dictionary')!
   const writeDictionary = registry.getRegisteredTool('create_fire_dictionary_entry')!
   const deleteDictionary = registry.getRegisteredTool('delete_fire_dictionary_entry')!
+  const sendSticker = registry.getRegisteredTool('send_sticker')!
 
   assert.deepEqual(policy.evaluateToolPolicy(read, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(write, {}, chat), { allowed: true, level: 'yellow' })
@@ -70,6 +71,16 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.deepEqual(policy.evaluateToolPolicy(readDictionary, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(writeDictionary, {}, chat), { allowed: true, level: 'yellow' })
   assert.equal(policy.evaluateToolPolicy(deleteDictionary, {}, chat).requiresConfirmation, true)
+  assert.deepEqual(policy.evaluateToolPolicy(sendSticker, {}, chat), { allowed: true, level: 'green' })
+})
+
+test('Sticker tools list the catalog, reject unknown ids and normalize optional fields', async () => {
+  const context = contextModule.createToolContext({ source: 'chat', actorId: 'fixture-user', sessionId: 'session-a' })
+  const listed = JSON.parse(await executor.executeTool('list_stickers', { category: 'duo', query: '抱抱' }, context))
+  assert.deepEqual(listed.stickers.map((item: any) => item.id), ['duo-hug'])
+  const sent = JSON.parse(await executor.executeTool('send_sticker', { sticker_id: 'duo-hug', caption: '抱一下', entrance: 'visit' }, context))
+  assert.deepEqual(sent, { ok: true, sticker_id: 'duo-hug', label: '抱抱', caption: '抱一下', entrance: 'visit' })
+  assert.match(await executor.executeTool('send_sticker', { sticker_id: 'not-real' }, context), /未知的表情/)
 })
 
 test('unattended wake receives every registered Lumbre tool including destructive actions', () => {

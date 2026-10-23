@@ -1,12 +1,14 @@
 import type { SetStateAction } from 'react'
 import type { SharedCard } from '@/lib/share'
 import type { ChatAttachment } from '@/features/chat/state/types'
+import type { StickerRef } from '@/lib/stickers'
 
 export interface ChatComposerDraft {
   input: string
   pendingImages: string[]
   pendingAttachments: ChatAttachment[]
   pendingShare: SharedCard | null
+  pendingSticker: StickerRef | null
 }
 
 export const EMPTY_CHAT_COMPOSER_DRAFT: ChatComposerDraft = {
@@ -14,6 +16,7 @@ export const EMPTY_CHAT_COMPOSER_DRAFT: ChatComposerDraft = {
   pendingImages: [],
   pendingAttachments: [],
   pendingShare: null,
+  pendingSticker: null,
 }
 
 export function updateComposerDraft<K extends keyof ChatComposerDraft>(

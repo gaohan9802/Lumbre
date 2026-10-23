@@ -29,4 +29,6 @@ export const CREATIVE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'delete_fire_dictionary_entry', domain: 'dictionary', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '彻底删除这个小火词条' },
   { name: 'read_detroit', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'play_detroit', domain: 'games', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'list_stickers', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'send_sticker', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
 ]

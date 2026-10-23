@@ -1,4 +1,5 @@
 import type { ChatAttachment, ChatMessage } from '@/features/chat/state/types'
+import { sticker } from '@/lib/stickers'
 
 export type MessageTombstones = Record<string, number>
 export const ALL_MESSAGES_TOMBSTONE = '*'
@@ -82,15 +83,19 @@ export function mergeChatMessages(existing: any[], incoming: any[], tombstones: 
     .sort((a, b) => messageRevision(a) - messageRevision(b))
 }
 
-export function chatMessageContentForModel(message: Pick<ChatMessage, 'content' | 'tool_calls' | 'sharedCard' | 'attachments'>): string {
+export function chatMessageContentForModel(message: Pick<ChatMessage, 'content' | 'tool_calls' | 'sharedCard' | 'attachments' | 'sticker'>): string {
   const toolSummary = message.tool_calls?.length
-    ? `\n${message.tool_calls.map(call => `[调用了${call.name}(${JSON.stringify(call.input).slice(0, 100)}) → ${(call.result || '').slice(0, 150)}]`).join('\n')}`
+    ? `\n${message.tool_calls.map(call => call.name === 'send_sticker'
+      ? `[表情包：${sticker(call.input?.sticker_id)?.label || '未知'}]`
+      : `[调用了${call.name}(${JSON.stringify(call.input).slice(0, 100)}) → ${(call.result || '').slice(0, 150)}]`).join('\n')}`
     : ''
+  const emote = message.sticker ? sticker(message.sticker.id) : undefined
+  const emoteSummary = emote ? `\n[表情包：${emote.label}]` : ''
   const card = message.sharedCard
     ? `\n\n[已分享卡片｜${message.sharedCard.kind}]\n${JSON.stringify(message.sharedCard.metadata)}\n${message.sharedCard.body || ''}`
     : ''
   const files = normalizeChatAttachments(message.attachments)?.map(file =>
     `\n\n[文件：${file.name}｜${file.type || 'text/plain'}]\n--- 文件内容开始 ---\n${file.text}\n--- 文件内容结束 ---`,
   ).join('') || ''
-  return `${message.content || ''}${toolSummary}${card}${files}`
+  return `${message.content || ''}${emoteSummary}${toolSummary}${card}${files}`
 }

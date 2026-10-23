@@ -30,6 +30,8 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   create_fire_dictionary_entry: '记下了一个小火词',
   update_fire_dictionary_entry: '重新解释了一个词',
   delete_fire_dictionary_entry: '划掉了一个旧词条',
+  list_stickers: '翻开了我们的表情册',
+  send_sticker: '递来了一张表情',
   list_foto_albums: '翻了翻相册',
   read_foto: '逛了逛照片墙',
   view_foto: '仔细看了张照片',
