@@ -8,9 +8,15 @@
   "theme_color": "#E8E5DD",
   "icons": [
     {
-      "src": "/logo-pwa.jpg",
-      "sizes": "1872x1872",
-      "type": "image/jpeg",
+      "src": "/lumbre-icon-20261024-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/lumbre-icon-20261024-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
     }
   ]

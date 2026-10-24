@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh" suppressHydrationWarning>
       <head>
-        <link rel="apple-touch-icon" href="/logo-pwa.jpg" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/lumbre-icon-20261024-180.png" />
         <link rel="icon" type="image/png" href="/favicon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

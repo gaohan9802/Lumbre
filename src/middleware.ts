@@ -16,6 +16,9 @@ const PUBLIC_PATHS = new Set([
   '/icon-192.png',
   '/icon-512.png',
   '/icon-1024.png',
+  '/lumbre-icon-20261024-180.png',
+  '/lumbre-icon-20261024-192.png',
+  '/lumbre-icon-20261024-512.png',
 ])
 
 function securityHeaders(response: NextResponse): NextResponse {
