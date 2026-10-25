@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BookOpen, ChevronLeft, Clapperboard, FileUp, MessageCircle, Plus, Search, Share2, Star, Trash2, Tv, UsersRound, X } from 'lucide-react'
+import { BookOpen, Check, ChevronLeft, Clapperboard, Download, FileUp, MessageCircle, Pencil, Plus, RefreshCw, Search, Share2, Star, Trash2, Tv, UsersRound, WifiOff, X } from 'lucide-react'
 import { mediaLibrary as api } from '@/lib/api'
+import { flushOfflineCoreadProgress, getOfflineCoreadBook, listOfflineCoreadBooks, removeOfflineCoreadBook, saveOfflineCoreadBook, updateOfflineCoreadWork, type OfflineCoreadBook } from '@/lib/coread-offline'
 import type { MediaActor, MediaCatalogItem, MediaEvent, MediaKind, MediaNoteType, MediaStatus, MediaTimelineItem, MediaWork } from '@/lib/media-library'
 import { shareToChat } from '@/lib/share'
 import { useApp } from '@/lib/store'
@@ -33,7 +34,7 @@ export function MediaLibraryView() {
   const { currentUser } = useApp()
   const { theme } = useTheme()
   const night = theme === 'night'
-  const [tab, setTab] = useState<'library' | 'coread' | 'timeline'>('library')
+  const [tab, setTab] = useState<'library' | 'coread' | 'timeline'>(() => typeof navigator !== 'undefined' && !navigator.onLine ? 'coread' : 'library')
   const [works, setWorks] = useState<MediaWork[]>([])
   const [events, setEvents] = useState<MediaTimelineItem[]>([])
   const [timelineVisible, setTimelineVisible] = useState(12)
@@ -43,9 +44,13 @@ export function MediaLibraryView() {
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
   const [error, setError] = useState('')
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  const [offlineIds, setOfflineIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
+    const cached = await listOfflineCoreadBooks().catch(() => [])
+    setOfflineIds(new Set(cached.map(item => item.workId)))
     try {
       if (tab === 'timeline') {
         const timeline = await api.timeline()
@@ -58,11 +63,28 @@ export function MediaLibraryView() {
         const detail = await api.detail(selected.id)
         setSelected(detail.work)
       }
-    } catch (err: any) { setError(err?.message || '书影记录加载失败') }
+    } catch (err: any) {
+      if (tab !== 'timeline' && cached.length) {
+        const cachedWorks = cached.map(item => ({ ...item.work, coread_progress: item.progress }))
+        setWorks(cachedWorks)
+        if (selected) setSelected(cachedWorks.find(item => item.id === selected.id) || selected)
+        setError('当前离线，只显示已经下载到这台设备的书')
+      } else setError(err?.message || '书影记录加载失败')
+    }
     setLoading(false)
   }, [kind, status, tab, selected?.id])
 
   useEffect(() => { setTimelineVisible(12); void load() }, [kind, status, tab])
+  useEffect(() => {
+    const send = (workId: string, progress: { paragraph_idx: number; offset: number; updated_at: string }) => api.progress(currentUser, workId, progress.paragraph_idx, progress.offset, progress.updated_at)
+    const online = () => { setOnline(true); void flushOfflineCoreadProgress(currentUser, send).then(load).catch(() => {}) }
+    const offline = () => setOnline(false)
+    window.addEventListener('online', online)
+    window.addEventListener('offline', offline)
+    setOnline(navigator.onLine)
+    if (navigator.onLine) void flushOfflineCoreadProgress(currentUser, send).catch(() => {})
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline) }
+  }, [currentUser, load])
 
   const panel = night ? 'border-night-border bg-night-card' : 'border-[#a73a32]/15 bg-[#fffaf5]/80'
   const muted = night ? 'text-night-muted' : 'text-day-muted'
@@ -71,7 +93,7 @@ export function MediaLibraryView() {
   return <div className={`relative h-full overflow-y-auto ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
     <div className="mx-auto max-w-6xl px-4 pb-24 pt-3">
       <div className="flex items-center justify-between gap-3">
-        <div><h1 className="text-xl font-semibold">书影记录</h1><p className={`mt-1 text-xs ${muted}`}>只属于小火和星星的共同书架与银幕角落</p></div>
+        <div><div className="flex items-center gap-2"><h1 className="text-xl font-semibold">书影记录</h1>{!online && <span className={`flex items-center gap-1 text-[10px] ${muted}`}><WifiOff size={11}/>离线书架</span>}</div><p className={`mt-1 text-xs ${muted}`}>只属于小火和星星的共同书架与银幕角落</p></div>
         <button onClick={() => setAddOpen(true)} className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm ${panel}`}><Plus size={15}/>添加</button>
       </div>
       <div className={`mt-5 flex rounded-xl border p-1 ${panel}`}>
@@ -86,11 +108,11 @@ export function MediaLibraryView() {
         {loading
           ? <p className={`py-16 text-center text-sm ${muted}`}>翻找书架中…</p>
           : works.length
-            ? <Shelf works={works} night={night} onSelect={setSelected}/>
+            ? <Shelf works={works} night={night} offlineIds={offlineIds} onSelect={setSelected}/>
             : <Empty onAdd={() => setAddOpen(true)} muted={muted}/>
         }
       </>}
-      {tab === 'coread' && (loading ? <p className={`py-16 text-center text-sm ${muted}`}>翻找共读书架中…</p> : works.length ? <Shelf works={works} night={night} onSelect={setSelected}/> : <div className={`flex min-h-56 flex-col items-center justify-center gap-3 text-center text-sm ${muted}`}><UsersRound size={34} strokeWidth={1.2}/><span>这里只放真正想一起读的书。<br/>可以由你开启，也可以等星星提出想读。</span></div>)}
+      {tab === 'coread' && (loading ? <p className={`py-16 text-center text-sm ${muted}`}>翻找共读书架中…</p> : works.length ? <Shelf works={works} night={night} offlineIds={offlineIds} onSelect={setSelected}/> : <div className={`flex min-h-56 flex-col items-center justify-center gap-3 text-center text-sm ${muted}`}><UsersRound size={34} strokeWidth={1.2}/><span>这里只放真正想一起读的书。<br/>可以由你开启，也可以等星星提出想读。</span></div>)}
       {tab === 'timeline' && <div className="mt-4 space-y-3">{loading ? <p className={`py-16 text-center text-sm ${muted}`}>整理共同动态中…</p> : events.length ? <>{events.slice(0, timelineVisible).map(item => <EventCard key={item.id} item={item} actor={currentUser} night={night} onChanged={load}/>)}{events.length > timelineVisible && <button onClick={() => setTimelineVisible(value => value + 12)} className={`w-full rounded-xl border px-3 py-2.5 text-xs ${panel} ${muted}`}>再看一些 · 还有 {events.length - timelineVisible} 条</button>}</> : <p className={`py-16 text-center text-sm ${muted}`}>第一条书影动态还没发生。</p>}</div>}
       {error && <p role="alert" className="mt-4 text-sm text-red-500">{error}</p>}
     </div>
@@ -98,8 +120,8 @@ export function MediaLibraryView() {
   </div>
 }
 
-function Shelf({ works, night, onSelect }: { works: MediaWork[]; night: boolean; onSelect: (work: MediaWork) => void }) {
-  return <div className="mt-4 grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">{works.map(work => <WorkCard key={work.id} work={work} night={night} onClick={() => onSelect(work)}/>)}</div>
+function Shelf({ works, night, offlineIds, onSelect }: { works: MediaWork[]; night: boolean; offlineIds: Set<string>; onSelect: (work: MediaWork) => void }) {
+  return <div className="mt-4 grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">{works.map(work => <WorkCard key={work.id} work={work} night={night} offline={offlineIds.has(work.id)} onClick={() => onSelect(work)}/>)}</div>
 }
 
 function Filter({ value, setValue, values, night }: { value: string; setValue: (value: string) => void; values: [string, string][]; night: boolean }) {
@@ -110,13 +132,13 @@ function Empty({ onAdd, muted }: { onAdd: () => void; muted: string }) {
   return <button onClick={onAdd} className={`mx-auto flex min-h-56 w-full flex-col items-center justify-center gap-3 text-sm ${muted}`}><BookOpen size={34} strokeWidth={1.2}/><span>书架还是空的，放进第一本书或第一部电影</span></button>
 }
 
-function WorkCard({ work, night, onClick }: { work: MediaWork; night: boolean; onClick: () => void }) {
+function WorkCard({ work, night, offline, onClick }: { work: MediaWork; night: boolean; offline: boolean; onClick: () => void }) {
   const statuses = (['fire', 'star'] as MediaActor[]).filter(actor => work.records[actor])
   const progress = (actor: MediaActor) => work.coread?.paragraph_count && work.coread_progress?.[actor]
     ? Math.round(work.coread_progress[actor]!.paragraph_idx / Math.max(1, work.coread.paragraph_count - 1) * 100)
     : 0
   return <button onClick={onClick} className="group min-w-0 text-left outline-none" aria-label={`打开《${work.title}》`}>
-    <div className={`relative overflow-hidden rounded-xl border shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md group-focus-visible:ring-2 ${night ? 'border-night-border bg-night-card ring-night-amber/50' : 'border-[#a73a32]/15 bg-[#fffaf5]/80 ring-[#a73a32]/25'}`}><Cover work={work}/>{work.coread && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[8px] tracking-wide text-white">{work.coread.status === 'ready' ? '共读中' : '等文件'}</span>}</div>
+    <div className={`relative overflow-hidden rounded-xl border shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md group-focus-visible:ring-2 ${night ? 'border-night-border bg-night-card ring-night-amber/50' : 'border-[#a73a32]/15 bg-[#fffaf5]/80 ring-[#a73a32]/25'}`}><Cover work={work}/>{offline && <span className="absolute left-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[8px] text-white"><Check size={8}/>离线</span>}{work.coread && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[8px] tracking-wide text-white">{work.coread.status === 'ready' ? '共读中' : '等文件'}</span>}</div>
     <div className="px-0.5 pt-2"><p className="line-clamp-2 text-xs font-medium leading-4">{work.title}</p><p className="mt-0.5 truncate text-[10px] opacity-45">{work.creators.join(' / ') || KIND[work.kind].label}</p>{work.coread?.status === 'ready' ? <p className="mt-1 truncate text-[9px] opacity-60">🦦 {progress('fire')}% · 🐆 {progress('star')}%</p> : statuses.length > 0 && <p className="mt-1 truncate text-[9px] opacity-55">{statuses.map(actor => `${icon(actor)} ${STATUS[work.records[actor]!.status].split(' / ')[0]}${work.records[actor]!.rating ? ` ${work.records[actor]!.rating}★` : ''}`).join(' · ')}</p>}</div>
   </button>
 }
@@ -183,6 +205,61 @@ function AddDialog({ actor, night, onClose, onSaved }: { actor: MediaActor; nigh
   </div>
 }
 
+function EditWorkDialog({ work, actor, night, onClose, onSaved }: { work: MediaWork; actor: MediaActor; night: boolean; onClose: () => void; onSaved: (work: MediaWork) => void }) {
+  const [draft, setDraft] = useState({
+    title: work.title, original_title: work.original_title || '', creators: work.creators.join('、'),
+    publisher: work.publisher || '', published_date: work.published_date || '', isbn: work.isbn || '', page_count: work.page_count || '',
+    directors: (work.directors || []).join('、'), cast: (work.cast || []).join('、'), countries: (work.countries || []).join('、'),
+    release_date: work.release_date || '', runtime_minutes: work.runtime_minutes || '', summary: work.summary || '', cover_url: work.cover_url || '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const panel = night ? 'bg-night-surface text-night-text border-night-border' : 'chat-dialog'
+  const input = `w-full rounded-xl border bg-transparent px-3 py-2 text-sm outline-none ${night ? 'border-night-border' : 'border-[#a73a32]/15'}`
+  const list = (value: string) => value.split(/[、,，]/).map(item => item.trim()).filter(Boolean)
+  const save = async () => {
+    if (!draft.title.trim()) { setMessage('标题不能为空'); return }
+    setBusy(true); setMessage('')
+    try {
+      const result = await api.updateWork(actor, work.id, {
+        title: draft.title.trim(), original_title: draft.original_title, creators: list(draft.creators), cover_url: draft.cover_url,
+        summary: draft.summary, publisher: draft.publisher, published_date: draft.published_date, isbn: draft.isbn,
+        page_count: draft.page_count ? Number(draft.page_count) : 0, directors: list(draft.directors), cast: list(draft.cast),
+        countries: list(draft.countries), release_date: draft.release_date, runtime_minutes: draft.runtime_minutes ? Number(draft.runtime_minutes) : 0,
+      })
+      await updateOfflineCoreadWork(result.work).catch(() => {})
+      onSaved(result.work)
+    } catch (err: any) { setMessage(err?.message || '资料保存失败'); setBusy(false) }
+  }
+  return <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/45 p-3 sm:items-center" role="dialog" aria-modal="true" aria-label="编辑作品资料">
+    <div className={`max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-[26px] border p-4 shadow-2xl ${panel}`}>
+      <div className="flex items-center justify-between"><h2 className="font-medium">编辑《{work.title}》</h2><button aria-label="关闭" onClick={onClose} className="p-2 opacity-60"><X size={18}/></button></div>
+      <p className="mt-1 text-xs opacity-50">这里只修改共有资料，不会改变两个人各自的阅读状态、评分和评价。</p>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <input value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} placeholder="标题 *" className={input}/>
+        <input value={draft.original_title} onChange={event => setDraft({ ...draft, original_title: event.target.value })} placeholder="原名（可选）" className={input}/>
+        {work.kind === 'book' ? <>
+          <input value={draft.creators} onChange={event => setDraft({ ...draft, creators: event.target.value })} placeholder="作者" className={input}/>
+          <input value={draft.publisher} onChange={event => setDraft({ ...draft, publisher: event.target.value })} placeholder="出版社" className={input}/>
+          <input value={draft.published_date} onChange={event => setDraft({ ...draft, published_date: event.target.value })} placeholder="出版日期" className={input}/>
+          <input value={draft.isbn} onChange={event => setDraft({ ...draft, isbn: event.target.value })} placeholder="ISBN" className={input}/>
+          <input type="number" min="1" value={draft.page_count} onChange={event => setDraft({ ...draft, page_count: event.target.value })} placeholder="页数" className={input}/>
+        </> : <>
+          <input value={draft.directors} onChange={event => setDraft({ ...draft, directors: event.target.value })} placeholder="导演 / 主创" className={input}/>
+          <input value={draft.cast} onChange={event => setDraft({ ...draft, cast: event.target.value })} placeholder="演员" className={input}/>
+          <input value={draft.countries} onChange={event => setDraft({ ...draft, countries: event.target.value })} placeholder="国家 / 地区" className={input}/>
+          <input value={draft.release_date} onChange={event => setDraft({ ...draft, release_date: event.target.value })} placeholder="上映日期" className={input}/>
+          <input type="number" min="1" value={draft.runtime_minutes} onChange={event => setDraft({ ...draft, runtime_minutes: event.target.value })} placeholder="时长（分钟）" className={input}/>
+        </>}
+        <textarea value={draft.summary} onChange={event => setDraft({ ...draft, summary: event.target.value })} placeholder="简介（可选）" rows={4} className={`${input} resize-none sm:col-span-2`}/>
+        <input value={draft.cover_url} onChange={event => setDraft({ ...draft, cover_url: event.target.value })} placeholder="封面链接（可选）" className={`${input} sm:col-span-2`}/>
+      </div>
+      {message && <p role="alert" className="mt-2 text-xs text-red-500">{message}</p>}
+      <div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm opacity-60">取消</button><button disabled={busy} onClick={() => void save()} className={`rounded-xl px-4 py-2 text-sm ${night ? 'bg-night-card text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>{busy ? '保存中…' : '保存资料'}</button></div>
+    </div>
+  </div>
+}
+
 function MediaDetail({ work, actor, night, onBack, onChanged }: { work: MediaWork; actor: MediaActor; night: boolean; onBack: () => void; onChanged: () => Promise<void> | void }) {
   const mine = work.records[actor]
   const [status, setStatus] = useState<MediaStatus>(mine?.status || 'planned')
@@ -193,6 +270,7 @@ function MediaDetail({ work, actor, night, onBack, onChanged }: { work: MediaWor
   const [locator, setLocator] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [editOpen, setEditOpen] = useState(false)
   const [readerOpen, setReaderOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<{ label: string; run: () => Promise<void> } | null>(null)
   const panel = night ? 'border-night-border bg-night-card' : 'border-[#a73a32]/15 bg-[#fffaf5]/80'
@@ -218,7 +296,7 @@ function MediaDetail({ work, actor, night, onBack, onChanged }: { work: MediaWor
   return <div className={`relative h-full overflow-y-auto ${night ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
     <div className="mx-auto max-w-4xl px-4 pb-24 pt-2">
       <button onClick={onBack} className="flex items-center gap-1 py-2 text-sm opacity-60"><ChevronLeft size={17}/>返回书影库</button>
-      <div className={`mt-2 flex gap-4 rounded-2xl border p-4 ${panel}`}><div className="w-24 shrink-0 overflow-hidden rounded-xl"><Cover work={work}/></div><div className="relative min-w-0 flex-1 pr-8"><button onClick={shareWork} aria-label="分享到 Chat" title="分享到 Chat" className="absolute right-0 top-0 rounded-full p-1.5 opacity-40 hover:bg-current/5 hover:opacity-80"><Share2 size={14}/></button><p className="text-lg font-semibold">{work.title}</p>{work.original_title && <p className={`mt-1 text-xs ${muted}`}>{work.original_title}</p>}<p className={`mt-2 text-xs leading-5 ${muted}`}>{[work.creators.join(' / '), work.publisher, work.published_date || work.release_date, work.page_count ? `${work.page_count} 页` : '', work.runtime_minutes ? `${work.runtime_minutes} 分钟` : ''].filter(Boolean).join(' · ')}</p>{work.summary && <p className="mt-3 line-clamp-4 text-xs leading-5 opacity-70">{work.summary}</p>}</div></div>
+      <div className={`mt-2 flex gap-4 rounded-2xl border p-4 ${panel}`}><div className="w-24 shrink-0 overflow-hidden rounded-xl"><Cover work={work}/></div><div className="relative min-w-0 flex-1 pr-16"><div className="absolute right-0 top-0 flex"><button onClick={() => setEditOpen(true)} aria-label="编辑作品资料" title="编辑资料" className="rounded-full p-1.5 opacity-40 hover:bg-current/5 hover:opacity-80"><Pencil size={14}/></button><button onClick={shareWork} aria-label="分享到 Chat" title="分享到 Chat" className="rounded-full p-1.5 opacity-40 hover:bg-current/5 hover:opacity-80"><Share2 size={14}/></button></div><p className="text-lg font-semibold">{work.title}</p>{work.original_title && <p className={`mt-1 text-xs ${muted}`}>{work.original_title}</p>}<p className={`mt-2 text-xs leading-5 ${muted}`}>{[work.creators.join(' / '), work.publisher, work.published_date || work.release_date, work.page_count ? `${work.page_count} 页` : '', work.runtime_minutes ? `${work.runtime_minutes} 分钟` : ''].filter(Boolean).join(' · ')}</p>{work.summary && <p className="mt-3 line-clamp-4 text-xs leading-5 opacity-70">{work.summary}</p>}</div></div>
       {message && <p role="status" className={`mt-3 rounded-xl px-3 py-2 text-xs ${message.includes('失败') ? 'bg-red-500/10 text-red-500' : muted}`}>{message}</p>}
       {work.kind === 'book' && (
         <CoreadPanel work={work} actor={actor} night={night} onChanged={onChanged} onOpen={() => setReaderOpen(true)}/>
@@ -230,6 +308,10 @@ function MediaDetail({ work, actor, night, onBack, onChanged }: { work: MediaWor
       <section className={`mt-4 rounded-2xl border p-4 ${panel}`}><h2 className="text-sm font-medium">笔记与摘抄</h2><div className="mt-3 grid gap-2 sm:grid-cols-[110px_1fr]"><select value={noteType} onChange={event => setNoteType(event.target.value as MediaNoteType)} className={input}><option value="note">读书笔记</option><option value="quote">摘抄</option></select><input value={locator} onChange={event => setLocator(event.target.value)} placeholder={work.kind === 'book' ? '页码（可选）' : '集数 / 时间点（可选）'} className={input}/></div><textarea value={note} onChange={event => setNote(event.target.value)} placeholder="记下此刻想留住的内容…" rows={4} className={`${input} mt-2 resize-none`}/><button disabled={busy || !note.trim()} onClick={saveNote} className={`mt-2 rounded-xl px-4 py-2 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>保存</button><div className="mt-4 space-y-2">{work.notes.slice().reverse().map(item => <div key={item.id} className="rounded-xl border border-current/10 p-3 text-sm"><div className={`flex items-center justify-between text-[11px] ${muted}`}><span>{icon(item.author)} {person(item.author)} · {item.type === 'quote' ? '摘抄' : '笔记'}{item.locator ? ` · ${item.locator}` : ''}</span>{item.author === actor && <button onClick={() => setPendingDelete({ label: '删除这条笔记？', run: () => run(async () => { await api.remove(actor, { type: 'note', work_id: work.id, note_id: item.id }); setPendingDelete(null); await onChanged() }, '笔记删除失败') })} className="p-1"><Trash2 size={13}/></button>}</div><p className="mt-2 whitespace-pre-wrap leading-6">{item.content}</p></div>)}</div></section>
       <section className="mt-4"><h2 className="mb-3 text-sm font-medium">这部作品的时间线</h2><div className="space-y-3">{work.events.slice().reverse().map(item => <EventCard key={item.id} item={{ ...item, work_id: work.id, work_title: work.title, work_kind: work.kind, cover_url: work.cover_url }} actor={actor} night={night} onChanged={onChanged}/>)}</div></section>
     </div>
+    {editOpen && <EditWorkDialog
+      work={work} actor={actor} night={night} onClose={() => setEditOpen(false)}
+      onSaved={() => { setEditOpen(false); void onChanged() }}
+    />}
     {pendingDelete && <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/45 p-5"><div role="alertdialog" aria-modal="true" className={`w-full max-w-sm rounded-2xl border p-5 ${panel}`}><p className="text-sm">{pendingDelete.label}</p><div className="mt-5 flex justify-end gap-2"><button onClick={() => setPendingDelete(null)} className="px-4 py-2 text-sm opacity-60">取消</button><button onClick={() => void pendingDelete.run()} className="rounded-xl bg-red-500/15 px-4 py-2 text-sm text-red-500">删除</button></div></div></div>}
   </div>
 }
@@ -238,8 +320,11 @@ function CoreadPanel({ work, actor, night, onChanged, onOpen }: { work: MediaWor
   const [busy, setBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [message, setMessage] = useState('')
+  const [offlineCopy, setOfflineCopy] = useState<OfflineCoreadBook | null>(null)
+  const [offlineMenu, setOfflineMenu] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const panel = night ? 'border-night-border bg-night-card' : 'border-[#a73a32]/15 bg-[#fffaf5]/80'
+  useEffect(() => { void getOfflineCoreadBook(work.id).then(value => setOfflineCopy(value || null)).catch(() => setOfflineCopy(null)) }, [work.id])
   const request = async () => {
     setBusy(true); setMessage('')
     try { await api.save(actor, { work_id: work.id, status: work.records[actor]?.status || 'planned', coread_request: true }); await onChanged() }
@@ -254,7 +339,25 @@ function CoreadPanel({ work, actor, night, onChanged, onOpen }: { work: MediaWor
     catch (err: any) { setMessage(err?.message || '文件读取失败') }
     setBusy(false)
   }
-  return <section className={`mt-4 rounded-2xl border p-4 ${panel}`}><div className="flex items-center gap-2"><UsersRound size={16}/><h2 className="text-sm font-medium">和星星一起读</h2></div>{!work.coread ? <><p className="mt-2 text-xs leading-5 opacity-60">大部分书仍然只是收藏。只有真正想一起读的书，才会出现在轻量共读书架。</p><button disabled={busy} onClick={() => void request()} className={`mt-3 rounded-xl px-4 py-2 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>放进共读书架</button></> : work.coread.status === 'ready' ? <><div className="mt-2 flex flex-wrap gap-2 text-xs opacity-60"><span>{work.coread.format?.toUpperCase()}</span><span>·</span><span>{work.coread.chapter_count} 章</span><span>·</span><span>{work.coread.paragraph_count} 段</span></div><button onClick={onOpen} className={`mt-3 w-full rounded-xl py-2.5 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>继续共读</button></> : <><p className="mt-2 text-xs leading-5 opacity-60">{work.coread.requested_by === 'star' ? '星星想读这本书，等你帮他把文件带回来。' : '共读位置已经留好，把书拖进来就可以开始。'}{work.coread.request_note ? ` ${work.coread.request_note}` : ''}</p><input ref={fileRef} type="file" hidden accept=".epub,.txt,application/epub+zip,text/plain" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file) }}/><button disabled={busy} onClick={() => fileRef.current?.click()} onDragEnter={event => { event.preventDefault(); setDragging(true) }} onDragOver={event => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); void upload(event.dataTransfer.files?.[0]) }} className={`mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-xs ${dragging ? 'border-current bg-current/5' : 'border-current/20'}`}><FileUp size={20}/>{busy ? '正在整理正文…' : '拖入或选择 EPUB、TXT（最大 30MB）'}</button></>}{message && <p role="status" className={`mt-2 text-xs ${message.includes('失败') || message.includes('不能') ? 'text-red-500' : 'opacity-60'}`}>{message}</p>}</section>
+  const download = async () => {
+    if (!navigator.onLine) { setMessage('联网后才能下载这本书'); return }
+    setBusy(true); setMessage('正在下载到这台设备…')
+    try {
+      const bundle = await api.coreadOffline(work.id)
+      await saveOfflineCoreadBook(work, bundle)
+      setOfflineCopy(await getOfflineCoreadBook(work.id) || null); setOfflineMenu(false); setMessage('离线副本已经更新')
+      await onChanged()
+    } catch (err: any) { setMessage(err?.message || '离线下载失败') }
+    finally { setBusy(false) }
+  }
+  const forget = async () => {
+    if (!window.confirm('移除这台设备上的离线正文？已经同步的进度不会删除。')) return
+    try { await removeOfflineCoreadBook(work.id); setOfflineCopy(null); setOfflineMenu(false); setMessage('已移除本地离线正文'); await onChanged() }
+    catch (err: any) { setMessage(err?.message || '移除失败') }
+  }
+  const stale = !!offlineCopy && !!work.coread?.uploaded_at && Date.parse(work.coread.uploaded_at) > Date.parse(offlineCopy.downloadedAt)
+  const online = typeof navigator === 'undefined' || navigator.onLine
+  return <section className={`mt-4 rounded-2xl border p-4 ${panel}`}><div className="flex items-center gap-2"><UsersRound size={16}/><h2 className="text-sm font-medium">和星星一起读</h2></div>{!work.coread ? <><p className="mt-2 text-xs leading-5 opacity-60">大部分书仍然只是收藏。只有真正想一起读的书，才会出现在轻量共读书架。</p><button disabled={busy} onClick={() => void request()} className={`mt-3 rounded-xl px-4 py-2 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>放进共读书架</button></> : work.coread.status === 'ready' ? <><div className="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-60"><span>{work.coread.format?.toUpperCase()}</span><span>·</span><span>{work.coread.chapter_count} 章</span><span>·</span><span>{work.coread.paragraph_count} 段</span>{offlineCopy && <><span>·</span><span className="flex items-center gap-1"><Check size={12}/>{stale ? '离线副本有更新' : '可离线阅读'}</span></>}</div><div className="mt-3 flex gap-2"><button onClick={onOpen} className={`min-h-11 flex-1 rounded-xl py-2.5 text-sm ${night ? 'bg-night-surface text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'}`}>继续共读</button>{offlineCopy ? <button disabled={busy} onClick={() => setOfflineMenu(value => !value)} className="flex min-h-11 items-center gap-1.5 rounded-xl border border-current/10 px-3 text-xs opacity-60">{stale ? <RefreshCw size={14}/> : <Check size={14}/>} {stale ? '有更新' : '已离线'}</button> : <button disabled={busy} onClick={() => void download()} className="flex min-h-11 items-center gap-1.5 rounded-xl border border-current/10 px-3 text-xs disabled:opacity-30"><Download size={14}/>{busy ? '下载中' : '离线'}</button>}</div>{offlineCopy && offlineMenu && <div className="mt-2 rounded-xl border border-current/10 p-2 text-xs"><p className="px-2 py-1 opacity-45">上次下载：{when(offlineCopy.downloadedAt)}</p><div className="mt-1 flex gap-2"><button disabled={busy || !online} onClick={() => void download()} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-current/5 px-2 py-2 disabled:opacity-30"><RefreshCw size={13}/>更新副本</button><button disabled={busy} onClick={() => void forget()} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-red-500/10 px-2 py-2 text-red-500"><Trash2 size={13}/>移除本地</button></div></div>}</> : <><p className="mt-2 text-xs leading-5 opacity-60">{work.coread.requested_by === 'star' ? '星星想读这本书，等你帮他把文件带回来。' : '共读位置已经留好，把书拖进来就可以开始。'}{work.coread.request_note ? ` ${work.coread.request_note}` : ''}</p><input ref={fileRef} type="file" hidden accept=".epub,.txt,application/epub+zip,text/plain" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file) }}/><button disabled={busy} onClick={() => fileRef.current?.click()} onDragEnter={event => { event.preventDefault(); setDragging(true) }} onDragOver={event => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); void upload(event.dataTransfer.files?.[0]) }} className={`mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-xs ${dragging ? 'border-current bg-current/5' : 'border-current/20'}`}><FileUp size={20}/>{busy ? '正在整理正文…' : '拖入或选择 EPUB、TXT（最大 30MB）'}</button></>}{message && <p role="status" className={`mt-2 text-xs ${message.includes('失败') || message.includes('不能') ? 'text-red-500' : 'opacity-60'}`}>{message}</p>}</section>
 }
 
 function EventCard({ item, actor, night, onChanged }: { item: MediaTimelineItem; actor: MediaActor; night: boolean; onChanged: () => Promise<void> | void }) {

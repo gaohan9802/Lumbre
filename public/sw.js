@@ -70,6 +70,20 @@ self.addEventListener('fetch', (event) => {
   })())
 })
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'CACHE_APP_SHELL') return
+  event.waitUntil((async () => {
+    const cache = await caches.open(STATIC_CACHE)
+    try {
+      const response = await fetch('/', { cache: 'no-store' })
+      const finalUrl = new URL(response.url)
+      if (response.ok && finalUrl.pathname === '/' && (response.headers.get('content-type') || '').includes('text/html')) {
+        await cache.put(APP_SHELL_KEY, response.clone())
+      }
+    } catch {}
+  })())
+})
+
 self.addEventListener('push', (event) => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch { data = { body: event.data ? event.data.text() : '' } }

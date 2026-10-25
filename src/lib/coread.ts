@@ -48,3 +48,9 @@ export interface CoreadState {
   progress: Partial<Record<MediaActor, CoreadProgress>>
   annotations: CoreadAnnotation[]
 }
+
+export interface CoreadOfflineBundle {
+  book: CoreadBook
+  progress: CoreadState['progress']
+  annotations: CoreadAnnotation[]
+}

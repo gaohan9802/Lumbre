@@ -42,3 +42,14 @@ test('the same catalog source becomes one shared work', () => {
   assert.equal(second.records.fire?.status, 'in_progress')
   assert.equal(second.records.star?.status, 'planned')
 })
+
+test('either person can edit shared metadata without creating a personal record', () => {
+  const work = store.saveMediaEntry('fire', { kind: 'book', title: '旧书名', creators: ['作者'], status: 'in_progress' })
+  const updated = store.updateMediaWork('star', work.id, { title: '新书名', publisher: '新出版社', page_count: 321 })
+
+  assert.equal(updated.title, '新书名')
+  assert.equal(updated.publisher, '新出版社')
+  assert.equal(updated.page_count, 321)
+  assert.equal(updated.records.fire?.status, 'in_progress')
+  assert.equal(updated.records.star, undefined)
+})

@@ -2,9 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import AdmZip from 'adm-zip'
-import type { CoreadAnnotation, CoreadBook, CoreadChapter, CoreadParagraph, CoreadState } from '@/lib/coread'
+import type { CoreadAnnotation, CoreadBook, CoreadChapter, CoreadOfflineBundle, CoreadParagraph, CoreadState } from '@/lib/coread'
 import type { CoreadFormat, MediaActor } from '@/lib/media-library'
-import { addCoreadEvent, getMediaWork, removeCoreadEvent, setCoreadReady } from './media-library-store'
+import { addCoreadEvent, getMediaWork, removeCoreadEvent, setCoreadReady, updateCoreadEvent } from './media-library-store'
 import { getDataDir } from './data/config'
 import { readJsonFile, updateJsonFile, writeJsonFile } from './data/json-file'
 import { assertIdentifier, resolveDataPath } from './data/safe-path'
@@ -183,6 +183,20 @@ export function readCoreadProgress(workId: string): CoreadState['progress'] {
   return fs.existsSync(stateFile(workId)) ? readState(workId).progress : {}
 }
 
+export function readCoreadOffline(workId: string): CoreadOfflineBundle {
+  const book = readBook(workId)
+  const state = readState(workId)
+  return { book, progress: state.progress, annotations: state.annotations }
+}
+
+export function readCoreadAnnotations(workId: string): CoreadAnnotation[] {
+  return readState(workId).annotations
+}
+
+export function deleteCoreadDocument(workId: string): void {
+  fs.rmSync(readerDir(workId), { recursive: true, force: true })
+}
+
 export function readCoread(workId: string, options: { actor?: MediaActor; start?: number; chapter_id?: string; limit?: number } = {}) {
   const book = readBook(workId)
   const state = readState(workId)
@@ -202,19 +216,24 @@ export function readCoread(workId: string, options: { actor?: MediaActor; start?
   }
 }
 
-export function updateCoreadProgress(actor: MediaActor, workId: string, paragraphValue: unknown, offsetValue: unknown = 0) {
+export function updateCoreadProgress(actor: MediaActor, workId: string, paragraphValue: unknown, offsetValue: unknown = 0, updatedAtValue?: unknown) {
   const book = readBook(workId)
   const paragraph = Number(paragraphValue)
   const offset = Number(offsetValue)
   const target = Number.isInteger(paragraph) ? book.paragraphs[paragraph] : undefined
   if (!target || !Number.isInteger(offset) || offset < 0 || offset > target.text.length) throw new Error('invalid reading position')
-  const progress = { paragraph_idx: paragraph, offset, updated_at: new Date().toISOString() }
+  const now = Date.now()
+  const requested = typeof updatedAtValue === 'string' ? Date.parse(updatedAtValue) : NaN
+  const timestamp = Number.isFinite(requested) && requested <= now + 5 * 60_000 ? requested : now
+  const progress = { paragraph_idx: paragraph, offset, updated_at: new Date(timestamp).toISOString() }
   updateJsonFile(stateFile(workId), { fallback: emptyState, fallbackOnInvalid: true }, state => {
     state.progress ||= {}
+    const existing = state.progress[actor]
+    if (existing && Date.parse(existing.updated_at) > timestamp) return undefined
     state.progress[actor] = progress
     return state
   })
-  return progress
+  return readState(workId).progress[actor]!
 }
 
 export function writeCoreadAnnotation(actor: MediaActor, workId: string, input: { annotation_id?: string; paragraph_idx?: unknown; start_offset?: unknown; end_offset?: unknown; content?: unknown; reply_to?: string }) {
@@ -253,6 +272,7 @@ export function writeCoreadAnnotation(actor: MediaActor, workId: string, input: 
     return state
   })
   if (created) addCoreadEvent(actor, workId, saved.content || saved.selected_text, saved.id)
+  else if (input.annotation_id) updateCoreadEvent(workId, saved.id, saved.content || saved.selected_text)
   return saved
 }
 

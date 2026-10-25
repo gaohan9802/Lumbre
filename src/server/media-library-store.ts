@@ -78,6 +78,19 @@ function statusEvent(status: MediaStatus): MediaEventType {
   return status === 'in_progress' ? 'started' : status === 'completed' ? 'finished' : 'planned'
 }
 
+function updateWorkMetadata(work: MediaWork, input: SaveMediaInput): void {
+  if (text(input.title, 200)) work.title = text(input.title, 200)
+  for (const key of ['original_title', 'cover_url', 'summary', 'publisher', 'published_date', 'isbn', 'release_date'] as const) {
+    if (typeof input[key] === 'string') (work as any)[key] = text(input[key], key === 'summary' ? 4000 : 1000) || undefined
+  }
+  if (input.creators) work.creators = textList(input.creators)
+  if (input.directors) work.directors = textList(input.directors)
+  if (input.cast) work.cast = textList(input.cast, 30)
+  if (input.countries) work.countries = textList(input.countries)
+  if (input.page_count !== undefined) work.page_count = positiveInt(input.page_count, 100000)
+  if (input.runtime_minutes !== undefined) work.runtime_minutes = positiveInt(input.runtime_minutes, 100000)
+}
+
 export function listMediaLibrary(filters: { kind?: MediaKind; status?: MediaStatus; owner?: MediaActor; query?: string; coread?: boolean } = {}) {
   const query = text(filters.query, 160).toLocaleLowerCase()
   const works = readState().works.filter(work => {
@@ -134,18 +147,7 @@ export function saveMediaEntry(actorValue: unknown, input: SaveMediaInput): Medi
         records: {}, notes: [], events: [], created_by: actor, created_at: now, updated_at: now,
       }
       state.works.push(work)
-    } else if (work.created_by === actor) {
-      if (text(input.title, 200)) work.title = text(input.title, 200)
-      for (const key of ['original_title', 'cover_url', 'summary', 'publisher', 'published_date', 'isbn', 'release_date'] as const) {
-        if (typeof input[key] === 'string') (work as any)[key] = text(input[key], key === 'summary' ? 4000 : 1000) || undefined
-      }
-      if (input.creators) work.creators = textList(input.creators)
-      if (input.directors) work.directors = textList(input.directors)
-      if (input.cast) work.cast = textList(input.cast, 30)
-      if (input.countries) work.countries = textList(input.countries)
-      if (input.page_count !== undefined) work.page_count = positiveInt(input.page_count, 100000)
-      if (input.runtime_minutes !== undefined) work.runtime_minutes = positiveInt(input.runtime_minutes, 100000)
-    }
+    } else updateWorkMetadata(work, input)
 
     const prior = work.records[actor]
     const status = MEDIA_STATUSES.includes(input.status as MediaStatus) ? input.status as MediaStatus : prior?.status || 'planned'
@@ -169,6 +171,17 @@ export function saveMediaEntry(actorValue: unknown, input: SaveMediaInput): Medi
       work.events.push(event(actor, 'coread_requested', work.coread.request_note))
     }
     work.updated_at = now
+    return { result: work, write: true }
+  })
+}
+
+export function updateMediaWork(actorValue: unknown, workId: string, input: SaveMediaInput): MediaWork {
+  actorOf(actorValue)
+  return mutate(state => {
+    const work = state.works.find(item => item.id === workId)
+    if (!work) throw new Error('work not found')
+    updateWorkMetadata(work, input)
+    work.updated_at = new Date().toISOString()
     return { result: work, write: true }
   })
 }
@@ -212,6 +225,17 @@ export function removeCoreadEvent(workId: string, targetId: string): void {
     work.events = work.events.filter(item => item.target_id !== targetId)
     if (before !== work.events.length) work.updated_at = new Date().toISOString()
     return { result: undefined, write: before !== work.events.length }
+  })
+}
+
+export function updateCoreadEvent(workId: string, targetId: string, detail: string): void {
+  mutate(state => {
+    const work = state.works.find(item => item.id === workId)
+    const target = work?.events.find(item => item.target_id === targetId)
+    if (!work || !target) return { result: undefined, write: false }
+    target.detail = text(detail, 500) || undefined
+    work.updated_at = new Date().toISOString()
+    return { result: undefined, write: true }
   })
 }
 

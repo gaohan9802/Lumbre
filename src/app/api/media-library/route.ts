@@ -3,9 +3,9 @@ import { MEDIA_KINDS, MEDIA_STATUSES, type MediaActor, type MediaKind, type Medi
 import { importDoubanBook, readDoubanCover, readTmdbDetails, searchMediaCatalog } from '@/server/media-catalog'
 import {
   commentMediaEvent, deleteMediaContent, getMediaWork, listMediaLibrary, listMediaTimeline,
-  saveMediaEntry, writeMediaNote, type DeleteMediaTarget,
+  saveMediaEntry, updateMediaWork, writeMediaNote, type DeleteMediaTarget,
 } from '@/server/media-library-store'
-import { deleteCoreadAnnotation, importCoreadDocument, readCoread, readCoreadProgress, updateCoreadProgress, writeCoreadAnnotation } from '@/server/coread-store'
+import { deleteCoreadAnnotation, deleteCoreadDocument, importCoreadDocument, readCoread, readCoreadAnnotations, readCoreadOffline, readCoreadProgress, updateCoreadProgress, writeCoreadAnnotation } from '@/server/coread-store'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -42,6 +42,8 @@ export async function GET(req: NextRequest) {
       chapter_id: search.get('chapter_id') || undefined,
       limit: Number(search.get('limit')) || undefined,
     }))
+    if (mode === 'coread-offline') return NextResponse.json(readCoreadOffline(search.get('work_id') || ''))
+    if (mode === 'coread-annotations') return NextResponse.json({ annotations: readCoreadAnnotations(search.get('work_id') || '') })
     const kind = MEDIA_KINDS.includes(search.get('kind') as MediaKind) ? search.get('kind') as MediaKind : undefined
     const status = MEDIA_STATUSES.includes(search.get('status') as MediaStatus) ? search.get('status') as MediaStatus : undefined
     const owner = search.get('owner') === 'fire' || search.get('owner') === 'star' ? search.get('owner') as MediaActor : undefined
@@ -67,9 +69,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const who = actor(body.actor)
     if (body.action === 'save') return NextResponse.json({ ok: true, work: saveMediaEntry(who, body.entry || {}) })
+    if (body.action === 'update_work') return NextResponse.json({ ok: true, work: updateMediaWork(who, String(body.work_id || ''), body.entry || {}) })
     if (body.action === 'note') return NextResponse.json({ ok: true, note: writeMediaNote(who, String(body.work_id || ''), body.note || {}) })
     if (body.action === 'comment') return NextResponse.json({ ok: true, comment: commentMediaEvent(who, String(body.work_id || ''), String(body.event_id || ''), body.content) })
-    if (body.action === 'coread_progress') return NextResponse.json({ ok: true, progress: updateCoreadProgress(who, String(body.work_id || ''), body.paragraph_idx, body.offset) })
+    if (body.action === 'coread_progress') return NextResponse.json({ ok: true, progress: updateCoreadProgress(who, String(body.work_id || ''), body.paragraph_idx, body.offset, body.updated_at) })
     if (body.action === 'coread_annotation') return NextResponse.json({ ok: true, annotation: writeCoreadAnnotation(who, String(body.work_id || ''), body.annotation || {}) })
     if (body.action === 'coread_delete_annotation') {
       const result = deleteCoreadAnnotation(who, String(body.work_id || ''), String(body.annotation_id || ''))
@@ -77,6 +80,7 @@ export async function POST(req: NextRequest) {
     }
     if (body.action === 'delete') {
       const result = deleteMediaContent(who, body.target as DeleteMediaTarget)
+      if (result === 'ok' && body.target?.work_id && !getMediaWork(String(body.target.work_id))) deleteCoreadDocument(String(body.target.work_id))
       return NextResponse.json({ ok: result === 'ok', result }, { status: result === 'ok' ? 200 : result === 'not_found' ? 404 : 409 })
     }
     return NextResponse.json({ error: 'unknown action' }, { status: 400 })

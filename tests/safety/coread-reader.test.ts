@@ -38,14 +38,32 @@ test('EPUB import keeps independent progress and actor-owned annotations', async
   const slice = coread.readCoread(work.id, { actor: 'fire' })
   assert.equal(slice.progress.fire?.paragraph_idx, 1)
   assert.equal(slice.progress.star?.paragraph_idx, 0)
+  const offline = coread.readCoreadOffline(work.id)
+  assert.equal(offline.book.checksum.length, 64)
+  assert.equal(offline.book.paragraphs.length, book.paragraphs.length)
+
+  const newer = coread.updateCoreadProgress('fire', work.id, 0)
+  const rejected = coread.updateCoreadProgress('fire', work.id, 1, 0, new Date(Date.now() - 60_000).toISOString())
+  assert.deepEqual(rejected, newer)
 
   const paragraph = book.paragraphs.find(item => item.text.includes('风从'))!
   const note = coread.writeCoreadAnnotation('fire', work.id, { paragraph_idx: paragraph.idx, start_offset: 0, end_offset: 2, content: '喜欢这里' })
   const reply = coread.writeCoreadAnnotation('star', work.id, { reply_to: note.id, content: '我也喜欢' })
   assert.equal(reply.selected_text, '风从')
+  assert.equal(coread.readCoreadAnnotations(work.id).length, 2)
+  coread.writeCoreadAnnotation('fire', work.id, { annotation_id: note.id, content: '改成新的批注' })
+  assert.equal(media.listMediaTimeline().find(item => item.target_id === note.id)?.detail, '改成新的批注')
   assert.equal(coread.deleteCoreadAnnotation('fire', work.id, note.id), 'has_replies')
   assert.equal(coread.deleteCoreadAnnotation('star', work.id, reply.id), 'ok')
   assert.equal(coread.deleteCoreadAnnotation('fire', work.id, note.id), 'ok')
+})
+
+test('a deleted work can remove its reader files', async () => {
+  const work = media.saveMediaEntry('fire', { kind: 'book', title: '会被删除', status: 'planned', coread_request: true })
+  await coread.importCoreadDocument('fire', work.id, { name: '会被删除.txt', bytes: Buffer.from('第一段。\n\n第二段。') })
+  assert.equal(media.deleteMediaContent('fire', { type: 'work', work_id: work.id }), 'ok')
+  coread.deleteCoreadDocument(work.id)
+  assert.throws(() => coread.readCoreadOffline(work.id))
 })
 
 test('PDF uploads are rejected without loading a server PDF renderer', async () => {
