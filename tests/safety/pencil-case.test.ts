@@ -57,6 +57,15 @@ test('drawing tool sends only a declarative scene and safely reuses an operation
   assert.equal(existsSync(path.join(root, 'pencil-drawings', `${first.drawing.id}.png`)), true)
 })
 
+test('drawing tool accepts the common type alias and sends kind to the renderer', async () => {
+  await pencil.drawPicture({
+    ...input,
+    operation_key: 'fixture-type-alias',
+    scene_json: JSON.stringify({ elements: [{ type: 'ellipse', x: 400, y: 300, w: 200, h: 180, color: 'blue' }] }),
+  })
+  assert.deepEqual(workerPayload.scene.elements[0], { kind: 'ellipse', x: 400, y: 300, w: 200, h: 180, color: 'blue' })
+})
+
 test('generated drawing can be saved to the photo wall exactly once', async () => {
   const rendered = await pencil.drawPicture(input)
   const first = drawings.savePencilDrawingToPhoto(rendered.drawing.id)

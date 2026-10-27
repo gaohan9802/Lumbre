@@ -39,7 +39,14 @@ function parseScene(value: unknown): Record<string, unknown> {
   if (!Array.isArray(elements) || elements.length < 1 || elements.length > 30) {
     throw new Error('scene_json must contain 1 to 30 elements')
   }
-  return scene as Record<string, unknown>
+  return {
+    ...(scene as Record<string, unknown>),
+    elements: elements.map(element => {
+      if (!element || typeof element !== 'object' || Array.isArray(element) || 'kind' in element || typeof element.type !== 'string') return element
+      const { type, ...rest } = element
+      return { ...rest, kind: type }
+    }),
+  }
 }
 
 export async function drawPicture(input: DrawPictureInput) {
