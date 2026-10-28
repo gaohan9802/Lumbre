@@ -10,6 +10,7 @@ const eventFile = String(process.env.LUMBRE_CC_TOOL_EVENT_FILE || '')
 const maxCalls = Math.max(1, Math.min(20, Number(process.env.LUMBRE_CC_MAX_TOOL_CALLS) || 20))
 const source = process.env.LUMBRE_CC_TOOL_SOURCE === 'unattended-wake' ? 'unattended-wake' : 'chat'
 const cacheWarm = process.env.LUMBRE_CC_CACHE_WARM === '1'
+const toolCallsDenied = process.env.LUMBRE_CC_TOOL_DENY === '1'
 let calls = 0
 
 function write(value) {
@@ -91,9 +92,9 @@ async function handle(message) {
     return write({ jsonrpc: '2.0', id: message.id, result: { tools: Array.isArray(data.tools) ? data.tools : [] } })
   }
   if (message.method === 'tools/call') {
-    if (cacheWarm) {
+    if (cacheWarm || toolCallsDenied) {
       return write({ jsonrpc: '2.0', id: message.id, result: {
-        content: [{ type: 'text', text: 'Tool denied during silent cache warm' }],
+        content: [{ type: 'text', text: cacheWarm ? 'Tool denied during silent cache warm' : 'Tool denied in this chat-only channel' }],
         isError: true,
       } })
     }

@@ -18,5 +18,12 @@ export async function register() {
     } catch (err) {
       console.error('[instrumentation] failed to start wake engine', err)
     }
+    try {
+      const { startWeChatMonitor } = await import('@/server/wechat/monitor')
+      const started = startWeChatMonitor()
+      console.log('[instrumentation] wechat monitor started=', started)
+    } catch (err) {
+      console.error('[instrumentation] failed to start wechat monitor', err)
+    }
   }
 }

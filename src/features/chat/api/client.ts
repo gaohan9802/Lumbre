@@ -36,6 +36,15 @@ export type CcStatus = {
   }
 }
 
+export type WeChatStatus = {
+  connected: boolean
+  targetSessionId?: string
+  connectedAt?: string
+  lastMessageAt?: string
+  lastError?: string
+  monitor: { running: boolean; pendingCount: number; lastPollAt?: string; lastError?: string }
+}
+
 export async function chatApiFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -91,6 +100,17 @@ export const chatApi = {
 
   cancelCcAttempt: (body: { session_id: string; turn_id: string }) =>
     chatApiJson<{ ok: boolean; attempt?: { id: string; status: string } }>('/api/chat/cc-attempt/cancel', jsonInit('POST', body), 8_000),
+
+  wechat: {
+    status: () => chatApiJson<WeChatStatus>('/api/wechat', {}, 8_000),
+    startLogin: (targetSessionId: string) =>
+      chatApiJson<{ qrcodeId: string; qrcodeUrl: string; targetSessionId: string }>('/api/wechat', jsonInit('POST', { action: 'start_login', targetSessionId }), 25_000),
+    pollLogin: (qrcodeId: string, targetSessionId: string, pollBaseUrl?: string, verifyCode?: string) =>
+      chatApiJson<{ status: string; message?: string; pollBaseUrl?: string } & Partial<WeChatStatus>>('/api/wechat', jsonInit('POST', { action: 'poll_login', qrcodeId, targetSessionId, pollBaseUrl, verifyCode }), 70_000),
+    bindSession: (targetSessionId: string) =>
+      chatApiJson<WeChatStatus>('/api/wechat', jsonInit('POST', { action: 'bind_session', targetSessionId }), 10_000),
+    disconnect: () => chatApiJson<WeChatStatus>('/api/wechat', jsonInit('POST', { action: 'disconnect' }), 10_000),
+  },
 
   appendMessage: (sessionId: string, message: ChatMessage, sessionMeta: SessionMeta) =>
     chatApiJson('/api/sync', jsonInit('POST', { action: 'append_message', sessionId, message, sessionMeta }), 25_000),

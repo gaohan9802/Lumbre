@@ -14,6 +14,7 @@ import {
 import { ccSystemPromptForModel } from '@/lib/cc-system-prompt'
 import { ccContextLevel } from '@/lib/chat-window-config'
 import { APP_TIME_ZONE } from '@/lib/madrid-time'
+import { WeChatSettingsSection } from './WeChatSettingsSection'
 
 const fmtTokens = (value?: number | null) => value == null ? '—' : value >= 1_000_000
   ? `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`
@@ -161,6 +162,7 @@ export function ChatWindowSettings({
             {compactMessage && <p role="status" className={`mt-3 text-[10px] ${compactMessage.startsWith('已') ? 'opacity-60' : 'text-red-500'}`}>{compactMessage}</p>}
           </div>
         </section>
+        <WeChatSettingsSection session={session} night={night} card={card} control={control} />
         {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
       </div>
       <footer className="flex justify-end gap-2 border-t border-current/10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"><button type="button" onClick={onClose} className={`rounded-xl border px-4 py-2.5 text-xs ${control}`}>取消</button><button type="button" onClick={save} className={`rounded-xl px-5 py-2.5 text-xs font-medium ${night ? 'bg-night-muted/25 text-night-muted' : 'bg-[#DBB9B3]/45 text-[#765953]'}`}>保存本窗设置</button></footer>

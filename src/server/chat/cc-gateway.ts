@@ -148,6 +148,8 @@ async function submitAttempt(config: CcGatewayConfig, body: any, system: string,
       conversation_id: sessionId,
       model,
       effort,
+      tools_enabled: body.tools_enabled !== false,
+      tool_calls_allowed: body.tool_calls_allowed !== false,
       session_action: body.cc_session_action === 'rebase' ? 'rebase' : undefined,
       context: {
         system,

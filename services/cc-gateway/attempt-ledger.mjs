@@ -43,6 +43,12 @@ function validateCreateInput(input) {
   if (input.unattended !== undefined && typeof input.unattended !== 'boolean') {
     throw new AttemptValidationError('unattended must be a boolean')
   }
+  if (input.toolsEnabled !== undefined && typeof input.toolsEnabled !== 'boolean') {
+    throw new AttemptValidationError('toolsEnabled must be a boolean')
+  }
+  if (input.toolCallsAllowed !== undefined && typeof input.toolCallsAllowed !== 'boolean') {
+    throw new AttemptValidationError('toolCallsAllowed must be a boolean')
+  }
 }
 
 function publicEvent(event) {
@@ -138,6 +144,8 @@ export class AttemptLedger {
         model: input.model,
         effort: input.effort || null,
         unattended: input.unattended === true,
+        toolsEnabled: input.toolsEnabled !== false,
+        toolCallsAllowed: input.toolCallsAllowed !== false,
         status: 'queued',
         cancelRequested: false,
         createdAt: timestamp,

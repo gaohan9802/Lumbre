@@ -37,6 +37,8 @@ import { prepareChatMessage, type PencilDrawingResult } from '@/features/chat/vi
 import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ThinkingDrawer } from '@/features/chat/components/ThinkingDrawer'
+import { WeChatTranscriptCard } from '@/features/chat/components/WeChatTranscriptCard'
+import { groupWechatMessages } from '@/features/chat/view/wechat-groups'
 import { StickerArt, StickerPicker, ToolSticker, StickerVisit } from '@/components/chat/StickerPicker'
 import { ChatRouteChip, ChatRoutePicker } from '@/features/chat/components/ChatRoutePicker'
 import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
@@ -1598,10 +1600,19 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             )}
 
             <div>
-              {visibleMessages.map((msg, messageIndex) => {
-                const isUser = msg.role === 'user'
+              {groupWechatMessages(visibleMessages).map((displayItem) => {
+                const messageIndex = displayItem.startIndex
+                const displayEndTimestamp = visibleMessages[displayItem.endIndex]?.timestamp ?? 0
                 const previousTimestamp = messageIndex > 0 ? visibleMessages[messageIndex - 1].timestamp : -Infinity
-                const precedingPokes = nosePokes.filter(poke => poke.timestamp > previousTimestamp && poke.timestamp <= msg.timestamp)
+                const precedingPokes = nosePokes.filter(poke => poke.timestamp > previousTimestamp && poke.timestamp <= displayEndTimestamp)
+                if (displayItem.kind === 'wechat') return (
+                  <Fragment key={displayItem.key}>
+                    {precedingPokes.map(nosePokeLine)}
+                    <WeChatTranscriptCard messages={displayItem.messages} />
+                  </Fragment>
+                )
+                const msg = displayItem.message
+                const isUser = msg.role === 'user'
                 const versions = msg.versions || []
                 const vIdx = msg.versionIndex ?? 0
                 const hasVersions = versions.length > 1

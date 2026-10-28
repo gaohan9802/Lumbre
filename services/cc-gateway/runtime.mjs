@@ -197,6 +197,8 @@ export class GatewayRuntime {
         attemptId: running.id,
         conversationId: running.conversationId,
         unattended: running.unattended === true,
+        toolsEnabled: running.toolsEnabled !== false,
+        toolCallsAllowed: running.toolCallsAllowed !== false,
         signal: controller.signal,
         onText: content => {
           const updated = this.ledger.appendText(id, content)

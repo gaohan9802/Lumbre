@@ -213,6 +213,29 @@ test('result is durable before the completed event is published', async () => {
   }
 })
 
+test('chat-only CC attempts keep the tool schema but deny tool calls', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-no-tools-'))
+  try {
+    let toolsEnabled: boolean | undefined
+    let toolCallsAllowed: boolean | undefined
+    const ledger = new AttemptLedger(root)
+    const runtime = new GatewayRuntime({
+      ledger,
+      executor: { run: async (input: any) => {
+        toolsEnabled = input.toolsEnabled
+        toolCallsAllowed = input.toolCallsAllowed
+        return { text: '短回复', sessionId: '550e8400-e29b-41d4-a716-446655440000' }
+      } },
+    })
+    runtime.submit({ ...fixtureInput(), toolsEnabled: true, toolCallsAllowed: false })
+    await runtime.waitForIdle()
+    assert.equal(toolsEnabled, true)
+    assert.equal(toolCallsAllowed, false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('explicit cancellation aborts the running child and records cancelled', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-cancel-'))
   try {
@@ -555,6 +578,36 @@ console.log(JSON.stringify({ type: 'result', result: '看过了', session_id: id
     assert.equal(observed.env.LUMBRE_CC_CACHE_WARM, '0')
     assert.deepEqual(toolCalls.map(call => call.name), ['read_period'])
     assert.equal(observed.args.some((arg: string) => /dangerously|Bash|Shell|Read|Write|Edit/.test(arg)), false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Claude executor keeps the normal MCP schema while marking chat-only calls denied', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-tools-denied-'))
+  try {
+    const binary = path.join(root, 'fake-claude')
+    writeFileSync(binary, `#!/usr/bin/env node
+const fs = require('node:fs')
+fs.writeFileSync('observed-denied.json', JSON.stringify({ args: process.argv.slice(2), env: process.env }))
+console.log(JSON.stringify({ type: 'result', result: '只聊天', session_id: '550e8400-e29b-41d4-a716-446655440000', usage: { output_tokens: 2 } }))
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+    const executor = new ClaudeExecutor({
+      binary,
+      workspace: root,
+      env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
+      toolBridge: { url: 'https://lumbre.example/api/internal/cc-tools', secret: 'tool-bridge-secret-with-32-characters', maxCalls: 20 },
+      toolEventsDir: path.join(root, 'tool-events'),
+    })
+    await executor.run({
+      prompt: 'hello', model: 'sonnet', toolsEnabled: true, toolCallsAllowed: false,
+      attemptId: '123e4567-e89b-42d3-a456-426614174000', conversationId: 'conversation-1',
+    })
+    const observed = JSON.parse(readFileSync(path.join(root, 'observed-denied.json'), 'utf8'))
+    assert.equal(observed.args[observed.args.indexOf('--allowedTools') + 1], 'mcp__lumbre__*')
+    assert.match(observed.args[observed.args.indexOf('--mcp-config') + 1], /lumbre-mcp-server\.mjs/)
+    assert.equal(observed.env.LUMBRE_CC_TOOL_DENY, '1')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

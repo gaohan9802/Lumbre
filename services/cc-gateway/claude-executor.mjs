@@ -266,6 +266,7 @@ export class ClaudeExecutor {
    *   resumeSessionId?: string,
    *   forkSession?: boolean,
    *   toolsEnabled?: boolean,
+   *   toolCallsAllowed?: boolean,
    *   cacheWarm?: boolean,
    *   unattended?: boolean,
    *   signal?: AbortSignal,
@@ -284,6 +285,7 @@ export class ClaudeExecutor {
     resumeSessionId,
     forkSession = false,
     toolsEnabled = true,
+    toolCallsAllowed = true,
     cacheWarm = false,
     unattended = false,
     signal,
@@ -321,6 +323,7 @@ export class ClaudeExecutor {
         LUMBRE_CC_MAX_TOOL_CALLS: String(this.toolBridge.maxCalls || 20),
         LUMBRE_CC_TOOL_SOURCE: unattended ? 'unattended-wake' : 'chat',
         LUMBRE_CC_CACHE_WARM: cacheWarm ? '1' : '0',
+        LUMBRE_CC_TOOL_DENY: toolCallsAllowed ? '0' : '1',
       } : this.env
       const child = spawn(this.binary, args, {
         cwd: this.workspace,
