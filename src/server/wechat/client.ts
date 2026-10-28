@@ -1,5 +1,6 @@
 import { createDecipheriv, randomBytes, randomUUID } from 'node:crypto'
 import { renderSVG } from 'uqr'
+import { composeBubbleBlocks } from '@/lib/chat-bubble-composer'
 
 const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com'
 const DEFAULT_CDN_URL = 'https://novac2c.cdn.weixin.qq.com/c2c'
@@ -137,8 +138,9 @@ export class WeChatClient {
   }
 
   async sendText(userId: string, contextToken: string, text: string) {
-    const chunks = text.trim().match(/[\s\S]{1,600}/g) || ['…']
-    for (const chunk of chunks.slice(0, 3)) {
+    const chunks = composeBubbleBlocks([{ type: 'text', content: text.trim() }]).blocks
+      .flatMap(block => block.content?.match(/[\s\S]{1,600}/g) || [])
+    for (const chunk of chunks.length ? chunks : ['…']) {
       const waitMs = Math.max(0, this.nextSendAt - Date.now())
       if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs))
       this.nextSendAt = Date.now() + 2_500

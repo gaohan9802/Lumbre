@@ -16,24 +16,30 @@ test('wechat login content is rendered as an embedded QR image', async () => {
   } finally { globalThis.fetch = originalFetch }
 })
 
-test('wechat replies use the official bot message shape and preserve the inbound context token', async () => {
+test('wechat replies use separate bot messages and preserve the inbound context token', async () => {
   const originalFetch = globalThis.fetch
-  let request: { url: string; init?: RequestInit } | undefined
+  const originalNow = Date.now
+  const requests: Array<{ url: string; init?: RequestInit }> = []
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
-    request = { url: String(url), init }
+    requests.push({ url: String(url), init })
     return Response.json({ ret: 0 })
   }) as typeof fetch
+  let now = 0
+  Date.now = () => { now += 3_000; return now }
   try {
     const client = new WeChatClient({ botToken: 'secret', accountId: 'bot-id', userId: 'user-id', baseUrl: 'https://ilinkai.weixin.qq.com' })
-    await client.sendText('peer-id', 'context-token', '你好')
-    const body = JSON.parse(String(request?.init?.body))
-    assert.equal(request?.url, 'https://ilinkai.weixin.qq.com/ilink/bot/sendmessage')
-    assert.equal((request?.init?.headers as Record<string, string>).Authorization, 'Bearer secret')
-    assert.equal(body.msg.from_user_id, '')
-    assert.equal(body.msg.to_user_id, 'peer-id')
-    assert.equal(body.msg.context_token, 'context-token')
-    assert.equal(body.msg.item_list[0].text_item.text, '你好')
-  } finally { globalThis.fetch = originalFetch }
+    await client.sendText('peer-id', 'context-token', '第一条。\n\n第二条！\n\n第三条。\n\n第四条。')
+    assert.equal(requests.length, 4)
+    const bodies = requests.map(request => JSON.parse(String(request.init?.body)))
+    assert.ok(requests.every(request => request.url === 'https://ilinkai.weixin.qq.com/ilink/bot/sendmessage'))
+    assert.ok(requests.every(request => (request.init?.headers as Record<string, string>).Authorization === 'Bearer secret'))
+    assert.ok(bodies.every(body => body.msg.from_user_id === '' && body.msg.to_user_id === 'peer-id'))
+    assert.ok(bodies.every(body => body.msg.context_token === 'context-token'))
+    assert.deepEqual(bodies.map(body => body.msg.item_list[0].text_item.text), ['第一条。', '第二条！', '第三条。', '第四条。'])
+  } finally {
+    globalThis.fetch = originalFetch
+    Date.now = originalNow
+  }
 })
 
 test('wechat client refuses a persisted API base outside the official hosts', async () => {
