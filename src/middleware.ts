@@ -34,6 +34,7 @@ export async function middleware(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.has(pathname)
     || pathname === '/guestbook'
     || pathname.startsWith('/api/guestbook/public/')
+    || pathname === '/api/wecom/callback'
     || pathname.startsWith('/_next/')
 
   if (isPublic) return securityHeaders(NextResponse.next())
