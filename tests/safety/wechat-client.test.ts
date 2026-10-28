@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { WeChatClient } from '../../src/server/wechat/client'
+import { startWeChatQrLogin, WeChatClient } from '../../src/server/wechat/client'
+
+test('wechat login content is rendered as an embedded QR image', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => Response.json({
+    qrcode: 'qr-id',
+    qrcode_img_content: 'https://liteapp.weixin.qq.com/example-login-content',
+  })) as typeof fetch
+  try {
+    const login = await startWeChatQrLogin()
+    assert.equal(login.qrcodeId, 'qr-id')
+    assert.match(login.qrcodeUrl, /^data:image\/svg\+xml;charset=utf-8,/)
+    assert.match(decodeURIComponent(login.qrcodeUrl.split(',', 2)[1]), /^<svg/)
+  } finally { globalThis.fetch = originalFetch }
+})
 
 test('wechat replies use the official bot message shape and preserve the inbound context token', async () => {
   const originalFetch = globalThis.fetch

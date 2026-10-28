@@ -1,4 +1,5 @@
 import { createDecipheriv, randomBytes, randomUUID } from 'node:crypto'
+import { renderSVG } from 'uqr'
 
 const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com'
 const DEFAULT_CDN_URL = 'https://novac2c.cdn.weixin.qq.com/c2c'
@@ -71,7 +72,8 @@ export async function startWeChatQrLogin() {
     method: 'POST', headers: appHeaders(true), body: JSON.stringify({ local_token_list: [] }),
   }, 20_000)
   if (!data?.qrcode || !data?.qrcode_img_content) throw new Error(data?.errmsg || '没有拿到微信二维码')
-  return { qrcodeId: String(data.qrcode), qrcodeUrl: String(data.qrcode_img_content) }
+  const svg = renderSVG(String(data.qrcode_img_content), { border: 4, ecc: 'M' })
+  return { qrcodeId: String(data.qrcode), qrcodeUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` }
 }
 
 export async function pollWeChatQrLogin(qrcodeId: string, pollBaseUrl?: string, verifyCode?: string) {
