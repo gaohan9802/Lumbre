@@ -37,6 +37,7 @@ import { prepareChatMessage, type PencilDrawingResult } from '@/features/chat/vi
 import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ThinkingDrawer } from '@/features/chat/components/ThinkingDrawer'
+import { ThinkingBubbles } from '@/features/chat/components/ThinkingBubbles'
 import { WeChatTranscriptCard } from '@/features/chat/components/WeChatTranscriptCard'
 import { groupWechatMessages } from '@/features/chat/view/wechat-groups'
 import { StickerArt, StickerPicker, ToolSticker, StickerVisit } from '@/components/chat/StickerPicker'
@@ -1435,20 +1436,22 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </motion.button>
         </div>
         <section className="chat-theme-soft rounded-xl px-2.5 py-2">
-          <div className="flex items-center gap-2">
-            <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex items-stretch gap-3">
+            <div className="flex w-9 shrink-0 flex-col items-center justify-center gap-1">
               <span className="text-base leading-none">{weather?.updatedAt ? weatherEmoji(weather.code) : '·'}</span>
-              <span className="text-sm tabular-nums">{weather?.updatedAt && weather.temp != null ? `${Math.round(weather.temp)}°` : '—'}</span>
+              <span className="text-[10px] tabular-nums opacity-55">{weather?.updatedAt && weather.temp != null ? `${Math.round(weather.temp)}°` : '—'}</span>
             </div>
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <MapPin aria-hidden="true" size={11} className="shrink-0 opacity-35" />
-              <span className="min-w-0 truncate text-[10px] opacity-60">{weather?.updatedAt ? weather.address || weather.city || '地址解析中' : '尚未定位'}</span>
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5">
-              {weather?.updatedAt && <span className="text-[8px] tabular-nums opacity-35">{new Date(weather.updatedAt).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
-              <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className="chat-theme-icon grid h-7 w-7 place-items-center rounded-full disabled:opacity-70">
-                <RotateCcw size={12} className={locationRefreshing ? 'animate-spin' : ''} />
-              </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start gap-1.5">
+                <MapPin aria-hidden="true" size={11} className="mt-0.5 shrink-0 opacity-35" />
+                <span className="min-w-0 whitespace-normal break-words text-[10px] leading-4 opacity-60">{weather?.updatedAt ? weather.address || weather.city || '地址解析中' : '尚未定位'}</span>
+              </div>
+              <div className="mt-0.5 flex items-center justify-end gap-0.5">
+                {weather?.updatedAt && <span className="text-[8px] tabular-nums opacity-35">{new Date(weather.updatedAt).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
+                <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className="chat-theme-icon grid h-6 w-6 place-items-center rounded-full disabled:opacity-70">
+                  <RotateCcw size={11} className={locationRefreshing ? 'animate-spin' : ''} />
+                </button>
+              </div>
             </div>
           </div>
           {locationError && <div className="mt-1 pl-7 text-[8px] text-red-500/75">{locationError}</div>}
@@ -1504,48 +1507,44 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       </div>
       <div className="relative z-10 shrink-0 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
         <div className="space-y-1.5">
-        <section className="chat-theme-soft rounded-xl px-2.5 py-2">
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">
+        <section className="chat-theme-soft chat-theme-muted relative rounded-xl px-2.5 py-2 text-[10px]">
+            <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="chat-theme-icon chat-theme-muted absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full disabled:opacity-70">
+              <RotateCcw size={11} className={ccRefreshing ? 'animate-spin' : ''} />
+            </button>
               {ccStatus.quota.available && ccStatus.quota.fiveHour ? (
                 <>
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                  <div className="flex items-center justify-between gap-2 pr-7">
                     <span className="tabular-nums">{Math.round(ccStatus.quota.fiveHour.usedPercentage)}%{ccStatus.quota.fiveHour.requestCount != null ? ` · ${ccStatus.quota.fiveHour.requestCount} 次` : ''}</span>
-                    <span className="shrink-0 tabular-nums opacity-45">{fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
+                    <span className="shrink-0 tabular-nums">{fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
                   </div>
-                  <div className="chat-theme-surface mt-1.5 h-1 overflow-hidden rounded-full">
+                  <div className="mt-1.5 h-1 overflow-hidden rounded-full" style={{ backgroundColor: 'var(--chat-border)' }}>
                     <div className="chat-theme-accent-bg h-full rounded-full" style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
                   </div>
-                  <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px]">
+                  <div className="mt-1.5 flex items-center justify-between gap-2 pr-7">
                     <span className="tabular-nums">{ccStatus.quota.sevenDay ? `${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '暂缺'}</span>
-                    <span className="shrink-0 tabular-nums opacity-45">{ccStatus.quota.sevenDay ? fmtMetricReset(ccStatus.quota.sevenDay.resetsAt) : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
+                    <span className="shrink-0 tabular-nums">{ccStatus.quota.sevenDay ? fmtMetricReset(ccStatus.quota.sevenDay.resetsAt) : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
                   </div>
                 </>
-              ) : <div className="flex justify-between text-[10px]"><span>暂不可读</span><span className={ccStatus.available ? 'opacity-45' : 'text-red-500'}>{ccStatus.available ? '线路在线' : '线路离线'}</span></div>}
-            </div>
-            <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="chat-theme-icon grid h-7 w-7 shrink-0 place-items-center rounded-full disabled:opacity-70">
-              <RotateCcw size={12} className={ccRefreshing ? 'animate-spin' : ''} />
-            </button>
-          </div>
+              ) : <div className="flex justify-between pr-7"><span>暂不可读</span><span>{ccStatus.available ? '线路在线' : '线路离线'}</span></div>}
         </section>
 
-        <section className="chat-theme-soft rounded-xl px-2.5 py-2 text-[10px]">
+        <section className="chat-theme-soft chat-theme-muted rounded-xl px-2.5 py-2 text-[10px]">
           {ccStatus.context.available ? (
             <>
               <div className="flex items-center justify-between gap-2 tabular-nums">
                 <span>{fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</span>
-                <span className="opacity-45">{ccStatus.context.usedPercentage ?? '—'}% · {fmtMetricTime(ccStatus.context.collectedAt)}</span>
+                <span>{ccStatus.context.usedPercentage ?? '—'}% · {fmtMetricTime(ccStatus.context.collectedAt)}</span>
               </div>
-              <div className="chat-theme-surface mt-1.5 h-1 overflow-hidden rounded-full">
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full" style={{ backgroundColor: 'var(--chat-border)' }}>
                 <div className={`h-full rounded-full ${currentContextLevel === 95 ? 'bg-red-500' : currentContextLevel >= 85 ? 'bg-amber-500' : 'chat-theme-accent-bg'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
               </div>
               {currentContextLevel >= 85 && <div className={`mt-1.5 ${currentContextLevel === 95 ? 'text-red-500' : 'text-amber-600'}`}>{currentContextLevel === 95 ? '接近上限 · 建议现在压缩' : '建议近期压缩'}</div>}
-              <div className="mt-1.5 flex justify-between gap-2 opacity-45">
+              <div className="mt-1.5 flex justify-between gap-2">
                 <span>读 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
                 <span className="truncate">{ccStatus.context.model || ccStatus.model || 'CC'}</span>
               </div>
             </>
-          ) : <div className="opacity-45">等待首条 CC 回复</div>}
+          ) : <div>等待首条 CC 回复</div>}
         </section>
         </div>
         <div className="mt-2 grid grid-cols-3 gap-1.5">
@@ -1594,7 +1593,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* messages */}
-          <div ref={scrollRef} onScroll={handleScroll} style={{ paddingBottom: footerInset }} className="flex-1 min-h-0 overflow-y-auto px-4 pt-5 md:px-6 space-y-4" onClick={() => { if (deleteMenuId) setDeleteMenuId(null); setMessageActionsId(null) }}>
+          <div ref={scrollRef} onScroll={handleScroll} style={{ paddingBottom: footerInset }} className="flex-1 min-h-0 overflow-y-auto space-y-5 px-4 pt-5 md:px-6" onClick={() => { if (deleteMenuId) setDeleteMenuId(null); setMessageActionsId(null) }}>
             {messages.length === 0 && (
               <div className="chat-theme-ui chat-theme-muted flex h-full items-center justify-center text-center text-xs tracking-[0.12em] opacity-45">
                 <span>在这里等你</span>
@@ -1632,7 +1631,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 return (
                   <Fragment key={msg.id}>
                   {precedingPokes.map(nosePokeLine)}
-                  <div className="flex mb-4" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
+                  <div className="flex" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
                     <div className="w-full space-y-1">
                       {/* wake indicator */}
                       {(msg as any)._wake && (
@@ -1642,20 +1641,19 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       )}
 
                       {/* timestamp */}
-                      <p className={`chat-theme-ui chat-theme-muted text-[11px] ${isUser ? 'pr-1 text-right' : 'pl-4 text-left'}`}>
-                        {fmtShortDate(msg.timestamp)}
-                      </p>
-
-                      {!isUser && thinkingParts.length > 0 && (
-                        <button
-                          type="button"
-                          aria-label="打开星星的小算盘"
-                          onClick={(event) => { event.stopPropagation(); setThinkingDrawer({ id: msg.id, parts: thinkingParts }) }}
-                          className="chat-theme-icon chat-theme-muted ml-3 grid h-7 w-7 place-items-center rounded-full text-sm"
-                        >
-                          <span aria-hidden="true">💭</span>
-                        </button>
-                      )}
+                      <div className={`chat-theme-ui chat-theme-muted flex items-center gap-1 text-[12px] ${isUser ? 'justify-end pr-1' : 'justify-start pl-4'}`}>
+                        <span>{fmtShortDate(msg.timestamp)}</span>
+                        {!isUser && thinkingParts.length > 0 && (
+                          <button
+                            type="button"
+                            aria-label="打开星星的小算盘"
+                            onClick={(event) => { event.stopPropagation(); setThinkingDrawer({ id: msg.id, parts: thinkingParts }) }}
+                            className="chat-theme-icon inline-grid h-5 w-5 place-items-center rounded-full"
+                          >
+                            <ThinkingBubbles />
+                          </button>
+                        )}
+                      </div>
 
                       {/* Inline content blocks — interleaved thinking/tool/text */}
                       {!isUser && displayContentBlocks && displayContentBlocks.length > 0 ? (
@@ -1699,7 +1697,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
                               return (
-                                <div key={blockKey} className="chat-ai-bubble relative mr-auto block w-fit max-w-[91%] break-words px-4 py-3 text-left text-[14px] leading-relaxed">
+                                <div key={blockKey} className="chat-ai-bubble relative block w-full break-words px-4 py-2 text-left text-[14px] leading-relaxed">
                                   {messageImages && bi === firstTextBlockIndex && messageImages.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {messageImages.map((src: string, ii: number) => (
@@ -1776,7 +1774,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard || !!msg.sticker)) ? (
-                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words px-4 py-3 text-[14px] leading-relaxed ${isUser ? 'ml-auto w-fit max-w-[77%] rounded-2xl rounded-br-md' : 'mr-auto w-fit max-w-[91%] text-left'}`}>
+                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words px-4 text-[14px] leading-relaxed ${isUser ? 'ml-auto w-fit max-w-[77%] rounded-2xl rounded-br-md py-2.5' : 'w-full py-2 text-left'}`}>
                           {msg.sticker && sticker(msg.sticker.id) && (
                             <StickerArt id={msg.sticker.id} className="mx-auto mb-1 h-28 w-28" />
                           )}

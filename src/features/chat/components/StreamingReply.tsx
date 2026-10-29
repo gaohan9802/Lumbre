@@ -6,6 +6,7 @@ import type { ContentBlock } from '@/features/chat/state/types'
 import { MarkdownText } from '@/components/chat/MarkdownText'
 import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 import { ToolSticker } from '@/components/chat/StickerPicker'
+import { ThinkingBubbles } from './ThinkingBubbles'
 
 interface StreamingReplyProps {
   blocks: ContentBlock[]
@@ -25,8 +26,8 @@ export function StreamingReply({
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
       <div className="w-full space-y-1">
         {thinkingParts.length > 0 && (
-          <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-icon chat-theme-muted ml-3 grid h-7 w-7 place-items-center rounded-full text-sm">
-            <span aria-hidden="true">💭</span>
+          <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-icon chat-theme-muted ml-4 inline-grid h-5 w-5 place-items-center rounded-full">
+            <ThinkingBubbles />
           </button>
         )}
         {blocks.length > 0 ? blocks.map((block, index) => {
@@ -64,14 +65,14 @@ export function StreamingReply({
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
             return (
-              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className="chat-ai-bubble relative mr-auto block w-fit max-w-[91%] whitespace-pre-wrap break-words px-4 py-3 text-left text-[14px] leading-relaxed">
+              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className="chat-ai-bubble relative block w-full whitespace-pre-wrap break-words px-4 py-2 text-left text-[14px] leading-relaxed">
                 {block.content}{isLast && <span className="stream-cursor">…</span>}
               </motion.div>
             )
           }
           return null
         }) : (
-          <div className="chat-ai-bubble relative mr-auto w-fit max-w-[91%] px-4 py-3">
+          <div className="chat-ai-bubble relative w-full px-4 py-2">
             <div className="flex gap-1">
               {[0, 1, 2].map(index => (
                 <motion.div key={index} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.2 }}
