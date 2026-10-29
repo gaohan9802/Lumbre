@@ -235,6 +235,9 @@ export function normalizeSettings(settings: any): ChatSettings {
   return {
     ...DEFAULT_SETTINGS,
     ...(settings || {}),
+    ccOpus46OutputStyle: typeof settings?.ccOpus46OutputStyle === 'string'
+      ? settings.ccOpus46OutputStyle
+      : DEFAULT_SETTINGS.ccOpus46OutputStyle,
     ccOpus55SystemPrompt: typeof settings?.ccOpus55SystemPrompt === 'string' && settings.ccOpus55SystemPrompt.trim()
       ? withoutOpus55ThinkingInstructions(settings.ccOpus55SystemPrompt)
       : withoutOpus55ThinkingInstructions(typeof settings?.systemPrompt === 'string' ? settings.systemPrompt : ''),

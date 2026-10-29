@@ -30,6 +30,7 @@ test('legacy browser chat state upgrades without losing messages, summaries, boo
   const json = JSON.stringify(migrated)
   assert.doesNotMatch(json, /legacy-secret|private/)
   assert.equal(migrated.settings.systemPrompt, 'legacy prompt')
+  assert.match(migrated.settings.ccOpus46OutputStyle, /不是考核你的规则/)
   assert.equal(migrated.settings.ccOpus55SystemPrompt, 'legacy prompt')
   assert.equal(migrated.settings.contextLength, 88)
   assert.equal(migrated.settings.sessions[0].messages[0].content, 'old hello')

@@ -35,7 +35,7 @@ export function ChatSettings(props: Props) {
   const { settings, setSettings } = useChatStore()
   const [panel, setPanel] = useState<ChatSettingsPanel>(initialPanel)
   const [promptTarget, setPromptTarget] = useState<'base' | 'opus55'>('base')
-  const [editing, setEditing] = useState<'base' | 'opus55' | null>(null)
+  const [editing, setEditing] = useState<'base' | 'opus55' | 'style46' | null>(null)
   const [draft, setDraft] = useState('')
   const [original, setOriginal] = useState('')
   const [error, setError] = useState('')
@@ -100,15 +100,19 @@ export function ChatSettings(props: Props) {
   </button>
   const slider = (label: string, value: number, change: (v: number) => void, min = 0, max = 1, step = .05, display?: string) => <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>{label}</span><span className="opacity-60">{display || `${Math.round(value * 100)}%`}</span></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))} className="w-full"/></label>
   const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? 'chat-theme-accent-bg' : 'chat-theme-soft'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
-  const promptEditor = (target: 'base' | 'opus55', label: string, value: string, empty: string) => <section className="space-y-3">
+  const promptEditor = (target: 'base' | 'opus55' | 'style46', label: string, value: string, empty: string) => <section className="space-y-3">
     <div className="flex items-center justify-between gap-2"><span className="text-sm">{label}</span>{!editing && <button className={button} onClick={() => { setOriginal(value); setDraft(value); setEditing(target); setError('') }}>编辑</button>}</div>
     {editing === target ? <textarea autoFocus aria-label={`编辑${label}`} value={draft} onChange={e => setDraft(e.target.value)} className={`w-full min-h-[50dvh] rounded-2xl p-4 text-sm leading-7 outline-none ${card}`}/> : <div className={`whitespace-pre-wrap break-words min-h-40 rounded-2xl p-4 text-sm leading-7 ${card}`}>{value || empty}</div>}
     {editing === target && error && <p role="alert" className="text-sm text-red-500">{error}</p>}
     {editing === target && <div className="flex justify-end gap-3"><button className={button} onClick={() => confirm(() => setEditing(null))}>取消</button><button className={`${button} font-medium`} onClick={() => {
       const current = useChatStore.getState().settings
-      const latest = target === 'base' ? current.systemPrompt : current.ccOpus55SystemPrompt
-      if (latest !== original) { setError('人设已在别处修改，请取消后重新编辑。'); return }
-      setSettings(target === 'base' ? { systemPrompt: draft } : { ccOpus55SystemPrompt: withoutOpus55ThinkingInstructions(draft) })
+      const latest = target === 'base' ? current.systemPrompt : target === 'opus55' ? current.ccOpus55SystemPrompt : current.ccOpus46OutputStyle
+      if (latest !== original) { setError('内容已在别处修改，请取消后重新编辑。'); return }
+      setSettings(target === 'base'
+        ? { systemPrompt: draft }
+        : target === 'opus55'
+          ? { ccOpus55SystemPrompt: withoutOpus55ThinkingInstructions(draft) }
+          : { ccOpus46OutputStyle: draft })
       setEditing(null); setError('')
     }}>保存</button></div>}
   </section>
@@ -145,7 +149,7 @@ export function ChatSettings(props: Props) {
             {([['base', 'Opus 4.6'], ['opus55', 'Opus 5.5']] as const).map(([target, label]) => <button key={target} role="tab" aria-selected={promptTarget === target} onClick={() => confirm(() => setPromptTarget(target))} className={`rounded-xl px-3 py-2 text-sm ${promptTarget === target ? 'chat-theme-surface shadow-sm' : 'opacity-55'}`}>{label}</button>)}
           </div>
           {promptTarget === 'base'
-            ? promptEditor('base', '现有人设（保持原样）', settings.systemPrompt, '尚未设置人设')
+            ? <>{promptEditor('base', '现有人设（保持原样）', settings.systemPrompt, '尚未设置人设')}{promptEditor('style46', '星星本色（回复风格）', settings.ccOpus46OutputStyle, '未设置回复风格')}</>
             : promptEditor('opus55', '专用人设（思考不显示）', settings.ccOpus55SystemPrompt, '将自动使用移除思考链要求后的现有人设')}
         </>}
         {panel === 'settings' && <>

@@ -168,6 +168,7 @@ export function getSortedSessions(settings: ChatSettings) {
 export function extractConfig(s: ChatSettings) {
   return {
     systemPrompt: s.systemPrompt,
+    ccOpus46OutputStyle: s.ccOpus46OutputStyle,
     ccOpus55SystemPrompt: s.ccOpus55SystemPrompt,
     contextLength: s.contextLength,
     model: s.model,

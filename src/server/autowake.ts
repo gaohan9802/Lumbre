@@ -521,6 +521,7 @@ export function resolveWakeGenerationConfig(wakeSession: any, cfg: any, generati
     systemPrompt,
     modelOverride: modelId || undefined,
     ccEffort: isCcEffort(windowConfig.ccEffort) ? windowConfig.ccEffort : isCcEffort(cfg?.ccEffort) ? cfg.ccEffort : undefined,
+    ccOutputStyle: typeof cfg?.ccOpus46OutputStyle === 'string' ? cfg.ccOpus46OutputStyle : undefined,
     apiProfile: active && modelId ? { profileId: active.id, modelId } : undefined,
   }
 }
@@ -604,6 +605,7 @@ ${JSON.stringify(recentDigests)}`
   let systemPrompt: string | undefined = undefined
   let modelOverride: string | undefined = undefined
   let ccEffort: CcEffort | undefined = undefined
+  let ccOutputStyle: string | undefined = undefined
   let bookmarkInjections = ''
   try {
     const cfg = loadSyncManifest().config
@@ -612,6 +614,7 @@ ${JSON.stringify(recentDigests)}`
       systemPrompt = resolved.systemPrompt
       modelOverride = resolved.modelOverride
       ccEffort = resolved.ccEffort
+      ccOutputStyle = resolved.ccOutputStyle
       apiProfile = resolved.apiProfile
       const summaryConfig = wakeSession?.summaryConfig || { injectCount: cfg.summaryInjectCount || 3 }
       const summaries = [...(wakeSession?.summaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, summaryConfig.injectCount).reverse()
@@ -658,6 +661,7 @@ ${JSON.stringify(recentDigests)}`
             generation_route: generationRoute,
             cc_model: generationRoute === 'claude-code' && isCcModel(wakeSession?.ccModel) ? wakeSession.ccModel : undefined,
             cc_effort: generationRoute === 'claude-code' ? ccEffort : undefined,
+            cc_output_style: generationRoute === 'claude-code' ? ccOutputStyle : undefined,
             turn_id: generationRoute === 'claude-code' ? wakeTurnId : undefined,
             messages: apiMessages, system: systemPrompt, model: modelOverride,
             api_profile: apiProfile, tools_enabled: true,

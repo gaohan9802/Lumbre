@@ -736,6 +736,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         generation_route: route,
         cc_model: route === 'claude-code' ? selectedCcModel : undefined,
         cc_effort: route === 'claude-code' ? normalizeCcEffortForModel(effectiveCcModel, activeCcEffort) : undefined,
+        cc_output_style: route === 'claude-code' && effectiveCcModel === 'claude-opus-4-6' ? settings.ccOpus46OutputStyle : undefined,
         turn_id: route === 'claude-code' ? turnId : undefined,
         cc_session_action: route === 'claude-code' ? sessionAction : undefined,
         messages: sendMessages,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ccSystemPromptForModel, withoutOpus55ThinkingInstructions } from '../../src/lib/cc-system-prompt'
+import { DEFAULT_OPUS_46_OUTPUT_STYLE, ccOutputStyleContext, ccSystemPromptForModel, withoutOpus55ThinkingInstructions } from '../../src/lib/cc-system-prompt'
 
 const prompt = `一、你是谁
 保持原样。
@@ -16,6 +16,13 @@ const prompt = `一、你是谁
 test('Opus 4.6 receives the existing system prompt byte for byte', () => {
   const opus55Override = '这是另一份人设'
   assert.equal(ccSystemPromptForModel(prompt, opus55Override, 'claude-opus-4-6'), prompt)
+})
+
+test('Opus 4.6 alone receives the editable output style as volatile context', () => {
+  assert.match(DEFAULT_OPUS_46_OUTPUT_STYLE, /不是考核你的规则/)
+  assert.equal(ccOutputStyleContext('claude-opus-4-6', '  温柔地完整回应  '), '温柔地完整回应')
+  assert.equal(ccOutputStyleContext('claude-opus-5-5', '不要注入'), '')
+  assert.equal(ccOutputStyleContext('claude-opus-4-6', ''), '')
 })
 
 test('Opus 5.5 removes the complete thinking section and preserves surrounding persona text', () => {

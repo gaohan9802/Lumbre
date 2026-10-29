@@ -1,6 +1,7 @@
 import type { ChatAppearance, ChatSettings, ProviderModel } from './types'
 import { DEFAULT_CHAT_ROUTE } from '@/lib/chat-route'
 import { DEFAULT_CC_EFFORT } from '@/lib/cc-model'
+import { DEFAULT_OPUS_46_OUTPUT_STYLE } from '@/lib/cc-system-prompt'
 
 export const DEFAULT_ANTHROPIC_BASE = 'https://api.anthropic.com'
 export const DEFAULT_OPENAI_BASE = 'https://api.openai.com/v1'
@@ -35,6 +36,7 @@ const now = Date.now()
 
 export const DEFAULT_SETTINGS: ChatSettings = {
   systemPrompt: '',
+  ccOpus46OutputStyle: DEFAULT_OPUS_46_OUTPUT_STYLE,
   ccOpus55SystemPrompt: '',
   contextLength: 30,
   model: 'claude-sonnet-4-20250514',

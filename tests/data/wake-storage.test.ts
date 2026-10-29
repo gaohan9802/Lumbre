@@ -36,6 +36,7 @@ test('wake configuration preserves behavior and serializes settings', () => {
 test('wake generation follows the selected window prompt, profile, model and effort', () => {
   const cfg = {
     systemPrompt: '默认 SP',
+    ccOpus46OutputStyle: '星星本色',
     ccOpus55SystemPrompt: '默认 5.5 SP',
     activeProfileId: 'p1',
     model: 'm1',
@@ -59,6 +60,7 @@ test('wake generation follows the selected window prompt, profile, model and eff
   assert.match(cc.systemPrompt || '', /本窗 SP/)
   assert.doesNotMatch(cc.systemPrompt || '', /默认 SP/)
   assert.equal(cc.ccEffort, 'max')
+  assert.equal(cc.ccOutputStyle, '星星本色')
 })
 
 test('independent wake rules clamp settings and wake_me bypasses recent activity', () => {

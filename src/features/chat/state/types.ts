@@ -217,6 +217,7 @@ export interface Bookmark {
 
 export interface ChatSettings {
   systemPrompt: string
+  ccOpus46OutputStyle: string
   ccOpus55SystemPrompt: string
   contextLength: number
   model: string

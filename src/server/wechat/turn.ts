@@ -109,6 +109,7 @@ async function generateTurn(sessionId: string, batchId: string, parts: WeChatTur
       generation_route: route,
       cc_model: route === 'claude-code' && isCcModel(session.ccModel) ? session.ccModel : undefined,
       cc_effort: route === 'claude-code' ? resolved.ccEffort : undefined,
+      cc_output_style: route === 'claude-code' ? resolved.ccOutputStyle : undefined,
       turn_id: route === 'claude-code' ? turnId : undefined,
       messages,
       system: resolved.systemPrompt,
