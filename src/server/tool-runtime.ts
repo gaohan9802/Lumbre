@@ -811,7 +811,7 @@ export async function executeRegisteredToolHandler(
         }
         if (!at || isNaN(at)) return '时间格式无法识别，请用 ISO 格式，如 2026-07-16T09:00'
         if (at <= Date.now()) return '闹钟时间必须在未来'
-        const alarm = scheduleWake(at, input.note)
+        const alarm = scheduleWake(at, input.note, context?.sessionId)
         return JSON.stringify({ ok: true, wake_at: madridTime(alarm.at), note: alarm.note || null })
       }
 

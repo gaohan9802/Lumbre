@@ -26,11 +26,26 @@ test('wake configuration preserves behavior and serializes settings', () => {
   assert.equal(wake.loadWakeConfig().enabled, false)
   const updated = wake.updateWakeSettings({ enabled: true, sessionId: 'fixture-session', pushEnabled: true })
   assert.equal(updated.enabled, true)
-  assert.equal(updated.sessionId, 'fixture-session')
+  assert.deepEqual(updated.wakeSessionIds, ['fixture-session'])
   assert.equal(updated.day.enabled, true)
   assert.equal(updated.night.enabled, true)
-  const alarm = wake.scheduleWake(Date.now() + 60_000, 'fixture alarm')
+  const alarm = wake.scheduleWake(Date.now() + 60_000, 'fixture alarm', 'fixture-session')
   assert.equal(wake.loadWakeConfig().alarms?.some(value => value.at === alarm.at), true)
+  assert.equal(alarm.sessionId, 'fixture-session')
+})
+
+test('legacy main and Opus 5.5 cache slots migrate into per-window settings', () => {
+  const file = path.join(root, 'wake-config.json')
+  writeFileSync(file, JSON.stringify({
+    sessionId: 'legacy-main',
+    warmCache: { enabled: true, lastSuccessAt: 42, status: 'warmed' },
+    opus55WarmCache: { enabled: true, sessionId: 'legacy-55', lastSuccessAt: 84, status: 'warmed' },
+  }), 'utf8')
+  const migrated = wake.loadWakeConfig()
+  assert.deepEqual(migrated.wakeSessionIds, ['legacy-main'])
+  assert.equal(migrated.warmCaches['legacy-main'].lastSuccessAt, 42)
+  assert.equal(migrated.warmCaches['legacy-55'].lastSuccessAt, 84)
+  wake.saveWakeConfig(migrated)
 })
 
 test('wake generation follows the selected window prompt, profile, model and effort', () => {
@@ -66,40 +81,55 @@ test('wake generation follows the selected window prompt, profile, model and eff
 test('independent wake rules clamp settings and wake_me bypasses recent activity', () => {
   const now = Date.parse('2026-09-07T10:00:00.000Z')
   const updated = wake.updateWakeSettings({
+    sessionId: 'fixture-session',
     day: { enabled: true, intervalHours: 99 },
     night: { enabled: false, intervalHours: 0 },
     random: { enabled: true, timesPerDay: 99 },
     inactivity: { enabled: true, afterHours: 0 },
-    warmCache: { enabled: true },
-    opus55WarmCache: { enabled: true, sessionId: 'opus-55-session' },
+    wakeSession: { sessionId: 'fixture-session', enabled: true },
+    warmCacheSession: { sessionId: 'fixture-session', enabled: true },
   })
   assert.equal(updated.day.intervalHours, 12)
   assert.equal(updated.night.intervalHours, 1)
   assert.equal(updated.random.timesPerDay, 8)
   assert.equal(updated.inactivity.afterHours, 1)
-  assert.equal(updated.warmCache.enabled, true)
-  assert.equal(updated.opus55WarmCache.enabled, true)
-  assert.equal(updated.opus55WarmCache.sessionId, 'opus-55-session')
+  assert.equal(updated.warmCaches['fixture-session'].enabled, true)
 
-  const changed = wake.updateWakeSettings({ opus55WarmCache: { sessionId: 'new-opus-55-session' } })
-  assert.equal(changed.opus55WarmCache.sessionId, 'new-opus-55-session')
-  assert.equal(changed.opus55WarmCache.lastSuccessAt, 0)
+  const changed = wake.updateWakeSettings({ wakeSession: { sessionId: 'second-session', enabled: true }, warmCacheSession: { sessionId: 'second-session', enabled: true } })
+  assert.deepEqual(changed.wakeSessionIds.slice().sort(), ['fixture-session', 'second-session'])
+  assert.equal(changed.warmCaches['second-session'].lastSuccessAt, 0)
+
+  const rejected = wake.updateWakeSettings({ warmCacheSession: { sessionId: '__proto__', enabled: true } })
+  assert.equal(Object.hasOwn(rejected.warmCaches, '__proto__'), false)
 
   const alarm = { at: now - 1, note: 'forced fixture' }
   const decision = wake.decideWake({
     ...updated,
-    sessionId: 'fixture-session',
+    wakeSessionIds: ['fixture-session', 'second-session'],
     lastActivityAt: now - 5 * 60_000,
     alarms: [alarm],
   }, now)
   assert.equal(decision.trigger, 'alarm')
   assert.equal(decision.alarm, alarm)
+  assert.deepEqual(decision.sessionIds, ['fixture-session'])
+
+  const ordinary = wake.decideWake({
+    ...changed,
+    day: { enabled: false, intervalHours: 12 },
+    night: { enabled: false, intervalHours: 1 },
+    random: { enabled: false, timesPerDay: 1, day: '', times: [] },
+    inactivity: { enabled: true, afterHours: 1, handledActivityAt: 0 },
+    lastActivityAt: now - 2 * 60 * 60 * 1000,
+    alarms: [],
+  }, now)
+  assert.equal(ordinary.trigger, 'inactivity')
+  assert.deepEqual(ordinary.sessionIds, ['fixture-session', 'second-session'])
 })
 
 test('inactivity fires once per quiet period and random times survive refreshes', () => {
   const now = Date.parse('2026-09-07T10:00:00.000Z')
   const config = wake.updateWakeSettings({
-    sessionId: 'fixture-session',
+    wakeSession: { sessionId: 'fixture-session', enabled: true },
     day: { enabled: false },
     night: { enabled: false },
     random: { enabled: true, timesPerDay: 3 },

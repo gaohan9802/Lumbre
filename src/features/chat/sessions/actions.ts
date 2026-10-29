@@ -29,7 +29,7 @@ export interface SessionActions {
   prependSessionMessages: (sessionId: string, messages: ChatMessage[], total: number) => void
   mergeRemoteConfig: (config: any, timestamp: number) => void
   togglePinSession: (id: string) => void
-  continueSession: (tailCount?: number) => string
+  continueSession: (tailCount?: number, sourceSessionId?: string) => string
 }
 
 const makeId = makeChatId
@@ -221,12 +221,12 @@ export function createSessionActions(set: SetChatState): SessionActions {
       return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
     }),
 
-    continueSession: (tailCount = 50) => {
+    continueSession: (tailCount = 50, sourceSessionId) => {
       const id = makeId('session')
       const now = Date.now()
       set((state) => {
         const settings = normalizeSettings(state.settings)
-        const active = getActiveSession(settings)
+        const active = settings.sessions.find(session => session.id === sourceSessionId) || getActiveSession(settings)
         const tail = active.messages.slice(-Math.max(1, tailCount)).map((m) => ({
           ...m,
           images: m.images ? [...m.images] : undefined,

@@ -88,6 +88,11 @@ interface FavoriteChatContext {
   messages: ChatMessage[]
 }
 
+interface WakeWindowConfig {
+  wakeSessionIds: string[]
+  warmCaches: Record<string, { enabled: boolean }>
+}
+
 /* ── helpers ────────────────────────────── */
 
 const fmtFullTs = (ts: number) => {
@@ -199,6 +204,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [windowSettingsOpen, setWindowSettingsOpen] = useState(false)
   const [contextWarning, setContextWarning] = useState<{ sessionId: string; level: 85 | 95 } | null>(null)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
+  const [wakeWindowConfig, setWakeWindowConfig] = useState<WakeWindowConfig>({ wakeSessionIds: [], warmCaches: {} })
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number; sessionId: string }[]>([])
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
   const [favoriteChatKeys, setFavoriteChatKeys] = useState<Set<string>>(new Set())
@@ -368,7 +374,26 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     }
     return false
   }, [readCcStatus, setModelPickerOpen])
+  const refreshWakeWindows = useCallback(async () => {
+    try {
+      const response = await fetch('/api/wake', { cache: 'no-store' })
+      const data = await response.json()
+      if (response.ok && data.config) setWakeWindowConfig({ wakeSessionIds: data.config.wakeSessionIds || [], warmCaches: data.config.warmCaches || {} })
+    } catch {}
+  }, [])
+  const toggleWindowAutomation = useCallback(async (kind: 'wakeSession' | 'warmCacheSession', sessionId: string, enabled: boolean) => {
+    if (kind === 'wakeSession' && enabled && wakeWindowConfig.wakeSessionIds.some(id => id !== sessionId)
+      && !window.confirm('已有别的窗口开启唤醒。仍然让这个窗口也开启吗？')) return
+    try {
+      const response = await fetch('/api/wake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [kind]: { sessionId, enabled } }) })
+      const data = await response.json()
+      if (!response.ok) throw new Error('save failed')
+      setWakeWindowConfig({ wakeSessionIds: data.config?.wakeSessionIds || [], warmCaches: data.config?.warmCaches || {} })
+    } catch { window.alert('这项设置暂时没有保存，请稍后再试。') }
+  }, [wakeWindowConfig.wakeSessionIds])
   useEffect(() => { void refreshCcStatus() }, [refreshCcStatus])
+  useEffect(() => { void refreshWakeWindows() }, [refreshWakeWindows])
+  useEffect(() => { if (sessionDrawerOpen) void refreshWakeWindows() }, [sessionDrawerOpen, refreshWakeWindows])
   useEffect(() => { if (modelPickerOpen) void refreshCcStatus() }, [modelPickerOpen, refreshCcStatus])
   useEffect(() => { setContextWarning(current => current?.sessionId === activeSession?.id ? current : null) }, [activeSession?.id])
   useEffect(() => {
@@ -1441,16 +1466,23 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                     </div>
                   )}
                   <div className="text-xs opacity-40 mt-1 flex justify-between">
-                    <span>{s.messageCount || s.messages.length} 条消息</span>
+                    <span>{s.messageCount || s.messages.length} 条消息{wakeWindowConfig.wakeSessionIds.includes(s.id) ? ' · 唤醒' : ''}{wakeWindowConfig.warmCaches[s.id]?.enabled ? ' · 保温' : ''}</span>
                     <span>{fmtShortDate(s.updatedAt)}</span>
                   </div>
                 </div>
                 <div className="relative" onClick={(e) => e.stopPropagation()}>
                   <button aria-label="会话操作" onClick={() => setSessionActionsId(current => current === s.id ? null : s.id)} className="chat-theme-icon rounded-full p-1.5 opacity-45 hover:opacity-100"><MoreHorizontal size={14}/></button>
-                  {sessionActionsId === s.id && <div className="chat-theme-surface chat-theme-border absolute right-0 top-full z-20 mt-1 min-w-28 rounded-xl border py-1 shadow-lg">
+                  {sessionActionsId === s.id && <div className="chat-theme-surface chat-theme-border absolute right-0 top-full z-20 mt-1 min-w-44 rounded-xl border py-1 shadow-lg">
+                    <button onClick={() => { setActiveSession(s.id); setWindowSettingsOpen(true); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">本窗设置</button>
+                    <button onClick={() => { setActiveSession(s.id); setSummaryDialogOpen(true); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">查看摘要</button>
+                    <button disabled={isLoading || sendStarting} onClick={() => { continueSession(50, s.id); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs disabled:opacity-35">{isLoading || sendStarting ? '回复结束后可换窗' : '换窗'}</button>
+                    <div className="chat-theme-border my-1 border-t" />
+                    <button onClick={() => void toggleWindowAutomation('wakeSession', s.id, !wakeWindowConfig.wakeSessionIds.includes(s.id))} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs"><span>自动唤醒</span><span className="opacity-45">{wakeWindowConfig.wakeSessionIds.includes(s.id) ? '开' : '关'}</span></button>
+                    <button disabled={normalizeChatRoute(s.generationRoute) !== 'claude-code'} onClick={() => void toggleWindowAutomation('warmCacheSession', s.id, !wakeWindowConfig.warmCaches[s.id]?.enabled)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs disabled:opacity-30"><span>缓存保温</span><span className="opacity-45">{normalizeChatRoute(s.generationRoute) === 'claude-code' ? wakeWindowConfig.warmCaches[s.id]?.enabled ? '开' : '关' : '仅 CC'}</span></button>
+                    <div className="chat-theme-border my-1 border-t" />
                     <button onClick={() => { togglePinSession(s.id); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"><Pin size={12}/>{s.pinned ? '取消置顶' : '置顶'}</button>
                     <button onClick={() => { startRename(s.id, s.title); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"><Pencil size={12}/>重命名</button>
-                    <button onClick={async () => { const ok = await ask('删除这条对话？'); if (ok) deleteSession(s.id); setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-500"><Trash2 size={12}/>删除</button>
+                    <button onClick={async () => { const ok = await ask('删除这条对话？'); if (ok) { await fetch('/api/wake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wakeSession: { sessionId: s.id, enabled: false }, warmCacheSession: { sessionId: s.id, enabled: false } }) }).catch(() => {}); deleteSession(s.id); void refreshWakeWindows() } setSessionActionsId(null) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-500"><Trash2 size={12}/>删除</button>
                   </div>}
                 </div>
               </div>
@@ -1530,13 +1562,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         </section>
         <div className="chat-theme-border border-t">
           <div className="grid grid-cols-4">
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setWindowSettingsOpen(true) }} className="chat-theme-hover chat-theme-border border-r py-2 text-[10px]">本窗</button>
             <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-theme-hover chat-theme-border border-r py-2 text-[10px]">模型库</button>
-            <button type="button" onClick={() => openChatSettings('settings')} className="chat-theme-hover chat-theme-border border-r py-2 text-[10px]">参数</button>
-            <button type="button" onClick={() => { continueSession(50); if (mobile) setSessionDrawerOpen(false) }} className="chat-theme-hover py-2 text-[10px]">换窗</button>
-          </div>
-          <div className="chat-theme-border grid grid-cols-4 border-t">
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setSummaryDialogOpen(true) }} className="chat-theme-hover chat-theme-border border-r py-2 text-[10px]">摘要</button>
             <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className="chat-theme-hover chat-theme-border border-r py-2 text-[10px]">书签</button>
             <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className="chat-theme-hover chat-theme-border border-r py-2 text-[10px]">唤醒</button>
             <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className="chat-theme-hover py-2 text-[10px]">记忆</button>

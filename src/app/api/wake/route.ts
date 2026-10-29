@@ -23,21 +23,21 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === 'schedule' && typeof body.at === 'number') {
-    const alarm = scheduleWake(body.at, body.note)
+    const alarm = scheduleWake(body.at, body.note, typeof body.sessionId === 'string' ? body.sessionId : undefined)
     return NextResponse.json({ ok: true, alarm })
   }
 
   updateWakeSettings({
     ...(body.enabled !== undefined ? { enabled: !!body.enabled } : {}),
     ...(body.sessionId !== undefined ? { sessionId: body.sessionId || null } : {}),
+    ...(body.wakeSession && typeof body.wakeSession === 'object' ? { wakeSession: body.wakeSession } : {}),
+    ...(body.warmCacheSession && typeof body.warmCacheSession === 'object' ? { warmCacheSession: body.warmCacheSession } : {}),
     ...(body.customPrompt !== undefined ? { customPrompt: body.customPrompt } : {}),
     ...(body.pushEnabled !== undefined ? { pushEnabled: !!body.pushEnabled } : {}),
     ...(body.day && typeof body.day === 'object' ? { day: body.day } : {}),
     ...(body.night && typeof body.night === 'object' ? { night: body.night } : {}),
     ...(body.random && typeof body.random === 'object' ? { random: body.random } : {}),
     ...(body.inactivity && typeof body.inactivity === 'object' ? { inactivity: body.inactivity } : {}),
-    ...(body.warmCache && typeof body.warmCache === 'object' ? { warmCache: body.warmCache } : {}),
-    ...(body.opus55WarmCache && typeof body.opus55WarmCache === 'object' ? { opus55WarmCache: body.opus55WarmCache } : {}),
   })
 
   startWakeEngine()

@@ -90,7 +90,7 @@ interface ChatStore {
   updateModelMeta: (profileId: string, modelId: string, patch: Partial<ProviderModel>) => void
   deleteModel: (profileId: string, modelId: string) => void
 
-  continueSession: (tailCount?: number) => string
+  continueSession: (tailCount?: number, sourceSessionId?: string) => string
 
   addBookmark: (b: Omit<Bookmark, 'id'>) => void
   updateBookmark: (id: string, patch: Partial<Bookmark>) => void

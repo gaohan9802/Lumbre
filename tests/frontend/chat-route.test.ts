@@ -145,7 +145,9 @@ test('route persists through store continuation, stale sync and message versions
     useChatStore.getState().addMessage({ id: 'cc-reply', role: 'assistant', route: 'claude-code', content: 'hi', timestamp: 1 })
     const current = useChatStore.getState().settings.sessions.find(session => session.id === id)!
 
-    const continued = useChatStore.getState().continueSession(50)
+    const other = useChatStore.getState().createSession()
+    useChatStore.getState().setGenerationRoute(other, 'api')
+    const continued = useChatStore.getState().continueSession(50, id)
     assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === continued)?.generationRoute, 'claude-code')
     assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === continued)?.ccModel, 'claude-opus-5-5')
     assert.equal(useChatStore.getState().settings.sessions.find(session => session.id === continued)?.windowConfig?.systemPrompt, '只属于本窗')

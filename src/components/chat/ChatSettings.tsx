@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useChatStore } from '@/lib/chatStore'
 import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
@@ -36,6 +36,7 @@ export function ChatSettings(props: Props) {
   const [panel, setPanel] = useState<ChatSettingsPanel>(initialPanel)
   const [promptTarget, setPromptTarget] = useState<'base' | 'opus55'>('base')
   const [editing, setEditing] = useState<'base' | 'opus55' | 'style46' | null>(null)
+  const [expandedPrompt, setExpandedPrompt] = useState<'base' | 'opus55' | 'style46' | null>(null)
   const [draft, setDraft] = useState('')
   const [original, setOriginal] = useState('')
   const [error, setError] = useState('')
@@ -54,7 +55,7 @@ export function ChatSettings(props: Props) {
   closeRef.current = close
   useEffect(() => {
     if (!open) return
-    setPanel(initialPanel); setEditing(null); setError('')
+    setPanel(initialPanel); setEditing(null); setExpandedPrompt(null); setError('')
     const prior = document.activeElement as HTMLElement | null
     const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -100,9 +101,11 @@ export function ChatSettings(props: Props) {
   </button>
   const slider = (label: string, value: number, change: (v: number) => void, min = 0, max = 1, step = .05, display?: string) => <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>{label}</span><span className="opacity-60">{display || `${Math.round(value * 100)}%`}</span></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))} className="w-full"/></label>
   const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? 'chat-theme-accent-bg' : 'chat-theme-soft'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
-  const promptEditor = (target: 'base' | 'opus55' | 'style46', label: string, value: string, empty: string) => <section className="space-y-3">
-    <div className="flex items-center justify-between gap-2"><span className="text-sm">{label}</span>{!editing && <button className={button} onClick={() => { setOriginal(value); setDraft(value); setEditing(target); setError('') }}>编辑</button>}</div>
-    {editing === target ? <textarea autoFocus aria-label={`编辑${label}`} value={draft} onChange={e => setDraft(e.target.value)} className={`w-full min-h-[50dvh] rounded-2xl p-4 text-sm leading-7 outline-none ${card}`}/> : <div className={`whitespace-pre-wrap break-words min-h-40 rounded-2xl p-4 text-sm leading-7 ${card}`}>{value || empty}</div>}
+  const promptEditor = (target: 'base' | 'opus55' | 'style46', label: string, value: string, empty: string, note: string) => <section className="space-y-3">
+    {editing === target ? <><div className="flex items-center justify-between gap-2"><span className="text-sm">{label}</span></div><textarea autoFocus aria-label={`编辑${label}`} value={draft} onChange={e => setDraft(e.target.value)} className={`w-full min-h-[50dvh] rounded-2xl p-4 text-sm leading-7 outline-none ${card}`}/></> : <div className={`overflow-hidden rounded-2xl ${card}`}>
+      <div className="flex items-center gap-2 px-4 py-3"><button type="button" aria-expanded={expandedPrompt === target} onClick={() => setExpandedPrompt(current => current === target ? null : target)} className="flex min-w-0 flex-1 items-center gap-2 text-left"><span className="min-w-0 flex-1"><span className="block text-sm">{label}</span><span className="mt-1 block truncate text-[10px] opacity-45">{value ? `已设置 · ${value.length.toLocaleString('zh-CN')} 字` : empty} · {note}</span></span>{expandedPrompt === target ? <ChevronDown size={15} className="shrink-0 opacity-45"/> : <ChevronRight size={15} className="shrink-0 opacity-45"/>}</button><button className={`${button} shrink-0`} onClick={() => { setOriginal(value); setDraft(value); setEditing(target); setError('') }}>编辑</button></div>
+      {expandedPrompt === target && <div className="chat-theme-border max-h-56 overflow-y-auto whitespace-pre-wrap break-words border-t px-4 py-3 text-xs leading-6 opacity-70">{value || empty}</div>}
+    </div>}
     {editing === target && error && <p role="alert" className="text-sm text-red-500">{error}</p>}
     {editing === target && <div className="flex justify-end gap-3"><button className={button} onClick={() => confirm(() => setEditing(null))}>取消</button><button className={`${button} font-medium`} onClick={() => {
       const current = useChatStore.getState().settings
@@ -143,14 +146,18 @@ export function ChatSettings(props: Props) {
             {row('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}
             {row('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}
           </div>
+          <div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">
+            {row('SP 与回复风格', () => confirm(() => setPanel('star')))}
+            {row('全局参数', () => confirm(() => setPanel('settings')))}
+          </div>
         </>}
         {panel === 'star' && <>
           <div role="tablist" aria-label="选择模型人设" className={`grid grid-cols-2 gap-1 rounded-2xl p-1 ${card}`}>
             {([['base', 'Opus 4.6'], ['opus55', 'Opus 5.5']] as const).map(([target, label]) => <button key={target} role="tab" aria-selected={promptTarget === target} onClick={() => confirm(() => setPromptTarget(target))} className={`rounded-xl px-3 py-2 text-sm ${promptTarget === target ? 'chat-theme-surface shadow-sm' : 'opacity-55'}`}>{label}</button>)}
           </div>
           {promptTarget === 'base'
-            ? <>{promptEditor('base', '现有人设（保持原样）', settings.systemPrompt, '尚未设置人设')}{promptEditor('style46', '星星本色（回复风格）', settings.ccOpus46OutputStyle, '未设置回复风格')}</>
-            : promptEditor('opus55', '专用人设（思考不显示）', settings.ccOpus55SystemPrompt, '将自动使用移除思考链要求后的现有人设')}
+            ? <>{promptEditor('base', '现有人设（保持原样）', settings.systemPrompt, '尚未设置人设', '修改后相关 CC 窗口会重建 session')}{promptEditor('style46', '星星本色（回复风格）', settings.ccOpus46OutputStyle, '未设置回复风格', '不改变 session')}</>
+            : promptEditor('opus55', '专用人设（思考不显示）', settings.ccOpus55SystemPrompt, '将自动使用移除思考链要求后的现有人设', '修改后相关 CC 窗口会重建 session')}
         </>}
         {panel === 'settings' && <>
           {slider('温度', settings.temperature, v => setSettings({ temperature: v }), 0, 2, .05, settings.temperature.toFixed(2))}

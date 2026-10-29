@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw, Bell, BellOff, HeartPulse, Flame, FileText, Dices, Leaf, MessageCircle } from 'lucide-react'
 import { WishlistView } from '@/components/wishlist/WishlistView'
 import { formatMadrid } from '@/lib/madrid-time'
+import { normalizeChatRoute } from '@/lib/chat-route'
 
 interface WakeLog {
   id: string
@@ -29,7 +30,7 @@ interface WakeLog {
 
 interface WakeConfig {
   enabled: boolean
-  sessionId: string | null
+  wakeSessionIds: string[]
   lastWakeAt: number
   lastActivityAt: number
   customPrompt?: string
@@ -38,7 +39,7 @@ interface WakeConfig {
   night: { enabled: boolean; intervalHours: number }
   random: { enabled: boolean; timesPerDay: number; day: string; times: number[] }
   inactivity: { enabled: boolean; afterHours: number; handledActivityAt: number }
-  warmCache: {
+  warmCaches: Record<string, {
     enabled: boolean
     observedCcAt: number
     lastAttemptAt: number
@@ -47,28 +48,16 @@ interface WakeConfig {
     cacheReadTokens?: number
     cacheCreationTokens?: number
     error?: string
-  }
-  opus55WarmCache: {
-    enabled: boolean
-    sessionId: string | null
-    observedCcAt: number
-    lastAttemptAt: number
-    lastSuccessAt: number
-    status: 'idle' | 'warmed' | 'busy' | 'cold' | 'miss' | 'failed' | 'no-session'
-    cacheReadTokens?: number
-    cacheCreationTokens?: number
-    error?: string
-  }
+  }>
 }
 
 interface NextWakeSchedule {
-  alarm: { at: number; note?: string } | null
+  alarm: { at: number; note?: string; sessionId?: string } | null
   day: number | null
   night: number | null
   random: number | null
   inactivity: number | null
-  warmCache: number | null
-  opus55WarmCache: number | null
+  warmCaches: Record<string, number | null>
   overall: number | null
 }
 
@@ -102,7 +91,7 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
   const n = theme === 'night'
   const { settings } = useChatStore()
   const sessions = getSortedSessions(settings)
-  const opus55Sessions = sessions.filter(session => session.ccModel === 'claude-opus-5-5')
+  const ccSessions = sessions.filter(session => normalizeChatRoute(session.generationRoute) === 'claude-code')
 
   const [tab, setTab] = useState<'reality' | 'dreams'>('reality')
   const [config, setConfig] = useState<WakeConfig | null>(null)
@@ -133,7 +122,7 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const updateRule = async (name: 'day' | 'night' | 'random' | 'inactivity' | 'warmCache' | 'opus55WarmCache', patch: Record<string, unknown>) => {
+  const updateRule = async (name: 'day' | 'night' | 'random' | 'inactivity', patch: Record<string, unknown>) => {
     if (!config) return
     const optimistic = { ...config, [name]: { ...config[name], ...patch } }
     setConfig(optimistic)
@@ -146,6 +135,25 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
       setConfig(data.config)
       setNextWake(data.next || null)
     } catch { setConfig(config) }
+  }
+
+  const updateSessionRule = async (kind: 'wakeSession' | 'warmCacheSession', sessionId: string, enabled: boolean) => {
+    if (!config) return
+    if (kind === 'wakeSession' && enabled && config.wakeSessionIds.some(id => id !== sessionId)
+      && !window.confirm('已有别的窗口开启唤醒。仍然让这个窗口也开启吗？')) return
+    const previous = config
+    setConfig({
+      ...config,
+      ...(kind === 'wakeSession'
+        ? { wakeSessionIds: enabled ? Array.from(new Set([...config.wakeSessionIds, sessionId])) : config.wakeSessionIds.filter(id => id !== sessionId) }
+        : { warmCaches: { ...config.warmCaches, [sessionId]: { ...(config.warmCaches[sessionId] || { observedCcAt: 0, lastAttemptAt: 0, lastSuccessAt: 0, status: 'idle' }), enabled } } }),
+    })
+    try {
+      const response = await fetch('/api/wake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [kind]: { sessionId, enabled } }) })
+      const data = await response.json()
+      if (!response.ok) throw new Error('save failed')
+      setConfig(data.config); setNextWake(data.next || null)
+    } catch { setConfig(previous) }
   }
 
   const urlBase64ToUint8Array = (base64String: string) => {
@@ -208,15 +216,6 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
       setPushStatus(d.sent ? `已发送 ${d.sent} 条` : `没有可用的订阅设备（订阅 ${d.subscriptions || 0}）`)
     } catch (err: any) { setPushStatus(err?.message || '测试发送失败') }
     setPushBusy(false)
-  }
-
-  const setSession = async (sessionId: string) => {
-    await fetch('/api/wake', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })
-    if (config) setConfig({ ...config, sessionId })
   }
 
   const savePrompt = async () => {
@@ -283,16 +282,22 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
                 {fixedTab && <button type="button" aria-label="刷新唤醒信息" onClick={fetchData} className={`rounded-lg p-2 opacity-50 hover:opacity-100 ${loading ? 'animate-spin' : ''}`}><RefreshCw size={14}/></button>}
               </div>
               <div className="space-y-1.5">
-                <label className={`text-[11px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>主对话框</label>
-                <select value={config?.sessionId || ''} onChange={(e) => setSession(e.target.value)} className={`w-full text-sm px-3 py-2 rounded-xl outline-none ${n ? 'bg-night-surface border-night-border text-night-text' : 'chat-dialog-field'}`}>
-                  <option value="">未选择</option>
-                  {sessions.map(s => <option key={s.id} value={s.id}>{s.title} ({s.messages.length}条)</option>)}
-                </select>
+                <p className={`text-[11px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>按窗口开启；多个窗口会依次唤醒。</p>
+                {sessions.map(session => {
+                  const enabled = !!config?.wakeSessionIds.includes(session.id)
+                  const model = normalizeChatRoute(session.generationRoute) === 'claude-code'
+                    ? session.ccModel === 'claude-opus-5-5' ? 'Opus 5.5' : 'Opus 4.6'
+                    : 'API'
+                  return <div key={session.id} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${n ? 'bg-night-surface' : 'chat-dialog-field'}`}>
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm">{session.title}</p><p className="text-[9px] opacity-40">{model}</p></div>
+                    <button role="switch" aria-checked={enabled} aria-label={`${session.title}唤醒${enabled ? '关闭' : '开启'}`} onClick={() => void updateSessionRule('wakeSession', session.id, !enabled)} className={`relative h-6 w-11 shrink-0 rounded-full transition ${enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-card' : 'bg-[#DBB9B3]/20'}`}><span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-5' : ''}`}/></button>
+                  </div>
+                })}
               </div>
               {config && (
                 <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                   {nextWake?.overall && <p className={n ? 'text-night-amber' : 'text-[#9c6e69]'}>最近一次预计唤醒：{fmtTime(nextWake.overall)}</p>}
-                  {nextWake?.alarm && <p>⏰ wake me：{fmtTime(nextWake.alarm.at)}{nextWake.alarm.note ? ` · ${nextWake.alarm.note}` : ''}</p>}
+                  {nextWake?.alarm && <p>wake me：{fmtTime(nextWake.alarm.at)}{nextWake.alarm.note ? ` · ${nextWake.alarm.note}` : ''}</p>}
                   {config.lastWakeAt > 0 && <p>上次醒来：{fmtRelative(config.lastWakeAt)}</p>}
                   <p>wake me 不受 30 分钟规则影响；如果届时正在调用，该闹钟直接取消。</p>
                 </div>
@@ -327,37 +332,20 @@ export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {
             </div>}
 
             {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div><h3 className="flex items-center gap-1.5 text-sm font-medium"><Flame size={14}/>CC 缓存保温</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>约 50 分钟时 fork 一条临时会话，回复不进聊天，不开工具。</p></div>
-                <button aria-label={`CC 缓存保温${config.warmCache.enabled ? '关闭' : '开启'}`} onClick={() => updateRule('warmCache', { enabled: !config.warmCache.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${config.warmCache.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20'}`}>
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${config.warmCache.enabled ? 'translate-x-5' : ''}`} />
-                </button>
+              <div><h3 className="flex items-center gap-1.5 text-sm font-medium"><Flame size={14}/>缓存保温</h3><p className={`mt-1 text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>每个 CC 窗口独立保温；约 50 分钟时 fork 临时会话，不写入聊天。</p></div>
+              <div className="space-y-1.5">
+                {ccSessions.map(session => {
+                  const setting = config.warmCaches[session.id]
+                  const enabled = !!setting?.enabled
+                  const status = setting ? { idle: '等待真实 CC 活动', warmed: '保温成功', busy: '正在回复，稍后再试', cold: '已冷却，等待真实消息', miss: '本次未命中', failed: '保温失败', 'no-session': '还没有可保温的 session' }[setting.status] : '尚未开启'
+                  const model = session.ccModel === 'claude-opus-5-5' ? 'Opus 5.5' : 'Opus 4.6'
+                  return <div key={session.id} className={`rounded-xl px-3 py-2 ${n ? 'bg-night-surface' : 'chat-dialog-field'}`}>
+                    <div className="flex items-center gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm">{session.title}</p><p className="text-[9px] opacity-40">{model} · {status}</p></div><button role="switch" aria-checked={enabled} aria-label={`${session.title}缓存保温${enabled ? '关闭' : '开启'}`} onClick={() => void updateSessionRule('warmCacheSession', session.id, !enabled)} className={`relative h-6 w-11 shrink-0 rounded-full transition ${enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-card' : 'bg-[#DBB9B3]/20'}`}><span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-5' : ''}`}/></button></div>
+                    {enabled && setting && <div className="mt-1 text-[9px] opacity-45">{nextWake?.warmCaches?.[session.id] ? `预计 ${fmtTime(nextWake.warmCaches[session.id]!)}` : ''}{setting.lastAttemptAt > 0 ? `${nextWake?.warmCaches?.[session.id] ? ' · ' : ''}上次 ${fmtRelative(setting.lastAttemptAt)} · 读 ${Math.round((setting.cacheReadTokens || 0) / 100) / 10}K · 写 ${Math.round((setting.cacheCreationTokens || 0) / 100) / 10}K` : ''}{setting.error ? ` · ${setting.error}` : ''}</div>}
+                  </div>
+                })}
+                {!ccSessions.length && <p className="py-3 text-center text-xs opacity-35">还没有 CC 窗口</p>}
               </div>
-              {config.warmCache.enabled && <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                <p className={n ? 'text-night-amber' : 'text-[#9c6e69]'}>状态：{{ idle: '等待下一次 CC 活动', warmed: '保温成功', busy: '星星正在回复，稍后再试', cold: '缓存已冷却，等下一条真实 CC 消息', miss: '本次没有命中缓存', failed: '保温失败', 'no-session': '这条对话还没有 CC session' }[config.warmCache.status]}</p>
-                {nextWake?.warmCache && <p>预计下次保温：{fmtTime(nextWake.warmCache)}</p>}
-                {config.warmCache.lastAttemptAt > 0 && <p>上次尝试：{fmtRelative(config.warmCache.lastAttemptAt)} · 读缓存 {Math.round((config.warmCache.cacheReadTokens || 0) / 100) / 10}K · 写缓存 {Math.round((config.warmCache.cacheCreationTokens || 0) / 100) / 10}K</p>}
-                {config.warmCache.error && <p className={n ? 'text-night-error' : 'text-red-600'}>{config.warmCache.error}</p>}
-              </div>}
-            </div>}
-
-            {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div><h3 className="flex items-center gap-1.5 text-sm font-medium"><Flame size={14}/>Opus 5.5 缓存保温</h3><p className={`text-[10px] mt-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>单独保温 5.5 测试窗，不占用主对话框的保温位置。</p></div>
-                <button aria-label={`Opus 5.5 缓存保温${config.opus55WarmCache.enabled ? '关闭' : '开启'}`} onClick={() => updateRule('opus55WarmCache', { enabled: !config.opus55WarmCache.enabled })} className={`relative w-11 h-6 rounded-full transition flex-shrink-0 ${config.opus55WarmCache.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20'}`}>
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${config.opus55WarmCache.enabled ? 'translate-x-5' : ''}`} />
-                </button>
-              </div>
-              <select value={config.opus55WarmCache.sessionId || ''} onChange={event => updateRule('opus55WarmCache', { sessionId: event.target.value || null })} className={`w-full text-sm px-3 py-2 rounded-xl outline-none ${n ? 'bg-night-surface border-night-border text-night-text' : 'chat-dialog-field'}`}>
-                <option value="">选择 5.5 测试窗</option>
-                {opus55Sessions.map(session => <option key={session.id} value={session.id}>{session.title} ({session.messages.length}条)</option>)}
-              </select>
-              {config.opus55WarmCache.enabled && <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                <p className={n ? 'text-night-amber' : 'text-[#9c6e69]'}>状态：{{ idle: config.opus55WarmCache.sessionId ? '等待下一次 5.5 活动' : '请先选择 5.5 测试窗', warmed: '保温成功', busy: '星星正在回复，稍后再试', cold: '缓存已冷却，等下一条真实 5.5 消息', miss: '本次没有命中缓存', failed: '保温失败', 'no-session': '测试窗还没有成功调用过 5.5' }[config.opus55WarmCache.status]}</p>
-                {nextWake?.opus55WarmCache && <p>预计下次保温：{fmtTime(nextWake.opus55WarmCache)}</p>}
-                {config.opus55WarmCache.lastAttemptAt > 0 && <p>上次尝试：{fmtRelative(config.opus55WarmCache.lastAttemptAt)} · 读缓存 {Math.round((config.opus55WarmCache.cacheReadTokens || 0) / 100) / 10}K · 写缓存 {Math.round((config.opus55WarmCache.cacheCreationTokens || 0) / 100) / 10}K</p>}
-                {config.opus55WarmCache.error && <p className={n ? 'text-night-error' : 'text-red-600'}>{config.opus55WarmCache.error}</p>}
-              </div>}
             </div>}
 
             <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
