@@ -7,7 +7,7 @@ import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Sun, MoreHorizontal,
-  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Paperclip, Clock3, Square, Dices, Heart,
+  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Paperclip, Clock3, Square, Dices, Heart, Radio, Flame,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -204,6 +204,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [windowSettingsOpen, setWindowSettingsOpen] = useState(false)
   const [contextWarning, setContextWarning] = useState<{ sessionId: string; level: 85 | 95 } | null>(null)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
+  const sessionActionsRef = useRef<HTMLDivElement | null>(null)
   const [wakeWindowConfig, setWakeWindowConfig] = useState<WakeWindowConfig>({ wakeSessionIds: [], warmCaches: {} })
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number; sessionId: string }[]>([])
   const [nosePokeBusy, setNosePokeBusy] = useState(false)
@@ -214,6 +215,15 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false)
   const [stickerVisit, setStickerVisit] = useState<StickerRef | null>(null)
   const clearStickerVisit = useCallback(() => setStickerVisit(null), [])
+
+  useEffect(() => {
+    if (!sessionActionsId) return
+    const closeOutside = (event: PointerEvent) => {
+      if (!sessionActionsRef.current?.contains(event.target as Node)) setSessionActionsId(null)
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    return () => document.removeEventListener('pointerdown', closeOutside)
+  }, [sessionActionsId])
   const {
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession, setSettings,
@@ -1423,7 +1433,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {n ? <Sun size={17} strokeWidth={1.45}/> : <Moon size={17} strokeWidth={1.45}/>}
           </motion.button>
         </div>
-        <section className="chat-theme-panel chat-theme-border rounded-xl border px-2.5 py-2">
+        <section className="chat-theme-soft rounded-xl px-2.5 py-2">
           <div className="flex items-center gap-2">
             <span className="w-5 shrink-0 text-center text-base leading-none">{weather?.updatedAt ? weatherEmoji(weather.code) : '📍'}</span>
             {weather?.updatedAt ? (
@@ -1465,12 +1475,16 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       {s.title}
                     </div>
                   )}
-                  <div className="text-xs opacity-40 mt-1 flex justify-between">
-                    <span>{s.messageCount || s.messages.length} 条消息{wakeWindowConfig.wakeSessionIds.includes(s.id) ? ' · 唤醒' : ''}{wakeWindowConfig.warmCaches[s.id]?.enabled ? ' · 保温' : ''}</span>
+                  <div className="mt-1 flex justify-between text-xs opacity-40">
+                    <span className="flex items-center gap-1.5">
+                      <span>{s.messageCount || s.messages.length}</span>
+                      <span title="唤醒" aria-label={wakeWindowConfig.wakeSessionIds.includes(s.id) ? '唤醒已开启' : '唤醒未开启'}><Radio aria-hidden="true" size={10} strokeWidth={1.7} className={wakeWindowConfig.wakeSessionIds.includes(s.id) ? 'opacity-80' : 'opacity-15'} /></span>
+                      <span title="保温" aria-label={wakeWindowConfig.warmCaches[s.id]?.enabled ? '保温已开启' : '保温未开启'}><Flame aria-hidden="true" size={10} strokeWidth={1.7} className={wakeWindowConfig.warmCaches[s.id]?.enabled ? 'opacity-80' : 'opacity-15'} /></span>
+                    </span>
                     <span>{fmtShortDate(s.updatedAt)}</span>
                   </div>
                 </div>
-                <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <div ref={sessionActionsId === s.id ? sessionActionsRef : undefined} className="relative" onClick={(e) => e.stopPropagation()}>
                   <button aria-label="会话操作" onClick={() => setSessionActionsId(current => current === s.id ? null : s.id)} className="chat-theme-icon rounded-full p-1.5 opacity-45 hover:opacity-100"><MoreHorizontal size={14}/></button>
                   {sessionActionsId === s.id && <div className="chat-theme-surface chat-theme-border absolute right-0 top-full z-20 mt-1 min-w-44 rounded-xl border py-1 shadow-lg">
                     <button onClick={() => { setActiveSession(s.id); setWindowSettingsOpen(true); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">本窗设置</button>
@@ -1492,31 +1506,22 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       </div>
       <div className="relative z-10 shrink-0 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
         <div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">
-        <section className="p-3">
-          <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
-            <span>CLAUDE 额度 · 订阅</span>
-            <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="chat-theme-icon -m-1 rounded-full p-1 hover:opacity-100 disabled:opacity-70">
+        <section className="relative p-3">
+            <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="chat-theme-icon absolute right-3 top-3 rounded-full p-1 hover:opacity-100 disabled:opacity-70">
               <RotateCcw size={13} className={ccRefreshing ? 'animate-spin' : ''} />
             </button>
-          </div>
           {ccStatus.quota.available && ccStatus.quota.fiveHour ? (
             <>
-              <div className="mt-1.5 flex items-end justify-between gap-2">
-                <div className="text-xl leading-none tabular-nums">余 {Math.max(0, Math.round(100 - ccStatus.quota.fiveHour.usedPercentage))}%</div>
-                <span className={`text-[10px] ${ccStatus.quota.stale ? 'opacity-45' : 'chat-theme-accent'}`}>
-                  {ccStatus.quota.stale ? '● 上次读数' : '● 已读取'}
-                </span>
-              </div>
-              <div className="mt-2 flex justify-between text-[10px] opacity-50">
-                <span>5 小时已用 {Math.round(ccStatus.quota.fiveHour.usedPercentage)}%{ccStatus.quota.fiveHour.requestCount != null ? ` · ${ccStatus.quota.fiveHour.requestCount} 次` : ''}</span>
-                <span>重置 {fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
+              <div className="flex items-baseline justify-between gap-2 pr-7">
+                <span className="text-base tabular-nums">{Math.round(ccStatus.quota.fiveHour.usedPercentage)}%{ccStatus.quota.fiveHour.requestCount != null ? ` · ${ccStatus.quota.fiveHour.requestCount} 次` : ''}</span>
+                <span className="text-[10px] opacity-45">{fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
               </div>
               <div className="chat-theme-soft mt-1.5 h-1 overflow-hidden rounded-full">
                 <div className="chat-theme-accent-bg h-full rounded-full" style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
               </div>
-              <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
-                <span>{ccStatus.quota.sevenDay ? `7 天剩余 ${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '7 天额度暂缺'}</span>
-                <span>{ccStatus.quota.sevenDay ? `重置 ${fmtMetricReset(ccStatus.quota.sevenDay.resetsAt)}` : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
+              <div className="mt-2.5 flex items-baseline justify-between gap-2">
+                <span className="text-base tabular-nums">{ccStatus.quota.sevenDay ? `${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '暂缺'}</span>
+                <span className="text-[10px] opacity-45">{ccStatus.quota.sevenDay ? fmtMetricReset(ccStatus.quota.sevenDay.resetsAt) : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
               </div>
             </>
           ) : (
@@ -1533,15 +1538,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         </section>
 
         <section className="chat-theme-border border-t p-3">
-          <div className="flex items-center justify-between text-[10px] tracking-[0.16em] opacity-55">
-            <span>CC CONTEXT · 当前对话</span>
-            <span className={ccStatus.context.available ? 'chat-theme-accent' : ''}>●</span>
-          </div>
           {ccStatus.context.available ? (
             <>
-              <div className="mt-1.5 text-xl leading-none tabular-nums">{fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</div>
+              <div className="text-xl leading-none tabular-nums">{fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</div>
               <div className="mt-2 flex justify-between text-[10px] opacity-50">
-                <span>上下文水位 · {ccStatus.context.usedPercentage ?? '—'}%</span>
+                <span>{ccStatus.context.usedPercentage ?? '—'}%</span>
                 <span>{fmtMetricTime(ccStatus.context.collectedAt)}</span>
               </div>
               <div className="chat-theme-soft mt-1.5 h-1 overflow-hidden rounded-full">
@@ -1549,7 +1550,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               </div>
               {currentContextLevel >= 70 && <div className={`mt-2 text-[10px] ${currentContextLevel === 95 ? 'text-red-500' : currentContextLevel >= 85 ? 'text-amber-600' : 'opacity-45'}`}>{currentContextLevel === 95 ? '接近上限 · 建议现在压缩' : currentContextLevel === 85 ? '建议近期压缩' : '已进入上下文后半程'}</div>}
               <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
-                <span>读缓存 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写缓存 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
+                <span>读 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
                 <span className="truncate">{ccStatus.context.model || ccStatus.model || 'CC'}</span>
               </div>
             </>
@@ -1560,14 +1561,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             </>
           )}
         </section>
-        <div className="chat-theme-border border-t">
-          <div className="grid grid-cols-4">
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-theme-hover chat-theme-border border-r py-2 text-[10px]">模型库</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className="chat-theme-hover chat-theme-border border-r py-2 text-[10px]">书签</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('wake') }} className="chat-theme-hover chat-theme-border border-r py-2 text-[10px]">唤醒</button>
-            <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className="chat-theme-hover py-2 text-[10px]">记忆</button>
-          </div>
         </div>
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-theme-soft chat-theme-hover rounded-xl py-2.5 text-[10px]">模型库</button>
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className="chat-theme-soft chat-theme-hover rounded-xl py-2.5 text-[10px]">书签</button>
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className="chat-theme-soft chat-theme-hover rounded-xl py-2.5 text-[10px]">记忆</button>
         </div>
       </div>
     </div>
