@@ -7,7 +7,7 @@ import { useApp } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, ChevronDown, ChevronLeft, ChevronRight, Menu, Moon, Sun, MoreHorizontal,
-  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Paperclip, Clock3, Square, Dices, Heart, Radio, Flame,
+  Plus, Pin, Trash2, Pencil, X, Copy, Check, RotateCcw, ImagePlus, Paperclip, Clock3, Square, Dices, Heart, Radio, Flame, MapPin,
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
@@ -1436,24 +1436,20 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         </div>
         <section className="chat-theme-soft rounded-xl px-2.5 py-2">
           <div className="flex items-center gap-2">
-            <span className="w-5 shrink-0 text-center text-base leading-none">{weather?.updatedAt ? weatherEmoji(weather.code) : '📍'}</span>
-            {weather?.updatedAt ? (
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-1.5 leading-none">
-                  <span className="shrink-0 text-base tabular-nums">{weather.temp == null ? '—' : `${Math.round(weather.temp)}°`}</span>
-                  <span className="min-w-0 truncate text-[11px] opacity-65">{weather.address || weather.city || '地址解析中'}</span>
-                </div>
-                <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[8px] opacity-40">
-                  <span className="min-w-0 truncate font-mono">{weather.lat.toFixed(2)}, {weather.lon.toFixed(2)}{weather.accuracy != null ? ` · ±${Math.round(weather.accuracy)}m` : ''}</span>
-                  <span className="shrink-0">{new Date(weather.updatedAt).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })}</span>
-                </div>
-              </div>
-            ) : (
-              <div className="min-w-0 flex-1 text-[11px] opacity-50">尚未定位</div>
-            )}
-            <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className="chat-theme-icon grid h-7 w-7 shrink-0 place-items-center rounded-full disabled:opacity-70">
-              <RotateCcw size={12} className={locationRefreshing ? 'animate-spin' : ''} />
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className="text-base leading-none">{weather?.updatedAt ? weatherEmoji(weather.code) : '·'}</span>
+              <span className="text-sm tabular-nums">{weather?.updatedAt && weather.temp != null ? `${Math.round(weather.temp)}°` : '—'}</span>
+            </div>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <MapPin aria-hidden="true" size={11} className="shrink-0 opacity-35" />
+              <span className="min-w-0 truncate text-[10px] opacity-60">{weather?.updatedAt ? weather.address || weather.city || '地址解析中' : '尚未定位'}</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              {weather?.updatedAt && <span className="text-[8px] tabular-nums opacity-35">{new Date(weather.updatedAt).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
+              <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className="chat-theme-icon grid h-7 w-7 place-items-center rounded-full disabled:opacity-70">
+                <RotateCcw size={12} className={locationRefreshing ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </div>
           {locationError && <div className="mt-1 pl-7 text-[8px] text-red-500/75">{locationError}</div>}
         </section>
@@ -1479,8 +1475,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <div className="mt-1 flex justify-between text-xs opacity-40">
                     <span className="flex items-center gap-1.5">
                       <span>{s.messageCount || s.messages.length}</span>
-                      <span title="唤醒" aria-label={wakeWindowConfig.wakeSessionIds.includes(s.id) ? '唤醒已开启' : '唤醒未开启'}><Radio aria-hidden="true" size={10} strokeWidth={1.7} className={wakeWindowConfig.wakeSessionIds.includes(s.id) ? 'opacity-80' : 'opacity-15'} /></span>
-                      <span title="保温" aria-label={wakeWindowConfig.warmCaches[s.id]?.enabled ? '保温已开启' : '保温未开启'}><Flame aria-hidden="true" size={10} strokeWidth={1.7} className={wakeWindowConfig.warmCaches[s.id]?.enabled ? 'opacity-80' : 'opacity-15'} /></span>
+                      {wakeWindowConfig.wakeSessionIds.includes(s.id) && <span title="唤醒" aria-label="唤醒已开启"><Radio aria-hidden="true" size={10} strokeWidth={1.7} /></span>}
+                      {wakeWindowConfig.warmCaches[s.id]?.enabled && <span title="保温" aria-label="保温已开启"><Flame aria-hidden="true" size={10} strokeWidth={1.7} /></span>}
                     </span>
                     <span>{fmtShortDate(s.updatedAt)}</span>
                   </div>
@@ -1507,61 +1503,49 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         })}
       </div>
       <div className="relative z-10 shrink-0 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-        <div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">
-        <section className="relative p-3">
-            <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="chat-theme-icon absolute right-3 top-3 rounded-full p-1 hover:opacity-100 disabled:opacity-70">
-              <RotateCcw size={13} className={ccRefreshing ? 'animate-spin' : ''} />
+        <div className="space-y-1.5">
+        <section className="chat-theme-soft rounded-xl px-2.5 py-2">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              {ccStatus.quota.available && ccStatus.quota.fiveHour ? (
+                <>
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="tabular-nums">{Math.round(ccStatus.quota.fiveHour.usedPercentage)}%{ccStatus.quota.fiveHour.requestCount != null ? ` · ${ccStatus.quota.fiveHour.requestCount} 次` : ''}</span>
+                    <span className="shrink-0 tabular-nums opacity-45">{fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
+                  </div>
+                  <div className="chat-theme-surface mt-1.5 h-1 overflow-hidden rounded-full">
+                    <div className="chat-theme-accent-bg h-full rounded-full" style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px]">
+                    <span className="tabular-nums">{ccStatus.quota.sevenDay ? `${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '暂缺'}</span>
+                    <span className="shrink-0 tabular-nums opacity-45">{ccStatus.quota.sevenDay ? fmtMetricReset(ccStatus.quota.sevenDay.resetsAt) : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
+                  </div>
+                </>
+              ) : <div className="flex justify-between text-[10px]"><span>暂不可读</span><span className={ccStatus.available ? 'opacity-45' : 'text-red-500'}>{ccStatus.available ? '线路在线' : '线路离线'}</span></div>}
+            </div>
+            <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="chat-theme-icon grid h-7 w-7 shrink-0 place-items-center rounded-full disabled:opacity-70">
+              <RotateCcw size={12} className={ccRefreshing ? 'animate-spin' : ''} />
             </button>
-          {ccStatus.quota.available && ccStatus.quota.fiveHour ? (
-            <>
-              <div className="flex items-baseline justify-between gap-2 pr-7">
-                <span className="text-base tabular-nums">{Math.round(ccStatus.quota.fiveHour.usedPercentage)}%{ccStatus.quota.fiveHour.requestCount != null ? ` · ${ccStatus.quota.fiveHour.requestCount} 次` : ''}</span>
-                <span className="text-[10px] opacity-45">{fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
-              </div>
-              <div className="chat-theme-soft mt-1.5 h-1 overflow-hidden rounded-full">
-                <div className="chat-theme-accent-bg h-full rounded-full" style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
-              </div>
-              <div className="mt-2.5 flex items-baseline justify-between gap-2">
-                <span className="text-base tabular-nums">{ccStatus.quota.sevenDay ? `${Math.max(0, Math.round(100 - ccStatus.quota.sevenDay.usedPercentage))}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '暂缺'}</span>
-                <span className="text-[10px] opacity-45">{ccStatus.quota.sevenDay ? fmtMetricReset(ccStatus.quota.sevenDay.resetsAt) : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mt-1.5 flex items-end justify-between gap-2">
-                <div className="text-xl leading-none">暂不可读</div>
-                <span className={`text-[10px] ${ccStatus.available ? 'chat-theme-accent' : 'text-red-500'}`}>
-                  {ccStatus.available ? '● 线路在线' : '● 线路离线'}
-                </span>
-              </div>
-              <div className="mt-2 text-[10px] leading-relaxed opacity-45">额度读取失败时不影响 CC 聊天；稍后点刷新重试。</div>
-            </>
-          )}
+          </div>
         </section>
 
-        <section className="chat-theme-border border-t p-3">
+        <section className="chat-theme-soft rounded-xl px-2.5 py-2 text-[10px]">
           {ccStatus.context.available ? (
             <>
-              <div className="text-xl leading-none tabular-nums">{fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</div>
-              <div className="mt-2 flex justify-between text-[10px] opacity-50">
-                <span>{ccStatus.context.usedPercentage ?? '—'}%</span>
-                <span>{fmtMetricTime(ccStatus.context.collectedAt)}</span>
+              <div className="flex items-center justify-between gap-2 tabular-nums">
+                <span>{fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</span>
+                <span className="opacity-45">{ccStatus.context.usedPercentage ?? '—'}% · {fmtMetricTime(ccStatus.context.collectedAt)}</span>
               </div>
-              <div className="chat-theme-soft mt-1.5 h-1 overflow-hidden rounded-full">
+              <div className="chat-theme-surface mt-1.5 h-1 overflow-hidden rounded-full">
                 <div className={`h-full rounded-full ${currentContextLevel === 95 ? 'bg-red-500' : currentContextLevel >= 85 ? 'bg-amber-500' : 'chat-theme-accent-bg'}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
               </div>
-              {currentContextLevel >= 70 && <div className={`mt-2 text-[10px] ${currentContextLevel === 95 ? 'text-red-500' : currentContextLevel >= 85 ? 'text-amber-600' : 'opacity-45'}`}>{currentContextLevel === 95 ? '接近上限 · 建议现在压缩' : currentContextLevel === 85 ? '建议近期压缩' : '已进入上下文后半程'}</div>}
-              <div className="mt-2 flex justify-between gap-2 text-[10px] opacity-45">
+              {currentContextLevel >= 85 && <div className={`mt-1.5 ${currentContextLevel === 95 ? 'text-red-500' : 'text-amber-600'}`}>{currentContextLevel === 95 ? '接近上限 · 建议现在压缩' : '建议近期压缩'}</div>}
+              <div className="mt-1.5 flex justify-between gap-2 opacity-45">
                 <span>读 {fmtTokens(ccStatus.context.cacheReadTokens)} · 写 {fmtTokens(ccStatus.context.cacheCreationTokens)}</span>
                 <span className="truncate">{ccStatus.context.model || ccStatus.model || 'CC'}</span>
               </div>
             </>
-          ) : (
-            <>
-              <div className="mt-1.5 text-xl leading-none">等待首条 CC 回复</div>
-              <div className="mt-2 text-[10px] opacity-45">这张卡只读取真实 session 用量，不估算。</div>
-            </>
-          )}
+          ) : <div className="opacity-45">等待首条 CC 回复</div>}
         </section>
         </div>
         <div className="mt-2 grid grid-cols-3 gap-1.5">
