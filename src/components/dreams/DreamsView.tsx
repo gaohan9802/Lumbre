@@ -86,11 +86,11 @@ const fmtRelative = (ts: number) => {
   return `${Math.floor(diff / 86400000)} 天前`
 }
 
-export function DreamsView({ fixedTab }: { fixedTab?: 'reality' | 'dreams' } = {}) {
+export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dreams'; sessionId?: string } = {}) {
   const { theme } = useTheme()
   const n = theme === 'night'
   const { settings } = useChatStore()
-  const sessions = getSortedSessions(settings)
+  const sessions = getSortedSessions(settings).filter(session => !sessionId || session.id === sessionId)
   const ccSessions = sessions.filter(session => normalizeChatRoute(session.generationRoute) === 'claude-code')
 
   const [tab, setTab] = useState<'reality' | 'dreams'>('reality')

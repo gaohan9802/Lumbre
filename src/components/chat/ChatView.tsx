@@ -204,6 +204,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [windowSettingsOpen, setWindowSettingsOpen] = useState(false)
   const [contextWarning, setContextWarning] = useState<{ sessionId: string; level: 85 | 95 } | null>(null)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
+  const [wakeDetailSessionId, setWakeDetailSessionId] = useState<string | null>(null)
   const sessionActionsRef = useRef<HTMLDivElement | null>(null)
   const [wakeWindowConfig, setWakeWindowConfig] = useState<WakeWindowConfig>({ wakeSessionIds: [], warmCaches: {} })
   const [nosePokes, setNosePokes] = useState<{ id: string; timestamp: number; sessionId: string }[]>([])
@@ -1491,6 +1492,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                     <button onClick={() => { setActiveSession(s.id); setSummaryDialogOpen(true); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">查看摘要</button>
                     <button disabled={isLoading || sendStarting} onClick={() => { continueSession(50, s.id); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs disabled:opacity-35">{isLoading || sendStarting ? '回复结束后可换窗' : '换窗'}</button>
                     <div className="chat-theme-border my-1 border-t" />
+                    <button onClick={() => { setActiveSession(s.id); setWakeDetailSessionId(s.id); setRoomPanel('wake'); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">唤醒详情</button>
                     <button onClick={() => void toggleWindowAutomation('wakeSession', s.id, !wakeWindowConfig.wakeSessionIds.includes(s.id))} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs"><span>自动唤醒</span><span className="opacity-45">{wakeWindowConfig.wakeSessionIds.includes(s.id) ? '开' : '关'}</span></button>
                     <button disabled={normalizeChatRoute(s.generationRoute) !== 'claude-code'} onClick={() => void toggleWindowAutomation('warmCacheSession', s.id, !wakeWindowConfig.warmCaches[s.id]?.enabled)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs disabled:opacity-30"><span>缓存保温</span><span className="opacity-45">{normalizeChatRoute(s.generationRoute) === 'claude-code' ? wakeWindowConfig.warmCaches[s.id]?.enabled ? '开' : '关' : '仅 CC'}</span></button>
                     <div className="chat-theme-border my-1 border-t" />
@@ -2100,7 +2102,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <header className="flex justify-end px-3 py-1">
                     <button type="button" aria-label="关闭" onClick={() => setRoomPanel(null)} className="rounded-full p-2 opacity-55 hover:opacity-100"><X size={18}/></button>
                   </header>
-                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'future' ? <FutureLetterView /> : roomPanel === 'dictionary' ? <FireDictionaryView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
+                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'future' ? <FutureLetterView /> : roomPanel === 'dictionary' ? <FireDictionaryView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" sessionId={wakeDetailSessionId || activeSession?.id} /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
                 </motion.section>
               </>
             )}
