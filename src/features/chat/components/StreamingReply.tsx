@@ -65,7 +65,7 @@ export function StreamingReply({
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
             return (
-              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className="chat-ai-bubble relative block w-full whitespace-pre-wrap break-words px-4 py-2 text-justify text-[14px] leading-relaxed [text-justify:inter-ideograph]">
+              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className="chat-ai-bubble relative block w-full whitespace-pre-wrap break-words px-4 py-2 text-justify text-[14px] leading-[1.52] tracking-[-0.015em] [text-justify:inter-ideograph]">
                 {block.content}{isLast && <span className="stream-cursor">…</span>}
               </motion.div>
             )

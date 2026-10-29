@@ -45,7 +45,6 @@ export function useChatViewState(sessionId: string) {
   const summaryAttemptRef = useRef('')
   const [stageSummaryGenerating, setStageSummaryGenerating] = useState(false)
   const stageAttemptRef = useRef('')
-  const [timelineOpen, setTimelineOpen] = useState(false)
   const [timelineCurrent, setTimelineCurrent] = useState<TimelineCurrent | null>(null)
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
@@ -65,7 +64,6 @@ export function useChatViewState(sessionId: string) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const imgInputRef = useRef<HTMLInputElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickBottomRef = useRef(true)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -83,7 +81,7 @@ export function useChatViewState(sessionId: string) {
     bookmarkDialogOpen, setBookmarkDialogOpen, summaryDialogOpen, setSummaryDialogOpen,
     summaryGenerating, setSummaryGenerating, summaryError, setSummaryError, summaryGeneratingRef, summaryAttemptRef,
     stageSummaryGenerating, setStageSummaryGenerating, stageAttemptRef,
-    timelineOpen, setTimelineOpen, timelineCurrent, setTimelineCurrent,
+    timelineCurrent, setTimelineCurrent,
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
     editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
@@ -91,7 +89,7 @@ export function useChatViewState(sessionId: string) {
     uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingAttachments, setPendingAttachments, pendingShare, setPendingShare, pendingSticker, setPendingSticker,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
-    messagesEndRef, inputRef, imgInputRef, fileInputRef, scrollRef, stickBottomRef, abortControllerRef,
+    messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,
     activeGenerationRef, explicitStopRef, recoveredTurnsRef, sendLockRef,
     ...confirm,
   }
