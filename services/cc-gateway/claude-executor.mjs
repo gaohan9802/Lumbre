@@ -33,6 +33,9 @@ const LUMBRE_MCP_CONFIG = JSON.stringify({ mcpServers: {
   },
 } })
 const STDERR_DIAGNOSTIC_LIMIT = 16 * 1024
+const OPUS_46_MODEL = 'claude-opus-4-6'
+const OPUS_46_FIXED_THINKING_TOKENS = '32000'
+const OPUS_46_FIXED_THINKING_TIMEOUT_MS = 600_000
 
 function sanitizeFailureDetail(value) {
   return String(value)
@@ -314,17 +317,27 @@ export class ClaudeExecutor {
         allowedTools: useToolBridge ? ['mcp__lumbre__*'] : undefined,
         maxTurns: useToolBridge ? 24 : undefined,
       })
-      const childEnv = toolEventFile ? {
+      const fixedThinking = model === OPUS_46_MODEL && effort === 'max'
+      const childEnv = {
         ...this.env,
-        LUMBRE_CC_TOOL_BRIDGE_URL: this.toolBridge.url,
-        LUMBRE_CC_TOOL_BRIDGE_SECRET: this.toolBridge.secret,
-        LUMBRE_CC_CONVERSATION_ID: conversationId,
-        LUMBRE_CC_TOOL_EVENT_FILE: toolEventFile,
-        LUMBRE_CC_MAX_TOOL_CALLS: String(this.toolBridge.maxCalls || 20),
-        LUMBRE_CC_TOOL_SOURCE: unattended ? 'unattended-wake' : 'chat',
-        LUMBRE_CC_CACHE_WARM: cacheWarm ? '1' : '0',
-        LUMBRE_CC_TOOL_DENY: toolCallsAllowed ? '0' : '1',
-      } : this.env
+        ...(fixedThinking ? {
+          CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: '1',
+          MAX_THINKING_TOKENS: OPUS_46_FIXED_THINKING_TOKENS,
+        } : {}),
+        ...(toolEventFile ? {
+          LUMBRE_CC_TOOL_BRIDGE_URL: this.toolBridge.url,
+          LUMBRE_CC_TOOL_BRIDGE_SECRET: this.toolBridge.secret,
+          LUMBRE_CC_CONVERSATION_ID: conversationId,
+          LUMBRE_CC_TOOL_EVENT_FILE: toolEventFile,
+          LUMBRE_CC_MAX_TOOL_CALLS: String(this.toolBridge.maxCalls || 20),
+          LUMBRE_CC_TOOL_SOURCE: unattended ? 'unattended-wake' : 'chat',
+          LUMBRE_CC_CACHE_WARM: cacheWarm ? '1' : '0',
+          LUMBRE_CC_TOOL_DENY: toolCallsAllowed ? '0' : '1',
+        } : {}),
+      }
+      const inactivityTimeoutMs = fixedThinking
+        ? Math.max(this.timeoutMs, OPUS_46_FIXED_THINKING_TIMEOUT_MS)
+        : this.timeoutMs
       const child = spawn(this.binary, args, {
         cwd: this.workspace,
         env: childEnv,
@@ -395,7 +408,7 @@ export class ClaudeExecutor {
       const refreshTimeout = () => {
         if (settled || stoppedFor) return
         clearTimeout(timeout)
-        timeout = setTimeout(() => stop('timeout'), this.timeoutMs)
+        timeout = setTimeout(() => stop('timeout'), inactivityTimeoutMs)
         timeout.unref()
       }
 

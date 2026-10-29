@@ -493,6 +493,46 @@ process.stdin.on('end', () => {
   }
 })
 
+test('Claude executor fixes Opus 4.6 max thinking at 32k without changing other model modes', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-opus46-thinking-'))
+  try {
+    const binary = path.join(root, 'fake-claude')
+    writeFileSync(binary, `#!/usr/bin/env node
+const fs = require('node:fs')
+fs.writeFileSync('observed-thinking.json', JSON.stringify(process.env))
+setTimeout(() => {
+  console.log(JSON.stringify({ type: 'result', result: 'ok', session_id: '550e8400-e29b-41d4-a716-446655440000', usage: { output_tokens: 1 } }))
+}, 80)
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+
+    const fixed = new ClaudeExecutor({
+      binary, workspace: root, timeoutMs: 20,
+      env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
+    })
+    await fixed.run({ prompt: 'hello', model: 'claude-opus-4-6', effort: 'max' })
+    let observed = JSON.parse(readFileSync(path.join(root, 'observed-thinking.json'), 'utf8'))
+    assert.equal(observed.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING, '1')
+    assert.equal(observed.MAX_THINKING_TOKENS, '32000')
+
+    const adaptive = new ClaudeExecutor({
+      binary, workspace: root, timeoutMs: 500,
+      env: { PATH: process.env.PATH || '', HOME: root, CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth' },
+    })
+    await adaptive.run({ prompt: 'hello', model: 'claude-opus-5-5', effort: 'max' })
+    observed = JSON.parse(readFileSync(path.join(root, 'observed-thinking.json'), 'utf8'))
+    assert.equal(observed.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING, undefined)
+    assert.equal(observed.MAX_THINKING_TOKENS, undefined)
+
+    await adaptive.run({ prompt: 'hello', model: 'claude-opus-4-6', effort: 'high' })
+    observed = JSON.parse(readFileSync(path.join(root, 'observed-thinking.json'), 'utf8'))
+    assert.equal(observed.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING, undefined)
+    assert.equal(observed.MAX_THINKING_TOKENS, undefined)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('Claude executor records a compact boundary from its isolated session transcript', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-compact-detect-'))
   try {
