@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { compactLocationParts } from '@/lib/weather-location'
 import { getUserContext, updateUserContext } from '@/server/agent/tools/user-context'
 
 function responseOf(ctx: ReturnType<typeof getUserContext>) {
-  return { ...ctx, code: ctx.weatherCode ?? 0 }
+  const street = [ctx.road, ctx.houseNumber].filter(Boolean).join(' ')
+  const area = [ctx.region, ctx.city].filter(Boolean).join(' · ')
+  return { ...ctx, displayAddress: ctx.displayAddress || [street, area].filter(Boolean).join('\n'), code: ctx.weatherCode ?? 0 }
 }
 
 export async function GET() {
@@ -20,10 +23,10 @@ export async function POST(req: NextRequest) {
     }
     const [wRes, gRes, nRes] = await Promise.all([
       fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`),
-      fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=zh`),
+      fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=es`),
       // OpenStreetMap Nominatim: street-level reverse geocode (road + house number).
       // Free, no key; requires a descriptive User-Agent.
-      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=zh`, {
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=es`, {
         headers: { 'User-Agent': 'Lumbre/1.0 (https://lumbre.zeabur.app)' },
       }).catch(() => null),
     ])
@@ -34,15 +37,11 @@ export async function POST(req: NextRequest) {
     const temp = w?.current?.temperature_2m ?? null
     const code = w?.current?.weather_code ?? 0
 
-    const na = nom?.address || {}
-    const road = na.road || na.pedestrian || na.footway || na.neighbourhood || ''
-    const houseNumber = na.house_number || ''
-    const city = na.city || na.town || na.village || na.county
-      || g?.city || g?.locality || g?.principalSubdivision || ''
+    const { road, houseNumber, city, region, displayAddress } = compactLocationParts(nom?.address || {}, g)
     const address = nom?.display_name || [road, houseNumber, city].filter(Boolean).join(' ') || ''
 
     // Cache for AI tools
-    const saved = updateUserContext({ lat, lon, accuracy, temp, weatherCode: code, city, road, houseNumber, address })
+    const saved = updateUserContext({ lat, lon, accuracy, temp, weatherCode: code, city, region, road, houseNumber, address, displayAddress })
     return NextResponse.json(responseOf(saved))
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })

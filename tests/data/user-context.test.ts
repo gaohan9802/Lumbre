@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test, { after, before } from 'node:test'
 import { NextRequest } from 'next/server'
+import { compactLocationParts } from '../../src/lib/weather-location'
 
 const root = mkdtempSync(path.join(tmpdir(), 'lumbre-user-context-'))
 process.env.DATA_DIR = root
@@ -42,6 +43,19 @@ test('invalid coordinates never replace the saved snapshot', () => {
   const before = context.getUserContext()
   assert.throws(() => context.updateUserContext({ lat: 91, lon: 0 }), /Invalid user location context/)
   assert.deepEqual(context.getUserContext(), before)
+})
+
+test('weather display address keeps only one Spanish street, region, and city', () => {
+  const compact = compactLocationParts({
+    house_number: '18',
+    road: 'Calle Costa del Sol',
+    city: 'Málaga',
+    state: 'Andalucía',
+    postcode: '29004',
+    country: 'España',
+  })
+  assert.equal(compact.displayAddress, 'Calle Costa del Sol 18\nAndalucía · Málaga')
+  assert.doesNotMatch(compact.displayAddress, /29004|España/)
 })
 
 test('weather endpoint exposes the exact shared snapshot and rejects bad GPS', async () => {

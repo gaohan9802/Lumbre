@@ -9,9 +9,11 @@ export interface UserContextSnapshot {
   temp?: number | null
   weatherCode?: number
   city?: string
+  region?: string
   road?: string
   houseNumber?: string
   address?: string
+  displayAddress?: string
   updatedAt: number
 }
 

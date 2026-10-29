@@ -20,9 +20,11 @@ export interface WeatherInfo {
   lat: number
   lon: number
   accuracy?: number
+  region?: string
   road?: string
   houseNumber?: string
   address?: string
+  displayAddress?: string
   updatedAt: number
 }
 
@@ -129,7 +131,7 @@ export function useWeather() {
         const currentRes = await fetch('/api/weather', { cache: 'no-store' })
         const current = currentRes.ok ? await currentRes.json() as WeatherInfo : null
         if (current?.updatedAt) setData(current)
-        if (!force && current?.updatedAt && Date.now() - current.updatedAt < maxAgeMs) return current
+        if (!force && current?.updatedAt && current.displayAddress && Date.now() - current.updatedAt < maxAgeMs) return current
         if (typeof navigator === 'undefined' || !navigator.geolocation) throw new Error('这台设备不支持定位')
 
         const pos = await bestPosition()
