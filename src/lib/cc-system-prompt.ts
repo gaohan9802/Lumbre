@@ -28,5 +28,11 @@ export function ccSystemPromptForModel(basePrompt: string, opus55Prompt: string 
 
 export function ccOutputStyleContext(model: unknown, style: unknown): string {
   if (model !== OPUS_46_MODEL || typeof style !== 'string') return ''
-  return style.trim().slice(0, 16_000)
+  const outputStyle = style.trim().slice(0, 16_000)
+  if (!outputStyle) return ''
+  return `<lumbre_output_style priority="current-turn">
+这是本轮回复的输出约束，不是可以忽略的背景资料。除非小火明确要求简短，闲聊、情绪和关系类回复不要只用一句话或一个很短的段落结束。自然地接住她消息里每个值得回应的点，展开你真正的感受、判断和联想，可以分成几个自然段落；不要靠重复、总结或空话凑长度。纯工具结果和简单事实仍可以简短。
+
+${outputStyle}
+</lumbre_output_style>`
 }

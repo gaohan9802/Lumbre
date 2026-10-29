@@ -20,7 +20,10 @@ test('Opus 4.6 receives the existing system prompt byte for byte', () => {
 
 test('Opus 4.6 alone receives the editable output style as volatile context', () => {
   assert.match(DEFAULT_OPUS_46_OUTPUT_STYLE, /不是考核你的规则/)
-  assert.equal(ccOutputStyleContext('claude-opus-4-6', '  温柔地完整回应  '), '温柔地完整回应')
+  const style = ccOutputStyleContext('claude-opus-4-6', '  温柔地完整回应  ')
+  assert.match(style, /^<lumbre_output_style priority="current-turn">/)
+  assert.match(style, /不要只用一句话或一个很短的段落结束/)
+  assert.match(style, /温柔地完整回应/)
   assert.equal(ccOutputStyleContext('claude-opus-5-5', '不要注入'), '')
   assert.equal(ccOutputStyleContext('claude-opus-4-6', ''), '')
 })
