@@ -14,8 +14,8 @@ export const EXTERNAL_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'fetch_markdown', domain: 'web', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'fetch_html', domain: 'web', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'fetch_json', domain: 'web', level: 'green', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'cedar_list_games', domain: 'games', level: 'green', allowedSources: ['chat', 'user-confirmed'] },
-  { name: 'cedar_get_guide', domain: 'games', level: 'green', allowedSources: ['chat', 'user-confirmed'] },
-  { name: 'cedar_play', domain: 'games', level: 'yellow', allowedSources: ['chat', 'user-confirmed'] },
-  { name: 'cedar_account', domain: 'games', level: 'yellow', allowedSources: ['chat', 'user-confirmed'], resolveLevel: input => input.action === 'delete_save' ? 'red' : 'yellow', confirmationLabel: '删除 CedarToy 存档' },
+  { name: 'cedar_list_games', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'cedar_get_guide', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'cedar_play', domain: 'games', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'cedar_account', domain: 'games', level: 'yellow', allowedSources: ALL_SAFE_SOURCES, resolveLevel: input => input.action === 'delete_save' ? 'red' : 'yellow', confirmationLabel: '删除 CedarToy 存档' },
 ]

@@ -6,7 +6,7 @@
  *
  * Interval wakes wait until the conversation has been quiet for 30 minutes.
  * Explicit wake_me alarms bypass that cooldown and fire at their requested time.
- * Each wake is limited to 3 tool calls and records a structured action digest.
+ * Each wake is limited to 5 tool calls and records a structured action digest.
  *
  * Runs as setInterval in the Next.js process. Logs stored to /persistent/wake-logs.json.
  */
@@ -41,7 +41,7 @@ const HOUR_MS = 60 * 60 * 1000
 const WARM_AFTER_MS = 50 * 60 * 1000
 const WARM_EXPIRES_MS = 60 * 60 * 1000
 
-const MAX_WAKE_TOOL_CALLS = 3
+const MAX_WAKE_TOOL_CALLS = 5
 
 export interface WakeDigest {
   tools: Array<{ name: string; target?: string; fingerprint: string }>

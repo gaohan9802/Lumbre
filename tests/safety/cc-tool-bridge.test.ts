@@ -118,6 +118,8 @@ test('unattended CC wakes can execute the full registered Lumbre tool set', asyn
   assert.equal(tools.some((tool: any) => tool.name === 'update_diary'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'delete_note'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'send_email'), true)
+  assert.equal(tools.some((tool: any) => tool.name === 'cedar_play'), true)
+  assert.equal(tools.some((tool: any) => tool.name === 'cedar_account'), true)
 
   const diary = notes.writeDiary({
     date: '2026-09-19', author: 'star', title: 'wake fixture', content: 'before', visibility: 'public',
