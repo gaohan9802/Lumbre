@@ -27,6 +27,7 @@ interface Props {
   onMedia?: () => void
   onEnergy?: () => void
   onFavorites?: () => void
+  onGames?: () => void
 }
 
 export function ChatSettings(props: Props) {
@@ -143,6 +144,7 @@ export function ChatSettings(props: Props) {
             {row('小火辞典', () => openRoom('dictionary', props.onDictionary), roomUnread.dictionary)}
             {row('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}
             {row('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}
+            {row('小游戏', () => navigate(props.onGames))}
           </div>
           <div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">
             {row('SP 与回复风格', () => confirm(() => setPanel('star')))}

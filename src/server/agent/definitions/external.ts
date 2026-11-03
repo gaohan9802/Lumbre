@@ -192,5 +192,47 @@ export const EXTERNAL_TOOL_DEFINITIONS = [
         "url"
       ]
     }
+  },
+  {
+    "name": "cedar_list_games",
+    "description": "看看 CedarToy 游戏厅现在有哪些游戏。想自己挑游戏时先用它；第一次玩某个游戏前，再调用 cedar_get_guide。",
+    "input_schema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "cedar_get_guide",
+    "description": "阅读某个 CedarToy 游戏的完整玩法和可用 action。第一次玩或不确定参数时必须先读说明。",
+    "input_schema": {
+      "type": "object",
+      "properties": { "game": { "type": "string", "description": "cedar_list_games 返回的游戏名" } },
+      "required": ["game"]
+    }
+  },
+  {
+    "name": "cedar_play",
+    "description": "在 CedarToy 玩一回合。game、action 和 params 必须照 cedar_get_guide 返回的说明填写。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "game": { "type": "string", "description": "游戏名" },
+        "action": { "type": "string", "description": "本回合操作" },
+        "params": { "type": "object", "description": "玩法说明要求的参数，可含存档槽 slot 1–5" }
+      },
+      "required": ["game", "action"]
+    }
+  },
+  {
+    "name": "cedar_account",
+    "description": "查看 CedarToy 账号、绑定和存档，或生成给小火使用的绑定码、换头像、删除指定存档。注册、登录、改密码和换 Token 不会在这里开放；删除存档前会请小火确认。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["get_profile", "get_bindings", "my_saves", "generate_binding_token", "set_avatar", "delete_save"] },
+        "avatar": { "type": "string", "description": "1–16 个字符" },
+        "game": { "type": "string", "description": "删除存档时填写" },
+        "slot": { "type": "integer", "minimum": 1, "maximum": 5, "description": "删除存档时填写" },
+        "confirm": { "type": "boolean", "description": "删除存档时按玩法说明填写" }
+      },
+      "required": ["action"]
+    }
   }
 ] satisfies ToolDef[]

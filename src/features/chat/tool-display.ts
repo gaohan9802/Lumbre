@@ -121,6 +121,10 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   write_media_note: '写下了一则书影笔记',
   comment_media_event: '回应了一条书影动态',
   delete_media_content: '删除了自己的书影内容',
+  cedar_list_games: '在游戏厅逛了逛',
+  cedar_get_guide: '翻开了玩法说明',
+  cedar_play: '玩了一回合',
+  cedar_account: '整理了游戏存档',
 }
 
 let toolDisplayOverrides: Record<string, string> = {}

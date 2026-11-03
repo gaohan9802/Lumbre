@@ -26,9 +26,9 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 122)
-  assert.equal(registry.ALL_TOOLS.length, 122)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 122)
+  assert.equal(registry.registeredToolCount(), 126)
+  assert.equal(registry.ALL_TOOLS.length, 126)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 126)
   for (const removed of ['write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline']) {
     assert.equal(registry.ALL_TOOLS.some(tool => tool.name === removed), false, removed)
   }
@@ -38,7 +38,7 @@ test('all legacy tool contracts have exactly one policy registration', () => {
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_energy_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-17).map(tool => tool.name), ['read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message', 'write_opening_message', 'clear_opening_message', 'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph', 'read_fire_dictionary', 'create_fire_dictionary_entry', 'update_fire_dictionary_entry', 'delete_fire_dictionary_entry', 'list_stickers', 'send_sticker', 'search_summaries', 'read_summary'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-4).map(tool => tool.name), ['cedar_list_games', 'cedar_get_guide', 'cedar_play', 'cedar_account'])
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
 
@@ -59,6 +59,8 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   const writeDictionary = registry.getRegisteredTool('create_fire_dictionary_entry')!
   const deleteDictionary = registry.getRegisteredTool('delete_fire_dictionary_entry')!
   const sendSticker = registry.getRegisteredTool('send_sticker')!
+  const cedarPlay = registry.getRegisteredTool('cedar_play')!
+  const cedarAccount = registry.getRegisteredTool('cedar_account')!
 
   assert.deepEqual(policy.evaluateToolPolicy(read, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(write, {}, chat), { allowed: true, level: 'yellow' })
@@ -76,6 +78,9 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.deepEqual(policy.evaluateToolPolicy(writeDictionary, {}, chat), { allowed: true, level: 'yellow' })
   assert.equal(policy.evaluateToolPolicy(deleteDictionary, {}, chat).requiresConfirmation, true)
   assert.deepEqual(policy.evaluateToolPolicy(sendSticker, {}, chat), { allowed: true, level: 'green' })
+  assert.deepEqual(policy.evaluateToolPolicy(cedarPlay, {}, chat), { allowed: true, level: 'yellow' })
+  assert.equal(policy.evaluateToolPolicy(cedarAccount, { action: 'delete_save' }, chat).requiresConfirmation, true)
+  assert.equal(policy.evaluateToolPolicy(cedarPlay, {}, wake).allowed, false)
 })
 
 test('Sticker tools list the catalog, reject unknown ids and normalize optional fields', async () => {
@@ -87,15 +92,16 @@ test('Sticker tools list the catalog, reject unknown ids and normalize optional 
   assert.match(await executor.executeTool('send_sticker', { sticker_id: 'not-real' }, context), /未知的表情/)
 })
 
-test('unattended wake receives every registered Lumbre tool including destructive actions', () => {
+test('unattended wake receives every registered home tool but not interactive CedarToy games', () => {
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake' })
   const names = registry.toolsForContext(wake).map(tool => tool.name)
-  assert.equal(names.length, registry.registeredToolCount())
+  assert.equal(names.length, registry.registeredToolCount() - 4)
   for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'read_health_summary', 'read_energy_summary', 'delete_energy_entry', 'save_pantry_item', 'save_grocery_item', 'delete_grocery_item', 'save_energy_goal', 'delete_energy_goal', 'set_password', 'confirm_void_coupon', 'bite_otter_nape']) {
     assert.equal(names.includes(allowed), true, allowed)
   }
   const trace = registry.toolsForContext(wake).find(tool => tool.name === 'trace')!
   assert.equal('delete' in trace.input_schema.properties, true)
+  assert.equal(names.some(name => name.startsWith('cedar_')), false)
 })
 
 test('red tools issue single-use, actor-and-session-bound confirmations', async () => {

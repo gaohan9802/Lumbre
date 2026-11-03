@@ -56,6 +56,7 @@ import { createFireDictionaryEntry, deleteFireDictionaryEntry, readFireDictionar
 import { findStickers, sticker } from '@/lib/stickers'
 import { readSummaryArchiveEntry, searchSummaryArchive } from './summary-archive'
 import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
+import { executeCedarToyTool } from './cedartoy'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -93,6 +94,8 @@ export async function executeRegisteredToolHandler(
     if (BRAIN_TOOLS.has(name)) {
       return executeMemoryTool(name, input)
     }
+
+    if (name.startsWith('cedar_')) return await executeCedarToyTool(name, input)
 
     if (name === 'recall_memory') {
       const limit = Math.min(10, Number(input.limit) || 5)

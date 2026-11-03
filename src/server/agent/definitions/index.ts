@@ -42,6 +42,7 @@ const TOOL_ORDER = [
   'read_fire_dictionary', 'create_fire_dictionary_entry', 'update_fire_dictionary_entry', 'delete_fire_dictionary_entry',
   'list_stickers', 'send_sticker',
   'search_summaries', 'read_summary',
+  'cedar_list_games', 'cedar_get_guide', 'cedar_play', 'cedar_account',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))
