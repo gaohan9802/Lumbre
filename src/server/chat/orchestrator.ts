@@ -60,7 +60,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【星野手记】read_research · write_research；你可以自主建立领域、标签和课题，用 search_web 搜集资料，并区分自己的想法、问题、资料和发现。`
 
 const MAX_CHAT_TOOL_CALLS = 20
-const MAX_WAKE_TOOL_CALLS = 5
+const MAX_WAKE_TOOL_CALLS = 10
 
 function toolLimit(requested: number | undefined, unattendedWake: boolean): number {
   const hardLimit = unattendedWake ? MAX_WAKE_TOOL_CALLS : MAX_CHAT_TOOL_CALLS
