@@ -11,9 +11,9 @@ import {
 } from 'lucide-react'
 import {
   useChatStore, ChatMessage, MessageVersion, ContentBlock, snapshotOfMessage,
-  getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks, ChatSummary, StageSummary,
+  getActiveProfile, getEnabledModels, getSortedSessions, getTriggeredBookmarks,
 } from '@/lib/chatStore'
-import { apiRequest, pencilDrawings as pencilDrawingsApi, photos as photosApi } from '@/lib/api'
+import { apiRequest, pencilDrawings as pencilDrawingsApi, photos as photosApi, toolbox as toolboxApi } from '@/lib/api'
 import { compressImage } from '@/lib/image'
 import type { SharedCard } from '@/lib/share'
 import { ChatSettings, type ChatSettingsPanel } from './ChatSettings'
@@ -25,15 +25,13 @@ import { ChatWindowSettings } from './ChatWindowSettings'
 import { MessageReceiptDialog } from './MessageReceiptDialog'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid, madridDateKey, madridDayBounds } from '@/lib/madrid-time'
-import { buildSummaryRounds, selectLoadedSessionSummarySegment } from '@/lib/chat-summary'
 import { chatApi, type CcStatus } from '@/features/chat/api/client'
 import { readChatEventStream } from '@/features/chat/api/event-stream'
-import { timeline as timelineApi } from '@/lib/api'
 import { loadEarlierChat, syncChatNow } from '@/features/chat/sync/ChatSync'
 import { flushChatOutbox, queueChatAppend } from '@/features/chat/sync/outbox'
 import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatViewState'
 import { prepareChatMessage, type PencilDrawingResult } from '@/features/chat/view/prepareChatMessage'
-import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
+import { setToolDisplayLabelOverrides, toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
 import { ThinkingDrawer } from '@/features/chat/components/ThinkingDrawer'
 import { ThinkingBubbles } from '@/features/chat/components/ThinkingBubbles'
@@ -53,7 +51,6 @@ import { TodoView } from '@/components/todo/TodoView'
 import { useWeather, weatherEmoji } from '@/lib/useWeather'
 import dynamic from 'next/dynamic'
 
-const TimelineView = dynamic(() => import('@/components/timeline/TimelineView').then(module => module.TimelineView), { ssr: false })
 const TesisView = dynamic(() => import('@/components/tesis/TesisView').then(module => module.TesisView), { ssr: false })
 const NotesView = dynamic(() => import('@/components/notes/NotesView').then(module => module.NotesView), { ssr: false })
 const DiaryView = dynamic(() => import('@/components/diary/DiaryView').then(module => module.DiaryView), { ssr: false })
@@ -69,9 +66,10 @@ const MemoryView = dynamic(() => import('@/components/memory/MemoryView').then(m
 const FavoritesView = dynamic(() => import('@/components/favorites/FavoritesView').then(module => module.FavoritesView), { ssr: false })
 const FutureLetterView = dynamic(() => import('@/components/future-letter/FutureLetterView').then(module => module.FutureLetterView), { ssr: false })
 const FireDictionaryView = dynamic(() => import('@/components/dictionary/FireDictionaryView').then(module => module.FireDictionaryView), { ssr: false })
+const ToolboxView = dynamic(() => import('@/components/tools/ToolboxView').then(module => module.ToolboxView), { ssr: false })
 
-type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'future' | 'dictionary' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'energy' | 'timeline' | 'tesis'
-const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', future: '醒来以后', dictionary: '小火辞典', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', energy: '能量手账', timeline: 'Timeline', tesis: 'Tesis' }
+type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'future' | 'dictionary' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'energy' | 'tesis' | 'toolbox'
+const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', future: '醒来以后', dictionary: '小火辞典', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', energy: '能量手账', tesis: 'Tesis', toolbox: '工具箱' }
 
 interface FavoriteSourceItem {
   kind: 'memory' | 'diary' | 'chat'
@@ -221,7 +219,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     messages, settings,
     addMessage, updateMessage, createSession, setActiveSession, setSettings,
     renameSession, deleteSession, togglePinSession,
-    setGenerationRoute, setCcModel, setWindowConfig, setCcContextState, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession, addSummary, updateSummary, addStageSummary, updateStageSummary,
+    setGenerationRoute, setCcModel, setWindowConfig, setCcContextState, deleteMessage, addMessageVersion, switchMessageVersion, deleteMessageVersion, continueSession,
   } = useChatStore()
   const enabledModels = getEnabledModels(settings)
   const sessions = getSortedSessions(settings)
@@ -240,6 +238,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const currentContextLevel = ccContextLevel(ccStatus.context.usedPercentage)
   const [receiptMessage, setReceiptMessage] = useState<ChatMessage | null>(null)
   const [ccRecoveryTick, setCcRecoveryTick] = useState(0)
+  const [, setToolLabelRevision] = useState(0)
   const bottomedSessionRef = useRef<string | null>(null)
   const footerRef = useRef<HTMLDivElement>(null)
   const [footerInset, setFooterInset] = useState(112)
@@ -250,9 +249,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     expandedTools, setExpandedTools,
     settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
     bookmarkDialogOpen, setBookmarkDialogOpen, summaryDialogOpen, setSummaryDialogOpen,
-    summaryGenerating, setSummaryGenerating, summaryError, setSummaryError, summaryGeneratingRef, summaryAttemptRef,
-    stageSummaryGenerating, setStageSummaryGenerating, stageAttemptRef,
-    timelineCurrent, setTimelineCurrent,
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
     editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
@@ -266,6 +262,18 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   } = useChatViewState(settings.activeSessionId || '__new__')
 
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    let current = true
+    const refreshLabels = () => toolboxApi.list().then(snapshot => {
+      if (!current) return
+      setToolDisplayLabelOverrides(Object.fromEntries(snapshot.tools.map((tool: any) => [tool.name, tool.displayLabel])))
+      setToolLabelRevision(value => value + 1)
+    }).catch(() => {})
+    const updated = () => setToolLabelRevision(value => value + 1)
+    void refreshLabels()
+    window.addEventListener('lumbre-tool-labels-updated', updated)
+    return () => { current = false; window.removeEventListener('lumbre-tool-labels-updated', updated) }
+  }, [])
   useEffect(() => {
     if (thinkingDrawer?.id !== 'stream') return
     const parts = streamBlocks
@@ -454,10 +462,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     // incoming wake messages must not pull the UI away from their choice.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  const refreshTimelineCurrent = useCallback(async () => {
-    try { const data = await timelineApi.current(); setTimelineCurrent(data.current || null) } catch {}
-  }, [])
-  useEffect(() => { refreshTimelineCurrent(); const t = setInterval(refreshTimelineCurrent, 30000); return () => clearInterval(t) }, [refreshTimelineCurrent])
   // Lazy-load: only render the most recent messages to keep the window snappy.
   useEffect(() => { setVisibleCount(CHAT_PAGE_SIZE) }, [settings.activeSessionId, setVisibleCount])
   const hiddenCount = Math.max(0, messages.length - visibleCount)
@@ -689,20 +693,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       ? ccSystemPromptForModel(basePrompt, windowPrompt || settings.ccOpus55SystemPrompt, effectiveCcModel)
       : basePrompt) || undefined
     const readingInjection = contextInjection.trim()
-    const statusInjection = timelineCurrent ? `[小火当前状态]\n正在做：${timelineCurrent.title}\n已持续：${Math.max(1, Math.floor((Date.now() - new Date(timelineCurrent.start_at).getTime()) / 60000))}分钟${timelineCurrent.tags?.length ? `\n标签：${timelineCurrent.tags.join('、')}` : ''}${timelineCurrent.note ? `\n开始备注：${timelineCurrent.note}` : ''}` : ''
-    const summaryConfig = activeSession?.summaryConfig || { injectCount: settings.summaryInjectCount }
-    const recentSummaries = [...(activeSession?.summaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, summaryConfig.injectCount).reverse()
-    const recentStages = [...(activeSession?.stageSummaries || [])].sort((a, b) => b.endAt - a.endAt).slice(0, 2).reverse()
-    const summaryInjection = recentSummaries.length || recentStages.length ? `[长期对话摘要｜马德里时间]\n${recentStages.map((item, i) => `阶段摘要${i + 1}（${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}）\n${item.title}\n${item.content}`).join('\n\n---\n\n')}${recentStages.length && recentSummaries.length ? '\n\n=== 最近细节 ===\n\n' : ''}${recentSummaries.map((item, i) => `记忆${i + 1}（${fmtFullTs(item.startAt)} - ${fmtFullTs(item.endAt)}）\n${item.eventSummary}`).join('\n\n---\n\n')}` : ''
     const memoryInjection = [
       bookmarkBlock(persistentBookmarks.filter(bookmark => bookmark.position === 'start')),
-      summaryInjection,
       bookmarkBlock(persistentBookmarks.filter(bookmark => bookmark.position === 'end')),
     ].filter(Boolean).join('\n\n')
     const clientVolatileContext = [
       bookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'start')),
       readingInjection,
-      statusInjection,
       bookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'end')),
     ].filter(Boolean).join('\n\n')
 
@@ -923,142 +920,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       explicitStopRef.current = false
     }
   }
-
-  const generateNextSummary = useCallback(async (silent = false, autoOnly = false) => {
-    const state = useChatStore.getState()
-    const session = state.settings.sessions.find(item => item.id === state.settings.activeSessionId)
-    if (!session || summaryGeneratingRef.current) return false
-    const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
-    if (autoOnly && !config.autoEnabled) return false
-    const segment = selectLoadedSessionSummarySegment(session, state.settings.summaryTurnSize, autoOnly)
-    if (!segment.length) {
-      if (!silent) setSummaryError('暂时没有可整理的完整对话轮次。')
-      return false
-    }
-    const chosen = buildSummaryRounds(segment)
-    const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
-    const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
-    const attemptKey = `${profile?.id || ''}:${model}:${segment.map(message => message.id).join(',')}`
-    if (autoOnly && summaryAttemptRef.current === attemptKey) return false
-    if (autoOnly) summaryAttemptRef.current = attemptKey
-    setSummaryError('')
-    summaryGeneratingRef.current = true
-    setSummaryGenerating(true)
-    try {
-      const data = await chatApi.summarize({
-        messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model,
-        api_profile: profile ? { profileId: profile.id, modelId: model } : undefined,
-      })
-      if (!data.content) throw new Error('摘要生成失败')
-      addSummary(session.id, { id: `sum-${Date.now()}-${Math.random().toString(16).slice(2,6)}`, sessionId: session.id,
-        startAt: segment[0].timestamp, endAt: segment[segment.length-1].timestamp, createdAt: Date.now(), turnCount: chosen.length,
-        messageCount: segment.length, sourceMessageIds: segment.map(message => message.id), coveredUntilMessageId: segment[segment.length-1].id,
-        eventSummary: String(data.content).trim() })
-      void syncChatNow()
-      summaryAttemptRef.current = ''
-      return true
-    } catch (err: any) {
-      setSummaryError(err?.message || '摘要生成失败，请检查摘要 API 和模型设置。')
-      if (!silent) console.error('summary generation failed', err)
-      return false
-    }
-    finally { summaryGeneratingRef.current = false; setSummaryGenerating(false) }
-  }, [addSummary, setSummaryError, setSummaryGenerating, summaryAttemptRef, summaryGeneratingRef])
-
-  const regenerateSummary = useCallback(async (summary: ChatSummary) => {
-    const state = useChatStore.getState()
-    const session = state.settings.sessions.find(item => item.id === summary.sessionId)
-    if (!session || summary.locked || summaryGenerating) return false
-    const ids = new Set(summary.sourceMessageIds || [])
-    const segment = ids.size ? session.messages.filter(message => ids.has(message.id)) : session.messages.filter(message => message.timestamp >= summary.startAt && message.timestamp <= summary.endAt)
-    if (!segment.length) return false
-    setSummaryError('')
-    setSummaryGenerating(true)
-    try {
-      const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
-      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
-      const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
-      const data = await chatApi.summarize({ messages: segment.map(message => ({ role: message.role, content: message.content, timestamp: message.timestamp })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined })
-      if (!data.content) throw new Error('摘要重新生成失败')
-      updateSummary(session.id, summary.id, { eventSummary: String(data.content).trim(), needsCorrection: false, editedAt: Date.now() })
-      void syncChatNow()
-      return true
-    } catch (err: any) {
-      setSummaryError(err?.message || '摘要重新生成失败。')
-      console.error('summary regeneration failed', err)
-      return false
-    }
-    finally { setSummaryGenerating(false) }
-  }, [setSummaryError, setSummaryGenerating, summaryGenerating, updateSummary])
-
-  const generateStageSummary = useCallback(async () => {
-    const state = useChatStore.getState()
-    const session = state.settings.sessions.find(item => item.id === state.settings.activeSessionId)
-    if (!session || stageSummaryGenerating || session.summaryConfig?.autoEnabled === false) return false
-    const covered = new Set((session.stageSummaries || []).flatMap(item => item.sourceSummaryIds))
-    const available = [...(session.summaries || [])].sort((a, b) => a.startAt - b.startAt).filter(item => !covered.has(item.id))
-    if (available.length < 10) return false
-    const batch = available.slice(0, 10)
-    const attemptKey = batch.map(item => item.id).join(',')
-    if (stageAttemptRef.current === attemptKey) return false
-    stageAttemptRef.current = attemptKey
-    setSummaryError('')
-    setStageSummaryGenerating(true)
-    try {
-      const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
-      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
-      const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
-      const data = await chatApi.summarize({ kind: 'stage', summaries: batch.map(item => ({ content: item.eventSummary })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined })
-      if (!data.content) throw new Error('阶段摘要生成失败')
-      const stage: StageSummary = { id: `stage-${Date.now()}`, sessionId: session.id, createdAt: Date.now(), startAt: batch[0].startAt, endAt: batch[9].endAt, sourceSummaryIds: batch.map(item => item.id), title: String(data.title || '一段共同经历').trim(), content: String(data.content).trim() }
-      addStageSummary(session.id, stage)
-      void syncChatNow()
-      stageAttemptRef.current = ''
-      return true
-    } catch (err: any) {
-      setSummaryError(err?.message || '阶段摘要生成失败。')
-      console.error('stage summary generation failed', err)
-      return false
-    }
-    finally { setStageSummaryGenerating(false) }
-  }, [addStageSummary, setStageSummaryGenerating, setSummaryError, stageSummaryGenerating])
-
-  const regenerateStageSummary = useCallback(async (stage: StageSummary) => {
-    const state = useChatStore.getState()
-    const session = state.settings.sessions.find(item => item.id === stage.sessionId)
-    if (!session || stage.locked || stageSummaryGenerating) return false
-    const ids = new Set(stage.sourceSummaryIds)
-    const batch = (session.summaries || []).filter(item => ids.has(item.id)).sort((a, b) => a.startAt - b.startAt)
-    if (!batch.length) return false
-    setSummaryError(''); setStageSummaryGenerating(true)
-    try {
-      const config = session.summaryConfig || { autoEnabled: true, turnSize: state.settings.summaryTurnSize, injectCount: state.settings.summaryInjectCount, modeVersion: 2 as const }
-      const profile = state.settings.apiProfiles.find(item => item.id === config.profileId) || getActiveProfile(state.settings)
-      const model = config.modelId || (profile?.id === state.settings.activeProfileId ? state.settings.model : profile?.defaultModel) || profile?.models[0]?.id || state.settings.model
-      const data = await chatApi.summarize({ kind: 'stage', summaries: batch.map(item => ({ content: item.eventSummary })), model, api_profile: profile ? { profileId: profile.id, modelId: model } : undefined })
-      if (!data.content) throw new Error('阶段摘要重新生成失败')
-      updateStageSummary(session.id, stage.id, { title: String(data.title || stage.title).trim(), content: String(data.content).trim(), needsCorrection: false, editedAt: Date.now() })
-      void syncChatNow()
-      return true
-    } catch (err: any) {
-      setSummaryError(err?.message || '阶段摘要重新生成失败。')
-      return false
-    } finally { setStageSummaryGenerating(false) }
-  }, [setStageSummaryGenerating, setSummaryError, stageSummaryGenerating, updateStageSummary])
-
-  useEffect(() => {
-    if (!activeSession || stageSummaryGenerating || activeSession.summaryConfig?.autoEnabled === false) return
-    const timer = setTimeout(() => { void generateStageSummary() }, 1200)
-    return () => clearTimeout(timer)
-  }, [activeSession?.id, activeSession?.summaries?.length, activeSession?.stageSummaries?.length, activeSession?.summaryConfig?.autoEnabled, stageSummaryGenerating, generateStageSummary])
-
-  useEffect(() => {
-    const config = activeSession?.summaryConfig
-    if (!activeSession || !config?.autoEnabled || summaryGenerating) return
-    const timer = setTimeout(() => { void generateNextSummary(true, true) }, 650)
-    return () => clearTimeout(timer)
-  }, [activeSession?.id, activeSession?.updatedAt, activeSession?.summaryConfig?.autoEnabled,
-    activeSession?.summaryConfig?.turnSize, activeSession?.summaryConfig?.anchorMessageId, summaryGenerating, generateNextSummary])
 
   const durableAppend = useCallback(async (session: any, message: ChatMessage) => {
     if (!session?.id || !message?.id) return
@@ -1539,10 +1400,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             </>
           ) : <div>等待首条 CC 回复</div>}
         </section>
-        <div className="mt-2 grid grid-cols-3 gap-1.5">
+        <div className="mt-2 grid grid-cols-4 gap-1.5">
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-theme-soft chat-theme-hover rounded-xl py-2.5 text-[10px]">模型库</button>
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className="chat-theme-soft chat-theme-hover rounded-xl py-2.5 text-[10px]">书签</button>
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('memory') }} className="chat-theme-soft chat-theme-hover rounded-xl py-2.5 text-[10px]">记忆</button>
+          <button type="button" onClick={() => { setSessionDrawerOpen(false); setRoomPanel('toolbox') }} className="chat-theme-soft chat-theme-hover rounded-xl py-2.5 text-[10px]">工具箱</button>
         </div>
       </div>
     </div>
@@ -2073,7 +1935,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <header className="flex justify-end px-3 py-1">
                     <button type="button" aria-label="关闭" onClick={() => setRoomPanel(null)} className="rounded-full p-2 opacity-55 hover:opacity-100"><X size={18}/></button>
                   </header>
-                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'future' ? <FutureLetterView /> : roomPanel === 'dictionary' ? <FireDictionaryView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" sessionId={wakeDetailSessionId || activeSession?.id} /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'timeline' ? <TimelineView /> : <TesisView />}</div>
+                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'future' ? <FutureLetterView /> : roomPanel === 'dictionary' ? <FireDictionaryView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" sessionId={wakeDetailSessionId || activeSession?.id} /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'toolbox' ? <ToolboxView /> : <TesisView />}</div>
                 </motion.section>
               </>
             )}
@@ -2098,9 +1960,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFutureLetter={() => setRoomPanel('future')} onDictionary={() => setRoomPanel('dictionary')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onMedia={() => setRoomPanel('media')} onEnergy={() => setRoomPanel('energy')} onTimeline={() => setRoomPanel('timeline')} onTesis={() => setRoomPanel('tesis')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFutureLetter={() => setRoomPanel('future')} onDictionary={() => setRoomPanel('dictionary')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onMedia={() => setRoomPanel('media')} onEnergy={() => setRoomPanel('energy')} onTesis={() => setRoomPanel('tesis')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
-          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} generating={summaryGenerating} stageGenerating={stageSummaryGenerating} error={summaryError} onGenerate={() => { summaryAttemptRef.current = ''; void generateNextSummary(false) }} onRegenerate={(summary) => { void regenerateSummary(summary) }} onRegenerateStage={(stage) => { void regenerateStageSummary(stage) }} />
+          <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />
           <MessageReceiptDialog message={receiptMessage} settings={settings} night={n} onClose={() => setReceiptMessage(null)} />
           <IntimacyWheelModal open={wheelOpen} night={n} onClose={() => setWheelOpen(false)} />

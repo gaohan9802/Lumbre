@@ -26,15 +26,19 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 125)
-  assert.equal(registry.ALL_TOOLS.length, 125)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 125)
+  assert.equal(registry.registeredToolCount(), 122)
+  assert.equal(registry.ALL_TOOLS.length, 122)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 122)
+  for (const removed of ['write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline']) {
+    assert.equal(registry.ALL_TOOLS.some(tool => tool.name === removed), false, removed)
+  }
+  assert.equal(registry.getRegisteredTool('timeline')?.domain, 'diary')
   assert.deepEqual(registry.ALL_TOOLS.slice(0, 6).map(tool => tool.name), ['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_energy_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-15).map(tool => tool.name), ['read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message', 'write_opening_message', 'clear_opening_message', 'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph', 'read_fire_dictionary', 'create_fire_dictionary_entry', 'update_fire_dictionary_entry', 'delete_fire_dictionary_entry', 'list_stickers', 'send_sticker'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-17).map(tool => tool.name), ['read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message', 'write_opening_message', 'clear_opening_message', 'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph', 'read_fire_dictionary', 'create_fire_dictionary_entry', 'update_fire_dictionary_entry', 'delete_fire_dictionary_entry', 'list_stickers', 'send_sticker', 'search_summaries', 'read_summary'])
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
 

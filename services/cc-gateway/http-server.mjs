@@ -85,6 +85,21 @@ export function createGatewayServer({ runtime, secret, claudeCodeVersion, heartb
         return json(response, result.status === 'busy' ? 409 : result.status === 'failed' ? 502 : 200, result)
       }
 
+      if (request.method === 'POST' && url.pathname === '/v1/archive-summary') {
+        const body = await readBody(request)
+        const conversationId = body.conversation_id || ''
+        if (!CONVERSATION_ID.test(conversationId)) throw new AttemptValidationError('conversation_id is invalid')
+        const model = body.model || ''
+        if (model && !MODEL.test(model)) throw new AttemptValidationError('model is invalid')
+        const prompt = typeof body.prompt === 'string' ? body.prompt : ''
+        if (!prompt.trim() || Buffer.byteLength(prompt) > 1_400_000) throw new AttemptValidationError('prompt is invalid')
+        const result = await runtime.summarize(conversationId, model || undefined, prompt)
+        const status = result.status === 'busy' ? 409
+          : result.status === 'no_session' ? 404
+            : result.status === 'failed' ? 502 : 200
+        return json(response, status, result)
+      }
+
       if (request.method === 'POST' && url.pathname === '/v1/compact') {
         const body = await readBody(request, 8_000)
         const conversationId = body.conversation_id || ''

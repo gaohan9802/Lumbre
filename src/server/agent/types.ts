@@ -7,7 +7,6 @@ export type ToolDomain =
   | 'diary'
   | 'notes'
   | 'photos'
-  | 'timeline'
   | 'todo'
   | 'thesis'
   | 'wishes'
@@ -27,6 +26,7 @@ export type ToolDomain =
   | 'media'
   | 'future-letter'
   | 'dictionary'
+  | 'summaries'
 
 export interface ToolDef {
   name: string

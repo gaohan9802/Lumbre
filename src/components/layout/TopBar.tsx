@@ -17,7 +17,6 @@ export function TopBar() {
     poems: '🪶 共诗',
     stories: '🌙 枕边集',
     research: '🔭 星野手记',
-    timeline: '⏱️ Timeline',
     diary: '📔 日记',
     notes: '📌 小纸条',
     todo: '🧾 待办',

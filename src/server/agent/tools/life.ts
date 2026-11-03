@@ -2,12 +2,6 @@ import type { ToolPolicySpec } from '../types'
 import { ALL_SAFE_SOURCES } from './shared'
 
 export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
-  { name: 'write_timeline_encouragements', domain: 'timeline', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'read_timeline_encouragements', domain: 'timeline', level: 'green', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'edit_timeline_encouragement', domain: 'timeline', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'delete_timeline_encouragement', domain: 'timeline', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除鼓励话' },
-  { name: 'read_life_timeline', domain: 'timeline', level: 'green', allowedSources: ALL_SAFE_SOURCES },
-
   { name: 'read_todo', domain: 'todo', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'add_todo', domain: 'todo', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'edit_todo', domain: 'todo', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },

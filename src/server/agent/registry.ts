@@ -8,6 +8,7 @@ import { CREATIVE_TOOL_POLICIES } from './tools/creative'
 import type { RegisteredTool, ToolDef, ToolPolicySpec } from './types'
 import type { ToolCallContext } from './context'
 import { evaluateToolPolicy } from './policy'
+import { readToolCatalogOverrides } from '@/server/data/repositories/tool-catalog'
 
 const POLICIES: ToolPolicySpec[] = [
   ...MEMORY_TOOL_POLICIES,
@@ -52,6 +53,7 @@ export function getRegisteredTool(name: string): RegisteredTool | undefined {
 }
 
 export function toolsForContext(context: ToolCallContext): ToolDef[] {
+  const overrides = readToolCatalogOverrides()
   return ORDERED_REGISTRY
     .filter(tool => {
       const decision = evaluateToolPolicy(tool, {}, context)
@@ -59,12 +61,15 @@ export function toolsForContext(context: ToolCallContext): ToolDef[] {
     })
     .map(tool => {
       const definition = tool.definition
+      const description = overrides[definition.name]?.description || definition.description
       const redNote = tool.level === 'red'
         ? '（红色操作：执行前会弹出确认，只有当前用户明确同意才会生效。）'
         : tool.resolveLevel
           ? '（其中删除属于红色操作，执行前需要当前用户明确确认。）'
           : ''
-      return redNote ? { ...definition, description: `${definition.description}${redNote}` } : definition
+      return description !== definition.description || redNote
+        ? { ...definition, description: `${description}${redNote}` }
+        : definition
     })
 }
 

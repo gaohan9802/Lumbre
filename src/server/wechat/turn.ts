@@ -42,19 +42,12 @@ function enqueue<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
 }
 
 function bookmarkInjection(session: any, config: any, userText: string) {
-  const summaryConfig = session?.summaryConfig || { injectCount: config?.summaryInjectCount || 3 }
-  const summaries = [...(session?.summaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, summaryConfig.injectCount).reverse()
-  const stages = [...(session?.stageSummaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, 2).reverse()
-  const summaryText = [
-    ...stages.map((item: any) => `${item.title || '阶段摘要'}\n${item.content || ''}`),
-    ...summaries.map((item: any) => item.eventSummary || ''),
-  ].filter(Boolean).join('\n\n---\n\n')
   const lower = userText.toLowerCase()
   const bookmarks = (Array.isArray(config?.bookmarks) ? config.bookmarks : [])
     .filter((item: any) => item?.enabled && (item.alwaysOn || (item.keywords || []).some((word: any) => word && lower.includes(String(word).toLowerCase()))))
     .sort((a: any, b: any) => Number(b.priority) - Number(a.priority))
     .map((item: any) => item.content).filter(Boolean)
-  return [summaryText ? `[长期对话摘要｜马德里时间]\n${summaryText}` : '', ...bookmarks].filter(Boolean).join('\n\n')
+  return bookmarks.join('\n\n')
 }
 
 export function persistWeChatPart(sessionId: string, batchId: string, part: WeChatTurnPart) {

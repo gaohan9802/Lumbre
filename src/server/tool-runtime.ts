@@ -27,8 +27,6 @@ function madridTime(d: Date | number = new Date()): string {
   }).format(date)
 }
 import { getTodos, commentTodo, addTodo, editTodo, removeTodo } from './todo-store'
-import { getCurrentActivity, listActivities, timelineDurationSeconds, getTimelineTags, startActivity, stopActivity } from './timeline-store'
-import { createManyEncouragements, listEncouragements, updateEncouragement, deleteEncouragement, matchingEncouragements } from './encouragement-store'
 import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { commentMediaEvent, deleteMediaContent, getMediaWork, listMediaLibrary, listMediaTimeline, saveMediaEntry, writeMediaNote } from './media-library-store'
@@ -56,6 +54,7 @@ import { clearOpeningMessage, writeOpeningMessage } from './opening-message-stor
 import { appendFutureLetterParagraph, editFutureLetterParagraph, readFutureLetter } from './future-letter-store'
 import { createFireDictionaryEntry, deleteFireDictionaryEntry, readFireDictionary, updateFireDictionaryEntry } from './fire-dictionary-store'
 import { findStickers, sticker } from '@/lib/stickers'
+import { readSummaryArchiveEntry, searchSummaryArchive } from './summary-archive'
 import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
@@ -236,6 +235,15 @@ export async function executeRegisteredToolHandler(
     if (name === 'read_energy_summary') {
       return JSON.stringify(readEnergyToolSummary(input.date, input.days || 7))
     }
+    if (name === 'search_summaries') return JSON.stringify(searchSummaryArchive(input))
+    if (name === 'read_summary') {
+      const entry = readSummaryArchiveEntry(input.id)
+      return JSON.stringify({
+        id: entry.id, level: entry.level, period: entry.periodKey,
+        start_at: new Date(entry.startAt).toISOString(), end_at: new Date(entry.endAt).toISOString(),
+        title: entry.title, content: entry.content, locked: entry.locked, needs_correction: entry.needsCorrection,
+      })
+    }
     if (name === 'log_energy_intake') {
       return JSON.stringify({ ok: true, entry: saveEnergyEntry({ ...input, kind: input.kind === 'liquid' ? 'liquid' : 'food', source: 'star' }, 'star') })
     }
@@ -372,7 +380,6 @@ export async function executeRegisteredToolHandler(
           time_id: e.time_id,
         })))
       }
-
       // Notes → local store
       case 'write_note': {
         const note = writeNote(input.author, input.content, input.tags)
@@ -506,54 +513,6 @@ export async function executeRegisteredToolHandler(
         return JSON.stringify(entry ? { ok: true, entry } : { error: 'not_found' })
       }
 
-
-      case 'write_timeline_encouragements': return JSON.stringify({ created: createManyEncouragements(input.items || []) })
-      case 'read_timeline_encouragements': { const c=getCurrentActivity(); return JSON.stringify({ tags:getTimelineTags(), all:listEncouragements(), matching:matchingEncouragements(c?.tags||[]) }) }
-      case 'edit_timeline_encouragement': return JSON.stringify(updateEncouragement(input.id, input))
-      case 'delete_timeline_encouragement': return deleteEncouragement(input.id) ? '已删除鼓励话' : '鼓励话不存在'
-
-      // Life timeline → read-only for 星星
-      case 'read_life_timeline': {
-        const madridDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
-        const madridMidnight = (day: string) => {
-          const [y, m, d] = day.split('-').map(Number)
-          let guess = Date.UTC(y, m - 1, d, 0, 0, 0)
-          const parts = (ms: number) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
-            timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-          }).formatToParts(new Date(ms)).filter(p => p.type !== 'literal').map(p => [p.type, Number(p.value)])) as Record<string, number>
-          // Two passes also handle the CET/CEST boundary without a hard-coded offset.
-          for (let i = 0; i < 2; i++) {
-            const p = parts(guess)
-            const represented = Date.UTC(p.year, p.month - 1, p.day, p.hour === 24 ? 0 : p.hour, p.minute, p.second)
-            guess += Date.UTC(y, m - 1, d, 0, 0, 0) - represented
-          }
-          return guess
-        }
-        const bounds = (day: string, days = 1) => {
-          const [y, m, d] = day.split('-').map(Number)
-          const start = madridMidnight(day)
-          const endDate = new Date(Date.UTC(y, m - 1, d + days))
-          const endDay = `${endDate.getUTCFullYear()}-${String(endDate.getUTCMonth() + 1).padStart(2, '0')}-${String(endDate.getUTCDate()).padStart(2, '0')}`
-          return [new Date(start).toISOString(), new Date(madridMidnight(endDay)).toISOString()]
-        }
-        let from = input.from, to = input.to
-        if (input.week_start) [from, to] = bounds(input.week_start, 7)
-        else if (input.date) [from, to] = bounds(input.date, 1)
-        else if (!from && !to) [from, to] = bounds(madridDay(new Date()), 1)
-        const records = listActivities(from, to)
-        const current = getCurrentActivity()
-        return JSON.stringify({
-          range: { from, to },
-          current: current ? { ...current, duration_seconds: timelineDurationSeconds(current) } : null,
-          records: records.map(r => ({
-            id: r.id, title: r.title, tags: r.tags, note: r.note, end_note: r.end_note,
-            start_at: r.start_at, end_at: r.end_at || null,
-            duration_seconds: timelineDurationSeconds(r),
-            duration_minutes: Math.round(timelineDurationSeconds(r) / 60),
-          })),
-        })
-      }
 
       // Todo → local store
       case 'read_todo': {

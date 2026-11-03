@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useRef, useState, type SetStateAction } from 'react'
-import type { TimelineCurrent } from '@/components/timeline/TimelineTimerModal'
 import type { ContentBlock } from '@/features/chat/state/types'
 import { EMPTY_CHAT_COMPOSER_DRAFT, updateComposerDraft, type ChatComposerDraft } from './composerDrafts'
 
@@ -39,13 +38,6 @@ export function useChatViewState(sessionId: string) {
   const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
-  const [summaryGenerating, setSummaryGenerating] = useState(false)
-  const [summaryError, setSummaryError] = useState('')
-  const summaryGeneratingRef = useRef(false)
-  const summaryAttemptRef = useRef('')
-  const [stageSummaryGenerating, setStageSummaryGenerating] = useState(false)
-  const stageAttemptRef = useRef('')
-  const [timelineCurrent, setTimelineCurrent] = useState<TimelineCurrent | null>(null)
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
@@ -79,9 +71,6 @@ export function useChatViewState(sessionId: string) {
     expandedTools, setExpandedTools,
     settingsOpen, setSettingsOpen, modelDialogOpen, setModelDialogOpen,
     bookmarkDialogOpen, setBookmarkDialogOpen, summaryDialogOpen, setSummaryDialogOpen,
-    summaryGenerating, setSummaryGenerating, summaryError, setSummaryError, summaryGeneratingRef, summaryAttemptRef,
-    stageSummaryGenerating, setStageSummaryGenerating, stageAttemptRef,
-    timelineCurrent, setTimelineCurrent,
     sessionDrawerOpen, setSessionDrawerOpen, modelPickerOpen, setModelPickerOpen,
     editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,

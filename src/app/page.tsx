@@ -27,7 +27,6 @@ function ViewLoading() {
 const ChatSync = dynamic(() => import('@/features/chat/sync/ChatSync').then(m => m.ChatSync), { ssr: false })
 const ChatView = dynamic(() => import('@/components/chat/ChatRecoveryBoundary').then(m => m.ChatRecoveryBoundary), { loading: ViewLoading, ssr: false })
 const CouponsView = dynamic(() => import('@/components/coupons/CouponsView').then(m => m.CouponsView), { loading: ViewLoading, ssr: false })
-const TimelineHubView = dynamic(() => import('@/components/timeline/TimelineHubView').then(m => m.TimelineHubView), { loading: ViewLoading, ssr: false })
 const DiaryView = dynamic(() => import('@/components/diary/DiaryView').then(m => m.DiaryView), { loading: ViewLoading, ssr: false })
 const NotesView = dynamic(() => import('@/components/notes/NotesView').then(m => m.NotesView), { loading: ViewLoading, ssr: false })
 const TodoView = dynamic(() => import('@/components/todo/TodoView').then(m => m.TodoView), { loading: ViewLoading, ssr: false })
@@ -43,7 +42,6 @@ const views = {
   poems: PoemsView,
   stories: StoriesView,
   research: ResearchView,
-  timeline: TimelineHubView,
   diary: DiaryView,
   notes: NotesView,
   todo: TodoView,

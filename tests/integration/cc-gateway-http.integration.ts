@@ -134,6 +134,14 @@ test('HTTP auth, disconnect, polling and event replay preserve one attempt', asy
     assert.equal(JSON.parse(warmed.body).transcriptRemoved, true)
     assert.equal(calls, 2)
 
+    const archived = await request(socketPath, '/v1/archive-summary', {
+      method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({ conversation_id: 'conversation-1', model: 'sonnet', prompt: 'archive this day' }),
+    })
+    assert.equal(archived.status, 200)
+    assert.equal(JSON.parse(archived.body).transcriptRemoved, true)
+    assert.equal(calls, 3)
+
     const metrics = await request(socketPath, '/v1/metrics?conversation_id=conversation-1', { headers: authHeaders() })
     assert.equal(metrics.status, 200)
     assert.equal(JSON.parse(metrics.body).context.usedTokens, 8200)

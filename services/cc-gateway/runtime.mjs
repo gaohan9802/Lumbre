@@ -264,12 +264,16 @@ export class GatewayRuntime {
     return this.active > 0 || this.queue.length > 0
   }
 
-  async warm(conversationId, model) {
-    if (this.busy()) return { status: 'busy' }
-    const base = this.ledger.list()
+  latestCompleted(conversationId, model) {
+    return this.ledger.list()
       .filter(attempt => attempt.conversationId === conversationId && attempt.status === 'completed'
         && attempt.result?.sessionId && (!model || attempt.model === model))
       .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)))[0]
+  }
+
+  async runForkedTask(conversationId, model, prompt) {
+    if (this.busy()) return { status: 'busy' }
+    const base = this.latestCompleted(conversationId, model)
     if (!base) return { status: 'no_session' }
 
     this.active++
@@ -277,7 +281,7 @@ export class GatewayRuntime {
     this.warmController = controller
     try {
       const result = await this.executor.run({
-        prompt: '[LUMBRE CACHE WARM] Reply with one period only.',
+        prompt,
         model: base.model,
         effort: base.effort || undefined,
         resumeSessionId: base.result.sessionId,
@@ -288,7 +292,8 @@ export class GatewayRuntime {
         signal: controller.signal,
       })
       return {
-        status: 'warmed',
+        status: 'completed',
+        text: result.text || '',
         usage: result.usage || null,
         context: result.context || null,
         parentSessionFingerprint: fingerprint(base.result.sessionId),
@@ -301,7 +306,7 @@ export class GatewayRuntime {
         status: 'failed',
         error: {
           code: error?.code || 'warm_failed',
-          message: error?.safeMessage || 'Claude Code cache warm failed',
+          message: error?.safeMessage || 'Claude Code forked task failed',
         },
       }
     } finally {
@@ -310,6 +315,15 @@ export class GatewayRuntime {
       this.drain()
       this.resolveIdle()
     }
+  }
+
+  async warm(conversationId, model) {
+    const result = await this.runForkedTask(conversationId, model, '[LUMBRE CACHE WARM] Reply with one period only.')
+    return result.status === 'completed' ? { ...result, status: 'warmed', text: undefined } : result
+  }
+
+  async summarize(conversationId, model, prompt) {
+    return this.runForkedTask(conversationId, model, prompt)
   }
 
   async compact(conversationId) {

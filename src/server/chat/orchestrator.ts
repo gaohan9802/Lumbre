@@ -22,6 +22,7 @@ import { createCcChatResponse } from './cc-gateway'
 import { beginApiGeneration } from './generation-activity'
 import { addToolResultsToAudit, createMessageRequestAudit, type RequestAuditHints } from '@/lib/chat-receipt'
 import { ccOutputStyleContext, ccSystemPromptForModel } from '@/lib/cc-system-prompt'
+import { summaryArchiveContext } from '@/server/summary-archive'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -33,7 +34,6 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【告状簿】read_guestbook · write_guestbook · reply_guestbook · delete_guestbook_message；访客是独立的人类身份，你只能以星星身份留言、回复和删除自己的内容
 【照片与旅行】list_foto_albums(看分区和专辑) · read_foto(浏览照片文字信息) · view_foto(看实际画面) · save_chat_foto(收藏当前聊天附图) · edit_foto(改说明/移专辑) · comment_foto(评论) · delete_foto(删除) · read_travel_journal(看旅行足迹和小日记) · write_travel_journal(续写旅行日记)
 【画画】draw_picture(用蜡笔或钢笔淡彩画一张画；只有你真心想画或小火请你画时才使用，完成后图片会直接出现在聊天里)
-【Timeline】read_life_timeline(按天/周查看小火做过什么、各用了多久；只读)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
 【券包】read_coupons · create_coupon · sign_coupon · edit_coupon · use_coupon · void_coupon · confirm_void_coupon；券包状态变化会进入上下文
 【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
@@ -222,7 +222,12 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
 
 export async function handleChatRequest(req: NextRequest) {
   try {
-    const body = await req.json()
+    const submitted = await req.json()
+    const archiveContext = summaryArchiveContext(typeof submitted.session_id === 'string' ? submitted.session_id : undefined)
+    const body = {
+      ...submitted,
+      bookmark_injections: [submitted.bookmark_injections, archiveContext].filter(Boolean).join('\n\n'),
+    }
     const generationRoute = body.generation_route === 'claude-code' ? 'claude-code' : body.generation_route === 'api' || !body.generation_route ? 'api' : null
     if (!generationRoute) return NextResponse.json({ error: '未知生成线路；不会自动改走 API。' }, { status: 400 })
     const unattendedWake = body._wake === true && isTrustedInternalRequest(req.headers.get('x-lumbre-internal'))

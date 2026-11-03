@@ -9,7 +9,7 @@ import type { RegisteredTool, ToolDomain, ToolExecutionRequest, ToolExecutionRes
 
 const ROOM_FOR_DOMAIN: Partial<Record<ToolDomain, RoomUnreadKey>> = {
   coupons: 'coupons', todo: 'todo', notes: 'notes', diary: 'diary', wishes: 'wishlist',
-  photos: 'photos', bookmarks: 'favorites', media: 'media', health: 'energy', timeline: 'timeline',
+  photos: 'photos', bookmarks: 'favorites', media: 'media', health: 'energy',
   poems: 'poems', stories: 'stories', research: 'research', thesis: 'tesis',
   'future-letter': 'future',
   dictionary: 'dictionary',

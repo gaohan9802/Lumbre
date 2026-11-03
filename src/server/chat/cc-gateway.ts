@@ -441,6 +441,25 @@ export async function warmCcSession(conversationId: string, model?: string, fetc
   }
 }
 
+export async function createCcArchiveSummary(conversationId: string, prompt: string, model?: string, fetchImpl: FetchLike = fetch) {
+  const config = configFromEnvironment()
+  if (!config) return { status: 'unavailable' as const, error: 'CC 网关尚未安全配置。' }
+  if (!SAFE_TURN_ID.test(conversationId)) return { status: 'invalid_conversation' as const, error: 'CC 对话 id 无效' }
+  if (!prompt.trim() || new TextEncoder().encode(prompt).length > 1_400_000) return { status: 'invalid_prompt' as const, error: '摘要材料过长' }
+  try {
+    const response = await gatewayFetch(config, '/v1/archive-summary', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId, prompt, ...(model ? { model } : {}) }),
+    }, fetchImpl, 10 * 60_000)
+    const data = await safeJson(response)
+    if (response.ok || response.status === 409 || response.status === 404) return data
+    return { status: 'failed' as const, error: data?.error?.message || data?.error || `CC 摘要失败 (${response.status})` }
+  } catch {
+    return { status: 'failed' as const, error: '无法连接 CC 网关' }
+  }
+}
+
 export async function compactCcSession(conversationId: string, fetchImpl: FetchLike = fetch) {
   const config = configFromEnvironment()
   if (!config) return { status: 'unavailable' as const, error: 'CC 网关尚未安全配置。' }

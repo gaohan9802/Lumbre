@@ -308,7 +308,7 @@ test('Claude executor exposes only a safe failure category', () => {
   })
 })
 
-test('cache warm forks the latest session with matching tool schema and returns cache usage', async () => {
+test('cache warm and archive summary fork the latest session without changing the parent attempt', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-warm-'))
   try {
     const calls: any[] = []
@@ -336,6 +336,13 @@ test('cache warm forks the latest session with matching tool schema and returns 
     assert.equal(calls[1].toolsEnabled, false)
     assert.equal(calls[1].cacheWarm, true)
     assert.equal(calls[1].model, 'sonnet')
+    const summary = await runtime.summarize('conversation-1', 'sonnet', 'archive this day')
+    assert.equal(summary.status, 'completed')
+    assert.equal(summary.transcriptRemoved, true)
+    assert.equal(calls[2].prompt, 'archive this day')
+    assert.equal(calls[2].resumeSessionId, '550e8400-e29b-41d4-a716-446655440000')
+    assert.equal(calls[2].forkSession, true)
+    assert.equal(ledger.list().length, 1)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

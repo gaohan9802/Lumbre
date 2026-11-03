@@ -19,7 +19,6 @@ const TOOL_ORDER = [
   'write_diary', 'read_diary', 'comment_diary', 'update_diary', 'delete_diary', 'unlock_diary', 'set_password', 'timeline',
   'write_note', 'read_notes', 'reply_note', 'delete_note',
   'list_foto_albums', 'read_foto', 'view_foto', 'save_chat_foto', 'edit_foto', 'delete_foto', 'comment_foto', 'read_travel_journal', 'write_travel_journal',
-  'write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline',
   'read_todo', 'add_todo', 'edit_todo', 'remove_todo', 'comment_todo',
   'read_thesis', 'comment_thesis',
   'view_wish', 'write_wish', 'edit_wish', 'delete_wish', 'like_wish', 'comment_wish',
@@ -42,6 +41,7 @@ const TOOL_ORDER = [
   'read_future_letter', 'append_future_letter', 'edit_future_letter_paragraph',
   'read_fire_dictionary', 'create_fire_dictionary_entry', 'update_fire_dictionary_entry', 'delete_fire_dictionary_entry',
   'list_stickers', 'send_sticker',
+  'search_summaries', 'read_summary',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

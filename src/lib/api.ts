@@ -52,6 +52,23 @@ export const chat = {
   }) => post('/api/chat', params),
 }
 
+export const summaries = {
+  list: () => get('/api/summaries'),
+  update: (id: string, patch: Record<string, unknown>) => post('/api/summaries', { action: 'update', id, patch }),
+  remove: (id: string) => post('/api/summaries', { action: 'delete', id }),
+  regenerate: (id: string) => apiRequest('/api/summaries', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'regenerate', id }),
+  }, 10 * 60_000),
+  run: () => apiRequest('/api/summaries', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'run' }),
+  }, 10 * 60_000),
+}
+
+export const toolbox = {
+  list: () => get('/api/toolbox'),
+  update: (changes: Array<{ name: string; description: string; displayLabel: string }>) => post('/api/toolbox', { changes }),
+}
+
 // ── Diary ───────────────────────────────────────────────
 export const diary = {
   read:   (viewer: string, params: { keyword?: string; author_filter?: string; target_date?: string } = {}) =>
@@ -150,15 +167,6 @@ export const todo = {
 }
 
 
-// ── Life Timeline ─────────────────────────────────────
-export const timeline = {
-  list: (from?: string, to?: string) => get('/api/timeline' + (from || to ? `?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) }).toString()}` : '')),
-  current: () => get('/api/timeline'),
-  start: (title: string, tags?: string | string[], note?: string, start_at?: string) => post('/api/timeline', { action: 'start', title, tags, note, start_at }),
-  stop: (id?: string, end_note?: string, end_at?: string) => post('/api/timeline', { action: 'stop', id, end_note, end_at }),
-  update: (id: string, patch: any) => post('/api/timeline', { action: 'update', id, patch }),
-  remove: (id: string) => post('/api/timeline', { action: 'delete', id }),
-}
 
 // ── Tesis (thesis progress) ─────────────────────────────
 export const tesis = {
@@ -227,18 +235,6 @@ export const period = {
     post('/api/period', { action: 'config', cycle_days, period_length }),
 }
 
-// ── Timeline encouragements ───────────────────────────
-export const encouragement = {
-  list: () => get('/api/encouragement'),
-  create: (text: string, scope: 'permanent' | 'tags', tags: string[] = []) =>
-    post('/api/encouragement', { action: 'create', text, scope, tags }),
-  update: (id: string, patch: any) =>
-    post('/api/encouragement', { action: 'update', id, patch }),
-  remove: (id: string) =>
-    post('/api/encouragement', { action: 'delete', id }),
-  setTags: (tags: string[]) =>
-    post('/api/encouragement', { action: 'tags', tags }),
-}
 
 // ── Coupon promise wallet ──────────────────────────────
 

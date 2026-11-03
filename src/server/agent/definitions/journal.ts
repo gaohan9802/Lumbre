@@ -496,5 +496,30 @@ export const JOURNAL_TOOL_DEFINITIONS = [
       },
       "required": ["message_id"]
     }
+  },
+  {
+    "name": "search_summaries",
+    "description": "按日期、类型或关键词搜索家里的摘要档案。先用它找到摘要 id；搜索结果只返回短预览，不会把大量旧摘要塞进当前上下文。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "level": { "type": "string", "enum": ["daily", "weekly", "monthly"], "description": "每日、阶段或月摘要，可选" },
+        "from": { "type": "string", "description": "开始日期 YYYY-MM-DD，或月份 YYYY-MM" },
+        "to": { "type": "string", "description": "结束日期 YYYY-MM-DD，或月份 YYYY-MM" },
+        "query": { "type": "string", "description": "正文或标题关键词，可选" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 50, "description": "最多返回多少条，默认20" }
+      }
+    }
+  },
+  {
+    "name": "read_summary",
+    "description": "读取一张每日、阶段或月摘要的完整正文。摘要 id 由 search_summaries 返回。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "摘要 id" }
+      },
+      "required": ["id"]
+    }
   }
 ] satisfies ToolDef[]

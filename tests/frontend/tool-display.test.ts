@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TOOL_DISPLAY_LABELS, toolDisplayLabel } from '../../src/features/chat/tool-display'
+import { setToolDisplayLabelOverrides, TOOL_DISPLAY_LABELS, toolDisplayLabel } from '../../src/features/chat/tool-display'
 
 test('every Lumbre tool has one fixed display label with a safe fallback', () => {
-  assert.equal(Object.keys(TOOL_DISPLAY_LABELS).length, 119)
+  assert.equal(Object.keys(TOOL_DISPLAY_LABELS).length, 122)
   assert.equal(toolDisplayLabel('read_notes'), '翻了翻纸条')
+  assert.equal(toolDisplayLabel('timeline'), '翻看了日记时间线')
   assert.equal(toolDisplayLabel('get_location'), '查了查水獭位置')
   assert.equal(toolDisplayLabel('read_health_summary'), '看了看小火的健康状态')
   assert.equal(toolDisplayLabel('read_guestbook'), '翻开了告状簿')
@@ -26,5 +27,9 @@ test('every Lumbre tool has one fixed display label with a safe fallback', () =>
   assert.equal(toolDisplayLabel('delete_fire_dictionary_entry'), '划掉了一个旧词条')
   assert.equal(toolDisplayLabel('list_stickers'), '翻开了我们的表情册')
   assert.equal(toolDisplayLabel('send_sticker'), '递来了一张表情')
+  assert.equal(toolDisplayLabel('read_summary'), '读了一张摘要')
+  setToolDisplayLabelOverrides({ read_notes: '查看了自定义纸条名' })
+  assert.equal(toolDisplayLabel('read_notes'), '查看了自定义纸条名')
+  setToolDisplayLabelOverrides({})
   assert.equal(toolDisplayLabel('future_tool'), 'future_tool')
 })

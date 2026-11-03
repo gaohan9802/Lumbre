@@ -5,6 +5,12 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   trace: '整理了记忆',
   pulse: '看了看记忆状态',
   dream: '看看最近有什么记忆',
+  recall_memory: '回想了记忆',
+  remember: '记住了一件事',
+  review_memory: '整理了待审记忆',
+  lock_memory: '锁好了记忆',
+  manage_formal_memory: '整理了正式记忆',
+  manage_memory_family: '整理了记忆家族',
   write_diary: '写了日记',
   read_diary: '读了日记',
   comment_diary: '评论了日记',
@@ -32,6 +38,8 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   delete_fire_dictionary_entry: '划掉了一个旧词条',
   list_stickers: '翻开了我们的表情册',
   send_sticker: '递来了一张表情',
+  search_summaries: '查了查摘要档案',
+  read_summary: '读了一张摘要',
   list_foto_albums: '翻了翻相册',
   read_foto: '逛了逛照片墙',
   view_foto: '仔细看了张照片',
@@ -42,11 +50,6 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   read_travel_journal: '翻了翻旅行日记',
   write_travel_journal: '续写了旅行日记',
   draw_picture: '在小画室画画',
-  write_timeline_encouragements: '写了几句鼓励',
-  read_timeline_encouragements: '看了看鼓励语',
-  edit_timeline_encouragement: '修改了鼓励语',
-  delete_timeline_encouragement: '删除了鼓励语',
-  read_life_timeline: '看了看水獭时间表',
   read_todo: '检查了水獭待办',
   add_todo: '加了一项待办',
   edit_todo: '修改了待办',
@@ -120,8 +123,14 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   delete_media_content: '删除了自己的书影内容',
 }
 
+let toolDisplayOverrides: Record<string, string> = {}
+
+export function setToolDisplayLabelOverrides(labels: Record<string, string>) {
+  toolDisplayOverrides = Object.fromEntries(Object.entries(labels).filter(([name, label]) => name && typeof label === 'string' && label.trim()))
+}
+
 export function toolDisplayLabel(name: string): string {
-  return TOOL_DISPLAY_LABELS[name] || name
+  return toolDisplayOverrides[name] || TOOL_DISPLAY_LABELS[name] || name
 }
 
 export function toolDisplayInput(name: string, input: Record<string, unknown> | undefined): Record<string, unknown> | undefined {

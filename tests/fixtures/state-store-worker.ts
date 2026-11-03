@@ -13,9 +13,6 @@ async function main(): Promise<void> {
   } else if (store === 'usage') {
     const { recordUsage } = await import('../../src/server/usage')
     for (let i = 0; i < count; i += 1) recordUsage(10, 5, 'fixture', workerId)
-  } else if (store === 'timeline') {
-    const { startActivity } = await import('../../src/server/timeline-store')
-    startActivity(`activity-${workerId}`, ['test'], undefined, '2026-09-03T10:00:00+02:00')
   } else if (store === 'push') {
     const { savePushSubscription } = await import('../../src/server/push')
     for (let i = 0; i < count; i += 1) {

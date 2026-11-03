@@ -4,7 +4,7 @@ import { resolveDataPath } from './data/safe-path'
 
 export const ROOM_UNREAD_KEYS = [
   'coupons', 'todo', 'notes', 'diary', 'wishlist', 'photos', 'favorites',
-  'media', 'energy', 'timeline', 'poems', 'stories', 'research', 'tesis',
+  'media', 'energy', 'poems', 'stories', 'research', 'tesis',
   'future', 'dictionary',
 ] as const
 

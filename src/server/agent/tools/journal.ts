@@ -10,6 +10,8 @@ export const JOURNAL_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'unlock_diary', domain: 'diary', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'set_password', domain: 'diary', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '修改日记密码' },
   { name: 'timeline', domain: 'diary', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'search_summaries', domain: 'summaries', level: 'green', allowedSources: ALL_SAFE_SOURCES },
+  { name: 'read_summary', domain: 'summaries', level: 'green', allowedSources: ALL_SAFE_SOURCES },
 
   { name: 'write_note', domain: 'notes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_notes', domain: 'notes', level: 'green', allowedSources: ALL_SAFE_SOURCES },

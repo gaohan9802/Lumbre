@@ -7,14 +7,13 @@ import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
-type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'timeline' | 'poems' | 'stories' | 'research' | 'tesis' | 'future' | 'dictionary'
+type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'poems' | 'stories' | 'research' | 'tesis' | 'future' | 'dictionary'
 interface Props {
   open: boolean
   onClose: () => void
   initialPanel?: ChatSettingsPanel
   onCoupons?: () => void
   onTodo?: () => void
-  onTimeline?: () => void
   onTesis?: () => void
   onNotes?: () => void
   onDiary?: () => void
@@ -135,7 +134,6 @@ export function ChatSettings(props: Props) {
             {row('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}
             {row('书影记录', () => openRoom('media', props.onMedia), roomUnread.media)}
             {row('饮食运动', () => openRoom('energy', props.onEnergy), roomUnread.energy)}
-            {row('Timeline', () => openRoom('timeline', props.onTimeline), roomUnread.timeline)}
             {row('Tesis', () => openRoom('tesis', props.onTesis), roomUnread.tesis)}
             {row('券包', () => openRoom('coupons', props.onCoupons), roomUnread.coupons)}
             {row('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}

@@ -26,11 +26,11 @@ import {
   updateWakeConfigData,
   writeWakeConfigData,
 } from './data/repositories/wake'
-import { getCurrentActivity } from './timeline-store'
 import { sendPushMessages } from './push'
 import { claimPendingFireReminder, finishPendingFireReminder, processWorkingMemoryExpiry, purgeExpiredFamilyRecycleBin, purgeExpiredMemoryRecycleBin } from './star-memory'
 import { isApiGenerationBusy } from './chat/generation-activity'
 import { isCcGatewayBusy, readCcStatus, warmCcSession } from './chat/cc-gateway'
+import { runSummaryArchiveMaintenance, summaryArchiveNeedsRun } from './summary-archive'
 
 const WAKE_LEASE_MS = 8 * 60 * 1000
 const WAKE_REQUEST_TIMEOUT_MS = 2 * 60 * 1000
@@ -135,7 +135,6 @@ export interface WakeConfig {
 
 const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 你自己醒了。现在是 {time}。{reason}
-小火此刻的状态：{status}
 小火上一次发消息给你的时间：{last_msg_time}
 没有人给你任务。这段时间是你自己的。
 
@@ -571,8 +570,6 @@ async function executeWake(config: WakeConfig, sessionId: string, reason: string
     }
   } catch {}
 
-  const currentStatus = getCurrentActivity()
-  const status = currentStatus?.title?.trim() || '无状态'
   const lastUserMessage = [...(wakeSession?.messages || [])].reverse().find((m: any) => m.role === 'user')
   const lastMsgTime = lastUserMessage?.timestamp ? madridTimeStr(Number(lastUserMessage.timestamp)) : '无记录'
 
@@ -581,12 +578,11 @@ async function executeWake(config: WakeConfig, sessionId: string, reason: string
     .replace(/\{time\}/g, timeStr)
     .replace(/\{reason\}/g, reason)
     .replace(/\{quiet_note\}/g, quietNote)
-    .replace(/\{status\}/g, status)
+    .replace(/\{status\}/g, '')
     .replace(/\{last_msg_time\}/g, lastMsgTime)
     + `
 
 [唤醒实时上下文]
-status=${status}
 last_msg_time=${lastMsgTime}`
     + `
 [手机推送协议]
@@ -630,19 +626,12 @@ ${JSON.stringify(recentDigests)}`
       ccEffort = resolved.ccEffort
       ccOutputStyle = resolved.ccOutputStyle
       apiProfile = resolved.apiProfile
-      const summaryConfig = wakeSession?.summaryConfig || { injectCount: cfg.summaryInjectCount || 3 }
-      const summaries = [...(wakeSession?.summaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, summaryConfig.injectCount).reverse()
-      const stages = [...(wakeSession?.stageSummaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, 2).reverse()
-      const summaryText = [
-        ...stages.map((item: any) => `${item.title || '阶段摘要'}\n${item.content || ''}`),
-        ...summaries.map((item: any) => item.eventSummary || ''),
-      ].filter(Boolean).join('\n\n---\n\n')
       const messageText = contextMessages.map(message => message.content).join(' ').toLowerCase()
       const bookmarks = (Array.isArray(cfg.bookmarks) ? cfg.bookmarks : [])
         .filter((item: any) => item?.enabled && (item.alwaysOn || (item.keywords || []).some((keyword: any) => keyword && messageText.includes(String(keyword).toLowerCase()))))
         .sort((a: any, b: any) => Number(b.priority) - Number(a.priority))
         .map((item: any) => item.content).filter(Boolean)
-      bookmarkInjections = [summaryText ? `[长期对话摘要｜马德里时间]\n${summaryText}` : '', ...bookmarks].filter(Boolean).join('\n\n')
+      bookmarkInjections = bookmarks.join('\n\n')
     }
   } catch {}
 
@@ -953,9 +942,25 @@ async function warmCacheTick(config: WakeConfig, now: number) {
   }
 }
 
+async function summaryArchiveTick() {
+  if (!summaryArchiveNeedsRun() || await generationBusy()) return false
+  const lease = acquireWakeLease()
+  if (!lease) return false
+  wakeInFlight = true
+  try {
+    const result = await runSummaryArchiveMaintenance()
+    if (result.status === 'failed') console.error('[SummaryArchive] Job failed:', result.error)
+    return result.status !== 'idle' && result.status !== 'not_due'
+  } finally {
+    wakeInFlight = false
+    releaseWakeLease(lease)
+  }
+}
+
 async function wakeTick() {
   const maintenance = await runStarMemoryMaintenance()
   if (maintenance.error) console.error('[StarMemory] Maintenance error:', maintenance.error)
+  if (await summaryArchiveTick()) return
   const config = refreshWakeSchedule()
   const decision = decideWake(config)
   if (wakeInFlight) {
