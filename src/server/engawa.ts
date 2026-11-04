@@ -18,9 +18,8 @@ type RpcReply = {
 }
 
 function parseReply(body: string): RpcReply {
-  const payload = body.startsWith('data:')
-    ? body.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).find(Boolean) || ''
-    : body
+  const eventData = body.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).find(Boolean)
+  const payload = eventData || body
   if (!payload) return {}
   try { return JSON.parse(payload) as RpcReply } catch { throw new Error('豹子的窗台返回了无法识别的响应') }
 }

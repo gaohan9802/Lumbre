@@ -39,7 +39,7 @@ test('Engawa stays on the fixed internal MCP endpoint and archives daily results
     calls.push({ url: String(input), method: body.method, session: new Headers(init?.headers).get('mcp-session-id') })
     if (body.method === 'initialize') return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'engawa', version: '0.2.0' } } }), { headers: { 'mcp-session-id': 'fixture-session' } })
     if (body.method === 'notifications/initialized') return new Response(null, { status: 202 })
-    return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: JSON.stringify({ ok: true, sentence: '星垂平野阔。' }) }] } }))
+    return new Response(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: JSON.stringify({ ok: true, sentence: '星垂平野阔。' }) }] } })}\n\n`)
   }
 
   assert.match(await engawa.executeEngawaTool('daily_poem', {}), /星垂平野阔/)
