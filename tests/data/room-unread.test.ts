@@ -16,6 +16,7 @@ test('room unread counts persist per room and clear independently', () => {
   assert.equal(unread.readRoomUnreadCounts().photos, 0)
   assert.equal(unread.readRoomUnreadCounts().future, 0)
   assert.equal(unread.readRoomUnreadCounts().dictionary, 0)
+  assert.equal(unread.readRoomUnreadCounts().engawa, 0)
   unread.incrementRoomUnread('photos')
   unread.incrementRoomUnread('photos')
   unread.incrementRoomUnread('diary')
@@ -25,6 +26,8 @@ test('room unread counts persist per room and clear independently', () => {
   assert.equal(unread.readRoomUnreadCounts().future, 1)
   unread.incrementRoomUnread('dictionary')
   assert.equal(unread.readRoomUnreadCounts().dictionary, 1)
+  unread.incrementRoomUnread('engawa')
+  assert.equal(unread.readRoomUnreadCounts().engawa, 1)
 
   unread.markRoomRead('photos')
   assert.equal(unread.readRoomUnreadCounts().photos, 0)

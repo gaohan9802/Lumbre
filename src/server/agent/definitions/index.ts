@@ -1,4 +1,5 @@
 import { EXTERNAL_TOOL_DEFINITIONS } from './external'
+import { ENGAWA_TOOL_DEFINITIONS } from './engawa'
 import { JOURNAL_TOOL_DEFINITIONS } from './journal'
 import { LIFE_TOOL_DEFINITIONS } from './life'
 import { MEMORY_TOOL_DEFINITIONS } from './memory'
@@ -9,6 +10,7 @@ const DEFINITIONS = [
   ...JOURNAL_TOOL_DEFINITIONS,
   ...LIFE_TOOL_DEFINITIONS,
   ...EXTERNAL_TOOL_DEFINITIONS,
+  ...ENGAWA_TOOL_DEFINITIONS,
   ...CREATIVE_TOOL_DEFINITIONS,
 ]
 
@@ -43,6 +45,9 @@ const TOOL_ORDER = [
   'list_stickers', 'send_sticker',
   'search_summaries', 'read_summary',
   'cedar_list_games', 'cedar_get_guide', 'cedar_play', 'cedar_account',
+  'web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove',
+  'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day',
+  'hobby_corner', 'hobby_add', 'hobby_remove',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

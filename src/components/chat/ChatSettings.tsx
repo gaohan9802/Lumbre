@@ -7,7 +7,7 @@ import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
-type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'poems' | 'stories' | 'research' | 'tesis' | 'future' | 'dictionary'
+type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'poems' | 'stories' | 'research' | 'tesis' | 'future' | 'dictionary' | 'engawa'
 interface Props {
   open: boolean
   onClose: () => void
@@ -28,6 +28,7 @@ interface Props {
   onEnergy?: () => void
   onFavorites?: () => void
   onGames?: () => void
+  onEngawa?: () => void
 }
 
 export function ChatSettings(props: Props) {
@@ -145,6 +146,7 @@ export function ChatSettings(props: Props) {
             {row('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}
             {row('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}
             {row('小游戏', () => navigate(props.onGames))}
+            {row('豹子的窗台', () => openRoom('engawa', props.onEngawa), roomUnread.engawa)}
           </div>
           <div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">
             {row('SP 与回复风格', () => confirm(() => setPanel('star')))}

@@ -1,0 +1,6 @@
+mcp==2.3.0
+httpx==0.28.1
+feedparser==6.0.14
+ephem==4.2.1
+beautifulsoup4==4.15.0
+readability-lxml==0.9

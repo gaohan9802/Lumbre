@@ -26,9 +26,9 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 126)
-  assert.equal(registry.ALL_TOOLS.length, 126)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 126)
+  assert.equal(registry.registeredToolCount(), 141)
+  assert.equal(registry.ALL_TOOLS.length, 141)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 141)
   for (const removed of ['write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline']) {
     assert.equal(registry.ALL_TOOLS.some(tool => tool.name === removed), false, removed)
   }
@@ -38,7 +38,7 @@ test('all legacy tool contracts have exactly one policy registration', () => {
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_energy_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-4).map(tool => tool.name), ['cedar_list_games', 'cedar_get_guide', 'cedar_play', 'cedar_account'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-15).map(tool => tool.name), ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove'])
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
 
@@ -61,6 +61,9 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   const sendSticker = registry.getRegisteredTool('send_sticker')!
   const cedarPlay = registry.getRegisteredTool('cedar_play')!
   const cedarAccount = registry.getRegisteredTool('cedar_account')!
+  const engawaRead = registry.getRegisteredTool('daily_poem')!
+  const engawaWrite = registry.getRegisteredTool('hobby_add')!
+  const engawaRemove = registry.getRegisteredTool('hobby_remove')!
 
   assert.deepEqual(policy.evaluateToolPolicy(read, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(write, {}, chat), { allowed: true, level: 'yellow' })
@@ -82,6 +85,10 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.equal(policy.evaluateToolPolicy(cedarAccount, { action: 'delete_save' }, chat).requiresConfirmation, true)
   assert.deepEqual(policy.evaluateToolPolicy(cedarPlay, {}, wake), { allowed: true, level: 'yellow' })
   assert.deepEqual(policy.evaluateToolPolicy(cedarAccount, { action: 'delete_save' }, wake), { allowed: true, level: 'red' })
+  assert.deepEqual(policy.evaluateToolPolicy(engawaRead, {}, chat), { allowed: true, level: 'green' })
+  assert.deepEqual(policy.evaluateToolPolicy(engawaWrite, {}, wake), { allowed: true, level: 'yellow' })
+  assert.equal(policy.evaluateToolPolicy(engawaRemove, {}, chat).requiresConfirmation, true)
+  assert.deepEqual(policy.evaluateToolPolicy(engawaRemove, {}, wake), { allowed: true, level: 'red' })
 })
 
 test('Sticker tools list the catalog, reject unknown ids and normalize optional fields', async () => {
@@ -103,6 +110,7 @@ test('unattended wake receives every registered tool including CedarToy games', 
   const trace = registry.toolsForContext(wake).find(tool => tool.name === 'trace')!
   assert.equal('delete' in trace.input_schema.properties, true)
   assert.deepEqual(names.filter(name => name.startsWith('cedar_')), ['cedar_list_games', 'cedar_get_guide', 'cedar_play', 'cedar_account'])
+  assert.equal(names.filter(name => ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove'].includes(name)).length, 15)
 })
 
 test('red tools issue single-use, actor-and-session-bound confirmations', async () => {

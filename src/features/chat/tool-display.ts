@@ -125,6 +125,21 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   cedar_get_guide: '翻开了玩法说明',
   cedar_play: '玩了一回合',
   cedar_account: '整理了游戏存档',
+  web_read: '倚在窗台读了篇文章',
+  rss_read: '翻了翻窗台订阅',
+  shelf: '看了看窗台书架',
+  shelf_add: '往窗台书架放了个来源',
+  shelf_suggest: '挑了挑窗台新来源',
+  shelf_remove: '从窗台书架移走了一个来源',
+  sky_tonight: '看了看今晚的天空',
+  apod: '看了看今日宇宙',
+  daily_art: '挑了今天的一幅画',
+  arxiv_new: '翻了翻新论文',
+  daily_poem: '读了今日诗词',
+  on_this_day: '看了看历史上的今天',
+  hobby_corner: '逛了逛爱好角落',
+  hobby_add: '往爱好角落添了新主题',
+  hobby_remove: '从爱好角落移走了一个主题',
 }
 
 let toolDisplayOverrides: Record<string, string> = {}

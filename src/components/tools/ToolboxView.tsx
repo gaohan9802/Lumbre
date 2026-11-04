@@ -12,6 +12,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   wake: '唤醒', context: '上下文', period: '经期', health: '健康与能量', mail: '邮件', web: '网页', bookmarks: '书签', coupons: '券包',
   poems: '共诗', 'intimacy-wheel': '今天怎么操', stories: '故事', research: '研究', games: '游戏', media: '书影', 'future-letter': '未来信',
   dictionary: '小火辞典', summaries: '摘要',
+  engawa: '豹子的窗台',
 }
 
 const RISK_LABELS = { green: '直接读取', yellow: '可写入', red: '需要确认', black: '禁止' } as const

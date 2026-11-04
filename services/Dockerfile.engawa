@@ -1,0 +1,23 @@
+FROM python:3.12-slim-bookworm
+
+ARG ENGAWA_COMMIT=5360b964ec4f61d7287b1e64ef729556d8c764e0
+COPY services/engawa-constraints.txt /tmp/constraints.txt
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata \
+ && rm -rf /var/lib/apt/lists/* \
+ && pip install --no-cache-dir -c /tmp/constraints.txt \
+      mcp httpx feedparser ephem beautifulsoup4 readability-lxml \
+ && pip install --no-cache-dir --no-deps \
+      "https://github.com/tsuru0805/engawa-mcp/archive/${ENGAWA_COMMIT}.zip" \
+ && useradd --create-home --uid 10001 engawa \
+ && mkdir -p /data && chown engawa:engawa /data
+
+USER engawa
+ENV ENGAWA_HOST=0.0.0.0 \
+    ENGAWA_PORT=8799 \
+    ENGAWA_CACHE_DIR=/data \
+    ENGAWA_NEWS_LANG=zh-hans \
+    TZ=Europe/Madrid
+EXPOSE 8799
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD ["engawa-mcp", "--check"]
+CMD ["engawa-mcp", "--http"]

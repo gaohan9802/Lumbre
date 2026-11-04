@@ -1,6 +1,7 @@
 import { executeRegisteredToolHandler } from '@/server/tool-runtime'
 import { TOOL_DEFINITIONS } from './definitions'
 import { EXTERNAL_TOOL_POLICIES } from './tools/external'
+import { ENGAWA_TOOL_POLICIES } from './tools/engawa'
 import { JOURNAL_TOOL_POLICIES } from './tools/journal'
 import { LIFE_TOOL_POLICIES } from './tools/life'
 import { MEMORY_TOOL_POLICIES } from './tools/memory'
@@ -15,6 +16,7 @@ const POLICIES: ToolPolicySpec[] = [
   ...JOURNAL_TOOL_POLICIES,
   ...LIFE_TOOL_POLICIES,
   ...EXTERNAL_TOOL_POLICIES,
+  ...ENGAWA_TOOL_POLICIES,
   ...CREATIVE_TOOL_POLICIES,
 ]
 

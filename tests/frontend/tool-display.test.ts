@@ -3,7 +3,7 @@ import test from 'node:test'
 import { setToolDisplayLabelOverrides, TOOL_DISPLAY_LABELS, toolDisplayLabel } from '../../src/features/chat/tool-display'
 
 test('every Lumbre tool has one fixed display label with a safe fallback', () => {
-  assert.equal(Object.keys(TOOL_DISPLAY_LABELS).length, 126)
+  assert.equal(Object.keys(TOOL_DISPLAY_LABELS).length, 141)
   assert.equal(toolDisplayLabel('read_notes'), '翻了翻纸条')
   assert.equal(toolDisplayLabel('timeline'), '翻看了日记时间线')
   assert.equal(toolDisplayLabel('get_location'), '查了查水獭位置')
@@ -32,6 +32,8 @@ test('every Lumbre tool has one fixed display label with a safe fallback', () =>
   assert.equal(toolDisplayLabel('cedar_get_guide'), '翻开了玩法说明')
   assert.equal(toolDisplayLabel('cedar_play'), '玩了一回合')
   assert.equal(toolDisplayLabel('cedar_account'), '整理了游戏存档')
+  assert.equal(toolDisplayLabel('daily_poem'), '读了今日诗词')
+  assert.equal(toolDisplayLabel('hobby_add'), '往爱好角落添了新主题')
   setToolDisplayLabelOverrides({ read_notes: '查看了自定义纸条名' })
   assert.equal(toolDisplayLabel('read_notes'), '查看了自定义纸条名')
   setToolDisplayLabelOverrides({})

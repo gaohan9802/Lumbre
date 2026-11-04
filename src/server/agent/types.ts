@@ -27,6 +27,7 @@ export type ToolDomain =
   | 'future-letter'
   | 'dictionary'
   | 'summaries'
+  | 'engawa'
 
 export interface ToolDef {
   name: string

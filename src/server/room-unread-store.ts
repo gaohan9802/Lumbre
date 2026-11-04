@@ -6,6 +6,7 @@ export const ROOM_UNREAD_KEYS = [
   'coupons', 'todo', 'notes', 'diary', 'wishlist', 'photos', 'favorites',
   'media', 'energy', 'poems', 'stories', 'research', 'tesis',
   'future', 'dictionary',
+  'engawa',
 ] as const
 
 export type RoomUnreadKey = typeof ROOM_UNREAD_KEYS[number]

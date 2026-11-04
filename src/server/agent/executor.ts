@@ -13,6 +13,7 @@ const ROOM_FOR_DOMAIN: Partial<Record<ToolDomain, RoomUnreadKey>> = {
   poems: 'poems', stories: 'stories', research: 'research', thesis: 'tesis',
   'future-letter': 'future',
   dictionary: 'dictionary',
+  engawa: 'engawa',
 }
 const UNREAD_EXCLUDED_TOOLS = new Set(['write_guestbook', 'reply_guestbook', 'unlock_diary', 'set_password', 'update_coread_progress', 'draw_picture'])
 
