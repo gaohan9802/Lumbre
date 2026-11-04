@@ -10,12 +10,14 @@ process.env.DATA_DIR = root
 let engawa: typeof import('../../src/server/engawa')
 let history: typeof import('../../src/server/engawa-history-store')
 let unread: typeof import('../../src/server/room-unread-store')
+let art: typeof import('../../src/server/engawa-art')
 const originalFetch = globalThis.fetch
 
 before(async () => {
   engawa = await import('../../src/server/engawa')
   history = await import('../../src/server/engawa-history-store')
   unread = await import('../../src/server/room-unread-store')
+  art = await import('../../src/server/engawa-art')
 })
 
 test('a daily card first found by star creates one room unread only once', async () => {
@@ -56,4 +58,17 @@ test('Engawa rejects unknown tools before making a request', async () => {
   globalThis.fetch = async () => { fetched = true; return new Response('{}') }
   await assert.rejects(() => engawa.executeEngawaTool('not_a_tool', {}), /未知/)
   assert.equal(fetched, false)
+})
+
+test('windowsill lines stay within forty characters and survive later daily captures', () => {
+  assert.throws(() => history.writeEngawaLine('豹'.repeat(41)), /四十字/)
+  const line = history.writeEngawaLine('今天的月亮像一小片没吃完的梨。')
+  history.archiveEngawaResult('daily_poem', {}, JSON.stringify({ ok: true, sentence: '今夜偏知春气暖。' }))
+  assert.equal(history.readEngawaHistory().line?.text, line.text)
+})
+
+test('daily art proxy only accepts the archive provider host', () => {
+  assert.equal(art.isAllowedEngawaArtUrl('https://openaccess-cdn.clevelandart.org/x/art.jpg'), true)
+  assert.equal(art.isAllowedEngawaArtUrl('https://openaccess-cdn.clevelandart.org.example.com/art.jpg'), false)
+  assert.equal(art.isAllowedEngawaArtUrl('http://openaccess-cdn.clevelandart.org/art.jpg'), false)
 })

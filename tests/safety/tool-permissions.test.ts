@@ -26,9 +26,9 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 141)
-  assert.equal(registry.ALL_TOOLS.length, 141)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 141)
+  assert.equal(registry.registeredToolCount(), 142)
+  assert.equal(registry.ALL_TOOLS.length, 142)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 142)
   for (const removed of ['write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline']) {
     assert.equal(registry.ALL_TOOLS.some(tool => tool.name === removed), false, removed)
   }
@@ -38,7 +38,7 @@ test('all legacy tool contracts have exactly one policy registration', () => {
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_energy_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-15).map(tool => tool.name), ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-16).map(tool => tool.name), ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove', 'write_windowsill_line'])
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
 
@@ -64,6 +64,7 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   const engawaRead = registry.getRegisteredTool('daily_poem')!
   const engawaWrite = registry.getRegisteredTool('hobby_add')!
   const engawaRemove = registry.getRegisteredTool('hobby_remove')!
+  const engawaLine = registry.getRegisteredTool('write_windowsill_line')!
 
   assert.deepEqual(policy.evaluateToolPolicy(read, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(write, {}, chat), { allowed: true, level: 'yellow' })
@@ -87,6 +88,7 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.deepEqual(policy.evaluateToolPolicy(cedarAccount, { action: 'delete_save' }, wake), { allowed: true, level: 'red' })
   assert.deepEqual(policy.evaluateToolPolicy(engawaRead, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(engawaWrite, {}, wake), { allowed: true, level: 'yellow' })
+  assert.deepEqual(policy.evaluateToolPolicy(engawaLine, {}, wake), { allowed: true, level: 'yellow' })
   assert.equal(policy.evaluateToolPolicy(engawaRemove, {}, chat).requiresConfirmation, true)
   assert.deepEqual(policy.evaluateToolPolicy(engawaRemove, {}, wake), { allowed: true, level: 'red' })
 })

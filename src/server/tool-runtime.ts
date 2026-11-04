@@ -58,6 +58,7 @@ import { readSummaryArchiveEntry, searchSummaryArchive } from './summary-archive
 import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 import { executeCedarToyTool } from './cedartoy'
 import { ENGAWA_TOOL_NAMES, executeEngawaTool } from './engawa'
+import { writeEngawaLine } from './engawa-history-store'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -97,6 +98,7 @@ export async function executeRegisteredToolHandler(
     }
 
     if (name.startsWith('cedar_')) return await executeCedarToyTool(name, input)
+    if (name === 'write_windowsill_line') return JSON.stringify({ ok: true, line: writeEngawaLine(input.text) })
     if (ENGAWA_TOOL_NAMES.includes(name as typeof ENGAWA_TOOL_NAMES[number])) return await executeEngawaTool(name, input, true)
 
     if (name === 'recall_memory') {

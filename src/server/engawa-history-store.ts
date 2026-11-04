@@ -12,7 +12,11 @@ export interface EngawaCapture {
   result: Record<string, unknown>
 }
 
-interface EngawaArchive { days: Record<string, Partial<Record<DailyTool, EngawaCapture>>> }
+export interface EngawaLine { text: string; updated_at: string }
+interface EngawaArchive {
+  days: Record<string, Partial<Record<DailyTool, EngawaCapture>>>
+  lines?: Record<string, EngawaLine>
+}
 
 const FILE = resolveDataPath(getDataDir(), 'engawa-history.json')
 const fallback = (): EngawaArchive => ({ days: {} })
@@ -24,9 +28,19 @@ const options = {
 
 export function readEngawaHistory(date?: string) {
   const archive = readJsonFile(FILE, options)
-  const dates = Object.keys(archive.days).sort().reverse()
+  const dates = Array.from(new Set([...Object.keys(archive.days), ...Object.keys(archive.lines || {})])).sort().reverse()
   const selected = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : dates[0] || madridDateKey()
-  return { date: selected, day: archive.days[selected] || {}, dates }
+  return { date: selected, day: archive.days[selected] || {}, line: archive.lines?.[selected] || null, dates }
+}
+
+export function writeEngawaLine(value: unknown): EngawaLine {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text) throw new Error('豹子一句不能为空')
+  if (Array.from(text).length > 40) throw new Error('豹子一句最多四十字')
+  const date = madridDateKey()
+  const line = { text, updated_at: new Date().toISOString() }
+  updateJsonFile(FILE, options, archive => ({ ...archive, lines: { ...(archive.lines || {}), [date]: line } }))
+  return line
 }
 
 export function archiveEngawaResult(name: string, input: Record<string, unknown>, result: string): boolean {
@@ -42,7 +56,7 @@ export function archiveEngawaResult(name: string, input: Record<string, unknown>
   let firstCapture = false
   updateJsonFile(FILE, options, archive => {
     firstCapture = !archive.days[date]?.[tool]
-    return { days: { ...archive.days, [date]: { ...(archive.days[date] || {}), [tool]: capture } } }
+    return { ...archive, days: { ...archive.days, [date]: { ...(archive.days[date] || {}), [tool]: capture } } }
   })
   return firstCapture
 }

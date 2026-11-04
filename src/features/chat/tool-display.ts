@@ -140,6 +140,7 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   hobby_corner: '逛了逛爱好角落',
   hobby_add: '往爱好角落添了新主题',
   hobby_remove: '从爱好角落移走了一个主题',
+  write_windowsill_line: '在窗台书签上写了一句话',
 }
 
 let toolDisplayOverrides: Record<string, string> = {}

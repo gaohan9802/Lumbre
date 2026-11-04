@@ -47,7 +47,7 @@ const TOOL_ORDER = [
   'cedar_list_games', 'cedar_get_guide', 'cedar_play', 'cedar_account',
   'web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove',
   'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day',
-  'hobby_corner', 'hobby_add', 'hobby_remove',
+  'hobby_corner', 'hobby_add', 'hobby_remove', 'write_windowsill_line',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

@@ -16,4 +16,5 @@ export const ENGAWA_TOOL_DEFINITIONS = [
   { name: 'hobby_corner', description: '逛逛豹子自己挑选的爱好角落，看看各主题的最新消息。', input_schema: { type: 'object', properties: { topic: { type: 'string' }, per_topic: { type: 'integer', minimum: 1, maximum: 10 } } } },
   { name: 'hobby_add', description: '给豹子的爱好角落增加或更新一个主题。发现自己想长期关注的新兴趣时可以记录。', input_schema: { type: 'object', properties: { topic: { type: 'string' }, exclude: { type: 'string', description: '逗号分隔的不想看到的标题词' }, picked_by: { type: 'string' } }, required: ['topic'] } },
   { name: 'hobby_remove', description: '从豹子的爱好角落移除一个主题。', input_schema: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] } },
+  { name: 'write_windowsill_line', description: '每天看完豹子的窗台后，给小火留一句不超过四十字的短话；同一天再次写会更新当天那一句，并收进每日书签。发现了想分享的东西、天气或心情时可以主动写。', input_schema: { type: 'object', properties: { text: { type: 'string', maxLength: 40 } }, required: ['text'] } },
 ] satisfies ToolDef[]
