@@ -1526,20 +1526,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 return (
                   <Fragment key={msg.id}>
                   {precedingPokes.map(nosePokeLine)}
-                  <div className="flex items-start gap-2" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
-                    {!isUser && (
-                      <ChatAvatar src={assistantAvatar} fallback="🐆" label="更换星星头像" disabled={avatarUploading !== null} onClick={() => assistantAvatarInputRef.current?.click()} className="mt-7" />
-                    )}
-                    <div className="min-w-0 flex-1 space-y-2">
-                      {/* wake indicator */}
-                      {(msg as any)._wake && (
-                        <div className="chat-theme-accent mb-0.5 flex items-center gap-1.5 px-1 text-[10px]">
-                          <span>💓</span> <span>心跳唤醒</span>
-                        </div>
+                  <div className="w-full" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
+                    <div className={`mb-2 flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                      {!isUser && (
+                        <ChatAvatar src={assistantAvatar} fallback="🐆" label="更换星星头像" disabled={avatarUploading !== null} onClick={() => assistantAvatarInputRef.current?.click()} />
                       )}
-
-                      {/* timestamp */}
-                      <div className={`chat-theme-ui chat-theme-muted flex items-center gap-1 text-[12px] ${isUser ? 'justify-end pr-1' : 'justify-start pl-1'}`}>
+                      <div className="chat-theme-ui chat-theme-muted flex items-center gap-1 text-[12px]">
                         <span>{fmtShortDate(msg.timestamp)}</span>
                         {!isUser && thinkingParts.length > 0 && (
                           <button
@@ -1552,6 +1544,17 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </button>
                         )}
                       </div>
+                      {isUser && (
+                        <ChatAvatar src={userAvatar} fallback="🦦" label="更换小火头像" disabled={avatarUploading !== null} onClick={() => userAvatarInputRef.current?.click()} />
+                      )}
+                    </div>
+                    <div className="w-full space-y-2">
+                      {/* wake indicator */}
+                      {(msg as any)._wake && (
+                        <div className="chat-theme-accent mb-0.5 flex items-center gap-1.5 px-1 text-[10px]">
+                          <span>💓</span> <span>心跳唤醒</span>
+                        </div>
+                      )}
 
                       {/* Inline content blocks — interleaved thinking/tool/text */}
                       {!isUser && displayContentBlocks && displayContentBlocks.length > 0 ? (
@@ -1776,9 +1779,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       )}
 
                     </div>
-                    {isUser && (
-                      <ChatAvatar src={userAvatar} fallback="🦦" label="更换小火头像" disabled={avatarUploading !== null} onClick={() => userAvatarInputRef.current?.click()} className="mt-7" />
-                    )}
                   </div>
                   </Fragment>
                 )

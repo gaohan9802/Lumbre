@@ -43,14 +43,16 @@ export function StreamingReply({
   const visibleBlocks = renderBlocks.slice(0, Math.max(1, visibleCount))
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-start gap-2">
-      <ChatAvatar src={avatarSrc} fallback="🐆" label="更换星星头像" disabled={avatarUploading} onClick={onAvatarClick} />
-      <div className="min-w-0 flex-1 space-y-2">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full space-y-2">
+      <div className="flex items-center gap-2">
+        <ChatAvatar src={avatarSrc} fallback="🐆" label="更换星星头像" disabled={avatarUploading} onClick={onAvatarClick} />
         {thinkingParts.length > 0 && (
-          <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-icon chat-theme-muted ml-4 inline-grid h-5 w-5 place-items-center rounded-full">
+          <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-icon chat-theme-muted inline-grid h-5 w-5 place-items-center rounded-full">
             <ThinkingBubbles />
           </button>
         )}
+      </div>
+      <div className="w-full space-y-2">
         {renderBlocks.length > 0 ? visibleBlocks.map((block, index) => {
           const isLast = index === visibleBlocks.length - 1 && visibleCount >= renderBlocks.length
           if (block.type === 'tool_call' && block.name) {
