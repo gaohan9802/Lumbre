@@ -101,6 +101,8 @@ const fmtFullTs = (ts: number) => {
 const madridDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIME_ZONE })
 const madridTimeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })
 const madridShortDateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: APP_TIME_ZONE, month: 'short', day: 'numeric' })
+const CHAT_PRESENTATION_PROTOCOL = `[聊天呈现约定]
+按语义自然分段；想换一只新气泡时空一行，普通换行仍留在同一只气泡。整条回复只有一段纯动作时，用一对单星号包住整段；多段回复里的动作不要使用这个标记。整段说话可以用一对双星号包住。不要解释这段约定。`
 
 const fmtShortDate = (ts: number) => {
   const d = new Date(ts)
@@ -702,6 +704,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       bookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'start')),
       readingInjection,
       bookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'end')),
+      CHAT_PRESENTATION_PROTOCOL,
     ].filter(Boolean).join('\n\n')
 
     // Always stream the transport. A non-streaming /api/chat returns zero bytes
@@ -1416,7 +1419,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const visibleContextWarning = contextWarning?.sessionId === activeSession?.id ? contextWarning : null
   return (
     <>
-      <div className="chat-theme relative flex h-full overflow-hidden">
+      <div className="chat-theme chat-page-shell relative flex h-full overflow-hidden">
         {!embedded && <div className="hidden lg:block h-full relative z-10">
           <SidebarContent />
         </div>}
@@ -1431,8 +1434,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               aria-label="回到主页"
               onClick={() => setSidebarOpen(true)}
               whileTap={{ scale: 0.82, rotate: 12 }}
-              className="chat-theme-icon justify-self-center rounded-full p-2 text-[25px] leading-none"
-            >🐆</motion.button>
+              className="chat-theme-icon justify-self-center rounded-full p-1 leading-none"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/chat-assets/snow-leopard-head.png" alt="" className="h-9 w-9 object-contain" />
+            </motion.button>
             <button aria-label="打开房间" onClick={() => openChatSettings('menu')} className="chat-theme-icon justify-self-end rounded-full p-2">
               <Moon size={21} strokeWidth={1.45}/>
             </button>
@@ -1487,7 +1493,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <Fragment key={msg.id}>
                   {precedingPokes.map(nosePokeLine)}
                   <div className="flex" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
-                    <div className="w-full space-y-1">
+                    <div className="w-full space-y-2">
                       {/* wake indicator */}
                       {(msg as any)._wake && (
                         <div className="chat-theme-accent mb-0.5 flex items-center gap-1.5 px-1 text-[10px]">
@@ -1496,7 +1502,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       )}
 
                       {/* timestamp */}
-                      <div className={`chat-theme-ui chat-theme-muted flex items-center gap-1 text-[12px] ${isUser ? 'justify-end pr-1' : 'justify-start pl-4'}`}>
+                      <div className={`chat-theme-ui chat-theme-muted flex items-center gap-1 text-[12px] ${isUser ? 'justify-end pr-1' : 'justify-start pl-1'}`}>
                         <span>{fmtShortDate(msg.timestamp)}</span>
                         {!isUser && thinkingParts.length > 0 && (
                           <button
@@ -1551,8 +1557,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               )
                             }
                             if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
+                              const action = block.presentation === 'action'
                               return (
-                                <div key={blockKey} className="chat-ai-bubble relative block w-full break-words px-4 py-2 text-justify text-[14px] leading-[1.52] tracking-[-0.015em] [text-justify:inter-ideograph]">
+                                <div key={blockKey} className={action
+                                  ? 'chat-action-line relative mr-auto block max-w-[88%] break-words px-4 py-1.5 text-[14px]'
+                                  : 'chat-ai-bubble chat-theme-surface relative mr-auto block w-fit max-w-[88%] break-words rounded-[18px] rounded-bl-md px-4 py-2.5 text-[14px]'}>
                                   {messageImages && bi === firstTextBlockIndex && messageImages.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {messageImages.map((src: string, ii: number) => (
@@ -1629,7 +1638,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard || !!msg.sticker)) ? (
-                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words px-4 text-[14px] ${isUser ? 'ml-auto w-fit max-w-[77%] rounded-2xl rounded-br-md py-2.5 leading-relaxed' : 'w-full py-2 text-justify leading-[1.52] tracking-[-0.015em] [text-justify:inter-ideograph]'}`}>
+                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble chat-theme-surface'} relative block w-fit break-words px-4 text-[14px] ${isUser ? 'ml-auto max-w-[77%] rounded-[18px] rounded-br-md py-2.5 leading-relaxed' : 'mr-auto max-w-[88%] rounded-[18px] rounded-bl-md py-2.5'}`}>
                           {msg.sticker && sticker(msg.sticker.id) && (
                             <StickerArt id={msg.sticker.id} className="mx-auto mb-1 h-28 w-28" />
                           )}
@@ -1804,6 +1813,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             )}
 
             <div className="chat-theme-ui chat-compose-shell relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/chat-assets/otter-peek.png" alt="" aria-hidden="true" className="pointer-events-none absolute -top-5 right-5 z-10 h-9 w-[72px] object-contain object-bottom" />
               <div className="chat-input-tray chat-theme-input rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200">
                 <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => setMessageActionsId(null)}
                   placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"

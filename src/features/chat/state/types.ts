@@ -8,6 +8,7 @@ import type { StickerRef } from '@/lib/stickers'
 export interface ContentBlock {
   type: 'thinking' | 'text' | 'tool_call'
   content?: string
+  presentation?: 'bubble' | 'action'
   callId?: string
   name?: string
   input?: Record<string, any>

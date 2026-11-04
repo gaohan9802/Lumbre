@@ -1,5 +1,5 @@
-import { applyBubbleLayout, composeBubbleLayout } from '@/lib/chat-bubble-composer'
 import type { ChatMessage, ContentBlock } from '@/features/chat/state/types'
+import { presentAssistantBlocks } from '@/lib/chat-bubble-rules'
 
 export interface PencilDrawingResult {
   id: string
@@ -33,10 +33,13 @@ export function prepareChatMessage(message: ChatMessage): PreparedChatMessage {
   if (cached) return cached
   const isUser = message.role === 'user'
   const baseDisplayBlocks: ContentBlock[] | undefined = !isUser
-    ? (message.content_blocks?.length ? message.content_blocks : (message.replyMode === 'short' && message.content.trim() ? [{ type: 'text', content: message.content }] : undefined))
+    ? (message.content_blocks?.length ? message.content_blocks : (message.content.trim() ? [{ type: 'text', content: message.content }] : undefined))
     : undefined
   const displayContentBlocks = baseDisplayBlocks
-    ? (message.replyMode === 'short' ? applyBubbleLayout(baseDisplayBlocks, message.bubbleLayout || composeBubbleLayout(baseDisplayBlocks)) : baseDisplayBlocks)
+    ? presentAssistantBlocks(baseDisplayBlocks, {
+        split: !(message as any)._wake,
+        allowTransparentAction: !(message as any)._wake && !message.images?.length && !message.attachments?.length && !message.sharedCard && !message.sticker,
+      })
     : undefined
   const firstTextBlockIndex = displayContentBlocks?.findIndex(block => block.type === 'text' && !!block.content?.trim()) ?? -1
   const call = !isUser ? [...(message.tool_calls || [])].reverse().find(item => item.name === 'draw_picture') : undefined

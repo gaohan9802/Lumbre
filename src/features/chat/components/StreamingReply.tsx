@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import type { ContentBlock } from '@/features/chat/state/types'
@@ -7,6 +8,7 @@ import { MarkdownText } from '@/components/chat/MarkdownText'
 import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 import { ToolSticker } from '@/components/chat/StickerPicker'
 import { ThinkingBubbles } from './ThinkingBubbles'
+import { presentAssistantBlocks } from '@/lib/chat-bubble-rules'
 
 interface StreamingReplyProps {
   blocks: ContentBlock[]
@@ -21,18 +23,31 @@ export function StreamingReply({
   const thinkingParts = blocks
     .filter((block): block is ContentBlock & { content: string } => block.type === 'thinking' && typeof block.content === 'string' && !!block.content.trim())
     .map(block => block.content)
+  const displayBlocks = useMemo(
+    () => presentAssistantBlocks(blocks, { streaming: true }),
+    [blocks],
+  )
+  const renderBlocks = useMemo(() => displayBlocks.filter(block => block.type !== 'thinking'), [displayBlocks])
+  const [visibleCount, setVisibleCount] = useState(1)
+
+  useEffect(() => {
+    if (visibleCount >= renderBlocks.length) return
+    const timer = window.setTimeout(() => setVisibleCount(count => Math.min(count + 1, renderBlocks.length)), 750)
+    return () => window.clearTimeout(timer)
+  }, [renderBlocks.length, visibleCount])
+
+  const visibleBlocks = renderBlocks.slice(0, Math.max(1, visibleCount))
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-      <div className="w-full space-y-1">
+      <div className="w-full space-y-2">
         {thinkingParts.length > 0 && (
           <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-icon chat-theme-muted ml-4 inline-grid h-5 w-5 place-items-center rounded-full">
             <ThinkingBubbles />
           </button>
         )}
-        {blocks.length > 0 ? blocks.map((block, index) => {
-          const isLast = index === blocks.length - 1
-          if (block.type === 'thinking') return null
+        {renderBlocks.length > 0 ? visibleBlocks.map((block, index) => {
+          const isLast = index === visibleBlocks.length - 1 && visibleCount >= renderBlocks.length
           if (block.type === 'tool_call' && block.name) {
             const key = `stream-tool-${block.callId || index}`
             if (block.name === 'send_sticker') return <ToolSticker key={key} input={block.input} pending={block.pending} />
@@ -64,9 +79,12 @@ export function StreamingReply({
             )
           }
           if (block.type === 'text' && typeof block.content === 'string' && block.content.trim()) {
+            const action = block.presentation === 'action'
             return (
-              <motion.div key={index} initial={{ opacity: 0, y: 2 }} animate={{ opacity: 1, y: 0 }} className="chat-ai-bubble relative block w-full whitespace-pre-wrap break-words px-4 py-2 text-justify text-[14px] leading-[1.52] tracking-[-0.015em] [text-justify:inter-ideograph]">
-                {block.content}{isLast && <span className="stream-cursor">…</span>}
+              <motion.div key={index} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className={action
+                ? 'chat-action-line relative mr-auto block max-w-[88%] break-words px-4 py-1.5 text-[14px]'
+                : 'chat-ai-bubble chat-theme-surface relative mr-auto block w-fit max-w-[88%] break-words rounded-[18px] rounded-bl-md px-4 py-2.5 text-[14px]'}>
+                <MarkdownText content={block.content} cursor={isLast} />
               </motion.div>
             )
           }

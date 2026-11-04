@@ -129,19 +129,31 @@
 
   /* Chat only: Claude's neutral surfaces with Lumbre mist rose as the sole accent. */
   .chat-theme {
-    --chat-bg: #faf8f3;
+    --chat-bg: #f8f6f1;
     --chat-sidebar: #f5f2ec;
-    --chat-surface: #fdfbf7;
-    --chat-soft: #efede7;
-    --chat-user: #efede7;
+    --chat-surface: #fffdfa;
+    --chat-soft: #efede8;
+    --chat-user: #f3e1dc;
     --chat-border: #dedbd4;
     --chat-text: #20201e;
     --chat-muted: #77756f;
     --chat-accent: #dbb9b3;
     --chat-accent-ink: #765753;
+    --chat-grid-dot: rgba(120, 113, 102, 0.18);
+    --chat-grid-line: rgba(120, 113, 102, 0.055);
+    --chat-card-shadow: rgba(46, 39, 33, 0.075);
     background-color: var(--chat-bg);
     color: var(--chat-text);
     font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  }
+
+  .chat-page-shell {
+    background-image:
+      radial-gradient(circle at 1px 1px, var(--chat-grid-dot) 0.7px, transparent 0.85px),
+      linear-gradient(var(--chat-grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--chat-grid-line) 1px, transparent 1px);
+    background-position: 0 0, 0 0, 0 0;
+    background-size: 16px 16px, 64px 64px, 64px 64px;
   }
 
   .dark .chat-theme {
@@ -155,6 +167,9 @@
     --chat-muted: #aaa8a1;
     --chat-accent: #dbb9b3;
     --chat-accent-ink: #e2c4bf;
+    --chat-grid-dot: rgba(224, 217, 207, 0.1);
+    --chat-grid-line: rgba(224, 217, 207, 0.035);
+    --chat-card-shadow: rgba(0, 0, 0, 0.22);
   }
 
   .chat-theme-ui { font-family: Inter, system-ui, -apple-system, sans-serif; }
@@ -181,10 +196,10 @@
   }
   .chat-theme-input {
     background-color: var(--chat-surface);
-    background-color: color-mix(in srgb, var(--chat-surface) 74%, transparent);
+    background-color: color-mix(in srgb, var(--chat-surface) 94%, transparent);
     border-color: var(--chat-border);
     color: var(--chat-text);
-    box-shadow: 0 8px 24px rgba(25, 24, 22, 0.08);
+    box-shadow: 0 10px 28px var(--chat-card-shadow);
     -webkit-backdrop-filter: blur(18px) saturate(120%);
     backdrop-filter: blur(18px) saturate(120%);
   }
@@ -199,14 +214,27 @@
 
 }
 
-/* Keep 星星's long replies a touch larger and denser than the surrounding UI. */
+/* Shared paper bubble: long and short replies deliberately use one visual language. */
 .chat-ai-bubble {
   font-size: 0.9375rem;
-  line-height: 1.58;
+  line-height: 1.56;
   letter-spacing: 0;
+  box-shadow: 0 4px 15px var(--chat-card-shadow);
+  border: 1px solid color-mix(in srgb, var(--chat-border) 56%, transparent);
 }
 
 .chat-ai-bubble .markdown-text p { line-height: inherit; }
+
+.chat-theme-user {
+  box-shadow: 0 4px 14px var(--chat-card-shadow);
+  border: 1px solid color-mix(in srgb, var(--chat-accent) 38%, transparent);
+}
+
+.chat-action-line {
+  color: var(--chat-muted);
+  font-style: normal;
+  line-height: 1.65;
+}
 
 ::-webkit-scrollbar {
   width: 4px;
