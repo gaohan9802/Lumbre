@@ -183,6 +183,8 @@ export interface ChatSession {
 }
 
 export interface ChatAppearance {
+  userAvatar?: string
+  assistantAvatar?: string
   userBubbleFrosted?: boolean
   userBubbleBlur?: number
   userBubbleFrostedNight?: boolean

@@ -121,6 +121,16 @@
 
   .chat-footer {
     padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
+    isolation: isolate;
+  }
+
+  .chat-footer::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: -3rem 0 0;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent 0, var(--chat-bg) 42%, var(--chat-bg) 100%);
   }
 
   .chat-footer:focus-within {
@@ -196,12 +206,12 @@
   }
   .chat-theme-input {
     background-color: var(--chat-surface);
-    background-color: color-mix(in srgb, var(--chat-surface) 94%, transparent);
-    border-color: var(--chat-border);
+    background-color: color-mix(in srgb, var(--chat-surface) 72%, transparent);
+    border-color: color-mix(in srgb, var(--chat-border) 72%, transparent);
     color: var(--chat-text);
-    box-shadow: 0 10px 28px var(--chat-card-shadow);
-    -webkit-backdrop-filter: blur(18px) saturate(120%);
-    backdrop-filter: blur(18px) saturate(120%);
+    box-shadow: 0 10px 28px var(--chat-card-shadow), inset 0 1px rgba(255, 255, 255, 0.68);
+    -webkit-backdrop-filter: blur(24px) saturate(135%);
+    backdrop-filter: blur(24px) saturate(135%);
   }
   .dark .chat-theme-input { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
   .chat-theme-input:focus-within { border-color: color-mix(in srgb, var(--chat-text) 18%, var(--chat-border)); }
@@ -214,20 +224,32 @@
 
 }
 
-/* Shared paper bubble: long and short replies deliberately use one visual language. */
+/* Star replies lie directly on the shared paper; only the user's side has a bubble. */
 .chat-ai-bubble {
   font-size: 0.9375rem;
   line-height: 1.56;
   letter-spacing: 0;
-  box-shadow: 0 4px 15px var(--chat-card-shadow);
-  border: 1px solid color-mix(in srgb, var(--chat-border) 56%, transparent);
+  text-align: justify;
+  text-justify: inter-ideograph;
 }
 
 .chat-ai-bubble .markdown-text p { line-height: inherit; }
 
 .chat-theme-user {
-  box-shadow: 0 4px 14px var(--chat-card-shadow);
-  border: 1px solid color-mix(in srgb, var(--chat-accent) 38%, transparent);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.72),
+    0 2px 0 color-mix(in srgb, var(--chat-accent-ink) 18%, transparent),
+    0 8px 18px var(--chat-card-shadow);
+  border: 1px solid color-mix(in srgb, var(--chat-accent) 48%, transparent);
+}
+
+.chat-avatar {
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.75), 0 4px 12px var(--chat-card-shadow);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.chat-avatar:active {
+  transform: translateY(1px) scale(0.96);
 }
 
 .chat-action-line {

@@ -9,16 +9,20 @@ import { toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display
 import { ToolSticker } from '@/components/chat/StickerPicker'
 import { ThinkingBubbles } from './ThinkingBubbles'
 import { presentAssistantBlocks } from '@/lib/chat-bubble-rules'
+import { ChatAvatar } from './ChatAvatar'
 
 interface StreamingReplyProps {
   blocks: ContentBlock[]
   onOpenThinking: (parts: string[]) => void
   expandedTools: Set<string>
   onToggleTools: (id: string) => void
+  avatarSrc?: string
+  onAvatarClick: () => void
+  avatarUploading?: boolean
 }
 
 export function StreamingReply({
-  blocks, onOpenThinking, expandedTools, onToggleTools,
+  blocks, onOpenThinking, expandedTools, onToggleTools, avatarSrc, onAvatarClick, avatarUploading,
 }: StreamingReplyProps) {
   const thinkingParts = blocks
     .filter((block): block is ContentBlock & { content: string } => block.type === 'thinking' && typeof block.content === 'string' && !!block.content.trim())
@@ -39,8 +43,9 @@ export function StreamingReply({
   const visibleBlocks = renderBlocks.slice(0, Math.max(1, visibleCount))
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-      <div className="w-full space-y-2">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-start gap-2">
+      <ChatAvatar src={avatarSrc} fallback="🐆" label="更换星星头像" disabled={avatarUploading} onClick={onAvatarClick} />
+      <div className="min-w-0 flex-1 space-y-2">
         {thinkingParts.length > 0 && (
           <button type="button" aria-label="打开星星的小算盘" onClick={() => onOpenThinking(thinkingParts)} className="chat-theme-icon chat-theme-muted ml-4 inline-grid h-5 w-5 place-items-center rounded-full">
             <ThinkingBubbles />
@@ -82,15 +87,15 @@ export function StreamingReply({
             const action = block.presentation === 'action'
             return (
               <motion.div key={index} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className={action
-                ? 'chat-action-line relative mr-auto block max-w-[88%] break-words px-4 py-1.5 text-[14px]'
-                : 'chat-ai-bubble chat-theme-surface relative mr-auto block w-fit max-w-[88%] break-words rounded-[18px] rounded-bl-md px-4 py-2.5 text-[14px]'}>
+                ? 'chat-action-line relative block w-full break-words px-1 py-1.5 text-[14px]'
+                : 'chat-ai-bubble relative block w-full break-words px-1 py-1 text-[14px] text-justify [text-justify:inter-ideograph]'}>
                 <MarkdownText content={block.content} cursor={isLast} />
               </motion.div>
             )
           }
           return null
         }) : (
-          <div className="chat-ai-bubble relative w-full px-4 py-2">
+          <div className="chat-ai-bubble relative w-full px-1 py-2">
             <div className="flex gap-1">
               {[0, 1, 2].map(index => (
                 <motion.div key={index} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.2 }}

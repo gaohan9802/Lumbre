@@ -40,6 +40,14 @@ export function sanitizeChatConfig(config: any): any {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return config
   const safe = { ...config }
   if ('apiProfiles' in safe) safe.apiProfiles = sanitizeModelProfiles(safe.apiProfiles)
+  if (safe.appearance && typeof safe.appearance === 'object' && !Array.isArray(safe.appearance)) {
+    const avatar = (value: unknown) => typeof value === 'string' && /^\/api\/chat-assets\/[a-f0-9]{64}\.(?:jpg|png|webp|gif|avif)$/.test(value) ? value : ''
+    safe.appearance = {
+      ...safe.appearance,
+      userAvatar: avatar(safe.appearance.userAvatar),
+      assistantAvatar: avatar(safe.appearance.assistantAvatar),
+    }
+  }
   delete safe.apiKey
   delete safe.baseUrl
   return safe

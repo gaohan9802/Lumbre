@@ -33,6 +33,7 @@ import { CHAT_PAGE_SIZE, useChatViewState } from '@/features/chat/view/useChatVi
 import { prepareChatMessage, type PencilDrawingResult } from '@/features/chat/view/prepareChatMessage'
 import { setToolDisplayLabelOverrides, toolDisplayInput, toolDisplayLabel } from '@/features/chat/tool-display'
 import { StreamingReply } from '@/features/chat/components/StreamingReply'
+import { ChatAvatar } from '@/features/chat/components/ChatAvatar'
 import { ThinkingDrawer } from '@/features/chat/components/ThinkingDrawer'
 import { ThinkingBubbles } from '@/features/chat/components/ThinkingBubbles'
 import { WeChatTranscriptCard } from '@/features/chat/components/WeChatTranscriptCard'
@@ -103,6 +104,15 @@ const madridTimeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: APP_TIM
 const madridShortDateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: APP_TIME_ZONE, month: 'short', day: 'numeric' })
 const CHAT_PRESENTATION_PROTOCOL = `[聊天呈现约定]
 按语义自然分段；想换一只新气泡时空一行，普通换行仍留在同一只气泡。整条回复只有一段纯动作时，用一对单星号包住整段；多段回复里的动作不要使用这个标记。整段说话可以用一对双星号包住。不要解释这段约定。`
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
 
 const fmtShortDate = (ts: number) => {
   const d = new Date(ts)
@@ -244,7 +254,12 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [, setToolLabelRevision] = useState(0)
   const bottomedSessionRef = useRef<string | null>(null)
   const footerRef = useRef<HTMLDivElement>(null)
+  const userAvatarInputRef = useRef<HTMLInputElement>(null)
+  const assistantAvatarInputRef = useRef<HTMLInputElement>(null)
+  const [avatarUploading, setAvatarUploading] = useState<'user' | 'assistant' | null>(null)
   const [footerInset, setFooterInset] = useState(112)
+  const userAvatar = settings.appearance.userAvatar || ''
+  const assistantAvatar = settings.appearance.assistantAvatar || '/chat-assets/snow-leopard-head.png'
 
   const {
     input, setInput, isLoading, setIsLoading, sendStarting, setSendStarting,
@@ -555,6 +570,28 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }, [input])
 
+  const handleAvatarUpload = async (role: 'user' | 'assistant', event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) return window.alert('请选择一张图片。')
+    if (file.size > 10 * 1024 * 1024) return window.alert('头像原图不能超过 10 MB。')
+    setAvatarUploading(role)
+    try {
+      const image = await compressImage(await readFileAsDataUrl(file), 384, 0.86)
+      const saved = await apiRequest('/api/chat-assets/avatar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image }),
+      }, 25000)
+      if (typeof saved?.url !== 'string') throw new Error('头像保存失败')
+      const key = role === 'user' ? 'userAvatar' : 'assistantAvatar'
+      setSettings({ appearance: { ...settings.appearance, [key]: saved.url } })
+    } catch (error: any) {
+      window.alert(error?.message || '头像保存失败，请重新选择。')
+    } finally {
+      setAvatarUploading(null)
+    }
+  }
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     e.target.value = ''
@@ -564,12 +601,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     if (imageFiles.length) {
       setUploadingImg(true)
       try {
-        const dataUrls = await Promise.all(imageFiles.map(file => new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(reader.result as string)
-          reader.onerror = reject
-          reader.readAsDataURL(file)
-        })))
+        const dataUrls = await Promise.all(imageFiles.map(readFileAsDataUrl))
         const compressed = await Promise.all(dataUrls.map(dataUrl => compressImage(dataUrl)))
         setPendingImages(previous => [...previous, ...compressed])
       } catch {
@@ -1419,6 +1451,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const visibleContextWarning = contextWarning?.sessionId === activeSession?.id ? contextWarning : null
   return (
     <>
+      <input ref={userAvatarInputRef} type="file" accept="image/*" hidden onChange={event => void handleAvatarUpload('user', event)} />
+      <input ref={assistantAvatarInputRef} type="file" accept="image/*" hidden onChange={event => void handleAvatarUpload('assistant', event)} />
       <div className="chat-theme chat-page-shell relative flex h-full overflow-hidden">
         {!embedded && <div className="hidden lg:block h-full relative z-10">
           <SidebarContent />
@@ -1437,7 +1471,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               className="chat-theme-icon justify-self-center rounded-full p-1 leading-none"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/chat-assets/snow-leopard-head.png" alt="" className="h-9 w-9 object-contain" />
+              <img src={assistantAvatar} alt="" className="h-9 w-9 rounded-full object-cover" />
             </motion.button>
             <button aria-label="打开房间" onClick={() => openChatSettings('menu')} className="chat-theme-icon justify-self-end rounded-full p-2">
               <Moon size={21} strokeWidth={1.45}/>
@@ -1492,8 +1526,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 return (
                   <Fragment key={msg.id}>
                   {precedingPokes.map(nosePokeLine)}
-                  <div className="flex" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
-                    <div className="w-full space-y-2">
+                  <div className="flex items-start gap-2" onClick={(event) => { event.stopPropagation(); setMessageActionsId(current => current === msg.id ? null : msg.id) }}>
+                    {!isUser && (
+                      <ChatAvatar src={assistantAvatar} fallback="🐆" label="更换星星头像" disabled={avatarUploading !== null} onClick={() => assistantAvatarInputRef.current?.click()} className="mt-7" />
+                    )}
+                    <div className="min-w-0 flex-1 space-y-2">
                       {/* wake indicator */}
                       {(msg as any)._wake && (
                         <div className="chat-theme-accent mb-0.5 flex items-center gap-1.5 px-1 text-[10px]">
@@ -1560,8 +1597,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               const action = block.presentation === 'action'
                               return (
                                 <div key={blockKey} className={action
-                                  ? 'chat-action-line relative mr-auto block max-w-[88%] break-words px-4 py-1.5 text-[14px]'
-                                  : 'chat-ai-bubble chat-theme-surface relative mr-auto block w-fit max-w-[88%] break-words rounded-[18px] rounded-bl-md px-4 py-2.5 text-[14px]'}>
+                                  ? 'chat-action-line relative block w-full break-words px-1 py-1.5 text-[14px]'
+                                  : 'chat-ai-bubble relative block w-full break-words px-1 py-1 text-[14px] text-justify [text-justify:inter-ideograph]'}>
                                   {messageImages && bi === firstTextBlockIndex && messageImages.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {messageImages.map((src: string, ii: number) => (
@@ -1638,7 +1675,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard || !!msg.sticker)) ? (
-                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble chat-theme-surface'} relative block w-fit break-words px-4 text-[14px] ${isUser ? 'ml-auto max-w-[77%] rounded-[18px] rounded-br-md py-2.5 leading-relaxed' : 'mr-auto max-w-[88%] rounded-[18px] rounded-bl-md py-2.5'}`}>
+                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words text-[14px] ${isUser ? 'ml-auto w-fit max-w-[77%] rounded-[18px] rounded-br-md px-4 py-2.5 leading-relaxed' : 'w-full px-1 py-1 text-justify [text-justify:inter-ideograph]'}`}>
                           {msg.sticker && sticker(msg.sticker.id) && (
                             <StickerArt id={msg.sticker.id} className="mx-auto mb-1 h-28 w-28" />
                           )}
@@ -1739,6 +1776,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       )}
 
                     </div>
+                    {isUser && (
+                      <ChatAvatar src={userAvatar} fallback="🦦" label="更换小火头像" disabled={avatarUploading !== null} onClick={() => userAvatarInputRef.current?.click()} className="mt-7" />
+                    )}
                   </div>
                   </Fragment>
                 )
@@ -1753,6 +1793,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 onOpenThinking={(parts) => setThinkingDrawer({ id: 'stream', parts })}
                 expandedTools={expandedTools}
                 onToggleTools={toggleTools}
+                avatarSrc={assistantAvatar}
+                onAvatarClick={() => assistantAvatarInputRef.current?.click()}
+                avatarUploading={avatarUploading !== null}
               />
             )}
 

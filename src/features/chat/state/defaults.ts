@@ -13,6 +13,8 @@ export function makeChatId(prefix = 'id') {
 }
 
 export const DEFAULT_APPEARANCE: ChatAppearance = {
+  userAvatar: '',
+  assistantAvatar: '',
   bgImage: '',
   bgOpacity: 0.3,
   userBubbleColor: '',

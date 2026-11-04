@@ -78,6 +78,26 @@ test('chat images are stored outside the session JSON and remain readable by ref
   assert.equal(assets.chatImageDataUrl(stored), image)
 })
 
+test('avatar upload returns a durable private asset and config rejects inline or external avatars', async () => {
+  const route = await import('../../src/app/api/chat-assets/[asset]/route')
+  const response = await route.POST(new Request('http://localhost/api/chat-assets/avatar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: 'data:image/png;base64,YXZhdGFy' }),
+  }), { params: { asset: 'avatar' } })
+  assert.equal(response.status, 200)
+  const saved = await response.json()
+  assert.match(saved.url, /^\/api\/chat-assets\/[a-f0-9]{64}\.png$/)
+
+  const { sanitizeChatConfig } = await import('../../src/server/chat/credentials')
+  const valid = sanitizeChatConfig({ appearance: { userAvatar: saved.url, assistantAvatar: saved.url } })
+  assert.equal(valid.appearance.userAvatar, saved.url)
+  assert.equal(valid.appearance.assistantAvatar, saved.url)
+  const unsafe = sanitizeChatConfig({ appearance: { userAvatar: 'data:image/png;base64,YQ==', assistantAvatar: 'https://example.com/avatar.png' } })
+  assert.equal(unsafe.appearance.userAvatar, '')
+  assert.equal(unsafe.appearance.assistantAvatar, '')
+})
+
 test('long sessions read and append only bounded message chunks', () => {
   const id = 'long-session'
   const messages = Array.from({ length: 600 }, (_, index) => ({
