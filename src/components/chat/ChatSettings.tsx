@@ -90,15 +90,15 @@ export function ChatSettings(props: Props) {
   if (!open) return null
   const card = 'chat-theme-panel chat-theme-border border'
   const button = `chat-theme-hover px-4 py-2.5 rounded-xl text-sm ${card}`
-  const titles = { menu: '房间', star: 'SP', settings: '参数' }
+  const titles = { menu: 'Rooms', star: 'SP', settings: '参数' }
   const navigate = (action?: () => void) => { onClose(); action?.() }
   const openRoom = (room: RoomUnreadKey, action?: () => void) => {
     setRoomUnread(current => ({ ...current, [room]: 0 }))
     void apiRequest('/api/room-unread', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room }) }).catch(() => {})
     navigate(action)
   }
-  const row = (label: string, action: () => void, badge = 0) => <button key={label} onClick={action} className="chat-theme-hover chat-theme-border flex min-h-11 w-full items-center gap-2 border-b px-3 py-2 text-left last:border-b-0">
-    <span className="min-w-0 flex-1 truncate text-sm leading-5">{label}</span>{badge > 0 && <span aria-label={`${badge} 条未读`} className="chat-theme-accent-bg rounded-full px-2 py-0.5 text-[10px] font-medium text-[#3f2c29]">{badge > 99 ? '99+' : `+${badge}`}</span>}<ChevronRight className="chat-theme-muted shrink-0" size={15}/>
+  const room = (label: string, action: () => void, badge = 0) => <button key={label} onClick={action} className="chat-room-link chat-theme-hover flex min-w-0 items-center gap-1.5 px-2 py-2 text-left">
+    {badge > 0 && <span aria-hidden="true" className="chat-theme-accent-bg h-1.5 w-1.5 shrink-0 rounded-full"/>}<span className="min-w-0 flex-1 truncate text-[11px] leading-5">{label}</span>{badge > 0 && <span aria-label={`${badge} 条未读`} className="chat-theme-accent text-[8px]">+{badge > 99 ? '99' : badge}</span>}<ChevronRight className="chat-theme-muted shrink-0 opacity-55" size={11}/>
   </button>
   const slider = (label: string, value: number, change: (v: number) => void, min = 0, max = 1, step = .05, display?: string) => <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>{label}</span><span className="opacity-60">{display || `${Math.round(value * 100)}%`}</span></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))} className="w-full"/></label>
   const toggle = (label: string, checked: boolean, action: () => void) => <button role="switch" aria-checked={checked} onClick={action} className="w-full flex items-center justify-between py-2 text-sm"><span>{label}</span><span className={`w-10 h-6 rounded-full p-0.5 ${checked ? 'chat-theme-accent-bg' : 'chat-theme-soft'}`}><span className={`block w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`}/></span></button>
@@ -122,36 +122,33 @@ export function ChatSettings(props: Props) {
   </section>
   return <>
     <div className="fixed inset-0 z-[70] bg-black/30" onClick={close}/>
-    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`chat-theme chat-theme-ui chat-theme-border fixed ${panel !== 'menu' ? 'chat-theme-surface inset-x-4 mx-auto top-[8dvh] max-h-[84dvh] max-w-[640px] rounded-2xl border' : 'chat-theme-sidebar bottom-0 right-0 top-0 w-[86vw] max-w-[340px] border-l'} z-[71] flex flex-col overflow-hidden shadow-2xl outline-none`}>
-      <div className="chat-theme-border relative z-10 flex items-center gap-3 border-b px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
-        {panel !== 'menu' && <button aria-label={initialPanel === 'menu' ? '返回房间' : '关闭'} onClick={() => initialPanel === 'menu' ? confirm(() => setPanel('menu')) : close()} className="p-2"><ChevronLeft size={20}/></button>}
-        <h2 id="chat-menu-title" className="flex-1 font-medium">{titles[panel]}</h2>
+    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`chat-theme chat-theme-ui chat-theme-border fixed ${panel !== 'menu' ? 'chat-theme-surface inset-x-4 mx-auto top-[8dvh] max-h-[84dvh] max-w-[640px] rounded-2xl border' : 'chat-page-shell chat-room-drawer bottom-0 right-0 top-0 w-[86vw] max-w-[340px] border-l'} z-[71] flex flex-col overflow-hidden shadow-2xl outline-none`}>
+      <div className={`relative z-10 flex items-center gap-3 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] ${panel === 'menu' ? 'chat-room-header' : 'chat-theme-border border-b'}`}>
+        {panel === 'menu' ? <div>
+          <div className="flex items-end gap-1.5">
+            <h2 id="chat-menu-title" className="chat-session-title text-[28px] font-bold leading-none">Rooms</h2>
+            <img src="/chat-assets/otter-peek.png" alt="" aria-hidden="true" className="pointer-events-none h-8 w-14 object-contain object-bottom" />
+          </div>
+          <div className="chat-session-mono mt-1 text-[10px] opacity-40">~/home · 17 rooms</div>
+        </div> : <>
+          <button aria-label={initialPanel === 'menu' ? '返回房间' : '关闭'} onClick={() => initialPanel === 'menu' ? confirm(() => setPanel('menu')) : close()} className="p-2"><ChevronLeft size={20}/></button>
+          <h2 id="chat-menu-title" className="flex-1 font-medium">{titles[panel]}</h2>
+        </>}
       </div>
-      <div className={`flex-1 min-h-0 overflow-y-auto p-5 ${panel === 'menu' ? 'space-y-5' : 'space-y-4'}`}>
+      <div className={`flex-1 min-h-0 overflow-y-auto p-4 ${panel === 'menu' ? 'space-y-4' : 'space-y-4'}`}>
         {panel === 'menu' && <>
-          <div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">
-            {row('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}
-            {row('Todo', () => openRoom('todo', props.onTodo), roomUnread.todo)}
-            {row('小纸条', () => openRoom('notes', props.onNotes), roomUnread.notes)}
-            {row('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}
-            {row('书影记录', () => openRoom('media', props.onMedia), roomUnread.media)}
-            {row('饮食运动', () => openRoom('energy', props.onEnergy), roomUnread.energy)}
-            {row('Tesis', () => openRoom('tesis', props.onTesis), roomUnread.tesis)}
-            {row('券包', () => openRoom('coupons', props.onCoupons), roomUnread.coupons)}
-            {row('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}
-            {row('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}
-            {row('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}
-            {row('收藏夹', () => openRoom('favorites', props.onFavorites), roomUnread.favorites)}
-            {row('小火辞典', () => openRoom('dictionary', props.onDictionary), roomUnread.dictionary)}
-            {row('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}
-            {row('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}
-            {row('小游戏', () => navigate(props.onGames))}
-            {row('豹子的窗台', () => openRoom('engawa', props.onEngawa), roomUnread.engawa)}
-          </div>
-          <div className="chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border">
-            {row('SP 与回复风格', () => confirm(() => setPanel('star')))}
-            {row('全局参数', () => confirm(() => setPanel('settings')))}
-          </div>
+          <section className="chat-room-card px-3 pb-2 pt-5">
+            <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">DAILY</h3>
+            <div className="grid grid-cols-2">{room('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}{room('Todo', () => openRoom('todo', props.onTodo), roomUnread.todo)}{room('小纸条', () => openRoom('notes', props.onNotes), roomUnread.notes)}{room('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}{room('饮食运动', () => openRoom('energy', props.onEnergy), roomUnread.energy)}{room('Tesis', () => openRoom('tesis', props.onTesis), roomUnread.tesis)}</div>
+          </section>
+          <section className="chat-room-card px-3 pb-2 pt-5">
+            <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">KEEPSAKES</h3>
+            <div className="grid grid-cols-2">{room('书影记录', () => openRoom('media', props.onMedia), roomUnread.media)}{room('券包', () => openRoom('coupons', props.onCoupons), roomUnread.coupons)}{room('收藏夹', () => openRoom('favorites', props.onFavorites), roomUnread.favorites)}{room('小火辞典', () => openRoom('dictionary', props.onDictionary), roomUnread.dictionary)}{room('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}{room('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}</div>
+          </section>
+          <section className="chat-room-card px-3 pb-2 pt-5">
+            <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">TOGETHER</h3>
+            <div className="grid grid-cols-2">{room('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}{room('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}{room('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}{room('小游戏', () => navigate(props.onGames))}{room('豹子的窗台', () => openRoom('engawa', props.onEngawa), roomUnread.engawa)}</div>
+          </section>
         </>}
         {panel === 'star' && <>
           <div role="tablist" aria-label="选择模型人设" className={`grid grid-cols-2 gap-1 rounded-2xl p-1 ${card}`}>

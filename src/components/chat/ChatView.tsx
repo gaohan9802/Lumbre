@@ -1334,8 +1334,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </motion.button>
         </div>
         <section className="chat-session-weather chat-session-mono py-2 text-[9px]">
-          <div className="grid grid-cols-[2.4rem_minmax(0,1fr)] items-center gap-x-2">
-            <div className="row-span-2 flex flex-col items-center gap-1">
+          <div className="grid grid-cols-[2.4rem_minmax(0,1fr)] items-start gap-x-2">
+            <div className="row-span-2 flex flex-col items-center gap-1 pt-0.5">
               <span className="text-sm leading-none">{weather?.updatedAt ? weatherEmoji(weather.code) : '·'}</span>
               <span className="tabular-nums opacity-65">{weather?.updatedAt && weather.temp != null ? `${Math.round(weather.temp)}°` : '—'}</span>
             </div>
@@ -1386,6 +1386,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <button aria-label="会话操作" onClick={() => setSessionActionsId(current => current === s.id ? null : s.id)} className="chat-theme-icon rounded-full p-1.5 opacity-45 hover:opacity-100"><MoreHorizontal size={14}/></button>
                   {sessionActionsId === s.id && <div className="chat-theme-surface chat-theme-border absolute right-0 top-full z-20 mt-1 min-w-44 rounded-xl border py-1 shadow-lg">
                     <button onClick={() => { setActiveSession(s.id); setWindowSettingsOpen(true); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">本窗设置</button>
+                    <button onClick={() => { setActiveSession(s.id); setSessionActionsId(null); openChatSettings('star') }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">SP 回复风格</button>
+                    <button onClick={() => { setActiveSession(s.id); setSessionActionsId(null); openChatSettings('settings') }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">全局参数</button>
                     <button onClick={() => { setActiveSession(s.id); setSummaryDialogOpen(true); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">查看摘要</button>
                     <button disabled={isLoading || sendStarting} onClick={() => { continueSession(50, s.id); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs disabled:opacity-35">{isLoading || sendStarting ? '回复结束后可换窗' : '换窗'}</button>
                     <div className="chat-theme-border my-1 border-t" />
