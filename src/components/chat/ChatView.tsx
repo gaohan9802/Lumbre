@@ -1611,8 +1611,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               const action = block.presentation === 'action'
                               return (
                                 <div key={blockKey} className={action
-                                  ? 'chat-action-line relative block w-full break-words px-5 py-1.5 text-[14px]'
-                                  : 'chat-ai-bubble relative block w-full break-words px-5 py-1 text-[14px]'}>
+                                  ? 'chat-action-line relative block w-full break-words px-[19px] py-1.5 text-[14px]'
+                                  : 'chat-ai-bubble relative block w-full break-words px-[19px] py-1 text-[14px]'}>
                                   {messageImages && bi === firstTextBlockIndex && messageImages.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                                       {messageImages.map((src: string, ii: number) => (
@@ -1689,7 +1689,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                           </div>
                         </div>
                       ) : ((isUser || !displayContentBlocks || displayContentBlocks.length === 0) && (msg.content.trim() || (msg.images?.length || 0) > 0 || (msg.attachments?.length || 0) > 0 || !!msg.sharedCard || !!msg.sticker)) ? (
-                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words text-[14px] ${isUser ? 'ml-auto w-fit max-w-[77%] rounded-[18px] rounded-br-md px-4 py-2.5 leading-relaxed' : 'w-full px-5 py-1'}`}>
+                        <div className={`${isUser ? 'chat-theme-user' : 'chat-ai-bubble'} relative block break-words text-[14px] ${isUser ? 'ml-auto w-fit max-w-[77%] rounded-[18px] rounded-br-md px-4 py-2.5 leading-relaxed' : 'w-full px-[19px] py-1'}`}>
                           {msg.sticker && sticker(msg.sticker.id) && (
                             <StickerArt id={msg.sticker.id} className="mx-auto mb-1 h-28 w-28" />
                           )}

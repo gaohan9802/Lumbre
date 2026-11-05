@@ -1,0 +1,16 @@
+KingHwaOldSong / 京華老宋体 v3.0
+Copyright 2022 TerryWang. All rights reserved.
+
+Author release and license statement:
+https://www.maoken.com/freefonts/19417.html
+
+The author's statement permits commercial use in web design and embedding in
+electronic products or software, and permits redistribution. It prohibits
+selling the font file by itself, modifying the glyphs, and distributing a
+modified font file. This repository keeps the original TTF unmodified.
+
+Downloaded archive mirror:
+https://r.cos.tg/api/raw?path=/%F0%9F%94%A4%E5%AD%97%E4%BD%93/%E4%BA%AC%E8%8F%AF%E8%80%81%E5%AE%8B%E4%BD%93v3.0.ttf
+
+MD5: fcde959ec23bf4bbd4de52514f1909e9
+SHA-256: f7fef9fc413e9e2343f0bb432c51cca41c44b8fe37f071dc86b050896ae9f9e2
