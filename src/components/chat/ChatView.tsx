@@ -1358,7 +1358,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           const active = s.id === settings.activeSessionId
           return (
             <div key={s.id} onClick={() => { setActiveSession(s.id); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
-              className={`group relative cursor-pointer px-4 py-3 transition ${active ? 'chat-session-active isolate my-2 py-4' : 'chat-session-row chat-theme-hover'}`}>
+              className={`group relative cursor-pointer px-4 py-3 transition ${sessionActionsId === s.id ? 'z-30' : ''} ${active ? 'chat-session-active isolate my-2 py-4' : 'chat-session-row chat-theme-hover'}`}>
               {active && <span aria-hidden="true" className="chat-session-tape" />}
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
@@ -1384,7 +1384,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                 </div>
                 <div ref={sessionActionsId === s.id ? sessionActionsRef : undefined} className="relative" onClick={(e) => e.stopPropagation()}>
                   <button aria-label="会话操作" onClick={() => setSessionActionsId(current => current === s.id ? null : s.id)} className="chat-theme-icon rounded-full p-1.5 opacity-45 hover:opacity-100"><MoreHorizontal size={14}/></button>
-                  {sessionActionsId === s.id && <div className="chat-theme-surface chat-theme-border absolute right-0 top-full z-20 mt-1 min-w-44 rounded-xl border py-1 shadow-lg">
+                  {sessionActionsId === s.id && <div className="chat-theme-surface chat-theme-border pointer-events-auto absolute right-0 top-full z-40 mt-1 min-w-44 rounded-xl border py-1 shadow-lg">
                     <button onClick={() => { setActiveSession(s.id); setWindowSettingsOpen(true); setSessionActionsId(null); setSessionDrawerOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">本窗设置</button>
                     <button onClick={() => { setActiveSession(s.id); setSessionActionsId(null); openChatSettings('star') }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">SP 回复风格</button>
                     <button onClick={() => { setActiveSession(s.id); setSessionActionsId(null); openChatSettings('settings') }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">全局参数</button>
