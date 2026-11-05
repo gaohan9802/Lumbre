@@ -89,15 +89,15 @@ export function StreamingReply({
             const action = block.presentation === 'action'
             return (
               <motion.div key={index} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className={action
-                ? 'chat-action-line relative block w-full break-words px-1 py-1.5 text-[14px]'
-                : 'chat-ai-bubble relative block w-full break-words px-1 py-1 text-[14px] text-justify [text-justify:inter-ideograph]'}>
+                ? 'chat-action-line relative block w-full break-words px-[21px] py-1.5 text-[14px]'
+                : 'chat-ai-bubble relative block w-full break-words px-[21px] py-1 text-[14px]'}>
                 <MarkdownText content={block.content} cursor={isLast} />
               </motion.div>
             )
           }
           return null
         }) : (
-          <div className="chat-ai-bubble relative w-full px-1 py-2">
+          <div className="chat-ai-bubble relative w-full px-[21px] py-2">
             <div className="flex gap-1">
               {[0, 1, 2].map(index => (
                 <motion.div key={index} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.2 }}

@@ -298,9 +298,10 @@
 .chat-ai-bubble {
   font-size: 0.9375rem;
   line-height: 1.56;
-  letter-spacing: 0;
-  text-align: justify;
-  text-justify: inter-ideograph;
+  color: var(--chat-text);
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  text-align: left;
 }
 
 .chat-ai-bubble .markdown-text p { line-height: inherit; }
@@ -323,9 +324,11 @@
 }
 
 .chat-action-line {
-  color: var(--chat-muted);
+  color: color-mix(in srgb, var(--chat-text) 56%, transparent);
+  font-weight: 400;
   font-style: normal;
   line-height: 1.65;
+  letter-spacing: -0.01em;
 }
 
 ::-webkit-scrollbar {
