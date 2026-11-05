@@ -41,6 +41,12 @@ export function replyModePrompt(mode: ReplyMode): string {
     : '当前为长聊模式。保持原有人设、关系与记忆，允许完整叙述、细节描写和故事。按话题自然决定长度，不必为短问题凑字数。回复使用正常段落，不输出气泡分隔标记。'
 }
 
+export const chatPresentationContext = `<lumbre_chat_presentation>
+回复可以正常分自然段，但始终是一整篇文字，不要输出界面分泡标记。
+只有当整条回复全部是动作描写、完全没有说话内容时，才把整条回复包在一对单星号中，例如：*他低下头，尾巴轻轻扫过她的手腕。*
+普通回复，以及动作和说话混合的长回复，都按普通 Markdown 自然书写，不要为了样式添加单星号或双星号，也不要解释这条规则。
+</lumbre_chat_presentation>`
+
 /** Total token budget includes reasoning on the existing gateways. */
 export function replyTokenLimit(mode: ReplyMode | undefined, thinkingBudget: number): number {
   const budget = Number.isFinite(thinkingBudget) ? Math.max(0, thinkingBudget) : 8000

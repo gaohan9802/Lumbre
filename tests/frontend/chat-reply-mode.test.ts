@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { splitReplyText, segmentReplyBlocks, mergeConversationMode, replyTokenLimit, replyModePrompt } from '../../src/lib/chat-reply-mode'
+import { chatPresentationContext, splitReplyText, segmentReplyBlocks, mergeConversationMode, replyTokenLimit, replyModePrompt } from '../../src/lib/chat-reply-mode'
 import { normalizeSettings } from '../../src/features/chat/migrations/browser-state'
 import { snapshotOfMessage } from '../../src/features/chat/sessions/messages'
 import { bubbleAppearance } from '../../src/features/chat/settings/appearance'
@@ -44,6 +44,13 @@ test('reply snapshots retain bubble layout and mode; budgets leave room for thin
   assert.match(replyModePrompt('short'), /短聊模式/)
   assert.doesNotMatch(replyModePrompt('short'), /<!--split-->/)
   assert.doesNotMatch(replyModePrompt('long'), /<!--split-->/)
+})
+
+test('chat presentation only marks a whole pure-action reply', () => {
+  assert.match(chatPresentationContext, /整条回复全部是动作描写/)
+  assert.match(chatPresentationContext, /一对单星号/)
+  assert.match(chatPresentationContext, /动作和说话混合的长回复/)
+  assert.match(chatPresentationContext, /不要输出界面分泡标记/)
 })
 
 test('frosted switch and opacity apply even without custom colors', () => {

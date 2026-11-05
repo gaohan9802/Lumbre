@@ -209,11 +209,14 @@ test('chat uses Claude neutral surfaces with mist rose as its only accent', () =
 test('star replies lie flat beside one avatar and thinking opens in one bottom drawer', () => {
   const chat = read('../../src/components/chat/ChatView.tsx')
   const streaming = read('../../src/features/chat/components/StreamingReply.tsx')
+  const prepare = read('../../src/features/chat/view/prepareChatMessage.ts')
   const drawer = read('../../src/features/chat/components/ThinkingDrawer.tsx')
   const styles = read('../../src/styles/globals.css')
 
-  assert.match(chat, /chat-ai-bubble relative block w-full[^"]*px-\[21px\]/)
-  assert.match(streaming, /chat-ai-bubble relative block w-full[^"]*px-\[21px\]/)
+  assert.match(chat, /chat-ai-bubble relative block w-full[^"]*px-5/)
+  assert.match(streaming, /chat-ai-bubble relative block w-full[^"]*px-5/)
+  assert.match(streaming, /presentAssistantBlocks\(blocks, \{ split: false, streaming: true \}\)/)
+  assert.match(prepare, /split: false/)
   assert.match(chat, /text-\[12px\][\s\S]*aria-label="打开星星的小算盘"[\s\S]*<ThinkingBubbles/)
   assert.match(streaming, /aria-label="打开星星的小算盘"[\s\S]*<ThinkingBubbles/)
   assert.doesNotMatch(`${chat}\n${streaming}`, /💭/)

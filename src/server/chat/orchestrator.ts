@@ -22,6 +22,7 @@ import { createCcChatResponse } from './cc-gateway'
 import { beginApiGeneration } from './generation-activity'
 import { addToolResultsToAudit, createMessageRequestAudit, type RequestAuditHints } from '@/lib/chat-receipt'
 import { ccOutputStyleContext, ccSystemPromptForModel } from '@/lib/cc-system-prompt'
+import { chatPresentationContext } from '@/lib/chat-reply-mode'
 import { summaryArchiveContext } from '@/server/summary-archive'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
@@ -143,6 +144,7 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
     dailyCompanionContext(params.sessionId),
     openingMessageContext(),
     buildStarMemoryContext(lastUser, params.bookmarkInjections),
+    params.unattendedWake ? '' : chatPresentationContext,
   ].filter(Boolean).join('\n\n')
   const context = toolContext(!!params.unattendedWake, params.sessionId)
   const availableTools = toolsForContext(context)
@@ -249,6 +251,7 @@ export async function handleChatRequest(req: NextRequest) {
         dailyCompanionContext(body.session_id),
         openingMessageContext(),
         buildStarMemoryContext(lastUser, body.bookmark_injections),
+        unattendedWake ? '' : chatPresentationContext,
       ].filter(Boolean).join('\n\n')
       const requestAudit = createMessageRequestAudit({
         system,

@@ -37,7 +37,7 @@ export function prepareChatMessage(message: ChatMessage): PreparedChatMessage {
     : undefined
   const displayContentBlocks = baseDisplayBlocks
     ? presentAssistantBlocks(baseDisplayBlocks, {
-        split: !(message as any)._wake,
+        split: false,
         allowTransparentAction: !(message as any)._wake && !message.images?.length && !message.attachments?.length && !message.sharedCard && !message.sticker,
       })
     : undefined

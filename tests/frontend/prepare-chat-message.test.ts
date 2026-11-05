@@ -19,9 +19,9 @@ test('prepared historical messages are reused until the message object changes',
   assert.equal(updated.displayContentBlocks?.[0].content, '新正文')
 })
 
-test('prepared replies split only on blank lines and wake replies stay whole', () => {
+test('prepared replies and wake messages keep their natural paragraphs whole', () => {
   const reply = prepareChatMessage({ id: 'reply', role: 'assistant', content: '第一行\n第二行\n\n第三行', timestamp: 1 } as ChatMessage)
-  assert.deepEqual(reply.displayContentBlocks?.map(block => block.content), ['第一行\n第二行', '第三行'])
+  assert.deepEqual(reply.displayContentBlocks?.map(block => block.content), ['第一行\n第二行\n\n第三行'])
 
   const wake = prepareChatMessage({ id: 'wake', role: 'assistant', content: '第一行\n\n第二行', timestamp: 1, _wake: true } as ChatMessage & { _wake: true })
   assert.deepEqual(wake.displayContentBlocks?.map(block => block.content), ['第一行\n\n第二行'])
