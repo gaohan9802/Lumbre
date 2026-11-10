@@ -125,14 +125,12 @@ export function TodoView() {
   }
 
   return (
-    <div className="pointer-events-none flex h-full w-full items-center justify-center p-4">
+    <div className="receipt-stage pointer-events-none flex h-full w-full items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`pointer-events-auto relative max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-lg border p-6 shadow-[0_18px_50px_rgba(49,29,23,0.16)] ${night ? 'todo-receipt-night border-[#857b6c] bg-[#24221f] text-[#eee6d6]' : 'chat-paper border-[#a73a32]/20 bg-[#faf7f0] text-[#4b332e]'}`}
+        className={`receipt-ticket pointer-events-auto relative max-h-[90dvh] w-full max-w-sm overflow-y-auto p-6 font-receipt ${night ? 'receipt-ticket-night todo-receipt-night' : ''}`}
       >
-        <div className={`absolute left-0 right-0 top-0 h-2 opacity-35 ${night ? 'text-[#857b6c]' : 'text-[#a73a32]'}`} style={{ backgroundImage: 'repeating-linear-gradient(135deg, currentColor 0 5px, transparent 5px 10px)' }} />
-
         {/* Header */}
         <div className="text-center mb-4 relative">
           <button onClick={shareReceipt} className="absolute left-0 top-0 text-receipt-ink/30 hover:text-receipt-ink/65" title="分享整张小票" aria-label="分享整张待办小票">
@@ -148,10 +146,10 @@ export function TodoView() {
               <ChevronLeft size={14} /> 今天
             </button>
           )}
-          <h2 className="text-xl font-receipt font-bold text-receipt-ink">
+          <h2 className="text-[21px] font-receipt font-bold tracking-[0.08em] text-receipt-ink">
             {isToday ? "Today's Receipt" : 'Past Receipt'}
           </h2>
-          <p className="text-xs text-receipt-ink/50 mt-1">{dateStr} · {dayOfWeek}</p>
+          <p className="receipt-ticket-accent mt-1 text-[10px] font-bold tracking-[0.12em]">{dateStr} · {dayOfWeek}</p>
         </div>
 
         {/* History picker */}
@@ -173,19 +171,19 @@ export function TodoView() {
           )}
         </AnimatePresence>
 
-        <div className="border-t border-dashed border-receipt-line my-3" />
+        <div className="receipt-ticket-rule my-3" />
 
         {/* Meta */}
         <div className="font-receipt text-xs space-y-1 text-receipt-ink/70">
-          <div className="flex justify-between"><span>开店</span><span>00:00</span></div>
-          <div className="flex justify-between"><span>柜员</span><span>🐆 · 🦦</span></div>
-          <div className="flex justify-between"><span>此刻</span><span>{timeStr}</span></div>
-          <div className="flex justify-between"><span>单据号</span><span>{receiptNo}</span></div>
+          <div className="receipt-ticket-row flex justify-between gap-2"><span>开店</span><span>00:00</span></div>
+          <div className="receipt-ticket-row flex justify-between gap-2"><span>柜员</span><span>🐆 · 🦦</span></div>
+          <div className="receipt-ticket-row flex justify-between gap-2"><span>此刻</span><span>{timeStr}</span></div>
+          <div className="receipt-ticket-row flex justify-between gap-2"><span>单据号</span><span>{receiptNo}</span></div>
         </div>
 
-        <div className="border-t border-dashed border-receipt-line my-3" />
+        <div className="receipt-ticket-rule my-3" />
 
-        <p className="text-center text-[10px] tracking-[0.2em] text-receipt-ink/50 mb-3">
+        <p className="receipt-ticket-accent mb-3 text-center text-[10px] font-bold tracking-[0.2em]">
           {isToday ? "TODAY'S ORDER" : 'ORDER'} · {items.length} 项
         </p>
 
@@ -270,17 +268,17 @@ export function TodoView() {
           )}
         </div>
 
-        <div className="border-t border-dashed border-receipt-line my-3" />
+        <div className="receipt-ticket-rule my-3" />
 
         {/* Summary */}
         <div className="font-receipt text-xs space-y-1 text-receipt-ink/70">
-          <div className="flex justify-between"><span>小计</span><span>{items.length} 项</span></div>
-          <div className="flex justify-between"><span>已结清</span><span>{doneCount} 项</span></div>
-          <div className="flex justify-between"><span>未结清</span><span>{items.length - doneCount} 项</span></div>
-          <div className="flex justify-between items-center"><span>进度</span><span className="text-[10px]">{progressBar} {progress}%</span></div>
+          <div className="receipt-ticket-row flex justify-between gap-2"><span>小计</span><span>{items.length} 项</span></div>
+          <div className="receipt-ticket-row flex justify-between gap-2"><span>已结清</span><span>{doneCount} 项</span></div>
+          <div className="receipt-ticket-row flex justify-between gap-2"><span>未结清</span><span>{items.length - doneCount} 项</span></div>
+          <div className="receipt-ticket-row flex items-center justify-between gap-2"><span>进度</span><span className="text-[10px]">{progressBar} {progress}%</span></div>
         </div>
 
-        <div className="border-t border-dashed border-receipt-line my-3" />
+        <div className="receipt-ticket-rule my-3" />
 
         {/* Footer */}
         <div className="text-center space-y-2">
@@ -301,7 +299,6 @@ export function TodoView() {
             {format(viewDateObj, 'yy MM dd')} {receiptNo.slice(1)}
           </p>
         </div>
-        <div className={`absolute bottom-0 left-0 right-0 h-2 opacity-35 ${night ? 'text-[#857b6c]' : 'text-[#a73a32]'}`} style={{ backgroundImage: 'repeating-linear-gradient(45deg, currentColor 0 5px, transparent 5px 10px)' }} />
       </motion.div>
 
       {/* Delete confirmation */}

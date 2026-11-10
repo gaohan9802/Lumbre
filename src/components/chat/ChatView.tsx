@@ -1985,7 +1985,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           <AnimatePresence>
             {todoOpen && (
               <>
-                <motion.button type="button" aria-label="关闭 Todo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setTodoOpen(false)} className="fixed inset-0 z-[74] bg-black/35 backdrop-blur-[2px]" />
+                <motion.button type="button" aria-label="关闭 Todo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setTodoOpen(false)} className="receipt-modal-backdrop fixed inset-0 z-[74]" />
                 <motion.section role="dialog" aria-modal="true" aria-label="Todo" initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .97 }} className="pointer-events-none fixed inset-0 z-[75] overflow-hidden">
                   <TodoView />
                 </motion.section>

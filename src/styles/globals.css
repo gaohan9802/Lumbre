@@ -376,6 +376,66 @@
 .todo-receipt-night .border-receipt-stamp { border-color: rgba(199, 152, 144, 0.75); }
 .todo-receipt-night [class*="bg-receipt-ink/"] { background-color: rgba(238, 230, 214, 0.2); }
 
+.receipt-modal-backdrop {
+  background-color: rgba(224, 224, 218, 0.7);
+  background-image:
+    linear-gradient(rgba(91, 91, 86, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 91, 86, 0.08) 1px, transparent 1px),
+    radial-gradient(circle, rgba(91, 91, 86, 0.24) 1px, transparent 1.35px);
+  background-size: 72px 72px, 72px 72px, 18px 18px;
+  backdrop-filter: blur(2px);
+}
+.dark .receipt-modal-backdrop {
+  background-color: rgba(16, 17, 17, 0.78);
+  background-image:
+    linear-gradient(rgba(235, 228, 216, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(235, 228, 216, 0.045) 1px, transparent 1px),
+    radial-gradient(circle, rgba(235, 228, 216, 0.13) 1px, transparent 1.35px);
+  background-size: 72px 72px, 72px 72px, 18px 18px;
+}
+.receipt-stage { color: #403b36; }
+.receipt-ticket {
+  --receipt-paper: #fbfaf3;
+  --receipt-ink: #403b36;
+  --receipt-muted: #99958d;
+  --receipt-accent: #c87962;
+  --receipt-rule: rgba(116, 112, 104, 0.24);
+  color: var(--receipt-ink);
+  background-color: var(--receipt-paper);
+  background-image:
+    radial-gradient(circle at 20% 14%, rgba(200, 121, 98, 0.025), transparent 25%),
+    repeating-linear-gradient(7deg, rgba(74, 68, 61, 0.012) 0 1px, transparent 1px 7px);
+  clip-path: polygon(0 7px, 2.5% 0, 5% 7px, 7.5% 0, 10% 7px, 12.5% 0, 15% 7px, 17.5% 0, 20% 7px, 22.5% 0, 25% 7px, 27.5% 0, 30% 7px, 32.5% 0, 35% 7px, 37.5% 0, 40% 7px, 42.5% 0, 45% 7px, 47.5% 0, 50% 7px, 52.5% 0, 55% 7px, 57.5% 0, 60% 7px, 62.5% 0, 65% 7px, 67.5% 0, 70% 7px, 72.5% 0, 75% 7px, 77.5% 0, 80% 7px, 82.5% 0, 85% 7px, 87.5% 0, 90% 7px, 92.5% 0, 95% 7px, 97.5% 0, 100% 7px, 100% calc(100% - 7px), 97.5% 100%, 95% calc(100% - 7px), 92.5% 100%, 90% calc(100% - 7px), 87.5% 100%, 85% calc(100% - 7px), 82.5% 100%, 80% calc(100% - 7px), 77.5% 100%, 75% calc(100% - 7px), 72.5% 100%, 70% calc(100% - 7px), 67.5% 100%, 65% calc(100% - 7px), 62.5% 100%, 60% calc(100% - 7px), 57.5% 100%, 55% calc(100% - 7px), 52.5% 100%, 50% calc(100% - 7px), 47.5% 100%, 45% calc(100% - 7px), 42.5% 100%, 40% calc(100% - 7px), 37.5% 100%, 35% calc(100% - 7px), 32.5% 100%, 30% calc(100% - 7px), 27.5% 100%, 25% calc(100% - 7px), 22.5% 100%, 20% calc(100% - 7px), 17.5% 100%, 15% calc(100% - 7px), 12.5% 100%, 10% calc(100% - 7px), 7.5% 100%, 5% calc(100% - 7px), 2.5% 100%, 0 calc(100% - 7px));
+  filter: drop-shadow(0 16px 24px rgba(44, 39, 33, 0.16));
+}
+.receipt-ticket-night {
+  --receipt-paper: #24221f;
+  --receipt-ink: #eee6d6;
+  --receipt-muted: #9d968c;
+  --receipt-accent: #c79890;
+  --receipt-rule: rgba(238, 230, 214, 0.18);
+  background-image:
+    radial-gradient(circle at 20% 14%, rgba(199, 152, 144, 0.035), transparent 25%),
+    repeating-linear-gradient(7deg, rgba(238, 230, 214, 0.012) 0 1px, transparent 1px 7px);
+  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.34));
+}
+.receipt-ticket-accent { color: var(--receipt-accent); }
+.receipt-ticket-rule { border-top: 2px dashed var(--receipt-rule); }
+.receipt-ticket-section { border-top: 2px dashed var(--receipt-rule); border-bottom: 2px dashed var(--receipt-rule); }
+.receipt-ticket-row > :first-child { display: flex; min-width: 0; flex: 1; align-items: baseline; }
+.receipt-ticket-row > :first-child::after {
+  content: "";
+  min-width: 10px;
+  flex: 1;
+  margin: 0 0.5rem;
+  border-bottom: 2px dotted var(--receipt-rule);
+}
+.receipt-ticket-row > :last-child { flex: none; }
+.receipt-ticket-stamp { color: var(--receipt-accent); border-color: currentColor; outline-color: currentColor; }
+.receipt-ticket .text-receipt-stamp { color: var(--receipt-accent); }
+.receipt-ticket .border-receipt-stamp { border-color: color-mix(in srgb, var(--receipt-accent) 72%, transparent); }
+.receipt-ticket .border-receipt-line { border-color: var(--receipt-rule); }
+
 .receipt-edge-top {
   background: linear-gradient(135deg, #F5F0E8 33.33%, transparent 33.33%) -6px 0,
               linear-gradient(225deg, #F5F0E8 33.33%, transparent 33.33%) -6px 0;
