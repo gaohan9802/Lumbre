@@ -321,7 +321,7 @@ export function updateWakeSettings(patch: Partial<Pick<WakeConfig, 'enabled' | '
   random?: Partial<Pick<RandomWakeSetting, 'enabled' | 'timesPerDay'>>
   inactivity?: Partial<Pick<InactivityWakeSetting, 'enabled' | 'afterHours'>>
   special?: Partial<WakeConfig['special']>
-}): WakeConfig {
+}, now = Date.now()): WakeConfig {
   return mutateWakeConfig(config => {
     if (patch.enabled !== undefined) {
       config.day.enabled = patch.enabled
@@ -351,12 +351,20 @@ export function updateWakeSettings(patch: Partial<Pick<WakeConfig, 'enabled' | '
       config.random = { ...config.random, ...patch.random, day: '', times: [] }
     }
     if (patch.inactivity) config.inactivity = { ...config.inactivity, ...patch.inactivity }
-    if (patch.special) config.special = {
-      ...config.special,
-      ...patch.special,
-      preCompact: patch.special.preCompact
-        ? { ...config.special.preCompact, ...patch.special.preCompact }
-        : config.special.preCompact,
+    if (patch.special) {
+      const enablingPreCompact = patch.special.preCompact?.enabled === true && !config.special.preCompact.enabled
+      config.special = {
+        ...config.special,
+        ...patch.special,
+        preCompact: patch.special.preCompact
+          ? { ...config.special.preCompact, ...patch.special.preCompact }
+          : config.special.preCompact,
+      }
+      if (enablingPreCompact) {
+        const today = madridDateKey(now)
+        const scheduledAt = parseMadridDateTime(`${today}T${config.special.preCompact.time}:00`)?.getTime()
+        if (scheduledAt && scheduledAt < now) config.special.preCompact.lastRunDay = today
+      }
     }
     if (patch.warmCacheSession) {
       const sessionId = normalizeSessionIds([patch.warmCacheSession.sessionId])[0]

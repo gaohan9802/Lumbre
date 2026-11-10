@@ -203,6 +203,25 @@ test('the pre-compact diary wake runs before the 05:00 archive and only once per
   assert.equal(wake.nextWakeSchedule({ ...completed, alarms: [] }, Date.parse('2099-01-02T05:01:00+01:00')).alarm?.at, Date.parse('2099-01-03T04:30:00+01:00'))
 })
 
+test('enabling the pre-compact diary after its time starts tomorrow instead of catching up immediately', () => {
+  const after = Date.parse('2099-01-02T21:00:00+01:00')
+  wake.updateWakeSettings({ special: { preCompact: { ...wake.loadWakeConfig().special.preCompact, enabled: false } } }, after)
+  const enabled = wake.updateWakeSettings({
+    sessionId: 'fixture-session',
+    special: { preCompact: { ...wake.loadWakeConfig().special.preCompact, enabled: true, time: '04:30', lastRunDay: '' } },
+  }, after)
+  assert.equal(enabled.special.preCompact.lastRunDay, '2099-01-02')
+  assert.equal(wake.preCompactDiaryDue(enabled, after), false)
+  assert.equal(wake.nextWakeSchedule({ ...enabled, alarms: [] }, after).alarm?.at, Date.parse('2099-01-03T04:30:00+01:00'))
+
+  const before = Date.parse('2099-01-03T04:00:00+01:00')
+  wake.updateWakeSettings({ special: { preCompact: { ...enabled.special.preCompact, enabled: false } } }, before)
+  const nextMorning = wake.updateWakeSettings({
+    special: { preCompact: { ...wake.loadWakeConfig().special.preCompact, enabled: true, lastRunDay: '2099-01-02' } },
+  }, before)
+  assert.equal(wake.nextWakeSchedule({ ...nextMorning, alarms: [] }, before).alarm?.at, Date.parse('2099-01-03T04:30:00+01:00'))
+})
+
 test('corrupt wake configuration is backed up before recovery', () => {
   const file = path.join(root, 'wake-config.json')
   writeFileSync(file, '{broken wake config', 'utf8')
