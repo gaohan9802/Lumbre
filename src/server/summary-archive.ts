@@ -4,12 +4,13 @@ import type { ChatMessage } from '@/features/chat/state/types'
 import type { SummaryArchiveEntry, SummaryArchiveLevel, SummaryArchiveSnapshot } from '@/lib/summary-archive'
 import { isCcModel } from '@/lib/cc-model'
 import { loadSyncManifest, loadSyncSessions, loadSyncSessionTails } from './chat-sync'
-import { createCcArchiveSummary } from './chat/cc-gateway'
+import { compactCcSession, createCcArchiveSummary, readCcStatus } from './chat/cc-gateway'
 import { readSummaryArchiveData, updateSummaryArchiveData } from './data/repositories/summary-archive'
 
 const DAY_START_HOUR = 5
 const DAILY_TURNS = 100
 const RETRY_AFTER_MS = 2 * 60 * 1000
+export const AUTO_COMPACT_THRESHOLD = 35
 
 const DAILY_PROMPT = `这是一个只在临时分支中执行的内部归档任务。
 
@@ -264,7 +265,7 @@ function saveStatus(patch: Partial<SummaryArchiveSnapshot['status']>) {
 function addEntry(entry: SummaryArchiveEntry, completion?: { kind: SummaryArchiveLevel; key: string }) {
   updateSummaryArchiveData(archive => {
     const entries = [...archive.entries.filter(item => item.id !== entry.id), entry]
-    const next = { ...archive, entries, status: { running: false, lastAttemptAt: Date.now(), lastSuccessAt: Date.now() } }
+    const next = { ...archive, entries, status: { ...archive.status, running: false, lastAttemptAt: Date.now(), lastSuccessAt: Date.now(), error: undefined } }
     if (completion?.kind === 'daily') next.completedDays = { ...archive.completedDays, [completion.key]: 'complete' }
     if (completion?.kind === 'weekly') next.completedStages = { ...archive.completedStages, [completion.key]: 'complete' }
     if (completion?.kind === 'monthly') next.completedMonths = { ...archive.completedMonths, [completion.key]: 'complete' }
@@ -278,7 +279,7 @@ function markEmpty(kind: SummaryArchiveLevel, key: string) {
     completedDays: kind === 'daily' ? { ...archive.completedDays, [key]: 'empty' } : archive.completedDays,
     completedStages: kind === 'weekly' ? { ...archive.completedStages, [key]: 'empty' } : archive.completedStages,
     completedMonths: kind === 'monthly' ? { ...archive.completedMonths, [key]: 'empty' } : archive.completedMonths,
-    status: { running: false, lastAttemptAt: Date.now(), lastSuccessAt: Date.now() },
+    status: { ...archive.status, running: false, lastAttemptAt: Date.now(), lastSuccessAt: Date.now(), error: undefined },
   }))
 }
 
@@ -290,7 +291,7 @@ async function generateDaily(day: string) {
   const existingParts = new Set(archive.entries.filter(entry => entry.level === 'daily' && entry.periodKey === day).map(entry => entry.partIndex || 1))
   const partIndex = chunks.findIndex((_, index) => !existingParts.has(index + 1))
   if (partIndex < 0) {
-    updateSummaryArchiveData(current => ({ ...current, completedDays: { ...current.completedDays, [day]: 'complete' }, status: { running: false, lastAttemptAt: Date.now(), lastSuccessAt: Date.now() } }))
+    updateSummaryArchiveData(current => ({ ...current, completedDays: { ...current.completedDays, [day]: 'complete' }, status: { ...current.status, running: false, lastAttemptAt: Date.now(), lastSuccessAt: Date.now(), error: undefined } }))
     return
   }
   const chunk = chunks[partIndex]
@@ -306,6 +307,81 @@ async function generateDaily(day: string) {
     sourceIds, sourceDigest, locked: false, needsCorrection: false, writer: result.writer,
   }
   addEntry(entry, partIndex === chunks.length - 1 ? { kind: 'daily', key: day } : undefined)
+}
+
+function queueAutoCompact(day: string, throughDay: string) {
+  if (day !== throughDay) return
+  updateSummaryArchiveData(archive => {
+    if (archive.completedDays[day] !== 'complete' || archive.status.autoCompact?.day === day) return archive
+    const writer = archive.entries
+      .filter(entry => entry.level === 'daily' && entry.periodKey === day && entry.writer?.conversationId)
+      .sort((a, b) => (b.partIndex || 1) - (a.partIndex || 1))[0]?.writer
+    if (!writer) return archive
+    return {
+      ...archive,
+      status: {
+        ...archive.status,
+        autoCompact: {
+          day,
+          conversationId: writer.conversationId,
+          status: 'pending',
+          threshold: AUTO_COMPACT_THRESHOLD,
+        },
+      },
+    }
+  })
+}
+
+type MaintenanceDeps = {
+  readStatus?: (conversationId: string) => Promise<any>
+  compact?: (conversationId: string) => Promise<any>
+}
+
+async function runPendingAutoCompact(now: number, throughDay: string, deps: MaintenanceDeps) {
+  const pending = readSummaryArchiveData().status.autoCompact
+  if (!pending || pending.day !== throughDay || pending.status !== 'pending') return null
+  saveStatus({ running: true, lastAttemptAt: now, error: undefined })
+  const status = await (deps.readStatus || readCcStatus)(pending.conversationId)
+  const usedPercentage = Number(status?.context?.usedPercentage)
+  if (!status?.available || !status?.context?.available || !Number.isFinite(usedPercentage)) {
+    saveStatus({
+      running: false,
+      autoCompact: { ...pending, status: 'skipped', checkedAt: Date.now(), error: '上下文水位不可用' },
+    })
+    return { status: 'skipped' as const, reason: 'metrics_unavailable' as const }
+  }
+  if (usedPercentage < pending.threshold) {
+    saveStatus({
+      running: false,
+      autoCompact: { ...pending, status: 'skipped', checkedAt: Date.now(), usedPercentage },
+    })
+    return { status: 'skipped' as const, reason: 'below_threshold' as const, usedPercentage }
+  }
+  const result = await (deps.compact || compactCcSession)(pending.conversationId)
+  if (result?.status === 'busy') {
+    saveStatus({ running: false, autoCompact: { ...pending, usedPercentage } })
+    return { status: 'deferred' as const }
+  }
+  if (result?.status === 'compacted') {
+    saveStatus({
+      running: false,
+      autoCompact: {
+        ...pending,
+        status: 'compacted',
+        checkedAt: Date.now(),
+        usedPercentage,
+        beforeTokens: Number(result?.before?.usedTokens) || undefined,
+        afterTokens: Number(result?.after?.usedTokens) || undefined,
+      },
+    })
+    return { status: 'compacted' as const, usedPercentage }
+  }
+  const error = String(result?.error?.message || result?.error || result?.status || '自动压缩失败').slice(0, 500)
+  saveStatus({
+    running: false,
+    autoCompact: { ...pending, status: 'failed', checkedAt: Date.now(), usedPercentage, error },
+  })
+  return { status: 'failed' as const, error }
 }
 
 async function generateDerived(level: 'weekly' | 'monthly', key: string, start: string, end: string) {
@@ -337,19 +413,25 @@ export function summaryArchiveNeedsRun(now = Date.now()) {
   const throughDay = addMadridDays(madridDateKey(now), -1)
   const archive = readSummaryArchiveData()
   if (archive.status.lastAttemptAt && now - archive.status.lastAttemptAt < RETRY_AFTER_MS) return false
+  if (archive.status.autoCompact?.day === throughDay && archive.status.autoCompact.status === 'pending') return true
   return !archive.startedDay || !!nextJob(archive, throughDay)
 }
 
-export async function runSummaryArchiveMaintenance(now = Date.now()) {
+export async function runSummaryArchiveMaintenance(now = Date.now(), deps: MaintenanceDeps = {}) {
   if (localHour(now) < DAY_START_HOUR) return { status: 'not_due' as const }
   const throughDay = addMadridDays(madridDateKey(now), -1)
   let archive = readSummaryArchiveData()
   if (!archive.startedDay) archive = updateSummaryArchiveData(current => ({ ...current, startedDay: throughDay }))
+  const compacted = await runPendingAutoCompact(now, throughDay, deps)
+  if (compacted) return compacted
   const job = nextJob(archive, throughDay)
   if (!job) return { status: 'idle' as const }
   saveStatus({ running: true, lastAttemptAt: now, error: undefined })
   try {
-    if (job.kind === 'daily') await generateDaily(job.key)
+    if (job.kind === 'daily') {
+      await generateDaily(job.key)
+      queueAutoCompact(job.key, throughDay)
+    }
     else await generateDerived(job.kind, job.key, job.start, job.end)
     return { status: 'completed' as const, job }
   } catch (error) {

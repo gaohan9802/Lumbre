@@ -81,3 +81,72 @@ test('summary read tool returns the exact card without internal source or writer
   assert.equal(result.sourceDigest, undefined)
   assert.equal(result.writer, undefined)
 })
+
+test('daily maintenance compacts only at the 35% threshold', async () => {
+  const now = Date.parse('2026-10-03T05:30:00+02:00')
+  const day = '2026-10-02'
+  const seed = (usedPercentage: number) => {
+    repository.updateSummaryArchiveData(() => ({
+      startedDay: day,
+      entries: [{ ...entry(`daily:${day}:1`, 'daily', day, now - 1), writer: { conversationId: 'conversation-1' } }],
+      completedDays: { [day]: 'complete' },
+      completedStages: {},
+      completedMonths: {},
+      status: {
+        running: false,
+        autoCompact: { day, conversationId: 'conversation-1', status: 'pending', threshold: archive.AUTO_COMPACT_THRESHOLD },
+      },
+    }))
+    return {
+      readStatus: async () => ({ available: true, context: { available: true, usedPercentage } }),
+    }
+  }
+
+  let compactCalls = 0
+  let deps = seed(34.9)
+  const skipped = await archive.runSummaryArchiveMaintenance(now, {
+    ...deps,
+    compact: async () => { compactCalls += 1; return { status: 'compacted' } },
+  })
+  assert.equal(skipped.status, 'skipped')
+  assert.equal(compactCalls, 0)
+  assert.equal(repository.readSummaryArchiveData().status.autoCompact?.status, 'skipped')
+
+  deps = seed(35)
+  const compacted = await archive.runSummaryArchiveMaintenance(now, {
+    ...deps,
+    compact: async () => {
+      compactCalls += 1
+      return { status: 'compacted', before: { usedTokens: 350_000 }, after: { usedTokens: 120_000 } }
+    },
+  })
+  assert.equal(compacted.status, 'compacted')
+  assert.equal(compactCalls, 1)
+  assert.deepEqual(repository.readSummaryArchiveData().status.autoCompact, {
+    day,
+    conversationId: 'conversation-1',
+    status: 'compacted',
+    threshold: 35,
+    checkedAt: repository.readSummaryArchiveData().status.autoCompact?.checkedAt,
+    usedPercentage: 35,
+    beforeTokens: 350_000,
+    afterTokens: 120_000,
+  })
+})
+
+test('busy compaction remains pending for the next maintenance tick', async () => {
+  const now = Date.parse('2026-10-03T05:30:00+02:00')
+  const day = '2026-10-02'
+  repository.updateSummaryArchiveData(() => ({
+    startedDay: day,
+    entries: [{ ...entry(`daily:${day}:1`, 'daily', day, now - 1), writer: { conversationId: 'conversation-1' } }],
+    completedDays: { [day]: 'complete' }, completedStages: {}, completedMonths: {},
+    status: { running: false, autoCompact: { day, conversationId: 'conversation-1', status: 'pending', threshold: 35 } },
+  }))
+  const result = await archive.runSummaryArchiveMaintenance(now, {
+    readStatus: async () => ({ available: true, context: { available: true, usedPercentage: 60 } }),
+    compact: async () => ({ status: 'busy' }),
+  })
+  assert.equal(result.status, 'deferred')
+  assert.equal(repository.readSummaryArchiveData().status.autoCompact?.status, 'pending')
+})

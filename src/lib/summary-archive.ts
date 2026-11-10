@@ -33,6 +33,17 @@ export interface SummaryArchiveStatus {
   lastAttemptAt?: number
   lastSuccessAt?: number
   error?: string
+  autoCompact?: {
+    day: string
+    conversationId: string
+    status: 'pending' | 'compacted' | 'skipped' | 'failed'
+    threshold: number
+    checkedAt?: number
+    usedPercentage?: number
+    beforeTokens?: number
+    afterTokens?: number
+    error?: string
+  }
 }
 
 export interface SummaryArchiveSnapshot {
