@@ -32,6 +32,8 @@ test('wake configuration preserves behavior and serializes settings', () => {
   const alarm = wake.scheduleWake(Date.now() + 60_000, 'fixture alarm', 'fixture-session')
   assert.equal(wake.loadWakeConfig().alarms?.some(value => value.at === alarm.at), true)
   assert.equal(alarm.sessionId, 'fixture-session')
+  assert.equal(alarm.source, 'human')
+  assert.equal(updated.special.earliestTime, '05:30')
 })
 
 test('legacy main and Opus 5.5 cache slots migrate into per-window settings', () => {
@@ -148,13 +150,33 @@ test('inactivity fires once per quiet period and random times survive refreshes'
   assert.equal(first.random.times.every(value => value > now), true)
 })
 
-test('a due wake_me alarm is consumed instead of postponed while generation is busy', () => {
+test('a due special alarm is postponed while generation is busy', () => {
   const alarm = wake.scheduleWake(Date.now() + 60_000, 'busy alarm fixture')
-  wake.cancelWakeAlarmWhileBusy(alarm, Date.now())
-  assert.equal(wake.loadWakeConfig().alarms?.some(value => value.at === alarm.at) ?? false, false)
-  const log = wake.loadWakeLogs().at(-1)
-  assert.equal(log?.trigger, 'alarm')
-  assert.equal(log?.response, '[CANCELLED_BUSY]')
+  wake.postponeWakeAlarmWhileBusy(alarm)
+  const postponed = wake.loadWakeConfig().alarms?.find(value => value.note === alarm.note)
+  assert.ok(postponed)
+  assert.ok(postponed.at > alarm.at)
+})
+
+test('a completed daily compact schedules one editable special wake', () => {
+  const now = Date.parse('2099-01-02T05:10:00+01:00')
+  wake.updateWakeSettings({ special: { enabled: true, earliestTime: '05:30', prompt: '醒来看看家里。' } })
+  const alarm = wake.schedulePostCompactWake({ day: '2099-01-01', conversationId: 'fixture-session' }, now)
+  assert.ok(alarm)
+  assert.equal(alarm.at, Date.parse('2099-01-02T05:30:00+01:00'))
+  assert.equal(alarm.source, 'human')
+  assert.equal(alarm.kind, 'post-compact')
+  const decision = wake.decideWake({ ...wake.loadWakeConfig(), alarms: [alarm] }, alarm.at)
+  assert.equal(decision.reason, '醒来看看家里。')
+  assert.deepEqual(decision.sessionIds, ['fixture-session'])
+
+  const late = wake.schedulePostCompactWake({ day: '2099-01-01', conversationId: 'late-session' }, Date.parse('2099-01-02T06:00:00+01:00'))
+  assert.equal(late?.at, Date.parse('2099-01-02T06:00:01+01:00'))
+
+  assert.equal(wake.updateWakeSettings({ special: { earliestTime: '99:99' } }).special.earliestTime, '05:30')
+
+  wake.updateWakeSettings({ special: { enabled: false } })
+  assert.equal(wake.schedulePostCompactWake({ day: '2099-01-01', conversationId: 'fixture-session' }, now), null)
 })
 
 test('corrupt wake configuration is backed up before recovery', () => {

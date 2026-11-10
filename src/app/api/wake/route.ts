@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === 'schedule' && typeof body.at === 'number') {
-    const alarm = scheduleWake(body.at, body.note, typeof body.sessionId === 'string' ? body.sessionId : undefined)
+    const alarm = scheduleWake(body.at, body.note, typeof body.sessionId === 'string' ? body.sessionId : undefined, { source: 'human' })
     return NextResponse.json({ ok: true, alarm })
   }
 
@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     ...(body.night && typeof body.night === 'object' ? { night: body.night } : {}),
     ...(body.random && typeof body.random === 'object' ? { random: body.random } : {}),
     ...(body.inactivity && typeof body.inactivity === 'object' ? { inactivity: body.inactivity } : {}),
+    ...(body.special && typeof body.special === 'object' ? { special: body.special } : {}),
   })
 
   startWakeEngine()

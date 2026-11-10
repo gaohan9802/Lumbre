@@ -363,6 +363,8 @@ async function runPendingAutoCompact(now: number, throughDay: string, deps: Main
     return { status: 'deferred' as const }
   }
   if (result?.status === 'compacted') {
+    const beforeTokens = Number(result?.before?.usedTokens) || undefined
+    const afterTokens = Number(result?.after?.usedTokens) || undefined
     saveStatus({
       running: false,
       autoCompact: {
@@ -370,11 +372,11 @@ async function runPendingAutoCompact(now: number, throughDay: string, deps: Main
         status: 'compacted',
         checkedAt: Date.now(),
         usedPercentage,
-        beforeTokens: Number(result?.before?.usedTokens) || undefined,
-        afterTokens: Number(result?.after?.usedTokens) || undefined,
+        beforeTokens,
+        afterTokens,
       },
     })
-    return { status: 'compacted' as const, usedPercentage }
+    return { status: 'compacted' as const, day: pending.day, conversationId: pending.conversationId, usedPercentage, beforeTokens, afterTokens }
   }
   const error = String(result?.error?.message || result?.error || result?.status || '自动压缩失败').slice(0, 500)
   saveStatus({

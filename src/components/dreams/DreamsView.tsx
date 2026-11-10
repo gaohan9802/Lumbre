@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from '@/lib/theme'
 import { useChatStore, getSortedSessions } from '@/lib/chatStore'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw, Bell, BellOff, HeartPulse, Flame, FileText, Dices, Leaf, MessageCircle } from 'lucide-react'
+import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw, Bell, BellOff, HeartPulse, Flame, FileText, Dices, Leaf, MessageCircle, AlarmClock } from 'lucide-react'
 import { WishlistView } from '@/components/wishlist/WishlistView'
 import { formatMadrid } from '@/lib/madrid-time'
 import { normalizeChatRoute } from '@/lib/chat-route'
@@ -39,6 +39,8 @@ interface WakeConfig {
   night: { enabled: boolean; intervalHours: number }
   random: { enabled: boolean; timesPerDay: number; day: string; times: number[] }
   inactivity: { enabled: boolean; afterHours: number; handledActivityAt: number }
+  special: { enabled: boolean; earliestTime: string; prompt: string }
+  alarms: { at: number; note?: string; sessionId?: string; source?: 'human' | 'star'; kind?: 'alarm' | 'post-compact' }[]
   warmCaches: Record<string, {
     enabled: boolean
     observedCcAt: number
@@ -52,7 +54,7 @@ interface WakeConfig {
 }
 
 interface NextWakeSchedule {
-  alarm: { at: number; note?: string; sessionId?: string } | null
+  alarm: { at: number; note?: string; sessionId?: string; source?: 'human' | 'star'; kind?: 'alarm' | 'post-compact' } | null
   day: number | null
   night: number | null
   random: number | null
@@ -75,6 +77,8 @@ const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 - 什么也不做：正文只输出 [SILENT]，什么都不会发出，这一次醒来就只属于你自己
 {quiet_note}
 不用汇报你做了什么，不用表演勤奋。想做什么做什么。你是星星。`
+
+const DEFAULT_SPECIAL_WAKE_PROMPT = '这是你每日压缩后的第一次醒来。每日摘要已经写完，原会话已安全压缩。你可以读一读家里现在的情况，看看有没有想做的事。'
 
 const fmtTime = (ts: number) => formatMadrid(ts)
 
@@ -102,6 +106,9 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
   const [promptText, setPromptText] = useState('')
   const [promptDirty, setPromptDirty] = useState(false)
   const [promptSaving, setPromptSaving] = useState(false)
+  const [specialPrompt, setSpecialPrompt] = useState(DEFAULT_SPECIAL_WAKE_PROMPT)
+  const [specialPromptDirty, setSpecialPromptDirty] = useState(false)
+  const [specialPromptSaving, setSpecialPromptSaving] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushStatus, setPushStatus] = useState('')
   const activeTab = fixedTab || tab
@@ -116,6 +123,8 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
       setLogs(data.logs || [])
       setPromptText(data.config?.customPrompt || DEFAULT_WAKE_PROMPT)
       setPromptDirty(false)
+      setSpecialPrompt(data.config?.special?.prompt || DEFAULT_SPECIAL_WAKE_PROMPT)
+      setSpecialPromptDirty(false)
     } catch {}
     setLoading(false)
   }, [])
@@ -135,6 +144,22 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
       setConfig(data.config)
       setNextWake(data.next || null)
     } catch { setConfig(config) }
+  }
+
+  const updateSpecial = async (patch: Partial<WakeConfig['special']>) => {
+    if (!config) return
+    const previous = config
+    setConfig({ ...config, special: { ...config.special, ...patch } })
+    try {
+      const response = await fetch('/api/wake', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ special: patch }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error('save failed')
+      setConfig(data.config)
+      setNextWake(data.next || null)
+      return true
+    } catch { setConfig(previous); return false }
   }
 
   const updateSessionRule = async (kind: 'wakeSession' | 'warmCacheSession', sessionId: string, enabled: boolean) => {
@@ -237,6 +262,12 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
     setPromptDirty(true)
   }
 
+  const saveSpecialPrompt = async () => {
+    setSpecialPromptSaving(true)
+    if (await updateSpecial({ prompt: specialPrompt })) setSpecialPromptDirty(false)
+    setSpecialPromptSaving(false)
+  }
+
   return (
     <div className={`h-full flex flex-col ${n ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Tab header */}
@@ -277,7 +308,7 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="flex items-center gap-1.5 text-sm font-medium"><HeartPulse size={14}/>星星的唤醒</h3>
-                  <p className={`text-[10px] mt-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>四种唤醒各自工作，撞在一起时只醒一次。</p>
+                  <p className={`text-[10px] mt-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>普通与特殊唤醒各自工作，撞在一起时只醒一次。</p>
                 </div>
                 {fixedTab && <button type="button" aria-label="刷新唤醒信息" onClick={fetchData} className={`rounded-lg p-2 opacity-50 hover:opacity-100 ${loading ? 'animate-spin' : ''}`}><RefreshCw size={14}/></button>}
               </div>
@@ -297,9 +328,9 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
               {config && (
                 <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                   {nextWake?.overall && <p className={n ? 'text-night-amber' : 'text-[#9c6e69]'}>最近一次预计唤醒：{fmtTime(nextWake.overall)}</p>}
-                  {nextWake?.alarm && <p>wake me：{fmtTime(nextWake.alarm.at)}{nextWake.alarm.note ? ` · ${nextWake.alarm.note}` : ''}</p>}
+                  {nextWake?.alarm && <p>特殊：{fmtTime(nextWake.alarm.at)}{nextWake.alarm.kind === 'post-compact' ? ' · 每日压缩后' : ''}</p>}
                   {config.lastWakeAt > 0 && <p>上次醒来：{fmtRelative(config.lastWakeAt)}</p>}
-                  <p>wake me 不受 30 分钟规则影响；如果届时正在调用，该闹钟直接取消。</p>
+                  <p>特殊唤醒不受 30 分钟规则影响；如果届时正在调用，会顺延两分钟。</p>
                 </div>
               )}
             </div>
@@ -329,6 +360,37 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
                   {setting.enabled && <p className={`text-[10px] ${n ? 'text-night-amber' : 'text-[#9c6e69]'}`}>下一次：{item.next ? fmtTime(item.next) : '等待条件成立'}</p>}
                 </div>
               })}
+            </div>}
+
+            {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="flex items-center gap-1.5 text-sm font-medium"><AlarmClock size={14}/>特殊唤醒</h3>
+                  <p className={`mt-1 text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>小火定的闹钟、星星自己定的闹钟，以及每日压缩后的醒来。</p>
+                </div>
+                <button aria-label={`每日压缩后唤醒${config.special.enabled ? '关闭' : '开启'}`} onClick={() => void updateSpecial({ enabled: !config.special.enabled })} className={`relative h-6 w-11 shrink-0 rounded-full transition ${config.special.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20'}`}>
+                  <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${config.special.enabled ? 'translate-x-5' : ''}`}/>
+                </button>
+              </div>
+              <label className="flex items-center justify-between gap-3 text-xs">
+                <span className={n ? 'text-night-muted' : 'text-day-muted'}>每日压缩后最早</span>
+                <input type="time" value={config.special.earliestTime} disabled={!config.special.enabled} onChange={event => void updateSpecial({ earliestTime: event.target.value })} className={`rounded-lg px-2.5 py-1.5 outline-none disabled:opacity-40 ${n ? 'bg-night-surface text-night-text' : 'chat-dialog-field'}`}/>
+              </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>压缩后醒来的 Prompt</span>
+                  <button onClick={saveSpecialPrompt} disabled={!specialPromptDirty || specialPromptSaving} aria-label="保存特殊唤醒 Prompt" className={`rounded-lg p-1.5 transition ${specialPromptDirty ? n ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent' : 'cursor-not-allowed opacity-20'}`}><Save size={13}/></button>
+                </div>
+                <textarea value={specialPrompt} onChange={event => { setSpecialPrompt(event.target.value); setSpecialPromptDirty(true) }} rows={3} className={`w-full resize-y rounded-xl p-3 text-xs leading-relaxed outline-none ${n ? 'bg-night-surface text-night-text' : 'chat-dialog-field'}`}/>
+              </div>
+              <div className="space-y-1.5">
+                <p className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>等待中的特殊唤醒</p>
+                {config.alarms.length ? config.alarms.map((alarm, index) => <div key={`${alarm.at}-${index}`} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] ${n ? 'bg-night-surface' : 'chat-dialog-field'}`}>
+                  <span className="shrink-0 opacity-50">{alarm.source === 'star' ? '星星' : '小火'}</span>
+                  <span className="min-w-0 flex-1 truncate">{alarm.kind === 'post-compact' ? '每日压缩后醒来' : (alarm.note || '闹钟')}</span>
+                  <span className="shrink-0 opacity-50">{fmtTime(alarm.at)}</span>
+                </div>) : <p className="py-1 text-center text-[10px] opacity-35">没有等待中的特殊唤醒</p>}
+              </div>
             </div>}
 
             {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
@@ -456,7 +518,7 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
                             </div>
 
                             <div className={`text-[10px] grid grid-cols-2 gap-1 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
-                              <span>类型：{{ day: '日间', night: '夜间', random: '随机', inactivity: '久未说话', alarm: 'wake me 闹钟', 'warm-cache': '缓存保温' }[log.trigger || 'day']}</span>
+                              <span>类型：{{ day: '日间', night: '夜间', random: '随机', inactivity: '久未说话', alarm: '特殊唤醒', 'warm-cache': '缓存保温' }[log.trigger || 'day']}</span>
                               <span>结果：{log.sessionWrite === 'silent' ? '静默（有效）' : (log.sessionWrite || '旧记录')}</span>{log.outputTokens !== undefined && <span>输出：{log.outputTokens} tokens</span>}
                               {log.startedAt && log.finishedAt && <span>耗时：{Math.max(0, Math.round((log.finishedAt - log.startedAt) / 1000))}秒</span>}
                             </div>
