@@ -38,17 +38,17 @@ const JUMP_KM = 500
 
 interface Fix { lat: number; lon: number; accuracy: number }
 
-export function weatherEmoji(code: number): string {
-  if (code === 0) return '☀️'
-  if (code <= 2) return '🌤️'
-  if (code === 3) return '☁️'
-  if (code <= 48) return '🌫️'
-  if (code <= 57) return '🌦️'
-  if (code <= 67) return '🌧️'
-  if (code <= 77) return '🌨️'
-  if (code <= 82) return '🌦️'
-  if (code <= 86) return '🌨️'
-  return '⛈️'
+export function weatherStickerPath(code: number): string {
+  if (code === 0) return '/chat-assets/weather-stickers/01-sunny.png'
+  if (code <= 2) return '/chat-assets/weather-stickers/02-partly-cloudy.png'
+  if (code === 3) return '/chat-assets/weather-stickers/03-overcast.png'
+  if (code <= 48) return '/chat-assets/weather-stickers/04-fog.png'
+  if (code <= 57) return '/chat-assets/weather-stickers/05-showers.png'
+  if (code <= 67) return '/chat-assets/weather-stickers/06-rain.png'
+  if (code <= 77) return '/chat-assets/weather-stickers/07-snow.png'
+  if (code <= 82) return '/chat-assets/weather-stickers/05-showers.png'
+  if (code <= 86) return '/chat-assets/weather-stickers/07-snow.png'
+  return '/chat-assets/weather-stickers/08-thunderstorm.png'
 }
 
 function haversineKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {

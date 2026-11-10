@@ -2,7 +2,7 @@
 
 import { useApp } from '@/lib/store'
 import { useTheme } from '@/lib/theme'
-import { useWeather, weatherEmoji } from '@/lib/useWeather'
+import { useWeather, weatherStickerPath } from '@/lib/useWeather'
 import { Menu } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { SyncBadge } from './SyncBadge'
@@ -44,11 +44,12 @@ export function TopBar() {
       <span className="text-sm font-medium truncate">{titles[activeTab] || 'Lumbre'}</span>
       <div className="flex items-center gap-2 flex-shrink-0">
       <SyncBadge compact />
-      <span className={`text-[10px] flex-shrink-0 ${theme === 'night' ? 'text-night-muted' : 'text-day-muted'}`}>
-        {weather
-          ? `${weatherEmoji(weather.code)} ${weather.temp != null ? Math.round(weather.temp) + '°' : ''}${weather.city ? ' ' + weather.city : ''}`
-          : '🦦'}
-      </span>
+      {weather
+        ? <span className={`flex flex-shrink-0 items-center gap-1 text-[10px] ${theme === 'night' ? 'text-night-muted' : 'text-day-muted'}`}>
+            <img src={weatherStickerPath(weather.code)} alt="" aria-hidden="true" className="h-6 w-6 object-contain" />
+            <span>{weather.temp != null ? Math.round(weather.temp) + '°' : ''}{weather.city ? ' ' + weather.city : ''}</span>
+          </span>
+        : <span className="text-[10px]">🦦</span>}
       </div>
     </header>
   )

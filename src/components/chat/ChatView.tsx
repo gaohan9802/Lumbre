@@ -49,7 +49,7 @@ import { measureReceiptText } from '@/lib/chat-receipt'
 import { sticker, stickerFromToolInput, type StickerRef } from '@/lib/stickers'
 import { IntimacyWheelModal } from './IntimacyWheelModal'
 import { TodoView } from '@/components/todo/TodoView'
-import { useWeather, weatherEmoji } from '@/lib/useWeather'
+import { useWeather, weatherStickerPath } from '@/lib/useWeather'
 import dynamic from 'next/dynamic'
 
 const TesisView = dynamic(() => import('@/components/tesis/TesisView').then(module => module.TesisView), { ssr: false })
@@ -1308,6 +1308,9 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const startRename = (id: string, title: string) => { setEditingSessionId(id); setEditingTitle(title) }
   const finishRename = () => { if (editingSessionId) renameSession(editingSessionId, editingTitle); setEditingSessionId(null); setEditingTitle('') }
   const openChatSettings = (panel: ChatSettingsPanel) => { setChatSettingsPanel(panel); setSettingsOpen(true); setSessionDrawerOpen(false) }
+  const weatherAddressLines = weather?.displayAddress?.split(/\n+/).map(part => part.trim()).filter(Boolean) || []
+  const weatherStreet = weatherAddressLines[0] || [weather?.road, weather?.houseNumber].filter(Boolean).join(' ') || (weather?.updatedAt ? '地址解析中' : '尚未定位')
+  const weatherCity = weatherAddressLines.slice(1).join(' · ') || [weather?.region, weather?.city].filter(Boolean).join(' · ')
 
   /* ── sidebar ──────────────────────────── */
 
@@ -1333,24 +1336,29 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {n ? <Sun size={17} strokeWidth={1.45}/> : <Moon size={17} strokeWidth={1.45}/>}
           </motion.button>
         </div>
-        <section className="chat-session-weather chat-session-mono py-2 text-[9px]">
-          <div className="grid grid-cols-[2.4rem_minmax(0,1fr)] items-start gap-x-2">
-            <div className="row-span-2 flex flex-col items-center gap-1 pt-0.5">
-              <span className="text-sm leading-none">{weather?.updatedAt ? weatherEmoji(weather.code) : '·'}</span>
-              <span className="tabular-nums opacity-65">{weather?.updatedAt && weather.temp != null ? `${Math.round(weather.temp)}°` : '—'}</span>
+        <section className="chat-session-weather chat-session-mono py-1.5">
+          <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-x-2.5">
+            <div className="flex flex-col items-center justify-center">
+              {weather?.updatedAt
+                ? <img src={weatherStickerPath(weather.code)} alt="" aria-hidden="true" className="h-[3.15rem] w-[3.15rem] object-contain drop-shadow-[0_3px_5px_rgba(78,66,57,0.08)]" />
+                : <span className="grid h-[3.15rem] w-[3.15rem] place-items-center text-sm opacity-25">·</span>}
+              <span className="-mt-0.5 text-[10px] tabular-nums opacity-65">{weather?.updatedAt && weather.temp != null ? `${Math.round(weather.temp)}°` : '—'}</span>
             </div>
-            <div className="flex min-w-0 items-start gap-1.5">
-              <MapPin aria-hidden="true" size={10} className="mt-0.5 shrink-0 opacity-30" />
-              <span className="line-clamp-2 min-w-0 leading-3 opacity-55">{weather?.updatedAt ? (weather.displayAddress || [[weather.road, weather.houseNumber].filter(Boolean).join(' '), weather.city].filter(Boolean).join(' · ') || '地址解析中').replace(/\n+/g, ' · ') : '尚未定位'}</span>
-            </div>
-            <div className="mt-0.5 flex items-center justify-end gap-0.5">
-              {weather?.updatedAt && <span className="tabular-nums opacity-30">{new Date(weather.updatedAt).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
-              <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className="chat-theme-icon chat-theme-muted grid h-6 w-6 shrink-0 place-items-center rounded-full opacity-45 disabled:opacity-70">
-                <RotateCcw size={11} className={locationRefreshing ? 'animate-spin' : ''} />
-              </button>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <MapPin aria-hidden="true" size={11} className="shrink-0 opacity-30" />
+                <span className="truncate text-[10.5px] leading-4 opacity-65">{weatherStreet}</span>
+              </div>
+              <div className="mt-0.5 flex min-w-0 items-center gap-1 pl-[17px]">
+                <span className="min-w-0 flex-1 truncate text-[10px] leading-4 opacity-45">{weatherCity || '—'}</span>
+                {weather?.updatedAt && <span className="shrink-0 text-[8px] tabular-nums opacity-25">{new Date(weather.updatedAt).toLocaleTimeString('zh-CN', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
+                <button type="button" aria-label="刷新天气和位置" aria-busy={locationRefreshing} disabled={locationRefreshing} onClick={() => void refreshLocation(true)} className="chat-theme-icon chat-theme-muted grid h-5 w-5 shrink-0 place-items-center rounded-full opacity-40 disabled:opacity-70">
+                  <RotateCcw size={10} className={locationRefreshing ? 'animate-spin' : ''} />
+                </button>
+              </div>
             </div>
           </div>
-          {locationError && <div className="mt-1 pl-7 text-[8px] text-red-500/75">{locationError}</div>}
+          {locationError && <div className="mt-1 pl-[4.25rem] text-[8px] text-red-500/75">{locationError}</div>}
         </section>
       </div>
       <div className="relative z-10 flex-1 space-y-1 overflow-y-auto px-3 pb-2 pt-2">
