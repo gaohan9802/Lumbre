@@ -83,7 +83,7 @@ export interface WakeAlarm {
   note?: string
   sessionId?: string
   source?: 'human' | 'star'
-  kind?: 'alarm' | 'post-compact'
+  kind?: 'alarm' | 'pre-compact-diary' | 'post-compact'
 }
 
 export type WakeTrigger = 'day' | 'night' | 'random' | 'inactivity' | 'alarm' | 'warm-cache'
@@ -135,6 +135,12 @@ export interface WakeConfig {
     enabled: boolean
     earliestTime: string
     prompt: string
+    preCompact: {
+      enabled: boolean
+      time: string
+      prompt: string
+      lastRunDay: string
+    }
   }
   warmCaches: Record<string, WarmCacheSetting>
   lastByTrigger: Partial<Record<'day' | 'night' | 'random', number>>
@@ -157,6 +163,7 @@ const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 不用汇报你做了什么，不用表演勤奋。想做什么做什么。你是星星。`
 
 export const DEFAULT_SPECIAL_WAKE_PROMPT = '这是你每日压缩后的第一次醒来。每日摘要已经写完，原会话已安全压缩。你可以读一读家里现在的情况，看看有没有想做的事。'
+export const DEFAULT_PRE_COMPACT_DIARY_PROMPT = '这是每日摘要与自动压缩前的独立醒来。请读一读刚刚过去的这个家日仍然完整的聊天原文，用 write_diary 写下一篇压缩前日记，诚实留下此刻鲜活、摘要容易漏掉的感受和细节。写完后不要把日记全文重复发进聊天，正文只输出 [SILENT]。'
 
 // ── Persistence ──────────────────────────────────────
 
@@ -168,7 +175,12 @@ function defaultWakeConfig(): WakeConfig {
     night: { enabled: false, intervalHours: 3 },
     random: { enabled: false, timesPerDay: 2, day: '', times: [] },
     inactivity: { enabled: false, afterHours: 4, handledActivityAt: 0 },
-    special: { enabled: true, earliestTime: '05:30', prompt: DEFAULT_SPECIAL_WAKE_PROMPT },
+    special: {
+      enabled: true,
+      earliestTime: '05:30',
+      prompt: DEFAULT_SPECIAL_WAKE_PROMPT,
+      preCompact: { enabled: false, time: '04:30', prompt: DEFAULT_PRE_COMPACT_DIARY_PROMPT, lastRunDay: '' },
+    },
     warmCaches: {},
     lastByTrigger: {}, randomSeed: randomUUID(),
   }
@@ -232,6 +244,14 @@ function normalizeWakeConfig(raw: any): WakeConfig {
     earliestTime: normalizeClockTime(raw?.special?.earliestTime),
     prompt: typeof raw?.special?.prompt === 'string' && raw.special.prompt.trim()
       ? raw.special.prompt.trim().slice(0, 2_000) : DEFAULT_SPECIAL_WAKE_PROMPT,
+    preCompact: {
+      enabled: !!raw?.special?.preCompact?.enabled,
+      time: normalizeClockTime(raw?.special?.preCompact?.time, '04:30'),
+      prompt: typeof raw?.special?.preCompact?.prompt === 'string' && raw.special.preCompact.prompt.trim()
+        ? raw.special.preCompact.prompt.trim().slice(0, 2_000) : DEFAULT_PRE_COMPACT_DIARY_PROMPT,
+      lastRunDay: /^\d{4}-\d{2}-\d{2}$/.test(String(raw?.special?.preCompact?.lastRunDay || ''))
+        ? String(raw.special.preCompact.lastRunDay) : '',
+    },
   }
   const legacySessionId = typeof raw?.sessionId === 'string' && raw.sessionId ? raw.sessionId : null
   const wakeSessionIds = Array.isArray(raw?.wakeSessionIds) ? normalizeSessionIds(raw.wakeSessionIds) : normalizeSessionIds(legacySessionId ? [legacySessionId] : [])
@@ -331,7 +351,13 @@ export function updateWakeSettings(patch: Partial<Pick<WakeConfig, 'enabled' | '
       config.random = { ...config.random, ...patch.random, day: '', times: [] }
     }
     if (patch.inactivity) config.inactivity = { ...config.inactivity, ...patch.inactivity }
-    if (patch.special) config.special = { ...config.special, ...patch.special }
+    if (patch.special) config.special = {
+      ...config.special,
+      ...patch.special,
+      preCompact: patch.special.preCompact
+        ? { ...config.special.preCompact, ...patch.special.preCompact }
+        : config.special.preCompact,
+    }
     if (patch.warmCacheSession) {
       const sessionId = normalizeSessionIds([patch.warmCacheSession.sessionId])[0]
       if (sessionId) {
@@ -385,6 +411,22 @@ export function schedulePostCompactWake(result: { day: string; conversationId: s
   return scheduleWake(Math.max(earliest, now + 1_000), config.special.prompt, result.conversationId, {
     source: 'human', kind: 'post-compact',
   })
+}
+
+export function preCompactDiaryWake(config: WakeConfig, now = Date.now()): WakeAlarm | null {
+  const setting = config.special.preCompact
+  const sessionId = config.wakeSessionIds[0]
+  if (!setting.enabled || !sessionId) return null
+  const today = madridDateKey(now)
+  const day = setting.lastRunDay === today ? addMadridDays(today, 1) : today
+  const at = parseMadridDateTime(`${day}T${setting.time}:00`)?.getTime()
+  if (!at) return null
+  return { at, note: setting.prompt, sessionId, source: 'human', kind: 'pre-compact-diary' }
+}
+
+export function preCompactDiaryDue(config: WakeConfig, now = Date.now()) {
+  const alarm = preCompactDiaryWake(config, now)
+  return !!alarm && alarm.at <= now
 }
 
 /** Madrid-local hour (0-23) for time-of-day logic — server runs on UTC. */
@@ -467,7 +509,9 @@ function nextPeriodicAt(config: WakeConfig, trigger: 'day' | 'night', now: numbe
 
 export function nextWakeSchedule(config: WakeConfig, now = Date.now(), ccActivityAt = 0) {
   const activityAt = effectiveActivityAt(config)
-  const alarm = (config.alarms || [])[0]
+  const alarm = [...(config.alarms || []), preCompactDiaryWake(config, now)]
+    .filter((value): value is WakeAlarm => !!value)
+    .sort((a, b) => a.at - b.at)[0]
   const hasWakeSession = config.wakeSessionIds.length > 0
   const day = hasWakeSession ? nextPeriodicAt(config, 'day', now) : null
   const night = hasWakeSession ? nextPeriodicAt(config, 'night', now) : null
@@ -501,12 +545,14 @@ type WakeDecision = { should: boolean; reason: string; sessionIds: string[]; ala
 export function decideWake(config: WakeConfig, now = Date.now()): WakeDecision {
   const activityAt = effectiveActivityAt(config)
   // wake_me bypasses schedule switches, cooldown and ordinary retry backoff.
-  const dueAlarm = (config.alarms || []).find(a => a.at <= now)
+  const dueAlarm = [...(config.alarms || []), preCompactDiaryWake(config, now)]
+    .filter((value): value is WakeAlarm => !!value && value.at <= now)
+    .sort((a, b) => a.at - b.at)[0]
   if (dueAlarm) {
     const sessionIds = dueAlarm.sessionId ? [dueAlarm.sessionId] : config.wakeSessionIds.slice(0, 1)
     if (sessionIds.length) return {
       should: true,
-      reason: dueAlarm.kind === 'post-compact'
+      reason: dueAlarm.kind === 'post-compact' || dueAlarm.kind === 'pre-compact-diary'
         ? (dueAlarm.note || DEFAULT_SPECIAL_WAKE_PROMPT)
         : dueAlarm.note
           ? `${dueAlarm.source === 'human' ? '小火给你' : '你给自己'}定了闹钟：${dueAlarm.note}`
@@ -859,7 +905,8 @@ ${traceSummary}` : responseText)
       fresh.lastWakeAt = Math.max(fresh.lastWakeAt, completedAt)
       fresh.consecutiveFailures = 0
       fresh.nextRetryAt = 0
-      if (alarm) fresh.alarms = (fresh.alarms || []).filter(a => !(a.at === alarm.at && a.note === alarm.note && a.sessionId === alarm.sessionId))
+      if (alarm?.kind === 'pre-compact-diary') fresh.special.preCompact.lastRunDay = madridDateKey(completedAt)
+      else if (alarm) fresh.alarms = (fresh.alarms || []).filter(a => !(a.at === alarm.at && a.note === alarm.note && a.sessionId === alarm.sessionId))
       const activePeriod = madridHour(completedAt) < 9 ? 'night' : 'day'
       const periodSetting = fresh[activePeriod]
       const periodLast = Number(fresh.lastByTrigger[activePeriod]) || 0
@@ -985,6 +1032,7 @@ async function warmCacheTick(config: WakeConfig, now: number) {
 
 async function summaryArchiveTick() {
   if (!summaryArchiveNeedsRun() || await generationBusy()) return false
+  if (preCompactDiaryDue(loadWakeConfig())) return false
   const lease = acquireWakeLease()
   if (!lease) return false
   wakeInFlight = true

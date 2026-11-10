@@ -39,8 +39,13 @@ interface WakeConfig {
   night: { enabled: boolean; intervalHours: number }
   random: { enabled: boolean; timesPerDay: number; day: string; times: number[] }
   inactivity: { enabled: boolean; afterHours: number; handledActivityAt: number }
-  special: { enabled: boolean; earliestTime: string; prompt: string }
-  alarms: { at: number; note?: string; sessionId?: string; source?: 'human' | 'star'; kind?: 'alarm' | 'post-compact' }[]
+  special: {
+    enabled: boolean
+    earliestTime: string
+    prompt: string
+    preCompact: { enabled: boolean; time: string; prompt: string; lastRunDay: string }
+  }
+  alarms: { at: number; note?: string; sessionId?: string; source?: 'human' | 'star'; kind?: 'alarm' | 'pre-compact-diary' | 'post-compact' }[]
   warmCaches: Record<string, {
     enabled: boolean
     observedCcAt: number
@@ -54,7 +59,7 @@ interface WakeConfig {
 }
 
 interface NextWakeSchedule {
-  alarm: { at: number; note?: string; sessionId?: string; source?: 'human' | 'star'; kind?: 'alarm' | 'post-compact' } | null
+  alarm: { at: number; note?: string; sessionId?: string; source?: 'human' | 'star'; kind?: 'alarm' | 'pre-compact-diary' | 'post-compact' } | null
   day: number | null
   night: number | null
   random: number | null
@@ -79,6 +84,7 @@ const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 不用汇报你做了什么，不用表演勤奋。想做什么做什么。你是星星。`
 
 const DEFAULT_SPECIAL_WAKE_PROMPT = '这是你每日压缩后的第一次醒来。每日摘要已经写完，原会话已安全压缩。你可以读一读家里现在的情况，看看有没有想做的事。'
+const DEFAULT_PRE_COMPACT_DIARY_PROMPT = '这是每日摘要与自动压缩前的独立醒来。请读一读刚刚过去的这个家日仍然完整的聊天原文，用 write_diary 写下一篇压缩前日记，诚实留下此刻鲜活、摘要容易漏掉的感受和细节。写完后不要把日记全文重复发进聊天，正文只输出 [SILENT]。'
 
 const fmtTime = (ts: number) => formatMadrid(ts)
 
@@ -109,6 +115,9 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
   const [specialPrompt, setSpecialPrompt] = useState(DEFAULT_SPECIAL_WAKE_PROMPT)
   const [specialPromptDirty, setSpecialPromptDirty] = useState(false)
   const [specialPromptSaving, setSpecialPromptSaving] = useState(false)
+  const [preCompactPrompt, setPreCompactPrompt] = useState(DEFAULT_PRE_COMPACT_DIARY_PROMPT)
+  const [preCompactPromptDirty, setPreCompactPromptDirty] = useState(false)
+  const [preCompactPromptSaving, setPreCompactPromptSaving] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushStatus, setPushStatus] = useState('')
   const activeTab = fixedTab || tab
@@ -125,6 +134,8 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
       setPromptDirty(false)
       setSpecialPrompt(data.config?.special?.prompt || DEFAULT_SPECIAL_WAKE_PROMPT)
       setSpecialPromptDirty(false)
+      setPreCompactPrompt(data.config?.special?.preCompact?.prompt || DEFAULT_PRE_COMPACT_DIARY_PROMPT)
+      setPreCompactPromptDirty(false)
     } catch {}
     setLoading(false)
   }, [])
@@ -268,6 +279,17 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
     setSpecialPromptSaving(false)
   }
 
+  const updatePreCompact = (patch: Partial<WakeConfig['special']['preCompact']>) => {
+    if (!config) return Promise.resolve(false)
+    return updateSpecial({ preCompact: { ...config.special.preCompact, ...patch } })
+  }
+
+  const savePreCompactPrompt = async () => {
+    setPreCompactPromptSaving(true)
+    if (await updatePreCompact({ prompt: preCompactPrompt })) setPreCompactPromptDirty(false)
+    setPreCompactPromptSaving(false)
+  }
+
   return (
     <div className={`h-full flex flex-col ${n ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
       {/* Tab header */}
@@ -328,7 +350,7 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
               {config && (
                 <div className={`text-[10px] space-y-0.5 ${n ? 'text-night-muted' : 'text-day-muted'}`}>
                   {nextWake?.overall && <p className={n ? 'text-night-amber' : 'text-[#9c6e69]'}>最近一次预计唤醒：{fmtTime(nextWake.overall)}</p>}
-                  {nextWake?.alarm && <p>特殊：{fmtTime(nextWake.alarm.at)}{nextWake.alarm.kind === 'post-compact' ? ' · 每日压缩后' : ''}</p>}
+                  {nextWake?.alarm && <p>特殊：{fmtTime(nextWake.alarm.at)}{nextWake.alarm.kind === 'pre-compact-diary' ? ' · 压缩前日记' : nextWake.alarm.kind === 'post-compact' ? ' · 每日压缩后' : ''}</p>}
                   {config.lastWakeAt > 0 && <p>上次醒来：{fmtRelative(config.lastWakeAt)}</p>}
                   <p>特殊唤醒不受 30 分钟规则影响；如果届时正在调用，会顺延两分钟。</p>
                 </div>
@@ -363,31 +385,37 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
             </div>}
 
             {config && <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="flex items-center gap-1.5 text-sm font-medium"><AlarmClock size={14}/>特殊唤醒</h3>
-                  <p className={`mt-1 text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>小火定的闹钟、星星自己定的闹钟，以及每日压缩后的醒来。</p>
-                </div>
-                <button aria-label={`每日压缩后唤醒${config.special.enabled ? '关闭' : '开启'}`} onClick={() => void updateSpecial({ enabled: !config.special.enabled })} className={`relative h-6 w-11 shrink-0 rounded-full transition ${config.special.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-surface' : 'bg-[#DBB9B3]/20'}`}>
-                  <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${config.special.enabled ? 'translate-x-5' : ''}`}/>
-                </button>
+              <div>
+                <h3 className="flex items-center gap-1.5 text-sm font-medium"><AlarmClock size={14}/>特殊唤醒</h3>
+                <p className={`mt-1 text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>压缩前先留下一篇日记，压缩后再醒来看看家里。</p>
               </div>
-              <label className="flex items-center justify-between gap-3 text-xs">
-                <span className={n ? 'text-night-muted' : 'text-day-muted'}>每日压缩后最早</span>
-                <input type="time" value={config.special.earliestTime} disabled={!config.special.enabled} onChange={event => void updateSpecial({ earliestTime: event.target.value })} className={`rounded-lg px-2.5 py-1.5 outline-none disabled:opacity-40 ${n ? 'bg-night-surface text-night-text' : 'chat-dialog-field'}`}/>
-              </label>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>压缩后醒来的 Prompt</span>
-                  <button onClick={saveSpecialPrompt} disabled={!specialPromptDirty || specialPromptSaving} aria-label="保存特殊唤醒 Prompt" className={`rounded-lg p-1.5 transition ${specialPromptDirty ? n ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent' : 'cursor-not-allowed opacity-20'}`}><Save size={13}/></button>
+              <div className={`space-y-3 rounded-xl p-3 ${n ? 'bg-night-surface' : 'chat-dialog-field'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div><p className="text-xs font-medium">压缩前日记</p><p className="mt-0.5 text-[9px] opacity-45">先完成日记，05:00 摘要与自动压缩才继续</p></div>
+                  <button aria-label={`压缩前日记唤醒${config.special.preCompact.enabled ? '关闭' : '开启'}`} onClick={() => void updatePreCompact({ enabled: !config.special.preCompact.enabled })} className={`relative h-6 w-11 shrink-0 rounded-full transition ${config.special.preCompact.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-card' : 'bg-[#DBB9B3]/20'}`}><span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${config.special.preCompact.enabled ? 'translate-x-5' : ''}`}/></button>
                 </div>
-                <textarea value={specialPrompt} onChange={event => { setSpecialPrompt(event.target.value); setSpecialPromptDirty(true) }} rows={3} className={`w-full resize-y rounded-xl p-3 text-xs leading-relaxed outline-none ${n ? 'bg-night-surface text-night-text' : 'chat-dialog-field'}`}/>
+                <label className="flex items-center justify-between gap-3 text-xs"><span className={n ? 'text-night-muted' : 'text-day-muted'}>每天</span><input type="time" value={config.special.preCompact.time} disabled={!config.special.preCompact.enabled} onChange={event => void updatePreCompact({ time: event.target.value })} className={`rounded-lg px-2.5 py-1.5 outline-none disabled:opacity-40 ${n ? 'bg-night-card text-night-text' : 'bg-white/55'}`}/></label>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between"><span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>压缩前日记 Prompt</span><button onClick={savePreCompactPrompt} disabled={!preCompactPromptDirty || preCompactPromptSaving} aria-label="保存压缩前日记 Prompt" className={`rounded-lg p-1.5 transition ${preCompactPromptDirty ? n ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent' : 'cursor-not-allowed opacity-20'}`}><Save size={13}/></button></div>
+                  <textarea value={preCompactPrompt} onChange={event => { setPreCompactPrompt(event.target.value); setPreCompactPromptDirty(true) }} rows={4} className={`w-full resize-y rounded-xl p-3 text-xs leading-relaxed outline-none ${n ? 'bg-night-card text-night-text' : 'bg-white/55'}`}/>
+                </div>
+              </div>
+              <div className={`space-y-3 rounded-xl p-3 ${n ? 'bg-night-surface' : 'chat-dialog-field'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div><p className="text-xs font-medium">压缩后醒来</p><p className="mt-0.5 text-[9px] opacity-45">每日摘要写完且原会话安全压缩后触发</p></div>
+                  <button aria-label={`每日压缩后唤醒${config.special.enabled ? '关闭' : '开启'}`} onClick={() => void updateSpecial({ enabled: !config.special.enabled })} className={`relative h-6 w-11 shrink-0 rounded-full transition ${config.special.enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-card' : 'bg-[#DBB9B3]/20'}`}><span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${config.special.enabled ? 'translate-x-5' : ''}`}/></button>
+                </div>
+                <label className="flex items-center justify-between gap-3 text-xs"><span className={n ? 'text-night-muted' : 'text-day-muted'}>最早</span><input type="time" value={config.special.earliestTime} disabled={!config.special.enabled} onChange={event => void updateSpecial({ earliestTime: event.target.value })} className={`rounded-lg px-2.5 py-1.5 outline-none disabled:opacity-40 ${n ? 'bg-night-card text-night-text' : 'bg-white/55'}`}/></label>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between"><span className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>压缩后醒来的 Prompt</span><button onClick={saveSpecialPrompt} disabled={!specialPromptDirty || specialPromptSaving} aria-label="保存特殊唤醒 Prompt" className={`rounded-lg p-1.5 transition ${specialPromptDirty ? n ? 'bg-night-amber text-night-bg' : 'chat-dialog-accent' : 'cursor-not-allowed opacity-20'}`}><Save size={13}/></button></div>
+                  <textarea value={specialPrompt} onChange={event => { setSpecialPrompt(event.target.value); setSpecialPromptDirty(true) }} rows={3} className={`w-full resize-y rounded-xl p-3 text-xs leading-relaxed outline-none ${n ? 'bg-night-card text-night-text' : 'bg-white/55'}`}/>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <p className={`text-[10px] ${n ? 'text-night-muted' : 'text-day-muted'}`}>等待中的特殊唤醒</p>
                 {config.alarms.length ? config.alarms.map((alarm, index) => <div key={`${alarm.at}-${index}`} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] ${n ? 'bg-night-surface' : 'chat-dialog-field'}`}>
                   <span className="shrink-0 opacity-50">{alarm.source === 'star' ? '星星' : '小火'}</span>
-                  <span className="min-w-0 flex-1 truncate">{alarm.kind === 'post-compact' ? '每日压缩后醒来' : (alarm.note || '闹钟')}</span>
+                  <span className="min-w-0 flex-1 truncate">{alarm.kind === 'pre-compact-diary' ? '压缩前日记' : alarm.kind === 'post-compact' ? '每日压缩后醒来' : (alarm.note || '闹钟')}</span>
                   <span className="shrink-0 opacity-50">{fmtTime(alarm.at)}</span>
                 </div>) : <p className="py-1 text-center text-[10px] opacity-35">没有等待中的特殊唤醒</p>}
               </div>

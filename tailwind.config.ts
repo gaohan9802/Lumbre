@@ -69,7 +69,8 @@ const config: Config = {
         '3xl': ['1.65rem', { lineHeight: '1.3' }],
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['"KingHwaOldSong"', '"Songti SC"', '"STSong"', 'serif'],
+        serif: ['"KingHwaOldSong"', '"Songti SC"', '"STSong"', 'serif'],
         receipt: ['"Courier Prime"', '"Courier New"', 'monospace'],
       },
       animation: {

@@ -34,7 +34,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || url.origin !== self.location.origin) return
 
   const isNextAsset = url.pathname.startsWith('/_next/static/')
-  const isStaticAsset = /\.(?:woff2?|png|jpg|jpeg|webp|gif|svg|ico)$/i.test(url.pathname)
+  const isStaticAsset = /\.(?:woff2?|ttf|png|jpg|jpeg|webp|gif|svg|ico)$/i.test(url.pathname)
   const isNavigation = request.mode === 'navigate'
   if (!isNextAsset && !isStaticAsset && !isNavigation) return
 

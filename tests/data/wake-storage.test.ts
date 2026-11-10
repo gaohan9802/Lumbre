@@ -179,6 +179,30 @@ test('a completed daily compact schedules one editable special wake', () => {
   assert.equal(wake.schedulePostCompactWake({ day: '2099-01-01', conversationId: 'fixture-session' }, now), null)
 })
 
+test('the pre-compact diary wake runs before the 05:00 archive and only once per day', () => {
+  const current = wake.loadWakeConfig().special.preCompact
+  const config = wake.updateWakeSettings({
+    sessionId: 'fixture-session',
+    special: { preCompact: { ...current, enabled: true, time: '04:30', prompt: '先写压缩前日记。', lastRunDay: '' } },
+  })
+  const before = Date.parse('2099-01-02T04:00:00+01:00')
+  const isolated = { ...config, alarms: [] }
+  const scheduled = wake.nextWakeSchedule(isolated, before).alarm
+  assert.equal(scheduled?.at, Date.parse('2099-01-02T04:30:00+01:00'))
+  assert.equal(scheduled?.kind, 'pre-compact-diary')
+
+  const due = wake.decideWake(isolated, Date.parse('2099-01-02T05:00:00+01:00'))
+  assert.equal(due.reason, '先写压缩前日记。')
+  assert.deepEqual(due.sessionIds, ['fixture-session'])
+  assert.equal(wake.preCompactDiaryDue(isolated, Date.parse('2099-01-02T05:00:00+01:00')), true)
+
+  const completed = wake.updateWakeSettings({
+    special: { preCompact: { ...config.special.preCompact, lastRunDay: '2099-01-02' } },
+  })
+  assert.equal(wake.preCompactDiaryDue({ ...completed, alarms: [] }, Date.parse('2099-01-02T05:01:00+01:00')), false)
+  assert.equal(wake.nextWakeSchedule({ ...completed, alarms: [] }, Date.parse('2099-01-02T05:01:00+01:00')).alarm?.at, Date.parse('2099-01-03T04:30:00+01:00'))
+})
+
 test('corrupt wake configuration is backed up before recovery', () => {
   const file = path.join(root, 'wake-config.json')
   writeFileSync(file, '{broken wake config', 'utf8')
