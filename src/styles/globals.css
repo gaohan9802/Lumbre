@@ -152,7 +152,7 @@
     --chat-sidebar: #f5f2ec;
     --chat-surface: #fffdfa;
     --chat-soft: #efede8;
-    --chat-user: color-mix(in srgb, var(--chat-claude-orange) 24%, transparent);
+    --chat-user: #ece9e3;
     --chat-border: #dedbd4;
     --chat-text: #20201e;
     --chat-muted: #77756f;
@@ -177,7 +177,7 @@
     --chat-sidebar: #1f1f1d;
     --chat-surface: #20201e;
     --chat-soft: #2a2926;
-    --chat-user: color-mix(in srgb, var(--chat-claude-orange) 24%, transparent);
+    --chat-user: #332f2b;
     --chat-border: #393936;
     --chat-text: #f1efe9;
     --chat-muted: #aaa8a1;

@@ -204,7 +204,8 @@ test('chat uses neutral surfaces with soft Claude orange accents', () => {
   const streaming = read('../../src/features/chat/components/StreamingReply.tsx')
 
   assert.match(styles, /\.chat-theme[\s\S]*--chat-bg: #f8f6f1/)
-  assert.equal(styles.match(/--chat-user: color-mix\(in srgb, var\(--chat-claude-orange\) 24%, transparent\)/g)?.length, 2)
+  assert.match(styles, /\.chat-theme \{[\s\S]*--chat-user: #ece9e3/)
+  assert.match(styles, /\.dark \.chat-theme \{[\s\S]*--chat-user: #332f2b/)
   assert.match(styles, /--chat-border: #dedbd4/)
   assert.match(styles, /--chat-accent: #dbb9b3/)
   assert.match(styles, /--chat-claude-orange: #d97757/)
