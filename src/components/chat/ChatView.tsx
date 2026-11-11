@@ -1330,7 +1330,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             {n ? <Sun size={17} strokeWidth={1.45}/> : <Moon size={17} strokeWidth={1.45}/>}
           </motion.button>
         </div>
-        <section className="chat-session-weather chat-session-mono py-1.5">
+        <section className="chat-session-mono py-1.5">
           <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-x-2.5">
             <div className="flex flex-col items-center justify-center">
               {weather?.updatedAt
@@ -1360,7 +1360,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           const active = s.id === settings.activeSessionId
           return (
             <div key={s.id} onClick={() => { setActiveSession(s.id); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
-              className={`group relative cursor-pointer px-4 py-3 transition ${sessionActionsId === s.id ? 'z-30' : ''} ${active ? 'chat-session-active isolate my-2 py-4' : 'chat-session-row chat-theme-hover'}`}>
+              className={`group relative cursor-pointer px-4 py-3 transition ${sessionActionsId === s.id ? 'z-30' : ''} ${active ? 'chat-session-active isolate my-2 py-4' : 'chat-theme-hover'}`}>
               {active && <span aria-hidden="true" className="chat-session-tape" />}
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">

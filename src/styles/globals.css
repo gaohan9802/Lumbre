@@ -196,8 +196,6 @@
   .chat-room-drawer.chat-page-shell {
     background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--chat-grid-dot) 62%, transparent) 1px, transparent 1.2px);
   }
-  .chat-session-weather,
-  .chat-session-row { border-bottom: 1px dashed color-mix(in srgb, var(--chat-border) 72%, transparent); }
   .chat-session-active {
     filter: drop-shadow(0 9px 12px var(--chat-card-shadow));
   }
