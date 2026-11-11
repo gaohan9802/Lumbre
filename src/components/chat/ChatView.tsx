@@ -1637,7 +1637,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                                       <button type="button" onClick={() => requestPencilRedraw(pencilDrawing)} className="opacity-65 hover:opacity-100">再画一版</button>
                                     </div>
                                   )}
-                                  <MarkdownText content={block.content} />
+                                  <MarkdownText content={block.content} softActionParagraphs />
                                 </div>
                               )
                             }
@@ -1736,7 +1736,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                               ))}
                             </div>
                           )}
-                          {msg.content.trim() && <MarkdownText content={msg.content} />}
+                          {msg.content.trim() && <MarkdownText content={msg.content} softActionParagraphs />}
                         </div>
                       ) : null}
 

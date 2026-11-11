@@ -23,3 +23,13 @@ test('chat markdown renders common GFM blocks without flattening them', () => {
   assert.match(html, /<pre/)
   assert.match(html, /data-language="ts"/)
 })
+
+test('assistant prose keeps one document while pure action paragraphs become soft lines', () => {
+  const content = '*他低下头，尾巴轻轻扫过她的手腕。*\n\n**“过来。”**\n\n她抬头看他。'
+  const html = renderToStaticMarkup(React.createElement(MarkdownText, { content, softActionParagraphs: true }))
+
+  assert.match(html, /<p class="chat-action-line [^"]*">他低下头，尾巴轻轻扫过她的手腕。<\/p>/)
+  assert.match(html, /<strong>“过来。”<\/strong>/)
+  assert.match(html, /<p class="whitespace-pre-wrap[^>]*">她抬头看他。<\/p>/)
+  assert.doesNotMatch(html, /<em>/)
+})

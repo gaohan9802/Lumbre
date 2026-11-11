@@ -91,7 +91,7 @@ export function StreamingReply({
               <motion.div key={index} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className={action
                 ? 'chat-action-line relative block w-full break-words px-[19px] py-1.5 text-[14px]'
                 : 'chat-ai-bubble relative block w-full break-words px-[19px] py-1 text-[14px]'}>
-                <MarkdownText content={block.content} cursor={isLast} />
+                <MarkdownText content={block.content} cursor={isLast} softActionParagraphs />
               </motion.div>
             )
           }

@@ -46,10 +46,11 @@ test('reply snapshots retain bubble layout and mode; budgets leave room for thin
   assert.doesNotMatch(replyModePrompt('long'), /<!--split-->/)
 })
 
-test('chat presentation only marks a whole pure-action reply', () => {
-  assert.match(chatPresentationContext, /整条回复全部是动作描写/)
+test('chat presentation marks pure-action paragraphs without splitting the reply', () => {
+  assert.match(chatPresentationContext, /纯动作描写的自然段/)
   assert.match(chatPresentationContext, /一对单星号/)
-  assert.match(chatPresentationContext, /动作和说话混合的长回复/)
+  assert.match(chatPresentationContext, /普通文字和说话之间/)
+  assert.match(chatPresentationContext, /不会拆成多个气泡/)
   assert.match(chatPresentationContext, /不要输出界面分泡标记/)
 })
 

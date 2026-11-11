@@ -16,6 +16,9 @@ test('only a single pure action becomes transparent and wrappers never leak', ()
   const mixed = '*他低下头。*\n\n**过来。**'
   const long = presentAssistantBlocks([{ type: 'text', content: mixed }], { split: false })
   assert.deepEqual(long, [{ type: 'text', content: mixed, presentation: 'bubble' }])
+
+  const streaming = presentAssistantBlocks([{ type: 'text', content: `${mixed}\n\n我在这里。` }], { split: false, streaming: true })
+  assert.deepEqual(streaming, [{ type: 'text', content: `${mixed}\n\n我在这里。`, presentation: 'bubble' }])
 })
 
 test('wake replies remain one normal bubble', () => {

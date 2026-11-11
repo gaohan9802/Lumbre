@@ -1,6 +1,7 @@
 'use client'
 
 import React, { memo } from 'react'
+import { unwrapActionParagraph } from '@/lib/chat-bubble-rules'
 
 function tableCells(line: string) {
   const body = line.trim().replace(/^\|/, '').replace(/\|$/, '')
@@ -46,7 +47,7 @@ function inline(text: string): React.ReactNode[] {
   return tokens
 }
 
-function MarkdownTextView({ content, cursor = false }: { content: string; cursor?: boolean }) {
+function MarkdownTextView({ content, cursor = false, softActionParagraphs = false }: { content: string; cursor?: boolean; softActionParagraphs?: boolean }) {
   const lines = content.replace(/\r\n/g, '\n').split('\n')
   const nodes: React.ReactNode[] = []
   let i = 0
@@ -125,9 +126,11 @@ function MarkdownTextView({ content, cursor = false }: { content: string; cursor
       paragraph.push(next)
       i++
     }
+    const action = softActionParagraphs ? unwrapActionParagraph(paragraph.join('\n')) : null
+    const displayed = (action ?? paragraph.join('\n')).split('\n')
     nodes.push(
-      <p key={`p-${i}`} className="whitespace-pre-wrap break-words leading-[1.62]">
-        {paragraph.map((part, n) => <React.Fragment key={n}>{inline(part)}{n < paragraph.length - 1 && <br />}</React.Fragment>)}
+      <p key={`p-${i}`} className={`${action !== null ? 'chat-action-line ' : ''}whitespace-pre-wrap break-words leading-[1.62]`}>
+        {displayed.map((part, n) => <React.Fragment key={n}>{inline(part)}{n < displayed.length - 1 && <br />}</React.Fragment>)}
       </p>,
     )
   }

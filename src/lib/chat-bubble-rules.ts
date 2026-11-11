@@ -31,16 +31,22 @@ function splitOutsideCodeFences(text: string): string[] {
   return parts
 }
 
+export function unwrapActionParagraph(value: string, streaming = false): string | null {
+  const text = value.trim()
+  const actionStart = text.startsWith('*') && !text.startsWith('**') && !/^\*\s/.test(text)
+  const actionEnd = text.endsWith('*') && !text.endsWith('**')
+  const unclosedStreamingAction = streaming && !text.slice(1).includes('*')
+  if (!actionStart || (!actionEnd && !unclosedStreamingAction)) return null
+  return text.slice(1, actionEnd ? -1 : undefined).trim()
+}
+
 function unwrapWholeParagraph(value: string, streaming: boolean) {
   const text = value.trim()
   if (text.startsWith('**') && text.endsWith('**') && text.length > 4) {
     return { content: text.slice(2, -2).trim(), action: false }
   }
-  const actionStart = text.startsWith('*') && !text.startsWith('**') && !/^\*\s/.test(text)
-  const actionEnd = text.endsWith('*') && !text.endsWith('**')
-  if (actionStart && (actionEnd || streaming)) {
-    return { content: text.slice(1, actionEnd ? -1 : undefined).trim(), action: true }
-  }
+  const action = unwrapActionParagraph(text, streaming)
+  if (action !== null) return { content: action, action: true }
   return { content: text, action: false }
 }
 

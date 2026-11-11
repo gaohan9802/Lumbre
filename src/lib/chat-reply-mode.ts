@@ -43,8 +43,8 @@ export function replyModePrompt(mode: ReplyMode): string {
 
 export const chatPresentationContext = `<lumbre_chat_presentation>
 回复可以正常分自然段，但始终是一整篇文字，不要输出界面分泡标记。
-只有当整条回复全部是动作描写、完全没有说话内容时，才把整条回复包在一对单星号中，例如：*他低下头，尾巴轻轻扫过她的手腕。*
-普通回复，以及动作和说话混合的长回复，都按普通 Markdown 自然书写，不要为了样式添加单星号或双星号，也不要解释这条规则。
+纯动作描写的自然段用一对单星号完整包住，例如：*他低下头，尾巴轻轻扫过她的手腕。* 动作段可以出现在普通文字和说话之间，这只改变文字样式，不会拆成多个气泡。
+普通叙述直接书写；需要强调的说话可以使用双星号。不要把含有说话的段落包进单星号，也不要解释这条规则。
 </lumbre_chat_presentation>`
 
 /** Total token budget includes reasoning on the existing gateways. */
