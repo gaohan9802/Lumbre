@@ -199,9 +199,9 @@
   .chat-session-drawer.chat-page-shell,
   .chat-main-shell.chat-page-shell {
     background-image:
-      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--chat-grid-dot) 76%, var(--chat-text) 24%) 1px, transparent 1.2px),
-      linear-gradient(var(--chat-grid-line) 1px, transparent 1px),
-      linear-gradient(90deg, var(--chat-grid-line) 1px, transparent 1px);
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--chat-grid-dot) 62%, transparent) 1px, transparent 1.2px),
+      linear-gradient(color-mix(in srgb, var(--chat-grid-line) 70%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--chat-grid-line) 70%, transparent) 1px, transparent 1px);
   }
   .chat-session-weather,
   .chat-session-row { border-bottom: 1px dashed color-mix(in srgb, var(--chat-border) 72%, transparent); }

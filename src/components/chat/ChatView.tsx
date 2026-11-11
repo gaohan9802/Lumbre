@@ -1310,7 +1310,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const openChatSettings = (panel: ChatSettingsPanel) => { setChatSettingsPanel(panel); setSettingsOpen(true); setSessionDrawerOpen(false) }
   const weatherAddressLines = weather?.displayAddress?.split(/\n+/).map(part => part.trim()).filter(Boolean) || []
   const weatherStreet = weatherAddressLines[0] || [weather?.road, weather?.houseNumber].filter(Boolean).join(' ') || (weather?.updatedAt ? '地址解析中' : '尚未定位')
-  const weatherCity = weatherAddressLines.slice(1).join(' · ') || [weather?.region, weather?.city].filter(Boolean).join(' · ')
+  const weatherCity = weather?.city || weatherAddressLines.at(-1)?.split('·').at(-1)?.trim() || weather?.region || ''
 
   /* ── sidebar ──────────────────────────── */
 
