@@ -158,6 +158,7 @@
     --chat-muted: #77756f;
     --chat-accent: #dbb9b3;
     --chat-accent-ink: #765753;
+    --chat-claude-orange: #d97757;
     --chat-grid-dot: rgba(120, 113, 102, 0.18);
     --chat-grid-line: rgba(120, 113, 102, 0.055);
     --chat-card-shadow: rgba(46, 39, 33, 0.075);
@@ -195,6 +196,12 @@
   .chat-session-title,
   .chat-session-mono { font-family: "Courier Prime", ui-monospace, monospace; }
   .chat-session-drawer { background-color: var(--chat-sidebar); }
+  .chat-session-drawer.chat-page-shell {
+    background-image:
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--chat-grid-dot) 76%, var(--chat-text) 24%) 1px, transparent 1.2px),
+      linear-gradient(var(--chat-grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--chat-grid-line) 1px, transparent 1px);
+  }
   .chat-session-weather,
   .chat-session-row { border-bottom: 1px dashed color-mix(in srgb, var(--chat-border) 72%, transparent); }
   .chat-session-active {
@@ -216,20 +223,35 @@
     z-index: 1;
     width: 30px;
     height: 9px;
-    background: color-mix(in srgb, var(--chat-accent) 30%, transparent);
+    background: color-mix(in srgb, var(--chat-claude-orange) 46%, transparent);
     opacity: 0.68;
     pointer-events: none;
   }
   .chat-session-active::after { right: 20px; transform: rotate(3deg); }
   .chat-session-tape { left: 22px; transform: rotate(-4deg); }
+  .chat-session-orange-dot { background: var(--chat-claude-orange); }
+  .chat-session-receipt-wrap::before,
+  .chat-session-receipt-wrap::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    z-index: 2;
+    width: 34px;
+    height: 10px;
+    background: color-mix(in srgb, var(--chat-claude-orange) 46%, transparent);
+    opacity: 0.72;
+    pointer-events: none;
+  }
+  .chat-session-receipt-wrap::before { left: 22px; transform: rotate(-4deg); }
+  .chat-session-receipt-wrap::after { right: 20px; transform: rotate(3deg); }
   .chat-session-receipt {
     background-color: color-mix(in srgb, var(--chat-surface) 94%, transparent);
     box-shadow: 0 8px 18px var(--chat-card-shadow);
     clip-path: polygon(0 5px, 3% 0, 6% 5px, 9% 0, 12% 5px, 15% 0, 18% 5px, 21% 0, 24% 5px, 27% 0, 30% 5px, 33% 0, 36% 5px, 39% 0, 42% 5px, 45% 0, 48% 5px, 51% 0, 54% 5px, 57% 0, 60% 5px, 63% 0, 66% 5px, 69% 0, 72% 5px, 75% 0, 78% 5px, 81% 0, 84% 5px, 87% 0, 90% 5px, 93% 0, 96% 5px, 100% 0, 100% calc(100% - 5px), 97% 100%, 94% calc(100% - 5px), 91% 100%, 88% calc(100% - 5px), 85% 100%, 82% calc(100% - 5px), 79% 100%, 76% calc(100% - 5px), 73% 100%, 70% calc(100% - 5px), 67% 100%, 64% calc(100% - 5px), 61% 100%, 58% calc(100% - 5px), 55% 100%, 52% calc(100% - 5px), 49% 100%, 46% calc(100% - 5px), 43% 100%, 40% calc(100% - 5px), 37% 100%, 34% calc(100% - 5px), 31% 100%, 28% calc(100% - 5px), 25% 100%, 22% calc(100% - 5px), 19% 100%, 16% calc(100% - 5px), 13% 100%, 10% calc(100% - 5px), 7% 100%, 4% calc(100% - 5px), 0 100%);
   }
   .chat-session-rule { border-top: 1px dashed color-mix(in srgb, var(--chat-border) 80%, transparent); }
-  .chat-session-meter { background: repeating-linear-gradient(90deg, var(--chat-border) 0 5px, transparent 5px 7px); }
-  .chat-session-meter > div { background: repeating-linear-gradient(90deg, var(--chat-accent) 0 5px, transparent 5px 7px); }
+  .chat-session-meter { background: radial-gradient(circle, var(--chat-border) 1.7px, transparent 1.9px) left center / 8px 8px repeat-x; }
+  .chat-session-meter > div { background: radial-gradient(circle, var(--chat-claude-orange) 1.7px, transparent 1.9px) left center / 8px 8px repeat-x; }
   .chat-session-tab { color: var(--chat-muted); }
   .chat-session-tab + .chat-session-tab { border-left: 1px solid color-mix(in srgb, var(--chat-border) 68%, transparent); }
   .chat-room-drawer { background-color: var(--chat-sidebar); }

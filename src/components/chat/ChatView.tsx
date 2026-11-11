@@ -1318,13 +1318,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     <div className="chat-theme chat-theme-ui chat-page-shell chat-session-drawer chat-theme-border relative flex h-full w-[86vw] max-w-[340px] flex-col overflow-hidden border-r">
       <div className={`relative z-10 space-y-3 px-5 pb-3 ${mobile ? 'pt-[max(3.5rem,calc(env(safe-area-inset-top)+1rem))]' : 'pt-14'}`}>
         <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-end gap-1.5">
-              <div className="chat-session-title text-[28px] font-bold leading-none">Sessions</div>
-              <img src="/chat-assets/session-kitten.png" alt="" aria-hidden="true" className="pointer-events-none h-9 w-[4.5rem] object-contain object-left" />
-            </div>
-            <div className="chat-session-mono mt-1 text-[10px] opacity-40">~/chat · {settings.sessions.length} conversations</div>
-          </div>
+          <div className="chat-session-title text-[28px] font-bold leading-none">Sessions</div>
           <motion.button
             type="button"
             aria-label={n ? '切换到日间模式' : '切换到夜间模式'}
@@ -1376,7 +1370,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       onClick={(e) => e.stopPropagation()} className="chat-theme-surface w-full rounded px-2 py-1 text-xs outline-none" />
                   ) : (
                     <div className={`truncate flex items-center gap-1 ${active ? 'chat-session-title text-base font-bold' : 'chat-session-mono text-[13px] font-bold'}`}>
-                      {active && <span aria-hidden="true" className="chat-theme-accent-bg h-2 w-2 shrink-0 rounded-full" />}
+                      {active && <span aria-hidden="true" className="chat-session-orange-dot h-2 w-2 shrink-0 rounded-full" />}
                       {s.pinned && <Pin size={11} className="chat-theme-accent" />}
                       {s.title}
                     </div>
@@ -1414,7 +1408,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         })}
       </div>
       <div className="relative z-10 shrink-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
-        <section className="chat-session-receipt chat-theme-muted chat-session-mono relative px-3 py-3 text-[9px]">
+        <div className="chat-session-receipt-wrap relative">
+          <section className="chat-session-receipt chat-theme-muted chat-session-mono relative px-3 py-3 text-[9px]">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-[10px] font-bold tracking-[.14em] opacity-75">USAGE</span>
             <button type="button" aria-label="刷新 CC 状态" aria-busy={ccRefreshing} disabled={ccRefreshing} onClick={() => void refreshCcStatus()} className="chat-theme-icon chat-theme-muted grid h-5 w-5 place-items-center rounded-full opacity-55 disabled:opacity-70">
@@ -1424,14 +1419,14 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               {ccStatus.quota.available && ccStatus.quota.fiveHour ? (
                 <>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="tabular-nums">&gt; {Math.round(ccStatus.quota.fiveHour.usedPercentage)}%{ccStatus.quota.fiveHour.requestCount != null ? ` · ${ccStatus.quota.fiveHour.requestCount} 次` : ''}</span>
+                    <span className="tabular-nums">{Math.round(ccStatus.quota.fiveHour.usedPercentage)}%{ccStatus.quota.fiveHour.requestCount != null ? ` · ${ccStatus.quota.fiveHour.requestCount} 次` : ''}</span>
                     <span className="shrink-0 tabular-nums">{fmtMetricReset(ccStatus.quota.fiveHour.resetsAt)}</span>
                   </div>
                   <div className="chat-session-meter mt-1.5 h-1.5 overflow-hidden">
                     <div className="h-full" style={{ width: `${ccStatus.quota.fiveHour.usedPercentage}%` }} />
                   </div>
                   <div className="mt-1.5 flex items-center justify-between gap-2">
-                    <span className="tabular-nums">&gt; {ccStatus.quota.sevenDay ? `${Math.round(ccStatus.quota.sevenDay.usedPercentage)}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '暂缺'}</span>
+                    <span className="tabular-nums">{ccStatus.quota.sevenDay ? `${Math.round(ccStatus.quota.sevenDay.usedPercentage)}%${ccStatus.quota.sevenDay.requestCount != null ? ` · ${ccStatus.quota.sevenDay.requestCount} 次` : ''}` : '暂缺'}</span>
                     <span className="shrink-0 tabular-nums">{ccStatus.quota.sevenDay ? fmtMetricReset(ccStatus.quota.sevenDay.resetsAt) : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
                   </div>
                 </>
@@ -1441,11 +1436,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           {ccStatus.context.available ? (
             <>
               <div className="flex items-center justify-between gap-2 tabular-nums">
-                <span>&gt; {fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</span>
+                <span>{fmtTokens(ccStatus.context.usedTokens)} / {fmtTokens(ccStatus.context.maxTokens)}</span>
                 <span>{ccStatus.context.usedPercentage ?? '—'}% · {fmtMetricTime(ccStatus.context.collectedAt)}</span>
               </div>
               <div className="chat-session-meter mt-1.5 h-1.5 overflow-hidden">
-                <div className={`h-full ${currentContextLevel === 95 ? 'bg-red-500' : currentContextLevel >= 85 ? 'bg-amber-500' : ''}`} style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
+                <div className="h-full" style={{ width: `${Math.min(100, ccStatus.context.usedPercentage || 0)}%` }} />
               </div>
               {currentContextLevel >= 85 && <div className={`mt-1.5 ${currentContextLevel === 95 ? 'text-red-500' : 'text-amber-600'}`}>{currentContextLevel === 95 ? '接近上限 · 建议现在压缩' : '建议近期压缩'}</div>}
               <div className="mt-1.5 flex justify-between gap-2">
@@ -1454,7 +1449,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               </div>
             </>
           ) : <div>等待首条 CC 回复</div>}
-        </section>
+          </section>
+        </div>
         <div className="chat-session-mono mt-2 grid grid-cols-4 gap-0">
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setModelDialogOpen(true) }} className="chat-session-tab chat-theme-hover py-2 text-[9px]"><span aria-hidden="true">▱</span> 模型库</button>
           <button type="button" onClick={() => { setSessionDrawerOpen(false); setBookmarkDialogOpen(true) }} className="chat-session-tab chat-theme-hover py-2 text-[9px]"><span aria-hidden="true">▱</span> 书签</button>
