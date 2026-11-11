@@ -1408,7 +1408,15 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         })}
       </div>
       <div className="relative z-10 shrink-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
-        <div className="chat-session-receipt-wrap relative">
+        <div className="chat-session-receipt-wrap relative mt-10">
+          <img
+            src="/chat-assets/session-usage-otter-leopard.png"
+            alt=""
+            aria-hidden="true"
+            width={384}
+            height={256}
+            className="chat-session-usage-sticker pointer-events-none absolute -top-[52px] right-6 z-[3] w-[92px] object-contain"
+          />
           <section className="chat-session-receipt chat-theme-muted chat-session-mono relative px-3 py-3 text-[9px]">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-[10px] font-bold tracking-[.14em] opacity-75">USAGE</span>

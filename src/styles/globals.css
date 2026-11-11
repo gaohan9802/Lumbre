@@ -238,6 +238,10 @@
   }
   .chat-session-receipt-wrap::before { left: 22px; transform: rotate(-4deg); }
   .chat-session-receipt-wrap::after { right: 20px; transform: rotate(3deg); }
+  .chat-session-usage-sticker {
+    transform: rotate(-3deg);
+    filter: drop-shadow(0 5px 7px var(--chat-card-shadow));
+  }
   .chat-session-receipt {
     background-color: color-mix(in srgb, var(--chat-surface) 94%, transparent);
     box-shadow: 0 8px 18px var(--chat-card-shadow);

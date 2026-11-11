@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
@@ -162,6 +162,8 @@ test('home rooms open separately from chat settings, not the home directory', ()
   assert.doesNotMatch(chat, /CLAUDE 额度 · 订阅|CC CONTEXT · 当前对话|5 小时已用|7 天剩余|上下文水位|读缓存|写缓存/)
   assert.doesNotMatch(chat, /已进入上下文后半程|chat-theme-panel chat-theme-border overflow-hidden rounded-2xl border/)
   assert.match(chat, /chat-session-receipt-wrap[\s\S]*chat-session-receipt chat-theme-muted chat-session-mono[\s\S]*aria-label="刷新 CC 状态"/)
+  assert.match(chat, /session-usage-otter-leopard\.png[\s\S]*chat-session-usage-sticker/)
+  assert.equal(existsSync(new URL('../../public/chat-assets/session-usage-otter-leopard.png', import.meta.url)), true)
   assert.match(chat, /chat-session-meter/)
   assert.doesNotMatch(chat, /&gt;/)
   assert.match(chat, /Math\.round\(ccStatus\.quota\.sevenDay\.usedPercentage\)/)
@@ -210,6 +212,7 @@ test('chat uses neutral surfaces with soft Claude orange accents', () => {
   assert.doesNotMatch(styles, /--chat-grid-line/)
   assert.match(styles, /\.chat-session-tape[\s\S]*\.chat-session-orange-dot \{ background: var\(--chat-claude-orange\)/)
   assert.match(styles, /\.chat-session-receipt-wrap::before[\s\S]*var\(--chat-claude-orange\)/)
+  assert.match(styles, /\.chat-session-usage-sticker[\s\S]*rotate\(-3deg\)[\s\S]*drop-shadow/)
   assert.match(styles, /\.chat-session-meter[\s\S]*radial-gradient[\s\S]*\.chat-session-meter > div[\s\S]*var\(--chat-claude-orange\)/)
   assert.match(styles, /\.chat-room-drawer\.chat-page-shell[\s\S]*var\(--chat-grid-dot\) 62%, transparent/)
   assert.match(styles, /\.chat-room-card::after[\s\S]*var\(--chat-claude-orange\) 46%, transparent/)
