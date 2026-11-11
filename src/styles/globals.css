@@ -197,7 +197,8 @@
   .chat-session-mono { font-family: "Courier Prime", ui-monospace, monospace; }
   .chat-session-drawer { background-color: var(--chat-sidebar); }
   .chat-session-drawer.chat-page-shell,
-  .chat-main-shell.chat-page-shell {
+  .chat-main-shell.chat-page-shell,
+  .chat-room-drawer.chat-page-shell {
     background-image:
       radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--chat-grid-dot) 62%, transparent) 1px, transparent 1.2px),
       linear-gradient(color-mix(in srgb, var(--chat-grid-line) 70%, transparent) 1px, transparent 1px),
@@ -278,13 +279,14 @@
     width: 42px;
     height: 10px;
     transform: translateX(-50%) rotate(-2deg);
-    background: color-mix(in srgb, var(--chat-accent) 30%, transparent);
+    background: color-mix(in srgb, var(--chat-claude-orange) 46%, transparent);
     opacity: 0.68;
     pointer-events: none;
   }
   .chat-room-link { border-bottom: 1px dashed color-mix(in srgb, var(--chat-border) 62%, transparent); }
   .chat-room-link:nth-child(odd) { border-right: 1px dashed color-mix(in srgb, var(--chat-border) 62%, transparent); }
   .chat-room-link:nth-last-child(-n+2) { border-bottom: 0; }
+  .chat-nose-poke + .chat-nose-poke { margin-top: 0 !important; }
   .chat-theme-sidebar { background-color: var(--chat-sidebar); }
   .chat-theme-surface { background-color: var(--chat-surface); }
   .chat-theme-panel { background-color: color-mix(in srgb, var(--chat-surface) 55%, var(--chat-soft)); }

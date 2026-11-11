@@ -529,7 +529,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     <motion.p
       key={poke.id}
       initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-      className="chat-theme-muted my-3 text-center text-[11px] tracking-[0.08em]"
+      className="chat-nose-poke chat-theme-muted my-0 text-center text-[11px] leading-5 tracking-[0.08em]"
     >
       {fmtShortDate(poke.timestamp)} 你戳了一下豹子的鼻子
     </motion.p>

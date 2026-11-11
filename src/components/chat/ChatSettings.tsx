@@ -124,13 +124,7 @@ export function ChatSettings(props: Props) {
     <div className="fixed inset-0 z-[70] bg-black/30" onClick={close}/>
     <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="chat-menu-title" className={`chat-theme chat-theme-ui chat-theme-border fixed ${panel !== 'menu' ? 'chat-theme-surface inset-x-4 mx-auto top-[8dvh] max-h-[84dvh] max-w-[640px] rounded-2xl border' : 'chat-page-shell chat-room-drawer bottom-0 right-0 top-0 w-[86vw] max-w-[340px] border-l'} z-[71] flex flex-col overflow-hidden shadow-2xl outline-none`}>
       <div className={`relative z-10 flex items-center gap-3 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] ${panel === 'menu' ? 'chat-room-header' : 'chat-theme-border border-b'}`}>
-        {panel === 'menu' ? <div>
-          <div className="flex items-end gap-1.5">
-            <h2 id="chat-menu-title" className="chat-session-title text-[28px] font-bold leading-none">Rooms</h2>
-            <img src="/chat-assets/otter-peek.png" alt="" aria-hidden="true" className="pointer-events-none h-8 w-14 object-contain object-bottom" />
-          </div>
-          <div className="chat-session-mono mt-1 text-[10px] opacity-40">~/home · 17 rooms</div>
-        </div> : <>
+        {panel === 'menu' ? <h2 id="chat-menu-title" className="chat-session-title text-[28px] font-bold leading-none">Rooms</h2> : <>
           <button aria-label={initialPanel === 'menu' ? '返回房间' : '关闭'} onClick={() => initialPanel === 'menu' ? confirm(() => setPanel('menu')) : close()} className="p-2"><ChevronLeft size={20}/></button>
           <h2 id="chat-menu-title" className="flex-1 font-medium">{titles[panel]}</h2>
         </>}
