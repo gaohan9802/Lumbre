@@ -160,7 +160,6 @@
     --chat-accent-ink: #765753;
     --chat-claude-orange: #d97757;
     --chat-grid-dot: rgba(120, 113, 102, 0.18);
-    --chat-grid-line: rgba(120, 113, 102, 0.055);
     --chat-card-shadow: rgba(46, 39, 33, 0.075);
     background-color: var(--chat-bg);
     color: var(--chat-text);
@@ -168,12 +167,9 @@
   }
 
   .chat-page-shell {
-    background-image:
-      radial-gradient(circle at 1px 1px, var(--chat-grid-dot) 0.7px, transparent 0.85px),
-      linear-gradient(var(--chat-grid-line) 1px, transparent 1px),
-      linear-gradient(90deg, var(--chat-grid-line) 1px, transparent 1px);
-    background-position: 0 0, 0 0, 0 0;
-    background-size: 16px 16px, 64px 64px, 64px 64px;
+    background-image: radial-gradient(circle at 1px 1px, var(--chat-grid-dot) 0.7px, transparent 0.85px);
+    background-position: 0 0;
+    background-size: 16px 16px;
   }
 
   .dark .chat-theme {
@@ -188,7 +184,6 @@
     --chat-accent: #dbb9b3;
     --chat-accent-ink: #e2c4bf;
     --chat-grid-dot: rgba(224, 217, 207, 0.1);
-    --chat-grid-line: rgba(224, 217, 207, 0.035);
     --chat-card-shadow: rgba(0, 0, 0, 0.22);
   }
 
@@ -199,10 +194,7 @@
   .chat-session-drawer.chat-page-shell,
   .chat-main-shell.chat-page-shell,
   .chat-room-drawer.chat-page-shell {
-    background-image:
-      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--chat-grid-dot) 62%, transparent) 1px, transparent 1.2px),
-      linear-gradient(color-mix(in srgb, var(--chat-grid-line) 70%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--chat-grid-line) 70%, transparent) 1px, transparent 1px);
+    background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--chat-grid-dot) 62%, transparent) 1px, transparent 1.2px);
   }
   .chat-session-weather,
   .chat-session-row { border-bottom: 1px dashed color-mix(in srgb, var(--chat-border) 72%, transparent); }
@@ -358,7 +350,7 @@
 
 .chat-action-line {
   font-family: "KingHwaOldSong", "Songti SC", "STSong", serif;
-  color: color-mix(in srgb, var(--chat-text) 44%, transparent);
+  color: var(--chat-muted);
   font-weight: 400;
   font-style: normal;
   line-height: 1.65;
