@@ -152,7 +152,7 @@
     --chat-sidebar: #f5f2ec;
     --chat-surface: #fffdfa;
     --chat-soft: #efede8;
-    --chat-user: #f3e1dc;
+    --chat-user: color-mix(in srgb, var(--chat-claude-orange) 24%, transparent);
     --chat-border: #dedbd4;
     --chat-text: #20201e;
     --chat-muted: #77756f;
@@ -181,7 +181,7 @@
     --chat-sidebar: #1f1f1d;
     --chat-surface: #20201e;
     --chat-soft: #2a2926;
-    --chat-user: #3a2d29;
+    --chat-user: color-mix(in srgb, var(--chat-claude-orange) 24%, transparent);
     --chat-border: #393936;
     --chat-text: #f1efe9;
     --chat-muted: #aaa8a1;
@@ -196,7 +196,8 @@
   .chat-session-title,
   .chat-session-mono { font-family: "Courier Prime", ui-monospace, monospace; }
   .chat-session-drawer { background-color: var(--chat-sidebar); }
-  .chat-session-drawer.chat-page-shell {
+  .chat-session-drawer.chat-page-shell,
+  .chat-main-shell.chat-page-shell {
     background-image:
       radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--chat-grid-dot) 76%, var(--chat-text) 24%) 1px, transparent 1.2px),
       linear-gradient(var(--chat-grid-line) 1px, transparent 1px),
@@ -344,8 +345,9 @@
 }
 
 .chat-avatar {
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.75), 0 4px 12px var(--chat-card-shadow);
-  transition: transform 140ms ease, box-shadow 140ms ease;
+  background: transparent;
+  box-shadow: none;
+  transition: transform 140ms ease;
 }
 
 .chat-avatar:active {

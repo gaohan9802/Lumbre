@@ -1468,7 +1468,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     <>
       <input ref={userAvatarInputRef} type="file" accept="image/*" hidden onChange={event => void handleAvatarUpload('user', event)} />
       <input ref={assistantAvatarInputRef} type="file" accept="image/*" hidden onChange={event => void handleAvatarUpload('assistant', event)} />
-      <div className="chat-theme chat-page-shell relative flex h-full overflow-hidden">
+      <div className="chat-theme chat-page-shell chat-main-shell relative flex h-full overflow-hidden">
         {!embedded && <div className="hidden lg:block h-full relative z-10">
           <SidebarContent />
         </div>}
@@ -1482,11 +1482,10 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
               type="button"
               aria-label="回到主页"
               onClick={() => setSidebarOpen(true)}
-              whileTap={{ scale: 0.82, rotate: 12 }}
-              className="chat-theme-icon justify-self-center rounded-full p-1 leading-none"
+              whileTap={{ scale: 0.96 }}
+              className="chat-session-title chat-theme-text max-w-[56vw] justify-self-center truncate px-2 py-1 text-sm font-bold"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={assistantAvatar} alt="" className="h-9 w-9 rounded-full object-cover" />
+              {activeSession?.title || 'Chat'}
             </motion.button>
             <button aria-label="打开房间" onClick={() => openChatSettings('menu')} className="chat-theme-icon justify-self-end rounded-full p-2">
               <Moon size={21} strokeWidth={1.45}/>
@@ -1871,8 +1870,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
             )}
 
             <div className="chat-theme-ui chat-compose-shell relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/chat-assets/otter-peek.png" alt="" aria-hidden="true" className="pointer-events-none absolute -top-5 right-5 z-10 h-9 w-[72px] object-contain object-bottom" />
               <div className="chat-input-tray chat-theme-input rounded-[26px] border px-3 pb-2 pt-3 transition-all duration-200">
                 <textarea aria-label="聊天输入" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => setMessageActionsId(null)}
                   placeholder={inputPlaceholder} rows={1} enterKeyHint="enter"
