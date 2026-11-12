@@ -165,6 +165,7 @@ test('work bridge lists and executes only read-only Lumbre tools', async () => {
 
 test('stdio MCP keeps the chat tool schema during wakes while enforcing wake policy on calls', async () => {
   const eventFile = path.join(root, 'mcp-events.jsonl')
+  const contextFile = path.join(root, 'mcp-context.json')
   const requestsFile = path.join(root, 'mcp-requests.jsonl')
   const fetchFixture = path.join(root, 'mcp-fetch-fixture.mjs')
   writeFileSync(fetchFixture, `import fs from 'node:fs'
@@ -175,17 +176,23 @@ globalThis.fetch = async (url, init = {}) => {
   return Response.json({ name: 'fixture_tool', result: '{"ok":true}', content: [{ type: 'text', text: 'done' }], isError: false })
 }
 `)
-  const child = spawn(process.execPath, [path.join(process.cwd(), 'services/cc-gateway/lumbre-mcp-server.mjs')], {
+  writeFileSync(contextFile, JSON.stringify({
+    bridgeUrl: 'https://lumbre.test/api/internal/cc-tools',
+    bridgeSecret: secret,
+    conversationId: 'conversation-1',
+    eventFile,
+    maxCalls: 2,
+    source: 'unattended-wake',
+    cacheWarm: false,
+    toolCallsDenied: false,
+  }), { mode: 0o600 })
+  const child = spawn(process.execPath, [path.join(process.cwd(), 'services/cc-gateway/lumbre-mcp-server.mjs'), contextFile], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
       NODE_OPTIONS: `--import=${fetchFixture}`,
-      LUMBRE_CC_TOOL_BRIDGE_URL: 'https://lumbre.test/api/internal/cc-tools',
-      LUMBRE_CC_TOOL_BRIDGE_SECRET: secret,
-      LUMBRE_CC_CONVERSATION_ID: 'conversation-1',
-      LUMBRE_CC_TOOL_EVENT_FILE: eventFile,
-      LUMBRE_CC_MAX_TOOL_CALLS: '2',
-      LUMBRE_CC_TOOL_SOURCE: 'unattended-wake',
+      LUMBRE_CC_TOOL_BRIDGE_URL: '',
+      LUMBRE_CC_TOOL_BRIDGE_SECRET: '',
     },
   })
   const output = readline.createInterface({ input: child.stdout })
@@ -198,6 +205,7 @@ globalThis.fetch = async (url, init = {}) => {
   try {
     const initialized = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } })
     assert.equal(initialized.result.serverInfo.name, 'lumbre')
+    assert.equal(existsSync(contextFile), false)
     const listed = await call({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
     assert.deepEqual(listed.result.tools.map((tool: any) => tool.name), ['fixture_tool'])
     const executed = await call({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'fixture_tool', arguments: { password: 'never-store-me' } } })
@@ -220,6 +228,7 @@ globalThis.fetch = async (url, init = {}) => {
 
 test('silent cache warm exposes the same tool list but denies every tool call locally', async () => {
   const eventFile = path.join(root, 'warm-mcp-events.jsonl')
+  const contextFile = path.join(root, 'warm-mcp-context.json')
   const requestsFile = path.join(root, 'warm-mcp-requests.jsonl')
   const fetchFixture = path.join(root, 'warm-mcp-fetch-fixture.mjs')
   writeFileSync(fetchFixture, `import fs from 'node:fs'
@@ -229,16 +238,22 @@ globalThis.fetch = async (url, init = {}) => {
   return Response.json({ tools: [{ name: 'fixture_tool', description: 'fixture', inputSchema: { type: 'object', properties: {} } }] })
 }
 `)
-  const child = spawn(process.execPath, [path.join(process.cwd(), 'services/cc-gateway/lumbre-mcp-server.mjs')], {
+  writeFileSync(contextFile, JSON.stringify({
+    bridgeUrl: 'https://lumbre.test/api/internal/cc-tools',
+    bridgeSecret: secret,
+    conversationId: 'conversation-1',
+    eventFile,
+    source: 'chat',
+    cacheWarm: true,
+    toolCallsDenied: false,
+  }), { mode: 0o600 })
+  const child = spawn(process.execPath, [path.join(process.cwd(), 'services/cc-gateway/lumbre-mcp-server.mjs'), contextFile], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
       NODE_OPTIONS: `--import=${fetchFixture}`,
-      LUMBRE_CC_TOOL_BRIDGE_URL: 'https://lumbre.test/api/internal/cc-tools',
-      LUMBRE_CC_TOOL_BRIDGE_SECRET: secret,
-      LUMBRE_CC_CONVERSATION_ID: 'conversation-1',
-      LUMBRE_CC_TOOL_EVENT_FILE: eventFile,
-      LUMBRE_CC_CACHE_WARM: '1',
+      LUMBRE_CC_TOOL_BRIDGE_URL: '',
+      LUMBRE_CC_TOOL_BRIDGE_SECRET: '',
     },
   })
   const output = readline.createInterface({ input: child.stdout })

@@ -296,6 +296,10 @@ test('Claude executor exposes only a safe failure category', () => {
     { code: 'rate_limited', message: 'Claude Code 当前受到额度或上游流量限制。' },
   )
   assert.deepEqual(
+    classifyClaudeFailure([], 'Usage limit reached · resets at 8:50 PM', 'claude-opus-5-5'),
+    { code: 'rate_limited', message: 'Claude Code 当前受到额度或上游流量限制。' },
+  )
+  assert.deepEqual(
     classifyClaudeFailure([], 'API Error: 400 {"error":{"message":"thinking.enabled conflicts with token sk-ant-abcdefghijklmnopqrstuvwxyz1234567890 at https://private.example"}}', 'claude-opus-5-5'),
     { code: 'request_invalid', message: 'Claude Code 400：thinking.enabled conflicts with token [redacted] at [url]' },
   )
@@ -624,8 +628,12 @@ test('Claude executor loads only the fixed Lumbre MCP and durably forwards its t
     const binary = path.join(root, 'fake-claude')
     writeFileSync(binary, `#!/usr/bin/env node
 const fs = require('node:fs')
-fs.writeFileSync('observed-tools.json', JSON.stringify({ args: process.argv.slice(2), env: process.env }))
-fs.appendFileSync(process.env.LUMBRE_CC_TOOL_EVENT_FILE, JSON.stringify({ name: 'read_period', input: {}, result: '{"ok":true}', error: false }) + '\\n')
+const args = process.argv.slice(2)
+const config = JSON.parse(args[args.indexOf('--mcp-config') + 1])
+const contextFile = config.mcpServers.lumbre.args[1]
+const context = JSON.parse(fs.readFileSync(contextFile, 'utf8'))
+fs.writeFileSync('observed-tools.json', JSON.stringify({ args, env: process.env, contextFile, context: { source: context.source, secretPresent: !!context.bridgeSecret } }))
+fs.appendFileSync(context.eventFile, JSON.stringify({ name: 'read_period', input: {}, result: '{"ok":true}', error: false }) + '\\n')
 const id = '550e8400-e29b-41d4-a716-446655440000'
 console.log(JSON.stringify({ type: 'result', result: '看过了', session_id: id, usage: { output_tokens: 2 } }))
 `, { mode: 0o700 })
@@ -648,8 +656,10 @@ console.log(JSON.stringify({ type: 'result', result: '看过了', session_id: id
     assert.equal(observed.args[observed.args.indexOf('--allowedTools') + 1], 'mcp__lumbre__*')
     assert.equal(observed.args[observed.args.indexOf('--max-turns') + 1], '24')
     assert.match(observed.args[observed.args.indexOf('--mcp-config') + 1], /lumbre-mcp-server\.mjs/)
-    assert.equal(observed.env.LUMBRE_CC_TOOL_BRIDGE_SECRET, 'tool-bridge-secret-with-32-characters')
-    assert.equal(observed.env.LUMBRE_CC_CACHE_WARM, '0')
+    assert.equal(observed.env.LUMBRE_CC_TOOL_BRIDGE_SECRET, undefined)
+    assert.equal(observed.env.LUMBRE_CC_TOOL_BRIDGE_URL, undefined)
+    assert.deepEqual(observed.context, { source: 'chat', secretPresent: true })
+    assert.equal(existsSync(observed.contextFile), false)
     assert.deepEqual(toolCalls.map(call => call.name), ['read_period'])
     assert.equal(observed.args.some((arg: string) => /dangerously|Bash|Shell|Read|Write|Edit/.test(arg)), false)
   } finally {
@@ -663,7 +673,10 @@ test('Claude executor keeps the normal MCP schema while marking chat-only calls 
     const binary = path.join(root, 'fake-claude')
     writeFileSync(binary, `#!/usr/bin/env node
 const fs = require('node:fs')
-fs.writeFileSync('observed-denied.json', JSON.stringify({ args: process.argv.slice(2), env: process.env }))
+const args = process.argv.slice(2)
+const config = JSON.parse(args[args.indexOf('--mcp-config') + 1])
+const context = JSON.parse(fs.readFileSync(config.mcpServers.lumbre.args[1], 'utf8'))
+fs.writeFileSync('observed-denied.json', JSON.stringify({ args, env: process.env, denied: context.toolCallsDenied }))
 console.log(JSON.stringify({ type: 'result', result: '只聊天', session_id: '550e8400-e29b-41d4-a716-446655440000', usage: { output_tokens: 2 } }))
 `, { mode: 0o700 })
     chmodSync(binary, 0o700)
@@ -681,7 +694,8 @@ console.log(JSON.stringify({ type: 'result', result: '只聊天', session_id: '5
     const observed = JSON.parse(readFileSync(path.join(root, 'observed-denied.json'), 'utf8'))
     assert.equal(observed.args[observed.args.indexOf('--allowedTools') + 1], 'mcp__lumbre__*')
     assert.match(observed.args[observed.args.indexOf('--mcp-config') + 1], /lumbre-mcp-server\.mjs/)
-    assert.equal(observed.env.LUMBRE_CC_TOOL_DENY, '1')
+    assert.equal(observed.env.LUMBRE_CC_TOOL_DENY, undefined)
+    assert.equal(observed.denied, true)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -693,11 +707,14 @@ test('Claude executor preserves UTF-8 tool events split between polling reads', 
     const binary = path.join(root, 'fake-claude')
     writeFileSync(binary, `#!/usr/bin/env node
 const fs = require('node:fs')
+const args = process.argv.slice(2)
+const config = JSON.parse(args[args.indexOf('--mcp-config') + 1])
+const context = JSON.parse(fs.readFileSync(config.mcpServers.lumbre.args[1], 'utf8'))
 const event = Buffer.from(JSON.stringify({ name: 'read_period', input: {}, result: '中文🙂', error: false }) + '\\n')
 const split = event.indexOf(Buffer.from('中')) + 1
-fs.appendFileSync(process.env.LUMBRE_CC_TOOL_EVENT_FILE, event.subarray(0, split))
+fs.appendFileSync(context.eventFile, event.subarray(0, split))
 setTimeout(() => {
-  fs.appendFileSync(process.env.LUMBRE_CC_TOOL_EVENT_FILE, event.subarray(split))
+  fs.appendFileSync(context.eventFile, event.subarray(split))
   console.log(JSON.stringify({ type: 'result', result: 'ok', session_id: '550e8400-e29b-41d4-a716-446655440000', usage: { output_tokens: 1 } }))
 }, 250)
 `, { mode: 0o700 })
@@ -788,7 +805,11 @@ test('Claude executor cache warm loads the normal tool schema in deny-call mode'
     const binary = path.join(root, 'fake-claude')
     writeFileSync(binary, `#!/usr/bin/env node
 const fs = require('node:fs')
-fs.writeFileSync('observed-warm.json', JSON.stringify({ args: process.argv.slice(2), env: process.env }))
+const args = process.argv.slice(2)
+const config = JSON.parse(args[args.indexOf('--mcp-config') + 1])
+const contextFile = config.mcpServers.lumbre.args[1]
+const context = JSON.parse(fs.readFileSync(contextFile, 'utf8'))
+fs.writeFileSync('observed-warm.json', JSON.stringify({ args, env: process.env, contextFile, context: { cacheWarm: context.cacheWarm, eventFile: context.eventFile } }))
 console.log(JSON.stringify({ type: 'result', result: '.', session_id: '65b76b84-557d-4dad-a716-446655440001', usage: { output_tokens: 1 } }))
 `, { mode: 0o700 })
     chmodSync(binary, 0o700)
@@ -806,8 +827,10 @@ console.log(JSON.stringify({ type: 'result', result: '.', session_id: '65b76b84-
     const observed = JSON.parse(readFileSync(path.join(root, 'observed-warm.json'), 'utf8'))
     assert.equal(observed.args[observed.args.indexOf('--allowedTools') + 1], 'mcp__lumbre__*')
     assert.match(observed.args[observed.args.indexOf('--mcp-config') + 1], /lumbre-mcp-server\.mjs/)
-    assert.equal(observed.env.LUMBRE_CC_CACHE_WARM, '1')
-    assert.match(path.basename(observed.env.LUMBRE_CC_TOOL_EVENT_FILE), /^[0-9a-f-]{36}\.jsonl$/)
+    assert.equal(observed.env.LUMBRE_CC_CACHE_WARM, undefined)
+    assert.equal(observed.context.cacheWarm, true)
+    assert.match(path.basename(observed.context.eventFile), /^[0-9a-f-]{36}\.jsonl$/)
+    assert.equal(existsSync(observed.contextFile), false)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

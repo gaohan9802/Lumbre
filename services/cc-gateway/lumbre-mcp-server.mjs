@@ -3,15 +3,27 @@
 import fs from 'node:fs'
 import readline from 'node:readline'
 
-const bridgeUrl = String(process.env.LUMBRE_CC_TOOL_BRIDGE_URL || '')
-const bridgeSecret = String(process.env.LUMBRE_CC_TOOL_BRIDGE_SECRET || '')
-const conversationId = String(process.env.LUMBRE_CC_CONVERSATION_ID || '')
-const eventFile = String(process.env.LUMBRE_CC_TOOL_EVENT_FILE || '')
-const maxCalls = Math.max(1, Math.min(20, Number(process.env.LUMBRE_CC_MAX_TOOL_CALLS) || 20))
-const source = ['unattended-wake', 'work'].includes(process.env.LUMBRE_CC_TOOL_SOURCE)
-  ? process.env.LUMBRE_CC_TOOL_SOURCE : 'chat'
-const cacheWarm = process.env.LUMBRE_CC_CACHE_WARM === '1'
-const toolCallsDenied = process.env.LUMBRE_CC_TOOL_DENY === '1'
+function readContext() {
+  const contextFile = process.argv[2]
+  if (!contextFile) return {}
+  try {
+    const stat = fs.statSync(contextFile)
+    if (!stat.isFile() || stat.size > 8 * 1024) throw new Error('invalid context file')
+    return JSON.parse(fs.readFileSync(contextFile, 'utf8'))
+  } finally {
+    try { fs.unlinkSync(contextFile) } catch {}
+  }
+}
+
+const context = readContext()
+const bridgeUrl = String(context.bridgeUrl || '')
+const bridgeSecret = String(context.bridgeSecret || '')
+const conversationId = String(context.conversationId || '')
+const eventFile = String(context.eventFile || '')
+const maxCalls = Math.max(1, Math.min(20, Number(context.maxCalls) || 20))
+const source = ['unattended-wake', 'work'].includes(context.source) ? context.source : 'chat'
+const cacheWarm = context.cacheWarm === true
+const toolCallsDenied = context.toolCallsDenied === true
 let calls = 0
 
 function write(value) {

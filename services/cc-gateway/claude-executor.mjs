@@ -26,13 +26,15 @@ const TRANSCRIPT_SCAN_LIMIT_BYTES = 16 * 1024 * 1024
 const TRANSCRIPT_ROLLBACK_CHECK_BYTES = 64 * 1024
 const ATTEMPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CONVERSATION_ID = /^[A-Za-z0-9._:-]{1,160}$/
-const LUMBRE_MCP_CONFIG = JSON.stringify({ mcpServers: {
-  lumbre: {
-    type: 'stdio',
-    command: 'node',
-    args: ['/opt/lumbre/services/cc-gateway/lumbre-mcp-server.mjs'],
-  },
-} })
+function lumbreMcpConfig(contextFile) {
+  return JSON.stringify({ mcpServers: {
+    lumbre: {
+      type: 'stdio',
+      command: 'node',
+      args: ['/opt/lumbre/services/cc-gateway/lumbre-mcp-server.mjs', contextFile],
+    },
+  } })
+}
 const STDERR_DIAGNOSTIC_LIMIT = 16 * 1024
 const OPUS_46_MODEL = 'claude-opus-4-6'
 const OPUS_46_FIXED_THINKING_TOKENS = '32000'
@@ -77,7 +79,7 @@ export function classifyClaudeFailure(events = [], stderr = '', model = '') {
   if (/(?:authentication|not logged in|oauth|unauthorized|invalid[^\n]{0,40}token|token[^\n]{0,40}expired|\b401\b)/i.test(detail)) {
     return { code: 'auth_failed', message: 'Claude Code 登录已失效。' }
   }
-  if (/(?:rate.?limit|usage limit|quota|\b429\b|overloaded)/i.test(detail)) {
+  if (/(?:rate.?limit|usage limit|hit your limit|limit reached|quota|\b429\b|overloaded)/i.test(detail)) {
     return { code: 'rate_limited', message: 'Claude Code 当前受到额度或上游流量限制。' }
   }
   if (/(?:session.{0,80}(?:not found|invalid|does not exist)|resume.{0,80}(?:failed|invalid))/i.test(detail)) {
@@ -316,12 +318,25 @@ export class ClaudeExecutor {
       const toolEventFile = useToolBridge
         ? path.join(this.toolEventsDir, `${toolRunId}.jsonl`)
         : null
+      const toolContextFile = useToolBridge
+        ? path.join(this.toolEventsDir, `${toolRunId}.context.json`)
+        : null
       if (toolEventFile) fs.writeFileSync(toolEventFile, '', { encoding: 'utf8', mode: 0o600 })
+      if (toolContextFile) fs.writeFileSync(toolContextFile, JSON.stringify({
+        bridgeUrl: this.toolBridge.url,
+        bridgeSecret: this.toolBridge.secret,
+        conversationId,
+        eventFile: toolEventFile,
+        maxCalls: this.toolBridge.maxCalls || 20,
+        source: unattended ? 'unattended-wake' : workMode ? 'work' : 'chat',
+        cacheWarm,
+        toolCallsDenied: !toolCallsAllowed,
+      }), { encoding: 'utf8', mode: 0o600 })
       const args = buildClaudeArgs({
         outputFormat: 'stream-json', model, effort, resumeSessionId,
         forkSession,
         systemPrompt,
-        mcpConfig: useToolBridge ? LUMBRE_MCP_CONFIG : undefined,
+        mcpConfig: toolContextFile ? lumbreMcpConfig(toolContextFile) : undefined,
         tools: enableWorkTools ? WORK_BUILTIN_TOOLS : undefined,
         allowedTools: enableWorkTools
           ? [...WORK_BUILTIN_TOOLS, ...(useToolBridge ? ['mcp__lumbre__*'] : [])]
@@ -334,16 +349,6 @@ export class ClaudeExecutor {
         ...(fixedThinking ? {
           CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: '1',
           MAX_THINKING_TOKENS: OPUS_46_FIXED_THINKING_TOKENS,
-        } : {}),
-        ...(toolEventFile ? {
-          LUMBRE_CC_TOOL_BRIDGE_URL: this.toolBridge.url,
-          LUMBRE_CC_TOOL_BRIDGE_SECRET: this.toolBridge.secret,
-          LUMBRE_CC_CONVERSATION_ID: conversationId,
-          LUMBRE_CC_TOOL_EVENT_FILE: toolEventFile,
-          LUMBRE_CC_MAX_TOOL_CALLS: String(this.toolBridge.maxCalls || 20),
-          LUMBRE_CC_TOOL_SOURCE: unattended ? 'unattended-wake' : workMode ? 'work' : 'chat',
-          LUMBRE_CC_CACHE_WARM: cacheWarm ? '1' : '0',
-          LUMBRE_CC_TOOL_DENY: toolCallsAllowed ? '0' : '1',
         } : {}),
       }
       const inactivityTimeoutMs = fixedThinking
@@ -399,6 +404,7 @@ export class ClaudeExecutor {
         signal?.removeEventListener('abort', abort)
         drainToolEvents(true)
         if (toolEventFile) try { fs.unlinkSync(toolEventFile) } catch {}
+        if (toolContextFile) try { fs.unlinkSync(toolContextFile) } catch {}
         if (error) {
           error.resumeSafe = !!resumeSessionId && !forkSession
             && restoreTranscript(this.env.HOME, resumeSessionId, transcriptBefore)
