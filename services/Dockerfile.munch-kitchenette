@@ -1,0 +1,40 @@
+FROM python:3.12.12-slim-bookworm AS build
+
+ARG KITCHENETTE_COMMIT=1ab91f4b2a1c7010b89250e87beb9225fa9f0f20
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && python -m venv /opt/kitchenette \
+  && git init /src \
+  && git -C /src fetch --depth 1 https://github.com/tsuru0805/munch-kitchenette.git "${KITCHENETTE_COMMIT}" \
+  && git -C /src checkout --detach FETCH_HEAD \
+  && /opt/kitchenette/bin/pip install --no-cache-dir /src
+
+FROM python:3.12.12-slim-bookworm
+
+RUN useradd --create-home --uid 10002 kitchenette \
+  && mkdir -p /data \
+  && chown kitchenette:kitchenette /data
+
+COPY --from=build /opt/kitchenette /opt/kitchenette
+COPY --from=build /src/LICENSE /src/LICENSE-CONTENT /src/LICENSING.md /src/NOTICE /usr/share/doc/munch-kitchenette/upstream/
+COPY munch-kitchenette.NOTICE /usr/share/doc/munch-kitchenette/LUMBRE-NOTICE
+
+ENV PATH=/opt/kitchenette/bin:$PATH \
+    KITCHENETTE_SERVER_HOST=0.0.0.0 \
+    KITCHENETTE_SERVER_PORT=8765 \
+    KITCHENETTE_SERVER_DB_PATH=/data/kitchenette.db \
+    KITCHENETTE_SERVER_TIMEZONE=Europe/Madrid \
+    KITCHENETTE_ROLES_DEFAULT=星星 \
+    KITCHENETTE_ROLES_ALLOWED='["星星"]' \
+    KITCHENETTE_WORDS_HUMAN_NAME=小火 \
+    KITCHENETTE_WORDS_HUMAN_PRONOUN=她 \
+    KITCHENETTE_WORDS_APP_NAME=Lumbre \
+    KITCHENETTE_NOTIFY_MODE=queue
+
+USER kitchenette
+WORKDIR /data
+VOLUME ["/data"]
+EXPOSE 8765
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=3)"]
+ENTRYPOINT ["kitchenette", "serve"]

@@ -39,7 +39,7 @@ test('internal bridge exposes only registered Lumbre chat tools behind its own s
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('cache-control'), 'no-store')
   const body = await response.json()
-  assert.equal(body.tools.length, 142)
+  assert.equal(body.tools.length, 151)
   assert.equal(body.tools.some((tool: any) => ['Bash', 'Shell', 'Read', 'Write', 'Edit'].includes(tool.name)), false)
   assert.equal(body.tools.some((tool: any) => tool.name === 'read_diary'), true)
   assert.equal(body.tools.some((tool: any) => tool.name === 'reply_guestbook'), true)
@@ -55,6 +55,8 @@ test('internal bridge exposes only registered Lumbre chat tools behind its own s
   assert.equal(body.tools.some((tool: any) => tool.name === 'daily_poem'), true)
   assert.equal(body.tools.some((tool: any) => tool.name === 'hobby_add'), true)
   assert.equal(body.tools.some((tool: any) => tool.name === 'write_windowsill_line'), true)
+  assert.equal(body.tools.some((tool: any) => tool.name === 'kitchen_cook'), true)
+  assert.equal(body.tools.some((tool: any) => tool.name === 'read_menu'), true)
 })
 
 test('bridge reuses Lumbre policy, hides confirmation tokens from Claude and keeps them for the UI', async () => {
@@ -144,6 +146,21 @@ test('unattended CC wakes can execute the full registered Lumbre tool set', asyn
   }))
   assert.match((await deleted.json()).result, /已删除/)
   assert.equal(notes.listNotes().some(item => item.id === note.id), false)
+})
+
+test('work bridge lists and executes only read-only Lumbre tools', async () => {
+  const listed = await route.GET(new NextRequest('http://lumbre.test/api/internal/cc-tools?session_id=conversation-1&source=work', { headers: authHeaders() }))
+  const tools = (await listed.json()).tools
+  assert.equal(tools.some((tool: any) => tool.name === 'read_diary'), true)
+  assert.equal(tools.some((tool: any) => tool.name === 'read_summary'), true)
+  assert.equal(tools.some((tool: any) => tool.name === 'write_diary'), false)
+  assert.equal(tools.some((tool: any) => tool.name === 'delete_note'), false)
+
+  const denied = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
+    method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ session_id: 'conversation-1', source: 'work', name: 'write_diary', input: { content: 'never write' } }),
+  }))
+  assert.match((await denied.json()).result, /strictly read-only/)
 })
 
 test('stdio MCP keeps the chat tool schema during wakes while enforcing wake policy on calls', async () => {

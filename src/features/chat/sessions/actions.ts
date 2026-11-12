@@ -7,6 +7,7 @@ import { normalizeSettings } from '@/features/chat/migrations/browser-state'
 import { isBlankSession, mergeChatSessionsForSync } from '@/features/chat/sessions/merge'
 import { mergeChatMessages, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 import { normalizeCcContextState, normalizeChatWindowConfig } from '@/lib/chat-window-config'
+import { normalizeChatWindowRole, type ChatWindowRole } from '@/lib/chat-window-role'
 import type { CcContextState, ChatMessage, ChatSession, ChatSettings, ChatWindowConfig, MessageVersion } from '@/features/chat/state/types'
 
 type ChatState = { settings: ChatSettings; messages: ChatMessage[] }
@@ -14,6 +15,7 @@ type SetChatState = (updater: (state: ChatState) => Partial<ChatState> | ChatSta
 type ValueOrUpdater<T> = T | undefined | ((current: T | undefined) => T | undefined)
 
 export interface SessionActions {
+  setWindowRole: (id: string, role: ChatWindowRole) => void
   setGenerationRoute: (id: string, route: ChatRoute) => void
   setCcModel: (id: string, model: CcModelId) => void
   setConversationMode: (id: string, mode: ReplyMode) => void
@@ -36,6 +38,29 @@ const makeId = makeChatId
 
 export function createSessionActions(set: SetChatState): SessionActions {
   return {
+    setWindowRole: (id, role) => set(state => {
+      const now = Date.now()
+      const selected = normalizeChatWindowRole(role)
+      const sessions = state.settings.sessions.map(session => {
+        const nextRole = session.id === id
+          ? selected
+          : selected !== 'archived' && normalizeChatWindowRole(session.windowRole) === selected
+            ? 'archived'
+            : normalizeChatWindowRole(session.windowRole)
+        if (nextRole === normalizeChatWindowRole(session.windowRole)) return session
+        return {
+          ...session,
+          windowRole: nextRole,
+          windowRoleUpdatedAt: Math.max(now, (session.windowRoleUpdatedAt || 0) + 1),
+          ...(session.id === id && selected === 'work' ? {
+            generationRoute: 'claude-code' as const,
+            generationRouteUpdatedAt: Math.max(now, (session.generationRouteUpdatedAt || 0) + 1),
+          } : {}),
+          updatedAt: Math.max(now, session.updatedAt + 1),
+        }
+      })
+      return { settings: { ...state.settings, sessions } }
+    }),
     setGenerationRoute: (id, route) => set(state => {
       const sessions = state.settings.sessions.map(session => session.id === id ? {
         ...session,
@@ -94,8 +119,11 @@ export function createSessionActions(set: SetChatState): SessionActions {
       const now = Date.now()
       set((state) => {
         const settings = normalizeSettings(state.settings)
-        const nextSession = { id, title: '新的对话', messages: [], generationRoute: DEFAULT_CHAT_ROUTE, generationRouteUpdatedAt: 0, pinned: false, createdAt: now, updatedAt: now }
-        return { settings: { ...settings, sessions: [nextSession, ...settings.sessions], activeSessionId: id }, messages: [] }
+        const nextSession = { id, title: '新的对话', messages: [], windowRole: 'chat' as const, windowRoleUpdatedAt: now, generationRoute: DEFAULT_CHAT_ROUTE, generationRouteUpdatedAt: 0, pinned: false, createdAt: now, updatedAt: now }
+        const sessions = settings.sessions.map(session => normalizeChatWindowRole(session.windowRole) === 'chat'
+          ? { ...session, windowRole: 'archived' as const, windowRoleUpdatedAt: now, updatedAt: Math.max(now, session.updatedAt + 1) }
+          : session)
+        return { settings: { ...settings, sessions: [nextSession, ...sessions], activeSessionId: id }, messages: [] }
       })
       return id
     },
@@ -105,7 +133,7 @@ export function createSessionActions(set: SetChatState): SessionActions {
       set((state) => {
         const settings = normalizeSettings(state.settings)
         const existing = settings.sessions.find((session) => session.id === id)
-        const sessions = existing ? settings.sessions : [{ id, title, messages: [], generationRoute: DEFAULT_CHAT_ROUTE, generationRouteUpdatedAt: 0, pinned: false, createdAt: now, updatedAt: now }, ...settings.sessions]
+        const sessions = existing ? settings.sessions : [{ id, title, messages: [], windowRole: 'archived' as const, windowRoleUpdatedAt: now, generationRoute: DEFAULT_CHAT_ROUTE, generationRouteUpdatedAt: 0, pinned: false, createdAt: now, updatedAt: now }, ...settings.sessions]
         const nextSettings = { ...settings, sessions, activeSessionId: activate ? id : settings.activeSessionId }
         return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
       })
@@ -129,7 +157,7 @@ export function createSessionActions(set: SetChatState): SessionActions {
     deleteSession: (id) => set((state) => {
       const settings = normalizeSettings(state.settings)
       let sessions = settings.sessions.filter((s) => s.id !== id)
-      if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], generationRoute: DEFAULT_CHAT_ROUTE, generationRouteUpdatedAt: 0, pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
+      if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], windowRole: 'chat', windowRoleUpdatedAt: Date.now(), generationRoute: DEFAULT_CHAT_ROUTE, generationRouteUpdatedAt: 0, pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
       const activeSessionId = settings.activeSessionId === id ? sortedSessions(sessions)[0].id : settings.activeSessionId
       const tombstones = { ...settings.tombstones, [id]: Date.now() }
       const nextSettings = normalizeSettings({ ...settings, sessions, activeSessionId, tombstones })
@@ -147,6 +175,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
         const branchMessageIds = new Set(active.messages.slice(0, idx + 1).map((m) => m.id))
         const branch: ChatSession = {
           id: newId,
+          windowRole: 'archived',
+          windowRoleUpdatedAt: now,
           title: `${active.title} · 分支`,
           messages: active.messages.slice(0, idx + 1).map((m) => ({ ...m })),
           summaries: (active.summaries || []).filter((summary) => summary.sourceMessageIds?.length
@@ -188,7 +218,7 @@ export function createSessionActions(set: SetChatState): SessionActions {
       // drop stale blank sessions (keep the active one so a freshly created empty chat survives)
       const keepId = settings.activeSessionId
       sessions = sessions.filter((s) => s.id === keepId || !isBlankSession(s))
-      if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], generationRoute: DEFAULT_CHAT_ROUTE, generationRouteUpdatedAt: 0, pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
+      if (!sessions.length) sessions = [{ id: makeId('session'), title: '新的对话', messages: [], windowRole: 'chat', windowRoleUpdatedAt: Date.now(), generationRoute: DEFAULT_CHAT_ROUTE, generationRouteUpdatedAt: 0, pinned: false, createdAt: Date.now(), updatedAt: Date.now() }]
       const activeSessionId = sessions.some((s) => s.id === settings.activeSessionId) ? settings.activeSessionId : sortedSessions(sessions)[0].id
       const nextSettings = normalizeSettings({ ...settings, sessions, activeSessionId, tombstones })
       return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }
@@ -238,6 +268,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
         }))
         const nextSession: ChatSession = {
           id,
+          windowRole: normalizeChatWindowRole(active.windowRole),
+          windowRoleUpdatedAt: now,
           title: `${active.title || '对话'} · 续窗`,
           messages: tail,
           summaries: (active.summaries || []).slice(-(active.summaryConfig?.injectCount || settings.summaryInjectCount)).map((summary, index, copied) => ({ ...summary, id: makeId('sum'), sessionId: id, coveredUntilMessageId: index === copied.length - 1 ? (tail[tail.length - 1]?.id || summary.coveredUntilMessageId) : summary.coveredUntilMessageId })),
@@ -256,7 +288,12 @@ export function createSessionActions(set: SetChatState): SessionActions {
           updatedAt: now,
           messageCount: tail.length,
         }
-        const nextSettings = { ...settings, sessions: [nextSession, ...settings.sessions], activeSessionId: id }
+        const nextRole = normalizeChatWindowRole(active.windowRole)
+        const sessions = nextRole === 'archived' ? settings.sessions : settings.sessions.map(session =>
+          normalizeChatWindowRole(session.windowRole) === nextRole
+            ? { ...session, windowRole: 'archived' as const, windowRoleUpdatedAt: now, updatedAt: Math.max(now, session.updatedAt + 1) }
+            : session)
+        const nextSettings = { ...settings, sessions: [nextSession, ...sessions], activeSessionId: id }
         return { settings: nextSettings, messages: tail }
       })
       return id

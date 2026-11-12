@@ -5,6 +5,7 @@ import { normalizeCcContextState, normalizeChatWindowConfig } from '@/lib/chat-w
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 import { mergeChatMessages, normalizeChatAttachments, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 import { normalizeStickerRef } from '@/lib/stickers'
+import { normalizeChatWindowRole } from '@/lib/chat-window-role'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import type {
   ApiProfile, ApiProvider, BubbleLayout, ChatMessage, ChatSettings, ChatSummary, ContentBlock,
@@ -171,8 +172,12 @@ export function normalizeSettings(settings: any): ChatSettings {
     : profiles[0].id
   const activeProfile = profiles.find((profile: ApiProfile) => profile.id === activeProfileId) || profiles[0]
 
-  const sessions = Array.isArray(settings?.sessions) && settings.sessions.length
-    ? settings.sessions.map((session: any) => {
+  const rawSessions = Array.isArray(settings?.sessions) && settings.sessions.length ? settings.sessions : null
+  const legacyActiveId = rawSessions?.some((session: any) => session?.id === settings?.activeSessionId)
+    ? settings.activeSessionId
+    : rawSessions?.[0]?.id
+  const sessions = rawSessions
+    ? rawSessions.map((session: any) => {
         const messageTombstones = normalizeMessageTombstones(session.messageTombstones)
         const messages = mergeChatMessages([], Array.isArray(session.messages) ? session.messages.map(normalizeMessage).filter(Boolean) : [], messageTombstones) as ChatMessage[]
         const hasExplicitContextState = 'ccContextState' in session || 'ccContextStateUpdatedAt' in session
@@ -181,6 +186,12 @@ export function normalizeSettings(settings: any): ChatSettings {
           : normalizeCcContextState(session.windowConfig)
         return {
         id: session.id || makeId('session'),
+        windowRole: session.windowRole
+          ? normalizeChatWindowRole(session.windowRole)
+          : session.id === legacyActiveId ? 'chat' : 'archived',
+        windowRoleUpdatedAt: Number.isFinite(session.windowRoleUpdatedAt)
+          ? session.windowRoleUpdatedAt
+          : session.windowRole ? 0 : Math.max(1, Number(session.updatedAt) || Number(session.createdAt) || 1),
         generationRoute: normalizeChatRoute(session.generationRoute),
         generationRouteUpdatedAt: Number.isFinite(session.generationRouteUpdatedAt) ? session.generationRouteUpdatedAt : 0,
         ccModel: isCcModel(session.ccModel) ? session.ccModel : undefined,

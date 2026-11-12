@@ -9,10 +9,13 @@ import type { SummaryArchiveEntry, SummaryArchiveLevel, SummaryArchiveSnapshot }
 import { ChatSession, useChatStore } from '@/lib/chatStore'
 import { formatMadrid } from '@/lib/madrid-time'
 import { PaperActionDialog } from '@/components/PaperActionDialog'
+import { normalizeChatWindowRole } from '@/lib/chat-window-role'
+import type { WorkSummarySnapshot } from '@/lib/work-summary'
 
 const EMPTY_ARCHIVE: SummaryArchiveSnapshot = {
   entries: [], completedDays: {}, completedStages: {}, completedMonths: {}, status: { running: false },
 }
+const EMPTY_WORK: WorkSummarySnapshot = { entries: [], completedDays: {}, status: { running: false } }
 
 const LEVELS: Array<{ value: 'all' | SummaryArchiveLevel; label: string }> = [
   { value: 'all', label: '全部' }, { value: 'daily', label: '每日' }, { value: 'weekly', label: '阶段' }, { value: 'monthly', label: '月摘要' },
@@ -39,6 +42,7 @@ export function SummaryDialog({ open, onClose, session }: { open: boolean; onClo
   const { theme } = useTheme(); const night = theme === 'night'
   const { settings, updateSessionSummaryConfig } = useChatStore()
   const [archive, setArchive] = useState<SummaryArchiveSnapshot>(EMPTY_ARCHIVE)
+  const [workArchive, setWorkArchive] = useState<WorkSummarySnapshot>(EMPTY_WORK)
   const [level, setLevel] = useState<'all' | SummaryArchiveLevel>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<string | null>(null)
@@ -47,12 +51,24 @@ export function SummaryDialog({ open, onClose, session }: { open: boolean; onClo
   const [error, setError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<SummaryArchiveEntry | null>(null)
   const config = session?.summaryConfig || { autoEnabled: true, turnSize: settings.summaryTurnSize, injectCount: settings.summaryInjectCount, modeVersion: 2 as const }
+  const workMode = normalizeChatWindowRole(session?.windowRole) === 'work'
   const card = night ? 'bg-night-surface border-night-border' : 'chat-dialog-card'
 
   const refresh = useCallback(async () => {
-    try { setArchive(await summariesApi.list()); setError('') }
+    try {
+      const [home, work] = await Promise.all([
+        summariesApi.list(),
+        workMode && session?.id
+          ? fetch(`/api/work-summaries?session_id=${encodeURIComponent(session.id)}`, { cache: 'no-store' }).then(async response => {
+              if (!response.ok) throw new Error('工作摘要读取失败')
+              return response.json()
+            })
+          : Promise.resolve(EMPTY_WORK),
+      ])
+      setArchive(home); setWorkArchive(work); setError('')
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : '摘要档案读取失败') }
-  }, [])
+  }, [session?.id, workMode])
 
   useEffect(() => { if (open) void refresh() }, [open, refresh])
 
@@ -86,12 +102,21 @@ export function SummaryDialog({ open, onClose, session }: { open: boolean; onClo
   return <AnimatePresence>{open && <>
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-[72] bg-black/40 backdrop-blur-sm" />
     <motion.div initial={{ opacity: 0, scale: .96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .96, y: 12 }} className={`fixed z-[73] inset-x-0 mx-auto w-[min(680px,calc(100vw-2rem))] max-h-[84dvh] overflow-y-auto rounded-2xl ${night ? 'bg-night-card text-night-text shadow-2xl' : 'chat-dialog'}`} style={{ top: 'max(calc(env(safe-area-inset-top,0px) + 7dvh),7dvh)' }}>
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-current/10 bg-inherit px-5 py-4"><h3 className="flex items-center gap-2 text-lg font-medium"><FileText size={18} />摘要档案</h3><button onClick={onClose} aria-label="关闭摘要档案" className="p-2 opacity-60"><X size={20} /></button></div>
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-current/10 bg-inherit px-5 py-4"><h3 className="flex items-center gap-2 text-lg font-medium"><FileText size={18} />{workMode ? '工作与家中摘要' : '摘要档案'}</h3><button onClick={onClose} aria-label="关闭摘要档案" className="p-2 opacity-60"><X size={20} /></button></div>
       <div className="space-y-5 p-5">
+        {workMode && <section className={`space-y-3 rounded-2xl border p-4 ${card}`}>
+          <div><p className="text-sm font-medium">本窗工作摘要</p><p className="mt-1 text-[10px] opacity-50">独立于家中摘要；每天 05:00 结算，每 100 个完整轮次一张。</p></div>
+          {workArchive.entries.length ? <div className="space-y-3">{workArchive.entries.map(entry => <details key={entry.id} className="rounded-xl border border-current/10 p-3"><summary className="cursor-pointer text-xs font-medium">{entry.kind === 'checkpoint' ? `${entry.day} · 压缩检查点` : `${entry.day} · 第 ${entry.partIndex}/${entry.partCount} 张`} · {entry.turnCount}轮</summary><p className="mt-3 whitespace-pre-wrap text-xs leading-6 opacity-80">{entry.content}</p></details>)}</div> : <p className="rounded-xl border border-current/10 px-3 py-4 text-center text-xs opacity-45">完成第一个家日后会生成。</p>}
+          {workArchive.status.error && <p className="text-[10px] text-red-500">{workArchive.status.error}</p>}
+        </section>}
+
         <section className={`space-y-4 rounded-2xl border p-4 ${card}`}>
+          {workMode && <p className="text-sm font-medium">家中共享摘要</p>}
+          {!workMode && <>
           <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium">这个窗口加入每日摘要</p><p className="mt-1 text-[10px] opacity-50">每天 05:00 结算；每 100 个完整轮次一张</p></div><button aria-label="切换这个窗口的每日摘要" aria-pressed={config.autoEnabled} onClick={() => session && updateSessionSummaryConfig(session.id, { autoEnabled: !config.autoEnabled })} className={`relative h-8 w-14 shrink-0 rounded-full p-1 shadow-inner ${config.autoEnabled ? (night ? 'bg-night-amber' : 'bg-[#DBB9B3]') : (night ? 'border border-night-border bg-night-bg' : 'border border-gray-300 bg-gray-200')}`}><motion.span animate={{ x: config.autoEnabled ? 24 : 0 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }} className="block h-6 w-6 rounded-full bg-white shadow-md" /></button></div>
+          </>}
           <div className={`rounded-xl px-3 py-2 text-[11px] leading-5 ${night ? 'bg-night-bg/60' : 'chat-dialog-accent'}`}>
-            自动带入最近 3 张每日摘要和 1 张阶段摘要；月摘要只留在抽屉与搜索工具里。
+            {workMode ? '工作窗自动带入最近 1 张每日摘要和 1 张阶段摘要，也可以用只读工具搜索全部家中摘要。' : '自动带入最近 3 张每日摘要和 1 张阶段摘要；月摘要只留在抽屉与搜索工具里。'}
             {archive.status.lastSuccessAt ? <span className="block opacity-55">最近完成：{formatMadrid(archive.status.lastSuccessAt, false)}</span> : null}
           </div>
           {error || archive.status.error ? <div role="alert" className={`rounded-xl px-3 py-2 text-[11px] leading-5 ${night ? 'bg-red-950/30 text-red-200' : 'bg-red-50 text-red-600'}`}>{error || archive.status.error}</div> : null}

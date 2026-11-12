@@ -25,10 +25,11 @@ function validSessionId(value: unknown): value is string {
 
 function context(sessionId: string, source: unknown) {
   const unattended = source === 'unattended-wake'
+  const work = source === 'work'
   return createToolContext({
-    actorId: unattended ? 'lumbre-autowake-service' : 'lumbre-authenticated-user',
+    actorId: unattended ? 'lumbre-autowake-service' : work ? 'lumbre-work-window' : 'lumbre-authenticated-user',
     sessionId,
-    source: unattended ? 'unattended-wake' : 'chat',
+    source: unattended ? 'unattended-wake' : work ? 'work' : 'chat',
   })
 }
 

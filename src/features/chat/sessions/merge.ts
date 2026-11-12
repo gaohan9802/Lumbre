@@ -2,10 +2,12 @@ import { mergeConversationMode } from '@/lib/chat-reply-mode'
 import { mergeConversationRoute } from '@/lib/chat-route'
 import { mergeCcModel } from '@/lib/cc-model'
 import { mergeCcContextState, mergeChatWindowConfig } from '@/lib/chat-window-config'
+import { mergeChatWindowRole } from '@/lib/chat-window-role'
 import { mergeChatMessages, mergeMessageTombstones } from '@/lib/chat-message-sync'
 
 export function isBlankSession(session: any) {
   return (session?.messages?.length || 0) === 0
+    && !(session?.windowRoleUpdatedAt > 0)
     && !(session?.conversationModeUpdatedAt > 0)
     && !(session?.generationRouteUpdatedAt > 0)
     && !(session?.ccModelUpdatedAt > 0)
@@ -45,6 +47,7 @@ function preserveMergedSummary(base: any, existing: any, incoming: any) {
   const ccModel = mergeCcModel(existing, incoming)
   const windowConfig = mergeChatWindowConfig(existing, incoming)
   const ccContextState = mergeCcContextState(existing, incoming)
+  const windowRole = mergeChatWindowRole(existing, incoming)
   const messageTombstones = mergeMessageTombstones(existing?.messageTombstones, incoming?.messageTombstones)
   const incomingIsNewer = Number(incoming?.updatedAt) > Number(existing?.updatedAt)
   const primary = incomingIsNewer ? incoming : existing
@@ -57,6 +60,7 @@ function preserveMergedSummary(base: any, existing: any, incoming: any) {
     || base.ccModel !== ccModel.ccModel || (base.ccModelUpdatedAt || 0) !== ccModel.ccModelUpdatedAt
     || JSON.stringify(base.windowConfig) !== JSON.stringify(windowConfig.windowConfig) || (base.windowConfigUpdatedAt || 0) !== windowConfig.windowConfigUpdatedAt
     || JSON.stringify(base.ccContextState) !== JSON.stringify(ccContextState.ccContextState) || (base.ccContextStateUpdatedAt || 0) !== ccContextState.ccContextStateUpdatedAt
+    || base.windowRole !== windowRole.windowRole || (base.windowRoleUpdatedAt || 0) !== windowRole.windowRoleUpdatedAt
     || (summaryLayer.summaryRevision === baseRevision && summaryCount(summaryLayer) > summaryCount(base))
     || messageLayerChanged
 
@@ -67,6 +71,7 @@ function preserveMergedSummary(base: any, existing: any, incoming: any) {
     ...ccModel,
     ...windowConfig,
     ...ccContextState,
+    ...windowRole,
     ...summaryLayer,
     messages,
     messageTombstones,
@@ -98,8 +103,8 @@ export function mergeChatSessionsForSync(existing: any, incoming: any) {
     }, existing, incoming)
   }
 
-  if (isBlankSession(existing) && !isBlankSession(incoming)) return { ...incoming, ...mergeConversationMode(existing, incoming), ...mergeConversationRoute(existing, incoming), ...mergeCcModel(existing, incoming), ...mergeChatWindowConfig(existing, incoming), ...mergeCcContextState(existing, incoming) }
-  if (isBlankSession(incoming) && !isBlankSession(existing)) return { ...existing, ...mergeConversationMode(existing, incoming), ...mergeConversationRoute(existing, incoming), ...mergeCcModel(existing, incoming), ...mergeChatWindowConfig(existing, incoming), ...mergeCcContextState(existing, incoming) }
+  if (isBlankSession(existing) && !isBlankSession(incoming)) return { ...incoming, ...mergeConversationMode(existing, incoming), ...mergeConversationRoute(existing, incoming), ...mergeCcModel(existing, incoming), ...mergeChatWindowConfig(existing, incoming), ...mergeCcContextState(existing, incoming), ...mergeChatWindowRole(existing, incoming) }
+  if (isBlankSession(incoming) && !isBlankSession(existing)) return { ...existing, ...mergeConversationMode(existing, incoming), ...mergeConversationRoute(existing, incoming), ...mergeCcModel(existing, incoming), ...mergeChatWindowConfig(existing, incoming), ...mergeCcContextState(existing, incoming), ...mergeChatWindowRole(existing, incoming) }
   const newer = (incoming?.updatedAt || 0) > (existing?.updatedAt || 0) ? incoming : existing
   return preserveMergedSummary(newer, existing, incoming)
 }

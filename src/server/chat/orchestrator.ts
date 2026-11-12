@@ -24,6 +24,9 @@ import { addToolResultsToAudit, createMessageRequestAudit, type RequestAuditHint
 import { ccOutputStyleContext, ccSystemPromptForModel } from '@/lib/cc-system-prompt'
 import { chatPresentationContext } from '@/lib/chat-reply-mode'
 import { summaryArchiveContext } from '@/server/summary-archive'
+import { loadSyncSessionTails } from '@/server/chat-sync'
+import { normalizeChatWindowRole, type ChatWindowRole } from '@/lib/chat-window-role'
+import { workSummaryContext } from '@/server/work-summary'
 
 const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbre里——这是小火为你建的家。
 
@@ -69,12 +72,19 @@ function toolLimit(requested: number | undefined, unattendedWake: boolean): numb
   return Math.max(0, Math.min(hardLimit, Math.floor(Number(requested))))
 }
 
-function toolContext(unattendedWake: boolean, sessionId?: string) {
+function toolContext(unattendedWake: boolean, sessionId?: string, windowRole: ChatWindowRole = 'chat') {
+  const work = !unattendedWake && windowRole === 'work'
   return createToolContext({
-    actorId: unattendedWake ? 'lumbre-autowake-service' : 'lumbre-authenticated-user',
+    actorId: unattendedWake ? 'lumbre-autowake-service' : work ? 'lumbre-work-window' : 'lumbre-authenticated-user',
     sessionId,
-    source: unattendedWake ? 'unattended-wake' : 'chat',
+    source: unattendedWake ? 'unattended-wake' : work ? 'work' : 'chat',
   })
+}
+
+function durableWindowRole(sessionId: unknown): ChatWindowRole {
+  if (typeof sessionId !== 'string') return 'chat'
+  try { return normalizeChatWindowRole(loadSyncSessionTails([sessionId], 20)[0]?.windowRole) }
+  catch { return 'chat' }
 }
 
 function currentTimestamp(): string {
@@ -225,13 +235,23 @@ async function runGateway(provider: GatewayProvider, params: GatewayRunParams): 
 export async function handleChatRequest(req: NextRequest) {
   try {
     const submitted = await req.json()
-    const archiveContext = summaryArchiveContext(typeof submitted.session_id === 'string' ? submitted.session_id : undefined)
+    const windowRole = durableWindowRole(submitted.session_id)
+    const archiveContext = windowRole === 'archived'
+      ? ''
+      : summaryArchiveContext(typeof submitted.session_id === 'string' ? submitted.session_id : undefined, windowRole === 'work' ? 'work' : 'chat')
+    const ownWorkContext = windowRole === 'work' && typeof submitted.session_id === 'string'
+      ? workSummaryContext(submitted.session_id) : ''
     const body = {
       ...submitted,
-      bookmark_injections: [submitted.bookmark_injections, archiveContext].filter(Boolean).join('\n\n'),
+      work_mode: windowRole === 'work',
+      bookmark_injections: [submitted.bookmark_injections, archiveContext, ownWorkContext].filter(Boolean).join('\n\n'),
     }
     const generationRoute = body.generation_route === 'claude-code' ? 'claude-code' : body.generation_route === 'api' || !body.generation_route ? 'api' : null
     if (!generationRoute) return NextResponse.json({ error: '未知生成线路；不会自动改走 API。' }, { status: 400 })
+    if (windowRole === 'archived') return NextResponse.json({ error: '这个窗口已经封存，请先恢复窗口用途。' }, { status: 409 })
+    if (windowRole === 'work' && generationRoute !== 'claude-code') {
+      return NextResponse.json({ error: '工作窗固定使用 Claude Code，避免 API 线路绕过工作权限边界。' }, { status: 400 })
+    }
     const unattendedWake = body._wake === true && isTrustedInternalRequest(req.headers.get('x-lumbre-internal'))
     if (body._wake === true && !unattendedWake) return NextResponse.json({ error: 'Invalid unattended wake credentials' }, { status: 403 })
     if (!unattendedWake) try { reportActivity() } catch {}
@@ -256,7 +276,7 @@ export async function handleChatRequest(req: NextRequest) {
       const requestAudit = createMessageRequestAudit({
         system,
         messages: Array.isArray(body.messages) ? body.messages : [],
-        tools: body.tools_enabled === false ? [] : toolsForContext(toolContext(unattendedWake, body.session_id)),
+        tools: body.tools_enabled === false ? [] : toolsForContext(toolContext(unattendedWake, body.session_id, windowRole)),
         volatileContext: currentContext,
         hints: body.request_audit_hints,
       })

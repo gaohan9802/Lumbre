@@ -2,7 +2,7 @@
 
 这是一只独立于 Next.js 主站的任务邮局。它接收经过服务端认证的 CC 请求，先把任务落盘，再异步调用固定版本 Claude Code。浏览器或调用方断线不会取消任务；重新连接可以按 attempt id 查询状态或从最后一个 SSE event id 继续接收。
 
-阶段 5 可通过一个固定的 stdio MCP 门铃请求 Lumbre 生活工具。Claude Code 仍以 `--tools ""` 移除全部内建工具，并通过 `--strict-mcp-config` 只装载这一只 MCP；Bash、Shell、源码读写和任意系统命令永不开放。
+普通聊天通过固定的 stdio MCP 门铃请求 Lumbre 生活工具，并继续以 `--tools ""` 移除全部内建工具。只有被 Lumbre 服务端标记为工作窗的会话，才会拿到固定白名单内的 Claude Code 原生工具；生活工具同时收窄为严格只读。
 
 启用生活工具需要同时配置 `LUMBRE_CC_TOOL_BRIDGE_URL` 与独立的 `LUMBRE_CC_TOOL_BRIDGE_SECRET`。URL 指向 Lumbre 的 `/api/internal/cc-tools`；未配置时 CC 文字聊天保持可用，但健康检查中的 `capabilities.lumbreTools` 为 `false`。每轮最多 20 次工具调用，MCP 串行转交现有权限执行器；红色操作仍返回一次性确认并由 Lumbre 前端确认。
 
@@ -23,6 +23,8 @@
 - 最终结果先写入账本，再广播 `completed` 事件。
 - 服务重启时，未开始的 queued 任务重新排队；失去子进程的 running 任务明确标记 `gateway_restarted`，不伪装完成也不偷偷转 API。
 - Claude Code 的 HOME 放在 `/gateway-data/claude-home`，CLI session 随独立卷保留；Lumbre 消息仍是唯一正式历史。
+- 工作窗只在 `/workspaces/lumbre` 的独立 Git 工作副本内运行。没有挂载有效 `.git` 时会拒绝任务；不能把 `/persistent`、生产容器目录、Docker socket、宿主根目录或 CC 凭据目录挂进去。
+- Bash 使用 bubblewrap 沙箱，文件读写被限制在工作目录；子进程环境开启 secret scrub。聊天窗与后台唤醒仍没有原生工具。
 
 ## 会话与 compact 保温
 
@@ -30,7 +32,7 @@
 - 中途切去 API 再切回 CC 时，API 新增轮次作为 route gap 补给原 CC session，不另开聊天。
 - Lumbre 历史被编辑、回复锚点丢失，或上次 CC 任务失败/取消时，才明确 rebase 到新 session，并记录原因。
 - 网关只读自己隔离 HOME 内的 Claude Code transcript，记录本次成功调用是否出现结构化 `compact_boundary`；这不会给模型增加 Bash、Shell 或文件工具。
-- 确认 compact 后，下一条真实用户消息仍 resume 原 session，同时补入 compact 前最近 16 个用户轮次（可用 `CC_GATEWAY_REHYDRATE_TURNS` 调为 10–20）。旧轮次标明为已发生的语气/关系参考，不能被当作新消息重演；只补一次，不产生隐藏聊天轮次。
+- 确认 compact 后，下一条真实用户消息仍 resume 原 session。聊天窗补入最近 16 个用户轮次（可用 `CC_GATEWAY_REHYDRATE_TURNS` 调为 10–20）；工作窗固定补 6 轮，并保存任务、决策、文件、测试和下一步。旧轮次只作参考，不会被当作新消息重演。
 - compact 会改变会话前缀，所以这批补入内容不能假定仍命中旧的对话层缓存。是否值得补 10、16 或 20 轮，要等真实 cache read/create 指标后决定。
 
 ## HTTP 契约
@@ -57,6 +59,8 @@
 docker build -f services/Dockerfile.lumbre-cc-gateway-preview -t lumbre-cc-gateway:2.1.321 services
 ```
 
-镜像只收到 CC probe 的固定 CLI 合同、系统级拒绝策略和 gateway 文件，不会收到 Lumbre 源码、聊天记录、`.env` 或生产卷。
+镜像只收到 CC probe 的固定 CLI 合同、沙箱策略和 gateway 文件，不会收到 Lumbre 源码、聊天记录、`.env` 或生产卷。
+
+工作窗需要在运行时额外挂载一份专用 Git worktree 到 `/workspaces/lumbre`，并让 uid 10001 可读写。镜像和默认数据卷都不携带源码；部署与 Git 凭据也不会自动继承，须另接受控发布器后才可开放一键推送/部署。
 
 当前只支持单副本网关；部署时必须保持 replicas = 1 且关闭自动横向扩容。多副本竞争同一任务要等后续改用数据库租约后才能开放。

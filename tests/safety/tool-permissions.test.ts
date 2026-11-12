@@ -26,9 +26,9 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 142)
-  assert.equal(registry.ALL_TOOLS.length, 142)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 142)
+  assert.equal(registry.registeredToolCount(), 151)
+  assert.equal(registry.ALL_TOOLS.length, 151)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 151)
   for (const removed of ['write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline']) {
     assert.equal(registry.ALL_TOOLS.some(tool => tool.name === removed), false, removed)
   }
@@ -38,7 +38,8 @@ test('all legacy tool contracts have exactly one policy registration', () => {
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_energy_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-16).map(tool => tool.name), ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove', 'write_windowsill_line'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-25, -9).map(tool => tool.name), ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove', 'write_windowsill_line'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-9).map(tool => tool.name), ['kitchen_cook', 'kitchen_status', 'kitchen_cancel', 'kitchen_toss', 'kitchen_buy', 'eat', 'read_menu', 'snack_eat', 'kitchen_notes'])
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
 
@@ -113,6 +114,18 @@ test('unattended wake receives every registered tool including CedarToy games', 
   assert.equal('delete' in trace.input_schema.properties, true)
   assert.deepEqual(names.filter(name => name.startsWith('cedar_')), ['cedar_list_games', 'cedar_get_guide', 'cedar_play', 'cedar_account'])
   assert.equal(names.filter(name => ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove'].includes(name)).length, 15)
+})
+
+test('work windows receive strictly read-only life tools', async () => {
+  const work = contextModule.createToolContext({ source: 'work', actorId: 'work', sessionId: 'work-session' })
+  const names = registry.toolsForContext(work).map(tool => tool.name)
+  for (const readable of ['read_diary', 'search_summaries', 'read_summary', 'read_health_summary', 'read_energy_summary', 'kitchen_status', 'read_menu', 'kitchen_notes']) {
+    assert.equal(names.includes(readable), true, readable)
+  }
+  for (const mutating of ['write_diary', 'update_diary', 'delete_diary', 'trace', 'write_story', 'send_email', 'kitchen_cook', 'eat']) {
+    assert.equal(names.includes(mutating), false, mutating)
+  }
+  assert.match(await executor.executeTool('write_diary', { content: 'blocked' }, work), /strictly read-only/)
 })
 
 test('red tools issue single-use, actor-and-session-bound confirmations', async () => {

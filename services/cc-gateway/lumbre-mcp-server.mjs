@@ -8,7 +8,8 @@ const bridgeSecret = String(process.env.LUMBRE_CC_TOOL_BRIDGE_SECRET || '')
 const conversationId = String(process.env.LUMBRE_CC_CONVERSATION_ID || '')
 const eventFile = String(process.env.LUMBRE_CC_TOOL_EVENT_FILE || '')
 const maxCalls = Math.max(1, Math.min(20, Number(process.env.LUMBRE_CC_MAX_TOOL_CALLS) || 20))
-const source = process.env.LUMBRE_CC_TOOL_SOURCE === 'unattended-wake' ? 'unattended-wake' : 'chat'
+const source = ['unattended-wake', 'work'].includes(process.env.LUMBRE_CC_TOOL_SOURCE)
+  ? process.env.LUMBRE_CC_TOOL_SOURCE : 'chat'
 const cacheWarm = process.env.LUMBRE_CC_CACHE_WARM === '1'
 const toolCallsDenied = process.env.LUMBRE_CC_TOOL_DENY === '1'
 let calls = 0
@@ -86,9 +87,9 @@ async function handle(message) {
     })
   }
   if (message.method === 'tools/list') {
-    // Keep the Claude tool schema stable across chat, cache warm, and wakes.
-    // Calls still carry their real source and are denied by unattended policy.
-    const data = await bridge(`?session_id=${encodeURIComponent(conversationId)}&source=chat`)
+    // Each window keeps a stable schema; work windows intentionally see only
+    // the read-only subset while ordinary chat/wake schemas remain unchanged.
+    const data = await bridge(`?session_id=${encodeURIComponent(conversationId)}&source=${encodeURIComponent(source === 'work' ? 'work' : 'chat')}`)
     return write({ jsonrpc: '2.0', id: message.id, result: { tools: Array.isArray(data.tools) ? data.tools : [] } })
   }
   if (message.method === 'tools/call') {

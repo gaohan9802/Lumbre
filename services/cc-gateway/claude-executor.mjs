@@ -11,6 +11,7 @@ import {
   collectUsage,
   findResultText,
   findSessionId,
+  WORK_BUILTIN_TOOLS,
 } from '../cc-probe/contract.mjs'
 
 export class ClaudeExecutionError extends Error {
@@ -243,6 +244,7 @@ export class ClaudeExecutor {
   constructor(options = {}) {
     this.binary = options.binary || 'claude'
     this.workspace = options.workspace || process.cwd()
+    this.workWorkspace = options.workWorkspace || this.workspace
     this.timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS
     this.maxOutputBytes = options.maxOutputBytes || DEFAULT_MAX_OUTPUT_BYTES
     this.env = buildProbeEnvironment(options.env || process.env)
@@ -272,6 +274,7 @@ export class ClaudeExecutor {
    *   toolCallsAllowed?: boolean,
    *   cacheWarm?: boolean,
    *   unattended?: boolean,
+   *   workMode?: boolean,
    *   signal?: AbortSignal,
    *   onText?: (text: string) => void,
    *   onThinking?: (text: string) => void,
@@ -291,6 +294,7 @@ export class ClaudeExecutor {
     toolCallsAllowed = true,
     cacheWarm = false,
     unattended = false,
+    workMode = false,
     signal,
     onText,
     onThinking,
@@ -298,6 +302,10 @@ export class ClaudeExecutor {
     attemptId,
     conversationId,
   }) {
+    if (workMode && !fs.existsSync(path.join(this.workWorkspace, '.git'))) {
+      return Promise.reject(new ClaudeExecutionError('work_workspace_unavailable', '工作窗的隔离代码副本还没有挂载。'))
+    }
+    const enableWorkTools = workMode && toolsEnabled && !cacheWarm
     const useToolBridge = this.toolBridgeEnabled && (toolsEnabled || cacheWarm)
     const toolRunId = attemptId || (cacheWarm ? randomUUID() : '')
     if (useToolBridge && (!ATTEMPT_ID.test(toolRunId) || !CONVERSATION_ID.test(conversationId || ''))) {
@@ -314,7 +322,10 @@ export class ClaudeExecutor {
         forkSession,
         systemPrompt,
         mcpConfig: useToolBridge ? LUMBRE_MCP_CONFIG : undefined,
-        allowedTools: useToolBridge ? ['mcp__lumbre__*'] : undefined,
+        tools: enableWorkTools ? WORK_BUILTIN_TOOLS : undefined,
+        allowedTools: enableWorkTools
+          ? [...WORK_BUILTIN_TOOLS, ...(useToolBridge ? ['mcp__lumbre__*'] : [])]
+          : useToolBridge ? ['mcp__lumbre__*'] : undefined,
         maxTurns: useToolBridge ? 24 : undefined,
       })
       const fixedThinking = model === OPUS_46_MODEL && effort === 'max'
@@ -330,7 +341,7 @@ export class ClaudeExecutor {
           LUMBRE_CC_CONVERSATION_ID: conversationId,
           LUMBRE_CC_TOOL_EVENT_FILE: toolEventFile,
           LUMBRE_CC_MAX_TOOL_CALLS: String(this.toolBridge.maxCalls || 20),
-          LUMBRE_CC_TOOL_SOURCE: unattended ? 'unattended-wake' : 'chat',
+          LUMBRE_CC_TOOL_SOURCE: unattended ? 'unattended-wake' : workMode ? 'work' : 'chat',
           LUMBRE_CC_CACHE_WARM: cacheWarm ? '1' : '0',
           LUMBRE_CC_TOOL_DENY: toolCallsAllowed ? '0' : '1',
         } : {}),
@@ -339,7 +350,7 @@ export class ClaudeExecutor {
         ? Math.max(this.timeoutMs, OPUS_46_FIXED_THINKING_TIMEOUT_MS)
         : this.timeoutMs
       const child = spawn(this.binary, args, {
-        cwd: this.workspace,
+        cwd: workMode ? this.workWorkspace : this.workspace,
         env: childEnv,
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],

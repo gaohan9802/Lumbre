@@ -14,6 +14,7 @@ import {
   parseJsonResult,
   parseStreamJson,
   sessionFingerprint,
+  WORK_BUILTIN_TOOLS,
 } from '../../services/cc-probe/contract.mjs'
 import { runProcess } from '../../services/cc-probe/process.mjs'
 import { resolveClaudeBinary } from '../../services/cc-gateway/claude-binary.mjs'
@@ -44,6 +45,13 @@ test('current CC models return summarized thinking', () => {
   assert.equal(opus46[opus46.indexOf('--thinking-display') + 1], 'summarized')
   assert.equal(opus55[opus55.indexOf('--thinking-display') + 1], 'summarized')
   assert.equal(fable52[fable52.indexOf('--thinking-display') + 1], 'summarized')
+})
+
+test('work windows expose only the reviewed native tool set', () => {
+  const args = buildClaudeArgs({ tools: WORK_BUILTIN_TOOLS, allowedTools: [...WORK_BUILTIN_TOOLS, 'mcp__lumbre__*'] })
+  assert.equal(args[args.indexOf('--tools') + 1], WORK_BUILTIN_TOOLS.join(','))
+  assert.deepEqual(args.slice(args.indexOf('--allowedTools') + 1, args.indexOf('--allowedTools') + 1 + WORK_BUILTIN_TOOLS.length + 1), [...WORK_BUILTIN_TOOLS, 'mcp__lumbre__*'])
+  assert.throws(() => buildClaudeArgs({ tools: ['Unknown'] }), /reviewed built-in/)
 })
 
 test('gateway installs and reuses the pinned CLI when the image binary is stale', () => {

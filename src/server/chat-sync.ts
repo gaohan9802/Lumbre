@@ -2,6 +2,7 @@ import { mergeConversationMode } from '@/lib/chat-reply-mode'
 import { mergeConversationRoute } from '@/lib/chat-route'
 import { mergeCcModel } from '@/lib/cc-model'
 import { mergeCcContextState, mergeChatWindowConfig } from '@/lib/chat-window-config'
+import { mergeChatWindowRole, normalizeChatWindowRole, type ChatWindowRole } from '@/lib/chat-window-role'
 import { mergeChatMessages, mergeMessageTombstones, messageDeletedAt, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 /**
  * Durable incremental chat storage.
@@ -40,6 +41,8 @@ import {
 
 export interface SessionManifestItem {
   id: string
+  windowRole?: ChatWindowRole
+  windowRoleUpdatedAt?: number
   updatedAt: number
   messageCount: number
   title?: string
@@ -85,6 +88,7 @@ function normalizeManifest(raw: any): SyncManifest {
           ...mergeConversationMode(s, null),
           ...mergeConversationRoute(s, null),
           ...mergeCcModel(s, null),
+          ...mergeChatWindowRole(s, null),
           windowConfigUpdatedAt: Math.max(0, Number(s.windowConfigUpdatedAt) || 0),
           ccContextStateUpdatedAt: Math.max(0, Number(s.ccContextStateUpdatedAt) || 0),
           id: String(s.id),
@@ -125,7 +129,7 @@ function recoverMissingSummaries(session: any): any {
 }
 
 function isBlankSession(s: any) {
-  return (s?.messages?.length || 0) === 0 && !(s?.conversationModeUpdatedAt > 0) && !(s?.generationRouteUpdatedAt > 0) && !(s?.ccModelUpdatedAt > 0) && !(s?.windowConfigUpdatedAt > 0) && !(s?.ccContextStateUpdatedAt > 0) && !s?.pinned && (!s?.title || s.title === '新的对话')
+  return (s?.messages?.length || 0) === 0 && !(s?.windowRoleUpdatedAt > 0) && !(s?.conversationModeUpdatedAt > 0) && !(s?.generationRouteUpdatedAt > 0) && !(s?.ccModelUpdatedAt > 0) && !(s?.windowConfigUpdatedAt > 0) && !(s?.ccContextStateUpdatedAt > 0) && !s?.pinned && (!s?.title || s.title === '新的对话')
 }
 
 function mergeSummaryLayer(existing: any, incoming: any) {
@@ -191,6 +195,7 @@ function pickSession(a: any, b: any) {
   const ccModel = mergeCcModel(a, b)
   const windowConfig = mergeChatWindowConfig(a, b)
   const ccContextState = mergeCcContextState(a, b)
+  const windowRole = mergeChatWindowRole(a, b)
   if ((merged.conversationMode || 'long') === mode.conversationMode &&
       (merged.conversationModeUpdatedAt || 0) === mode.conversationModeUpdatedAt &&
       (merged.generationRoute || 'api') === route.generationRoute &&
@@ -201,8 +206,10 @@ function pickSession(a: any, b: any) {
       (merged.windowConfigUpdatedAt || 0) === windowConfig.windowConfigUpdatedAt &&
       JSON.stringify(merged.ccContextState) === JSON.stringify(ccContextState.ccContextState) &&
       (merged.ccContextStateUpdatedAt || 0) === ccContextState.ccContextStateUpdatedAt &&
+      merged.windowRole === windowRole.windowRole &&
+      (merged.windowRoleUpdatedAt || 0) === windowRole.windowRoleUpdatedAt &&
       !messageLayerChanged) return merged
-  return { ...merged, ...mode, ...route, ...ccModel, ...windowConfig, ...ccContextState, updatedAt: Math.max(Number(a.updatedAt) || 0, Number(b.updatedAt) || 0) + 1 }
+  return { ...merged, ...mode, ...route, ...ccModel, ...windowConfig, ...ccContextState, ...windowRole, updatedAt: Math.max(Number(a.updatedAt) || 0, Number(b.updatedAt) || 0) + 1 }
 }
 
 function externalizeSessionImages(session: any): any {
@@ -254,6 +261,7 @@ function sessionManifestItem(session: any, messageCount: number): SessionManifes
     ...mergeConversationMode(session, null),
     ...mergeConversationRoute(session, null),
     ...mergeCcModel(session, null),
+    ...mergeChatWindowRole(session, null),
     windowConfigUpdatedAt: Math.max(0, Number(session.windowConfigUpdatedAt) || 0),
     ccContextStateUpdatedAt: Math.max(0, Number(session.ccContextStateUpdatedAt) || 0),
     id: session.id,
@@ -299,7 +307,7 @@ function ensureInitialized() {
       for (const session of sessions) writeSession(session, false)
       saveManifest({
         version: 2,
-        sessions: sessions.map(s => ({ ...mergeConversationMode(s, null), ...mergeConversationRoute(s, null), ...mergeCcModel(s, null), windowConfigUpdatedAt: Math.max(0, Number(s.windowConfigUpdatedAt) || 0), ccContextStateUpdatedAt: Math.max(0, Number(s.ccContextStateUpdatedAt) || 0), id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0 })),
+        sessions: sessions.map(s => ({ ...mergeConversationMode(s, null), ...mergeConversationRoute(s, null), ...mergeCcModel(s, null), ...mergeChatWindowRole(s, null), windowConfigUpdatedAt: Math.max(0, Number(s.windowConfigUpdatedAt) || 0), ccContextStateUpdatedAt: Math.max(0, Number(s.ccContextStateUpdatedAt) || 0), id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0 })),
         tombstones,
         config: sanitizeChatConfig(legacy.config),
         configUpdatedAt: Number(legacy.configUpdatedAt) || 0,
@@ -428,6 +436,7 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
       && (Number(incoming.ccModelUpdatedAt) || 0) <= (existingMeta.ccModelUpdatedAt || 0)
       && (Number(incoming.windowConfigUpdatedAt) || 0) <= (existingMeta.windowConfigUpdatedAt || 0)
       && (Number(incoming.ccContextStateUpdatedAt) || 0) <= (existingMeta.ccContextStateUpdatedAt || 0)
+      && (Number(incoming.windowRoleUpdatedAt) || 0) <= (existingMeta.windowRoleUpdatedAt || 0)
     if (existingMeta && submittedMetadataIsStale && incoming.partial && (Number(incoming.updatedAt) || 0) <= existingMeta.updatedAt) {
       const header = ensureSegmentedSession(incoming.id)
       const ids = new Set(Array.isArray(header?._messageStore?.ids) ? header._messageStore.ids : [])
@@ -447,6 +456,7 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
       ...mergeConversationMode(winner, null),
       ...mergeConversationRoute(winner, null),
       ...mergeCcModel(winner, null),
+      ...mergeChatWindowRole(winner, null),
       windowConfigUpdatedAt: Math.max(0, Number(winner.windowConfigUpdatedAt) || 0),
       ccContextStateUpdatedAt: Math.max(0, Number(winner.ccContextStateUpdatedAt) || 0),
       id: winner.id,
@@ -454,6 +464,23 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
       messageCount: winner.messages?.length || 0,
       title: winner.title, pinned: !!winner.pinned, createdAt: Number(winner.createdAt) || 0,
     })
+  }
+
+  // Offline devices can promote different windows at the same time. Keep the
+  // newest promotion and durably archive the older one before publishing.
+  for (const role of ['chat', 'work'] as const) {
+    const active = Array.from(meta.values())
+      .filter(item => normalizeChatWindowRole(item.windowRole) === role)
+      .sort((a, b) => (Number(b.windowRoleUpdatedAt) || 0) - (Number(a.windowRoleUpdatedAt) || 0) || b.updatedAt - a.updatedAt)
+    const winner = active[0]
+    for (const item of active.slice(1)) {
+      const session = readChatSession(item.id) as any
+      if (!session?.id) continue
+      const now = Math.max(Date.now(), item.updatedAt + 1, (Number(winner?.windowRoleUpdatedAt) || 0) + 1)
+      const archived = { ...session, windowRole: 'archived' as const, windowRoleUpdatedAt: now, updatedAt: now }
+      writeSession(archived)
+      meta.set(item.id, sessionManifestItem(archived, item.messageCount))
+    }
   }
 
   // Apply remote deletions even when the deleted session wasn't submitted.
@@ -536,6 +563,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       ...mergeCcModel(meta, null),
       ...mergeChatWindowConfig(meta, null),
       ...mergeCcContextState(meta, null),
+      ...mergeChatWindowRole(meta, null),
     }
     const messageCount = Number(base?._messageStore?.messageCount) || (Array.isArray(base.messages) ? base.messages.length : 0)
     const messageTombstones = normalizeMessageTombstones(base.messageTombstones)
@@ -555,6 +583,7 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       ...mergeCcModel(base, meta),
       ...mergeChatWindowConfig(base, meta),
       ...mergeCcContextState(base, meta),
+      ...mergeChatWindowRole(base, meta),
       title: meta.title || base.title,
       pinned: meta.pinned !== undefined ? !!meta.pinned : !!base.pinned,
       messages: oldMeta ? undefined : [message],

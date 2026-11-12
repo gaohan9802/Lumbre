@@ -6,11 +6,14 @@ import { toolbox as toolboxApi } from '@/lib/api'
 import type { ToolCatalogItem, ToolCatalogSnapshot } from '@/lib/tool-catalog'
 import { setToolDisplayLabelOverrides } from '@/features/chat/tool-display'
 import { useTheme } from '@/lib/theme'
+import { useChatStore } from '@/lib/chatStore'
+import { normalizeChatWindowRole } from '@/lib/chat-window-role'
 
 const DOMAIN_LABELS: Record<string, string> = {
   memory: '记忆', diary: '日记', notes: '纸条与留言', photos: '照片', todo: '待办', thesis: '论文', wishes: '愿望',
   wake: '唤醒', context: '上下文', period: '经期', health: '健康与能量', mail: '邮件', web: '网页', bookmarks: '书签', coupons: '券包',
   poems: '共诗', 'intimacy-wheel': '今天怎么操', stories: '故事', research: '研究', games: '游戏', media: '书影', 'future-letter': '未来信',
+  kitchen: '小厨房',
   dictionary: '小火辞典', summaries: '摘要',
   engawa: '豹子的窗台',
 }
@@ -18,6 +21,7 @@ const DOMAIN_LABELS: Record<string, string> = {
 const RISK_LABELS = { green: '直接读取', yellow: '可写入', red: '需要确认', black: '禁止' } as const
 
 type Draft = { description: string; displayLabel: string }
+const WORK_NATIVE_TOOLS = ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent']
 
 function labelMap(snapshot: ToolCatalogSnapshot) {
   return Object.fromEntries(snapshot.tools.map(tool => [tool.name, tool.displayLabel]))
@@ -25,6 +29,7 @@ function labelMap(snapshot: ToolCatalogSnapshot) {
 
 export function ToolboxView() {
   const night = useTheme(state => state.theme === 'night')
+  const activeSession = useChatStore(state => state.settings.sessions.find(session => session.id === state.settings.activeSessionId))
   const [snapshot, setSnapshot] = useState<ToolCatalogSnapshot>({ tools: [] })
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [query, setQuery] = useState('')
@@ -53,6 +58,8 @@ export function ToolboxView() {
     return draft && (draft.description !== tool.description || draft.displayLabel !== tool.displayLabel)
   }), [drafts, snapshot.tools])
   const schemaChanges = dirty.filter(tool => drafts[tool.name]?.description !== tool.description).length
+  const workMode = normalizeChatWindowRole(activeSession?.windowRole) === 'work'
+  const workLifeTools = snapshot.tools.filter(tool => tool.risk === 'green' && !tool.conditionalRisk)
 
   const grouped = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -108,6 +115,11 @@ export function ToolboxView() {
     </div>
 
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      {workMode && <section className={`mb-4 rounded-2xl border p-4 ${night ? 'border-night-border bg-night-card' : 'chat-dialog-card'}`}>
+        <p className="text-sm font-medium">当前是工作窗</p>
+        <p className="mt-1 text-[10px] leading-5 opacity-50">生活工具固定为只读（{workLifeTools.length} 项）；原生代码工具只在隔离代码副本内开放。这里展示权限，不提供绕过窗口边界的总开关。</p>
+        <div className="mt-3 flex flex-wrap gap-1.5">{WORK_NATIVE_TOOLS.map(name => <code key={name} className="rounded-lg border border-current/10 px-2 py-1 text-[9px] opacity-65">{name}</code>)}</div>
+      </section>}
       {loading ? <div className="grid h-40 place-items-center"><Loader2 className="animate-spin opacity-35"/></div> : grouped.length === 0 ? <div className="py-16 text-center text-xs opacity-40">没有找到工具</div> : <div className="space-y-3">
         {grouped.map(([domain, tools]) => <details key={domain} open={query.trim() ? true : undefined} className={`rounded-2xl border ${night ? 'border-night-border bg-night-card' : 'chat-dialog-card'}`}>
           <summary className="cursor-pointer px-4 py-3 text-sm"><span className="font-medium">{DOMAIN_LABELS[domain] || domain}</span><span className="ml-2 text-[10px] opacity-40">{tools.length} 项</span></summary>

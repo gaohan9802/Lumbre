@@ -7,6 +7,7 @@ import { useTheme } from '@/lib/theme'
 import { chatApi, type CcStatus } from '@/features/chat/api/client'
 import type { ChatSession } from '@/features/chat/state/types'
 import { normalizeChatRoute, type ChatRoute } from '@/lib/chat-route'
+import { normalizeChatWindowRole, type ChatWindowRole } from '@/lib/chat-window-role'
 import {
   CC_EFFORTS, CC_MODELS, ccEffortsForModel, isCcEffort, isCcModel,
   normalizeCcEffortForModel, type CcEffort, type CcModelId,
@@ -43,9 +44,10 @@ export function ChatWindowSettings({
 }) {
   const { theme } = useTheme()
   const night = theme === 'night'
-  const { settings, setGenerationRoute, setCcModel, setWindowConfig, setCcContextState } = useChatStore()
+  const { settings, setWindowRole, setGenerationRoute, setCcModel, setWindowConfig, setCcContextState } = useChatStore()
   const choices = useMemo(() => getEnabledModels(settings), [settings])
   const [route, setRoute] = useState<ChatRoute>('api')
+  const [windowRole, setLocalWindowRole] = useState<ChatWindowRole>('chat')
   const [apiChoice, setApiChoice] = useState('')
   const [ccModel, setLocalCcModel] = useState<CcModelId>('claude-opus-4-6')
   const [ccEffort, setLocalCcEffort] = useState<CcEffort>('high')
@@ -66,6 +68,7 @@ export function ChatWindowSettings({
     const selectedCcModel = isCcModel(session.ccModel) ? session.ccModel : 'claude-opus-4-6'
     const selectedEffort = normalizeCcEffortForModel(selectedCcModel, config?.ccEffort || settings.ccEffort) || ccEffortsForModel(selectedCcModel)[0] || 'high'
     setRoute(normalizeChatRoute(session.generationRoute))
+    setLocalWindowRole(normalizeChatWindowRole(session.windowRole))
     setApiChoice(profile && model ? `${profile.id}\n${model}` : '')
     setLocalCcModel(selectedCcModel)
     setLocalCcEffort(selectedEffort)
@@ -80,7 +83,11 @@ export function ChatWindowSettings({
   const control = night ? 'border-night-border bg-night-card text-night-text' : 'border-[#a73a32]/15 bg-[#fffaf5] text-[#3f2c29]'
   const availableEfforts = ccEffortsForModel(ccModel)
   const contextLevel = ccContextLevel(ccStatus.context.usedPercentage)
-  const contextNotice = contextLevel === 95 ? '接近上限 · 建议现在压缩'
+  const persistedWorkMode = normalizeChatWindowRole(session.windowRole) === 'work'
+  const workPercentage = Number(ccStatus.context.usedPercentage) || 0
+  const contextNotice = persistedWorkMode && workPercentage >= 70 ? '工作窗已到 70% · 回复结束后会自动做检查点并压缩'
+    : persistedWorkMode && workPercentage >= 55 ? '工作窗已到 55% · 即将进入自动维护区间'
+    : contextLevel === 95 ? '接近上限 · 建议现在压缩'
     : contextLevel === 85 ? '建议近期压缩'
       : contextLevel === 70 ? '已进入上下文后半程' : ''
   const save = () => {
@@ -93,7 +100,8 @@ export function ChatWindowSettings({
       setError('请先选择一个 API 模型。')
       return
     }
-    setGenerationRoute(session.id, route)
+    setWindowRole(session.id, windowRole)
+    setGenerationRoute(session.id, windowRole === 'work' ? 'claude-code' : route)
     setCcModel(session.id, ccModel)
     setWindowConfig(session.id, {
       systemPrompt: independentPrompt ? prompt : undefined,
@@ -107,7 +115,13 @@ export function ChatWindowSettings({
     if (!window.confirm('压缩当前 CC 上下文？\n\n不会删除 Lumbre 聊天、摘要或记忆；失败时会恢复压缩前的 CC transcript。')) return
     setCompactState('running'); setCompactMessage('')
     try {
-      const result = await chatApi.compactCc({ session_id: session.id })
+      const result = persistedWorkMode
+        ? await fetch('/api/chat/work-maintenance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: session.id }) }).then(async response => {
+            const data = await response.json()
+            if (!response.ok) throw new Error(data?.error || '工作窗压缩失败')
+            return data
+          })
+        : await chatApi.compactCc({ session_id: session.id })
       const before = result.before?.usedTokens
       const after = result.after?.usedTokens
       setCcContextState(session.id, current => ({
@@ -132,9 +146,17 @@ export function ChatWindowSettings({
       </header>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
         <section className="space-y-2">
+          <h3 className="px-1 text-[10px] tracking-[.18em] opacity-40">窗口用途</h3>
+          <div className={`space-y-2 rounded-2xl border p-4 ${card}`}>
+            <label className="block text-xs">用途<select value={windowRole} onChange={event => { const value = event.target.value as ChatWindowRole; setLocalWindowRole(value); if (value === 'work') setRoute('claude-code') }} className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-xs outline-none ${control}`}><option value="chat">活跃聊天窗</option><option value="work">活跃工作窗</option><option value="archived">封存</option></select></label>
+            <p className="text-[10px] leading-5 opacity-50">聊天窗共享家中摘要；工作窗只保留自己的工作记录，并且生活工具只读；封存窗不参加自动摘要。改变用途时会为新的工具边界安全重建一次 CC session。</p>
+          </div>
+        </section>
+
+        <section className="space-y-2">
           <h3 className="px-1 text-[10px] tracking-[.18em] opacity-40">线路与模型</h3>
           <div className={`space-y-3 rounded-2xl border p-4 ${card}`}>
-            <label className="block text-xs">当前线路<select value={route} onChange={event => setRoute(event.target.value as ChatRoute)} className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-xs outline-none ${control}`}><option value="api">API</option><option value="claude-code">Claude Code</option></select></label>
+            <label className="block text-xs">当前线路<select value={windowRole === 'work' ? 'claude-code' : route} disabled={windowRole === 'work'} onChange={event => setRoute(event.target.value as ChatRoute)} className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-xs outline-none disabled:opacity-55 ${control}`}><option value="api">API</option><option value="claude-code">Claude Code</option></select></label>
             {route === 'api' ? <label className="block text-xs">模型<select value={apiChoice} onChange={event => setApiChoice(event.target.value)} className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-xs outline-none ${control}`}>{choices.map(({ profile, model }) => <option key={`${profile.id}:${model.id}`} value={`${profile.id}\n${model.id}`}>{profile.name} · {model.name || model.id}</option>)}</select></label> : <>
               <label className="block text-xs">模型<select value={ccModel} onChange={event => { const model = event.target.value as CcModelId; setLocalCcModel(model); setLocalCcEffort(normalizeCcEffortForModel(model, ccEffort) || ccEffortsForModel(model)[0] || 'high') }} className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-xs outline-none ${control}`}>{CC_MODELS.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
               <label className="block text-xs">推理档位<select value={availableEfforts.length ? ccEffort : ''} disabled={!availableEfforts.length} onChange={event => setLocalCcEffort(event.target.value as CcEffort)} className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-xs outline-none disabled:opacity-45 ${control}`}>{!availableEfforts.length && <option value="">该模型自动</option>}{CC_EFFORTS.filter(item => availableEfforts.includes(item.id)).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>

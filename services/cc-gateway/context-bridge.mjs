@@ -52,9 +52,9 @@ function jsonLines(messages) {
   })).join('\n')
 }
 
-function bootstrapPrompt(context, messages, reason) {
+function bootstrapPrompt(context, messages, reason, workMode = false) {
   return `[LUMBRE SESSION ${reason === 'first_cc_turn' ? 'BOOTSTRAP' : 'REBASE'}]
-The following data is the canonical Lumbre conversation supplied by the application. Continue it naturally and answer the final user message. Route labels only describe which transport produced a message; API and Claude Code messages belong to one conversation. Use only the tools exposed by the Lumbre MCP bridge. Bash, Shell, source-code, and filesystem tools are not available.
+The following data is the canonical Lumbre conversation supplied by the application. Continue it naturally and answer the final user message. Route labels only describe which transport produced a message; API and Claude Code messages belong to one conversation. ${workMode ? 'This is an isolated work window. You may use the explicitly exposed Claude Code tools inside its dedicated source workspace; Lumbre MCP tools are read-only in this window.' : 'Use only the tools exposed by the Lumbre MCP bridge. Bash, Shell, source-code, and filesystem tools are not available.'}
 
 <lumbre_memory_snapshot>
 ${context.bookmarkInjections}
@@ -93,9 +93,9 @@ function recentTurns(messages, turnCount) {
   return messages.slice(start)
 }
 
-function postCompactPrompt(context, rehydration, delta) {
+function postCompactPrompt(context, rehydration, delta, workMode = false) {
   return `[LUMBRE POST-COMPACT REHYDRATION]
-Claude Code compacted this same session during the previous successful reply. The first block below contains recent canonical turns that already happened. Use them only to restore relationship, voice, and near-term details. Do not answer them again or describe them as new messages. The second block contains genuinely new conversation entries; answer its final user message.
+Claude Code compacted this same ${workMode ? 'work' : 'chat'} session during the previous successful reply. The first block below contains recent canonical turns that already happened. Use them only to restore ${workMode ? 'the current task, decisions, files, verification state, and next step' : 'relationship, voice, and near-term details'}. Do not answer them again or describe them as new messages. The second block contains genuinely new conversation entries; answer its final user message.
 ${currentContextBlock(context, { includeMemory: true })}
 
 <lumbre_recent_history_jsonl>
@@ -137,8 +137,10 @@ export class ContextBridge {
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
     const latestCompletedIndex = attempts.findLastIndex(attempt => attempt.status === 'completed' && attempt.result?.sessionId)
     const base = latestCompletedIndex >= 0 ? attempts[latestCompletedIndex] : null
+    const workMode = input.workMode === true
     const systemDeliveryChanged = !!base && base.sessionPlan?.systemPromptMode !== SYSTEM_PROMPT_MODE
     const systemChanged = !!base && base.sessionPlan?.contextEnvelopeHashes?.system !== envelopeHashes.system
+    const workModeChanged = !!base && (base.workMode === true) !== workMode
     const laterUnsafeAttempt = latestCompletedIndex >= 0
       ? attempts.slice(latestCompletedIndex + 1).some(attempt => (
         (attempt.status === 'cancelled' && attempt.resumeSafe !== true)
@@ -178,6 +180,9 @@ export class ContextBridge {
       } else if (overlapChanged(base.sessionPlan?.contextMessageHashes, messages)) {
         mode = 'rebase'
         reason = 'history_changed'
+      } else if (workModeChanged) {
+        mode = 'rebase'
+        reason = 'window_role_changed'
       } else if (systemDeliveryChanged) {
         mode = 'rebase'
         reason = 'system_prompt_migrated'
@@ -190,7 +195,7 @@ export class ContextBridge {
         mode = 'resume'
         const routeGap = delta.some(message => message.route === 'api')
         if (base.result.compacted === true) {
-          rehydration = recentTurns(messages.slice(0, markerIndex + 1), this.rehydrateTurns)
+          rehydration = recentTurns(messages.slice(0, markerIndex + 1), workMode ? 6 : this.rehydrateTurns)
           reason = routeGap
             ? 'post_compact_rehydration_with_route_gap'
             : 'post_compact_rehydration'
@@ -204,8 +209,8 @@ export class ContextBridge {
     const selected = mode === 'resume' ? [...rehydration, ...delta] : messages
     const memoryChanged = base?.sessionPlan?.contextEnvelopeHashes?.bookmarkInjections !== envelopeHashes.bookmarkInjections
     const prompt = mode === 'resume'
-      ? (rehydration.length ? postCompactPrompt(context, rehydration, delta) : deltaPrompt(context, delta, memoryChanged))
-      : bootstrapPrompt(context, selected, reason)
+      ? (rehydration.length ? postCompactPrompt(context, rehydration, delta, workMode) : deltaPrompt(context, delta, memoryChanged))
+      : bootstrapPrompt(context, selected, reason, workMode)
     return {
       prompt,
       systemPrompt: context.system,
@@ -220,7 +225,8 @@ export class ContextBridge {
         contextEnvelopeHashes: envelopeHashes,
         submittedMessageIds: selected.map(message => message.id),
         rehydratedMessageIds: rehydration.map(message => message.id),
-        rehydrationTurnLimit: rehydration.length ? this.rehydrateTurns : null,
+        rehydrationTurnLimit: rehydration.length ? (workMode ? 6 : this.rehydrateTurns) : null,
+        workMode,
         contextMessageCount: messages.length,
       },
     }

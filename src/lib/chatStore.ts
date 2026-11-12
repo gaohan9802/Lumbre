@@ -60,6 +60,7 @@ interface ChatStore {
   createSession: () => string
   ensureSession: (id: string, title: string, activate?: boolean) => string
   setActiveSession: (id: string) => void
+  setWindowRole: (id: string, role: import('@/lib/chat-window-role').ChatWindowRole) => void
   setGenerationRoute: (id: string, route: 'api' | 'claude-code') => void
   setCcModel: (id: string, model: import('@/lib/cc-model').CcModelId) => void
   setConversationMode: (id: string, mode: 'long' | 'short') => void

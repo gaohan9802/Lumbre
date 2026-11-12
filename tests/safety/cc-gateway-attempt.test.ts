@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -9,7 +9,7 @@ import { ClaudeExecutor, classifyClaudeFailure, collectContextSnapshot } from '.
 import { GatewayRuntime } from '../../services/cc-gateway/runtime.mjs'
 import { assertGatewayDataDir } from '../../services/cc-gateway/storage.mjs'
 
-function fixtureInput(overrides: Record<string, string> = {}) {
+function fixtureInput(overrides: Record<string, any> = {}) {
   return {
     idempotencyKey: 'turn:conversation-1:message-1',
     conversationId: 'conversation-1',
@@ -388,6 +388,33 @@ test('manual compact resumes without tools and records a real compact boundary',
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('work compact preserves engineering state and keeps work mode', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-work-compact-'))
+  try {
+    const calls: any[] = []
+    const sessionId = '550e8400-e29b-41d4-a716-446655440000'
+    const runtime = new GatewayRuntime({
+      ledger: new AttemptLedger(root),
+      executor: {
+        checkpointSession: () => ({ path: '/fixture/work.jsonl', size: 1, offset: 0, tailHash: 'before' }),
+        restoreSession: () => true,
+        run: async (input: any) => {
+          calls.push(input)
+          return calls.length === 1
+            ? { text: 'work', sessionId }
+            : { text: '', sessionId, compacted: true }
+        },
+      },
+    })
+    runtime.submit(fixtureInput({ workMode: true }))
+    await runtime.waitForIdle()
+    assert.equal((await runtime.compact('conversation-1')).status, 'compacted')
+    assert.equal(calls[1].workMode, true)
+    assert.equal(calls[1].toolsEnabled, false)
+    assert.match(calls[1].prompt, /changed and relevant files, git branch and state/)
+  } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
 test('manual compact restores the transcript when the CLI does not report compaction', async () => {
@@ -784,6 +811,29 @@ console.log(JSON.stringify({ type: 'result', result: '.', session_id: '65b76b84-
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('Claude executor opens native tools only inside a mounted worktree', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-workspace-'))
+  const work = path.join(root, 'work')
+  mkdirSync(work, { recursive: true })
+  try {
+    const binary = path.join(root, 'fake-claude')
+    writeFileSync(binary, `#!/usr/bin/env node
+const fs = require('node:fs')
+fs.writeFileSync('work-observed.json', JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2) }))
+console.log(JSON.stringify({ type: 'result', result: 'ok', session_id: '550e8400-e29b-41d4-a716-446655440000' }))
+`, { mode: 0o700 })
+    chmodSync(binary, 0o700)
+    const executor = new ClaudeExecutor({ binary, workspace: root, workWorkspace: work, env: { PATH: process.env.PATH || '', HOME: root } })
+    await assert.rejects(executor.run({ prompt: 'inspect', model: 'sonnet', workMode: true }), (error: any) => error?.code === 'work_workspace_unavailable')
+    mkdirSync(path.join(work, '.git'))
+    await executor.run({ prompt: 'inspect', model: 'sonnet', workMode: true })
+    const observed = JSON.parse(readFileSync(path.join(work, 'work-observed.json'), 'utf8'))
+    assert.equal(observed.cwd, realpathSync(work))
+    assert.match(observed.args[observed.args.indexOf('--tools') + 1], /Read.*Bash.*Edit/)
+    assert.equal(observed.args.includes('mcp__lumbre__*'), false)
+  } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
 test('Claude executor rejects unsafe tool context before creating an event file', async () => {

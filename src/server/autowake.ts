@@ -31,6 +31,7 @@ import { claimPendingFireReminder, finishPendingFireReminder, processWorkingMemo
 import { isApiGenerationBusy } from './chat/generation-activity'
 import { isCcGatewayBusy, readCcStatus, warmCcSession } from './chat/cc-gateway'
 import { runSummaryArchiveMaintenance, summaryArchiveNeedsRun } from './summary-archive'
+import { runWorkSummaryMaintenance, workSummaryNeedsRun } from './work-summary'
 
 const WAKE_LEASE_MS = 8 * 60 * 1000
 const WAKE_REQUEST_TIMEOUT_MS = 2 * 60 * 1000
@@ -1039,13 +1040,15 @@ async function warmCacheTick(config: WakeConfig, now: number) {
 }
 
 async function summaryArchiveTick() {
-  if (!summaryArchiveNeedsRun() || await generationBusy()) return false
+  const homeDue = summaryArchiveNeedsRun()
+  const workDue = workSummaryNeedsRun()
+  if ((!homeDue && !workDue) || await generationBusy()) return false
   if (preCompactDiaryDue(loadWakeConfig())) return false
   const lease = acquireWakeLease()
   if (!lease) return false
   wakeInFlight = true
   try {
-    const result = await runSummaryArchiveMaintenance()
+    const result = homeDue ? await runSummaryArchiveMaintenance() : await runWorkSummaryMaintenance()
     if (result.status === 'failed') console.error('[SummaryArchive] Job failed:', result.error)
     if (result.status === 'compacted') schedulePostCompactWake(result)
     return result.status !== 'idle' && result.status !== 'not_due'

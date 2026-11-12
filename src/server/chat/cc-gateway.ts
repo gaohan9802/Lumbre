@@ -150,6 +150,7 @@ async function submitAttempt(config: CcGatewayConfig, body: any, system: string,
       effort,
       tools_enabled: body.tools_enabled !== false,
       tool_calls_allowed: body.tool_calls_allowed !== false,
+      work_mode: body.work_mode === true,
       session_action: body.cc_session_action === 'rebase' ? 'rebase' : undefined,
       context: {
         system,

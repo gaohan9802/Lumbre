@@ -1,4 +1,4 @@
-export type ToolCallSource = 'chat' | 'user-confirmed' | 'unattended-wake' | 'internal-task'
+export type ToolCallSource = 'chat' | 'work' | 'user-confirmed' | 'unattended-wake' | 'internal-task'
 
 export interface ToolCallContext {
   actorId: string

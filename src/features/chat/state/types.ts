@@ -4,6 +4,7 @@ import type { CcEffort } from '@/lib/cc-model'
 import type { SharedCard } from '@/lib/share'
 import type { MessageRequestAudit } from '@/lib/chat-receipt'
 import type { StickerRef } from '@/lib/stickers'
+import type { ChatWindowRole } from '@/lib/chat-window-role'
 
 export interface ContentBlock {
   type: 'thinking' | 'text' | 'tool_call'
@@ -147,7 +148,7 @@ export interface ChatWindowConfig {
 }
 
 export interface CcContextState {
-  warningLevel?: 85 | 95
+  warningLevel?: 55 | 70 | 85 | 95
   lastCompaction?: {
     at: number
     source: 'automatic' | 'manual'
@@ -157,6 +158,8 @@ export interface CcContextState {
 }
 
 export interface ChatSession {
+  windowRole?: ChatWindowRole
+  windowRoleUpdatedAt?: number
   generationRoute?: ChatRoute
   generationRouteUpdatedAt?: number
   ccModel?: string

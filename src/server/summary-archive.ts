@@ -3,6 +3,7 @@ import { addMadridDays, formatMadrid, madridDateKey, parseMadridDateTime } from 
 import type { ChatMessage } from '@/features/chat/state/types'
 import type { SummaryArchiveEntry, SummaryArchiveLevel, SummaryArchiveSnapshot } from '@/lib/summary-archive'
 import { isCcModel } from '@/lib/cc-model'
+import { normalizeChatWindowRole } from '@/lib/chat-window-role'
 import { loadSyncManifest, loadSyncSessions, loadSyncSessionTails } from './chat-sync'
 import { compactCcSession, createCcArchiveSummary, readCcStatus } from './chat/cc-gateway'
 import { readSummaryArchiveData, updateSummaryArchiveData } from './data/repositories/summary-archive'
@@ -102,10 +103,14 @@ function daysBetween(start: string, end: string) {
   return days
 }
 
+export function isHouseholdSummarySession(session: any) {
+  return normalizeChatWindowRole(session?.windowRole) === 'chat' && session?.summaryConfig?.autoEnabled !== false
+}
+
 function enabledSessions() {
   const manifest = loadSyncManifest()
   return loadSyncSessions(manifest.sessions.map(session => session.id))
-    .filter(session => session?.summaryConfig?.autoEnabled !== false)
+    .filter(isHouseholdSummarySession)
 }
 
 function roundsForSession(session: any): ArchiveRound[] {
@@ -448,15 +453,15 @@ export function summaryArchiveSnapshot() {
   return { ...archive, status: { ...archive.status, running: false }, entries: [...archive.entries].sort((a, b) => b.startAt - a.startAt || b.id.localeCompare(a.id)) }
 }
 
-export function summaryArchiveContext(sessionId?: string) {
+export function summaryArchiveContext(sessionId?: string, mode: 'chat' | 'work' = 'chat') {
   const archive = readSummaryArchiveData()
-  const daily = archive.entries.filter(entry => entry.level === 'daily').sort((a, b) => b.endAt - a.endAt).slice(0, 3).reverse()
+  const daily = archive.entries.filter(entry => entry.level === 'daily').sort((a, b) => b.endAt - a.endAt).slice(0, mode === 'work' ? 1 : 3).reverse()
   const weekly = archive.entries.filter(entry => entry.level === 'weekly').sort((a, b) => b.endAt - a.endAt).slice(0, 1)
   let dailyText = daily.map((entry, index) => `每日摘要${index + 1}（${formatMadrid(entry.startAt, false)}—${formatMadrid(entry.endAt, false)}）\n${entry.content}`)
   let weeklyText = weekly.map(entry => `阶段摘要（${formatMadrid(entry.startAt, false)}—${formatMadrid(entry.endAt, false)}）\n${entry.title || ''}\n${entry.content}`)
   if (sessionId && (!dailyText.length || !weeklyText.length)) {
     const session = loadSyncSessionTails([sessionId], 1)[0]
-    if (!dailyText.length) dailyText = [...(session?.summaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, 3).reverse()
+    if (!dailyText.length) dailyText = [...(session?.summaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, mode === 'work' ? 1 : 3).reverse()
       .map((entry: any, index: number) => `旧每日摘要${index + 1}（${formatMadrid(entry.startAt, false)}—${formatMadrid(entry.endAt, false)}）\n${entry.eventSummary || ''}`)
     if (!weeklyText.length) weeklyText = [...(session?.stageSummaries || [])].sort((a: any, b: any) => Number(b.endAt) - Number(a.endAt)).slice(0, 1)
       .map((entry: any) => `旧阶段摘要（${formatMadrid(entry.startAt, false)}—${formatMadrid(entry.endAt, false)}）\n${entry.title || ''}\n${entry.content || ''}`)

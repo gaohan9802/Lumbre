@@ -1,0 +1,12 @@
+munch-kitchenette 0.1.0 is installed from:
+https://github.com/tsuru0805/munch-kitchenette
+Pinned source commit: 1ab91f4b2a1c7010b89250e87beb9225fa9f0f20
+
+Required Notice: Copyright (c) 2026 tsuru0805 (晚晚)
+Required Notice: Commercial use requires a separate written license from tsuru0805. Contact https://github.com/tsuru0805.
+
+The software is used under PolyForm Noncommercial 1.0.0. Its kitchen-page
+material is CC BY-NC 4.0. The bundled Clawd artwork is CC BY-NC-SA 4.0 and is
+an unofficial fan work, not affiliated with or endorsed by Anthropic. Full
+license and third-party notices are copied into
+/usr/share/doc/munch-kitchenette/upstream in the service image.

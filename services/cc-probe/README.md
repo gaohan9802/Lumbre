@@ -7,7 +7,7 @@
 - 镜像只复制本目录的探针文件，不复制 Lumbre 源码、聊天数据、环境文件或 `/persistent`。
 - 容器使用非 root 用户，在空的 `/probe/workspace` 中运行。
 - CLI 固定为 `2.1.321`，关闭自动更新。
-- 每次调用都传 `--tools ""`、`--permission-mode dontAsk`、`--strict-mcp-config` 和空 MCP 配置；系统级策略再拒绝文件、Shell、网络搜索与子代理工具。
+- 每次调用都传 `--tools ""`、`--permission-mode dontAsk`、`--strict-mcp-config` 和空 MCP 配置，因此探针不暴露文件、Shell、网络搜索或子代理工具。
 - 子进程环境使用白名单，只允许系统运行字段和 `CLAUDE_CODE_OAUTH_TOKEN`。`ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`DATA_DIR` 与 Lumbre 密钥不会传入。
 - 报告不输出 OAuth token、完整 session id 或模型回复，只输出测试结果、session 指纹和 token 计数。
 

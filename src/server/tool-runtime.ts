@@ -59,6 +59,7 @@ import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, create
 import { executeCedarToyTool } from './cedartoy'
 import { ENGAWA_TOOL_NAMES, executeEngawaTool } from './engawa'
 import { writeEngawaLine } from './engawa-history-store'
+import { executeKitchenetteTool } from './kitchenette'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -98,6 +99,9 @@ export async function executeRegisteredToolHandler(
     }
 
     if (name.startsWith('cedar_')) return await executeCedarToyTool(name, input)
+    if (['kitchen_cook', 'kitchen_status', 'kitchen_cancel', 'kitchen_toss', 'kitchen_buy', 'eat', 'read_menu', 'snack_eat', 'kitchen_notes'].includes(name)) {
+      return await executeKitchenetteTool(name, input)
+    }
     if (name === 'write_windowsill_line') return JSON.stringify({ ok: true, line: writeEngawaLine(input.text) })
     if (ENGAWA_TOOL_NAMES.includes(name as typeof ENGAWA_TOOL_NAMES[number])) return await executeEngawaTool(name, input, true)
 

@@ -2,18 +2,13 @@
   "permissions": {
     "defaultMode": "dontAsk",
     "disableBypassPermissionsMode": "disable",
-    "deny": [
-      "Agent",
-      "Bash",
-      "Edit",
-      "Glob",
-      "Grep",
-      "NotebookEdit",
-      "Read",
-      "WebFetch",
-      "WebSearch",
-      "Write"
-    ]
+    "blockReadsOutsideWorkingDirectories": true,
+    "blockWritesOutsideWorkingDirectories": true
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false
   }
 }
 

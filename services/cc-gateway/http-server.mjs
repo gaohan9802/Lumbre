@@ -125,6 +125,7 @@ export function createGatewayServer({ runtime, secret, claudeCodeVersion, heartb
           unattended: body.unattended === true,
           toolsEnabled: body.tools_enabled !== false,
           toolCallsAllowed: body.tool_calls_allowed !== false,
+          workMode: body.work_mode === true,
         })
         return json(response, result.reused ? 200 : 202, result)
       }

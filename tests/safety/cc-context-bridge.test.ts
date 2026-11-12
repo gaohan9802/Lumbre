@@ -80,6 +80,37 @@ test('a confirmed compact resumes the same session and rehydrates only recent ca
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
+test('work compaction rehydrates six task turns and changing window role rebases', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-work-'))
+  try {
+    const ledger = new AttemptLedger(root)
+    const bridge = new ContextBridge(ledger)
+    const history = []
+    for (let index = 1; index <= 8; index++) {
+      history.push({ id: `u${index}`, role: 'user', route: 'claude-code', content: `task ${index}` })
+      if (index < 8) history.push({ id: `a${index}`, role: 'assistant', route: 'claude-code', content: `result ${index}` })
+    }
+    const first = complete(ledger, bridge, {
+      idempotencyKey: 'work-1', conversationId: 'work-conversation', model: 'sonnet', workMode: true,
+      context: context(history),
+    }, undefined, { compacted: true })
+    const messages = [
+      ...history,
+      { id: 'a8', role: 'assistant', route: 'claude-code', ccAttemptId: first.attempt.id, content: 'result 8' },
+      { id: 'u9', role: 'user', route: 'claude-code', content: 'next task' },
+    ]
+    const resumed = bridge.prepare({ conversationId: 'work-conversation', workMode: true, context: context(messages) })
+    assert.equal(resumed.sessionPlan.mode, 'resume')
+    assert.equal(resumed.sessionPlan.rehydrationTurnLimit, 6)
+    assert.deepEqual(resumed.sessionPlan.rehydratedMessageIds.slice(0, 2), ['u3', 'a3'])
+    assert.match(resumed.prompt, /current task, decisions, files, verification state, and next step/)
+
+    const changed = bridge.prepare({ conversationId: 'work-conversation', workMode: false, context: context(messages) })
+    assert.equal(changed.sessionPlan.mode, 'rebase')
+    assert.equal(changed.sessionPlan.reason, 'window_role_changed')
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
 test('API route gaps are sent as a delta while the same CC session is resumed', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-gap-'))
   try {

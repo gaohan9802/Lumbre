@@ -29,6 +29,7 @@ interface Props {
   onFavorites?: () => void
   onGames?: () => void
   onEngawa?: () => void
+  onKitchen?: () => void
 }
 
 export function ChatSettings(props: Props) {
@@ -141,7 +142,7 @@ export function ChatSettings(props: Props) {
           </section>
           <section className="chat-room-card px-3 pb-2 pt-5">
             <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">TOGETHER</h3>
-            <div className="grid grid-cols-2">{room('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}{room('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}{room('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}{room('小游戏', () => navigate(props.onGames))}{room('豹子的窗台', () => openRoom('engawa', props.onEngawa), roomUnread.engawa)}</div>
+            <div className="grid grid-cols-2">{room('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}{room('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}{room('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}{room('小游戏', () => navigate(props.onGames))}{room('小厨房', () => navigate(props.onKitchen))}{room('豹子的窗台', () => openRoom('engawa', props.onEngawa), roomUnread.engawa)}</div>
           </section>
         </>}
         {panel === 'star' && <>

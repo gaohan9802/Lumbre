@@ -48,13 +48,16 @@ try {
   const dataDir = assertGatewayDataDir(process.env.CC_GATEWAY_DATA_DIR || '/gateway-data')
   const { binary: claudeBinary, version: claudeCodeVersion } = resolveClaudeBinary({ dataDir })
   const workspace = path.resolve(process.env.CC_GATEWAY_WORKSPACE || '/gateway-workspace')
+  const workWorkspace = path.resolve(process.env.CC_GATEWAY_CODE_WORKSPACE || '/workspaces/lumbre')
   const claudeHome = path.resolve(process.env.CC_GATEWAY_CLAUDE_HOME || path.join(dataDir, 'claude-home'))
   fs.mkdirSync(workspace, { recursive: true, mode: 0o700 })
+  fs.mkdirSync(workWorkspace, { recursive: true, mode: 0o700 })
   fs.mkdirSync(claudeHome, { recursive: true, mode: 0o700 })
   const ledger = new AttemptLedger(dataDir)
   const executor = new ClaudeExecutor({
     binary: claudeBinary,
     workspace,
+    workWorkspace,
     env: { ...process.env, HOME: claudeHome },
     timeoutMs: positiveInteger('CC_GATEWAY_TIMEOUT_MS', 180_000),
     maxOutputBytes: positiveInteger('CC_GATEWAY_MAX_OUTPUT_BYTES', 4 * 1024 * 1024),

@@ -200,6 +200,7 @@ export class GatewayRuntime {
         unattended: running.unattended === true,
         toolsEnabled: running.toolsEnabled !== false,
         toolCallsAllowed: running.toolCallsAllowed !== false,
+        workMode: running.workMode === true,
         signal: controller.signal,
         onText: content => {
           const updated = this.ledger.appendText(id, content)
@@ -289,6 +290,7 @@ export class GatewayRuntime {
         forkSession: true,
         toolsEnabled: false,
         cacheWarm: true,
+        workMode: base.workMode === true,
         conversationId,
         signal: controller.signal,
       })
@@ -342,11 +344,14 @@ export class GatewayRuntime {
     this.compactController = controller
     try {
       const result = await this.executor.run({
-        prompt: '/compact Preserve relationship context, identity, durable decisions, promises, unresolved tasks, and recent conversational tone.',
+        prompt: base.workMode === true
+          ? '/compact Preserve the current task, user intent, decisions and reasons, changed and relevant files, git branch and state, commands and tool results, tests and verification, deployment state, failures, unresolved risks, and the exact next step. Drop conversational repetition and obsolete exploration.'
+          : '/compact Preserve relationship context, identity, durable decisions, promises, unresolved tasks, and recent conversational tone.',
         model: base.model,
         effort: base.effort || undefined,
         resumeSessionId: base.result.sessionId,
         toolsEnabled: false,
+        workMode: base.workMode === true,
         conversationId,
         signal: controller.signal,
       })

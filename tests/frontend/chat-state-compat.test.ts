@@ -21,6 +21,9 @@ test('legacy browser chat state upgrades without losing messages, summaries, boo
           { id: 'm2', role: 'assistant', content: 'old reply', timestamp: 20 },
         ],
         summaries: [{ id: 'old-summary', overview: 'old summary text', createdAt: 30 }],
+      }, {
+        id: 'legacy-archived', title: 'old window', createdAt: 1, updatedAt: 25,
+        messages: [{ id: 'old-window-message', role: 'user', content: 'old window', timestamp: 25 }],
       }],
       bookmarks: [{ id: 'b1', name: 'keep me', keywords: ['old'], content: 'bookmark body', position: 'start', scanDepth: 10, priority: 2, alwaysOn: false, enabled: true }],
       summaryTurnSize: 30,
@@ -35,9 +38,29 @@ test('legacy browser chat state upgrades without losing messages, summaries, boo
   assert.equal(migrated.settings.contextLength, 88)
   assert.equal(migrated.settings.sessions[0].messages[0].content, 'old hello')
   assert.equal(migrated.settings.sessions[0].summaries[0].eventSummary, 'old summary text')
+  assert.equal(migrated.settings.sessions[0].windowRole, 'chat')
+  assert.equal(migrated.settings.sessions[1].windowRole, 'archived')
+  assert.equal(migrated.settings.sessions[1].windowRoleUpdatedAt, 25)
   assert.equal(migrated.settings.bookmarks[0].content, 'bookmark body')
   assert.equal(migrated.settings.summaryTurnSize, 30)
   store.completeLegacyModelCredentialMigration(['legacy-profile'])
+})
+
+test('one active chat and one active work window are enforced locally', async () => {
+  const { useChatStore } = await import('../../src/lib/chatStore')
+  const original = useChatStore.getState()
+  try {
+    const session = (id: string, windowRole: 'chat' | 'work' | 'archived') => ({ id, windowRole, windowRoleUpdatedAt: 1, title: id, pinned: false, createdAt: 1, updatedAt: 1, messages: [] })
+    useChatStore.setState({ settings: { ...original.settings, activeSessionId: 'chat-a', sessions: [session('chat-a', 'chat'), session('chat-b', 'archived'), session('work-a', 'work'), session('work-b', 'archived')] }, messages: [] })
+    useChatStore.getState().setWindowRole('chat-b', 'chat')
+    useChatStore.getState().setWindowRole('work-b', 'work')
+    const sessions = useChatStore.getState().settings.sessions
+    assert.deepEqual(sessions.filter(item => item.windowRole === 'chat').map(item => item.id), ['chat-b'])
+    assert.deepEqual(sessions.filter(item => item.windowRole === 'work').map(item => item.id), ['work-b'])
+    assert.equal(sessions.find(item => item.id === 'work-b')?.generationRoute, 'claude-code')
+  } finally {
+    useChatStore.setState(original)
+  }
 })
 
 test('switching sessions never sends a message into the previous conversation', async () => {

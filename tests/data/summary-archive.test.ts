@@ -49,6 +49,20 @@ test('archive context injects only the latest three daily cards and one stage ca
   assert.doesNotMatch(context, /monthly-1/)
 })
 
+test('work context receives one recent household day plus the stage card', () => {
+  const context = archive.summaryArchiveContext('work-session', 'work')
+  assert.doesNotMatch(context, /daily-4/)
+  assert.match(context, /daily-nov/)
+  assert.match(context, /weekly-1/)
+})
+
+test('household summaries accept chat windows only', () => {
+  assert.equal(archive.isHouseholdSummarySession({ windowRole: 'chat' }), true)
+  assert.equal(archive.isHouseholdSummarySession({ windowRole: 'work' }), false)
+  assert.equal(archive.isHouseholdSummarySession({ windowRole: 'archived' }), false)
+  assert.equal(archive.isHouseholdSummarySession({ windowRole: 'chat', summaryConfig: { autoEnabled: false } }), false)
+})
+
 test('month filters include the whole month and exclude the next one', () => {
   const results = archive.searchSummaryArchive({ level: 'daily', from: '2026-10', to: '2026-10' })
   assert.deepEqual(results.map(item => item.id), ['daily-4', 'daily-3', 'daily-2', 'daily-1'])

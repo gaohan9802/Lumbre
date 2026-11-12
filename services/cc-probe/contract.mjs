@@ -5,6 +5,7 @@ export const DEFAULT_TIMEOUT_MS = 180_000
 export const DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+export const WORK_BUILTIN_TOOLS = ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent']
 
 const SAFE_ENV_NAMES = [
   'PATH',
@@ -22,6 +23,7 @@ const SAFE_ENV_NAMES = [
   'HTTP_PROXY',
   'NO_PROXY',
   'CLAUDE_CODE_OAUTH_TOKEN',
+  'CLAUDE_CODE_SUBPROCESS_ENV_SCRUB',
 ]
 
 /**
@@ -53,6 +55,7 @@ export function buildProbeEnvironment(source = process.env) {
  * @property {boolean} [forkSession]
  * @property {string} [mcpConfig]
  * @property {string[]} [allowedTools]
+ * @property {string[]} [tools]
  * @property {number} [maxTurns]
  * @property {string} [systemPrompt]
  */
@@ -66,6 +69,7 @@ export function buildClaudeArgs({
   forkSession = false,
   mcpConfig = '{"mcpServers":{}}',
   allowedTools = [],
+  tools = [],
   maxTurns = 1,
   systemPrompt,
 } = {}) {
@@ -81,8 +85,11 @@ export function buildClaudeArgs({
   if (typeof mcpConfig !== 'string' || !mcpConfig.trim()) throw new Error('MCP config must be a JSON string')
   try { JSON.parse(mcpConfig) } catch { throw new Error('MCP config must be valid JSON') }
   if (!Number.isSafeInteger(maxTurns) || maxTurns < 1 || maxTurns > 30) throw new Error('maxTurns must be between 1 and 30')
-  if (!Array.isArray(allowedTools) || allowedTools.some(name => typeof name !== 'string' || !/^mcp__[A-Za-z0-9_-]+__(?:\*|[A-Za-z0-9_-]+)$/.test(name))) {
-    throw new Error('Only explicit MCP allowed tools are accepted')
+  if (!Array.isArray(tools) || tools.some(name => !WORK_BUILTIN_TOOLS.includes(name))) {
+    throw new Error('Only reviewed built-in tools are accepted')
+  }
+  if (!Array.isArray(allowedTools) || allowedTools.some(name => typeof name !== 'string' || (!WORK_BUILTIN_TOOLS.includes(name) && !/^mcp__[A-Za-z0-9_-]+__(?:\*|[A-Za-z0-9_-]+)$/.test(name)))) {
+    throw new Error('Only reviewed built-in or explicit MCP allowed tools are accepted')
   }
   if (effort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) {
     throw new Error('Unsupported Claude effort level')
@@ -93,7 +100,7 @@ export function buildClaudeArgs({
 
   const args = [
     '-p',
-    '--tools', '',
+    '--tools', tools.join(','),
     '--permission-mode', 'dontAsk',
     '--no-chrome',
     '--strict-mcp-config',

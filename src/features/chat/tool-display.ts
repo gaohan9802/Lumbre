@@ -141,6 +141,15 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   hobby_add: '往爱好角落添了新主题',
   hobby_remove: '从爱好角落移走了一个主题',
   write_windowsill_line: '在窗台书签上写了一句话',
+  kitchen_cook: '在小厨房开了火',
+  kitchen_status: '看了看小厨房',
+  kitchen_cancel: '给一锅菜关了火',
+  kitchen_toss: '收拾了小厨房',
+  kitchen_buy: '去买了菜',
+  eat: '吃了点东西',
+  read_menu: '翻了翻小厨房菜单',
+  snack_eat: '拿了一份零食',
+  kitchen_notes: '看了看厨房留言',
 }
 
 let toolDisplayOverrides: Record<string, string> = {}

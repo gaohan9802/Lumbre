@@ -22,6 +22,7 @@ import { ModelDialog } from './ModelDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { SummaryDialog } from './SummaryDialog'
 import { ChatWindowSettings } from './ChatWindowSettings'
+import { normalizeChatWindowRole } from '@/lib/chat-window-role'
 import { MessageReceiptDialog } from './MessageReceiptDialog'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid, madridDateKey, madridDayBounds } from '@/lib/madrid-time'
@@ -70,9 +71,10 @@ const FireDictionaryView = dynamic(() => import('@/components/dictionary/FireDic
 const ToolboxView = dynamic(() => import('@/components/tools/ToolboxView').then(module => module.ToolboxView), { ssr: false })
 const CedarToyView = dynamic(() => import('@/components/games/CedarToyView').then(module => module.CedarToyView), { ssr: false })
 const EngawaView = dynamic(() => import('@/components/engawa/EngawaView').then(module => module.EngawaView), { ssr: false })
+const KitchenetteView = dynamic(() => import('@/components/kitchen/KitchenetteView').then(module => module.KitchenetteView), { ssr: false })
 
-type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'future' | 'dictionary' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'energy' | 'tesis' | 'toolbox' | 'games' | 'engawa'
-const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', future: '醒来以后', dictionary: '小火辞典', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', energy: '能量手账', tesis: 'Tesis', toolbox: '工具箱', games: '小游戏', engawa: '豹子的窗台' }
+type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'future' | 'dictionary' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'energy' | 'tesis' | 'toolbox' | 'games' | 'engawa' | 'kitchen'
+const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', future: '醒来以后', dictionary: '小火辞典', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', energy: '能量手账', tesis: 'Tesis', toolbox: '工具箱', games: '小游戏', engawa: '豹子的窗台', kitchen: '小厨房' }
 
 interface FavoriteSourceItem {
   kind: 'memory' | 'diary' | 'chat'
@@ -206,7 +208,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   const [chatSettingsPanel, setChatSettingsPanel] = useState<ChatSettingsPanel>('menu')
   const [ccRefreshing, setCcRefreshing] = useState(false)
   const [windowSettingsOpen, setWindowSettingsOpen] = useState(false)
-  const [contextWarning, setContextWarning] = useState<{ sessionId: string; level: 85 | 95 } | null>(null)
+  const [contextWarning, setContextWarning] = useState<{ sessionId: string; level: 55 | 70 | 85 | 95 } | null>(null)
   const [sessionActionsId, setSessionActionsId] = useState<string | null>(null)
   const [wakeDetailSessionId, setWakeDetailSessionId] = useState<string | null>(null)
   const sessionActionsRef = useRef<HTMLDivElement | null>(null)
@@ -440,10 +442,24 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   }, [activeRoute, ccStatus.available, ccStatus.quota.available, refreshCcStatus])
   useEffect(() => {
     if (!activeSession?.id || activeRoute !== 'claude-code' || !ccStatus.context.available) return
+    const workMode = normalizeChatWindowRole(activeSession.windowRole) === 'work'
+    const percentage = Number(ccStatus.context.usedPercentage) || 0
     const level = ccContextLevel(ccStatus.context.usedPercentage)
     const seen = activeSession.ccContextState?.warningLevel || 0
     const justCompacted = Date.now() - Number(activeSession.ccContextState?.lastCompaction?.at || 0) < 15_000
     if (justCompacted) return
+    if (workMode) {
+      const workLevel = percentage >= 70 ? 70 : percentage >= 55 ? 55 : 0
+      if (!workLevel) {
+        if (seen) setCcContextState(activeSession.id, current => ({ ...current, warningLevel: undefined }))
+        return
+      }
+      if (workLevel > seen) {
+        setContextWarning({ sessionId: activeSession.id, level: workLevel })
+        setCcContextState(activeSession.id, current => ({ ...current, warningLevel: workLevel }))
+      }
+      return
+    }
     if (level < 70) {
       if (seen) setCcContextState(activeSession.id, current => ({ ...current, warningLevel: undefined }))
       return
@@ -474,6 +490,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
   // stale/blank draft left active by an earlier reload or another device.
   useEffect(() => {
     const latest = settings.sessions
+      .filter((session) => normalizeChatWindowRole(session.windowRole) !== 'archived')
       .filter((session) => !((session.messageCount || session.messages.length) === 0 && !session.pinned))
       .sort((a, b) => b.updatedAt - a.updatedAt)[0]
     if (latest && latest.id !== settings.activeSessionId) setActiveSession(latest.id)
@@ -692,7 +709,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     const ccContextBeforeTokens = route === 'claude-code' && ccStatus.context.available
       ? ccStatus.context.usedTokens
       : undefined
-    const onDone = (data: any) => {
+    const onDone = async (data: any) => {
       if (data.ccCompacted && activeSession?.id) {
         setContextWarning(null)
         setCcContextState(activeSession.id, current => ({
@@ -706,12 +723,36 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           },
         }))
       }
-      return onResult({
+      await onResult({
         ...data,
         replyMode: 'long',
         content_blocks: data.content_blocks?.map((block: ContentBlock) => ({ ...block })),
         bubbleLayout: undefined,
       })
+      const workMode = normalizeChatWindowRole(activeSession?.windowRole) === 'work'
+      if (workMode && activeSession?.id && !data.error && Number(data.ccContextAfterPercentage) >= 70) {
+        try {
+          const response = await fetch('/api/chat/work-maintenance', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: activeSession.id }),
+          })
+          const result = await response.json()
+          if (!response.ok) throw new Error(result?.error || '工作窗自动维护失败')
+          setContextWarning(null)
+          setCcContextState(activeSession.id, current => ({
+            ...current,
+            warningLevel: undefined,
+            lastCompaction: {
+              at: Date.now(), source: 'automatic',
+              beforeTokens: data.ccContextAfterTokens,
+              afterTokens: result?.after?.usedTokens,
+            },
+          }))
+          void refreshCcStatus(false)
+        } catch {
+          setContextWarning({ sessionId: activeSession.id, level: 70 })
+          setCcContextState(activeSession.id, current => ({ ...current, warningLevel: 70 }))
+        }
+      }
     }
     const profile = activeApiProfile
     const model = activeApiModel
@@ -760,6 +801,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     let ccSessionFingerprint: string | undefined
     let ccCompacted: boolean | undefined
     let ccContextAfterTokens: number | undefined
+    let ccContextAfterPercentage: number | undefined
     let paintTimer: ReturnType<typeof setTimeout> | null = null
     const paintStream = () => {
       paintTimer = null
@@ -905,6 +947,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           ccSessionReason = typeof evt.session_reason === 'string' ? evt.session_reason : ccSessionReason
           ccCompacted = typeof evt.compacted === 'boolean' ? evt.compacted : ccCompacted
           ccContextAfterTokens = Number.isFinite(evt.context?.usedTokens) ? Number(evt.context?.usedTokens) : ccContextAfterTokens
+          ccContextAfterPercentage = Number.isFinite(evt.context?.usedPercentage) ? Number(evt.context?.usedPercentage) : ccContextAfterPercentage
         }
       }
       if (paintTimer) clearTimeout(paintTimer)
@@ -925,6 +968,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
         ccSessionReason,
         ccCompacted,
         ccContextAfterTokens,
+        ccContextAfterPercentage,
         ccModelId: typeof usage.model === 'string' ? usage.model : undefined,
       })
       if (route === 'claude-code') void refreshCcStatus()
@@ -968,6 +1012,8 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       await chatApi.appendMessage(session.id, message, {
         title: session.title, pinned: session.pinned, createdAt: session.createdAt,
         summaryConfig: session.summaryConfig,
+        windowRole: session.windowRole,
+        windowRoleUpdatedAt: session.windowRoleUpdatedAt,
         generationRoute: session.generationRoute,
         generationRouteUpdatedAt: session.generationRouteUpdatedAt,
         ccModel: session.ccModel,
@@ -985,6 +1031,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   const sendMessage = async () => {
     if ((!input.trim() && pendingImages.length === 0 && pendingAttachments.length === 0 && !pendingShare && !pendingSticker) || isLoading) return
+    if (normalizeChatWindowRole(activeSession?.windowRole) === 'archived') {
+      window.alert('这个窗口已经封存。请先在本窗设置里把它设为活跃聊天窗或工作窗。')
+      setWindowSettingsOpen(true)
+      return
+    }
     if (activeRoute === 'claude-code') void ensureCcAvailable(activeRoute, false)
     const profile = activeApiProfile
     const model = activeApiModel
@@ -1078,6 +1129,11 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
 
   const retryMessage = async (msg: ChatMessage, skipConfirm = false, recoverPending = false) => {
     if (isLoading) return
+    if (normalizeChatWindowRole(activeSession?.windowRole) === 'archived') {
+      window.alert('这个窗口已经封存。请先恢复窗口用途，再重新生成。')
+      setWindowSettingsOpen(true)
+      return
+    }
     const retryRoute = normalizeChatRoute(msg.route)
     if (!skipConfirm) {
       const ok = await ask(msg.role === 'assistant' ? '重新生成这条回复？' : '重新发送并生成回复？')
@@ -1373,6 +1429,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       {active && <span aria-hidden="true" className="chat-session-orange-dot h-2 w-2 shrink-0 rounded-full" />}
                       {s.pinned && <Pin size={11} className="chat-theme-accent" />}
                       {s.title}
+                      <span className="shrink-0 rounded-full border border-current/15 px-1.5 py-0.5 text-[8px] font-normal opacity-45">{normalizeChatWindowRole(s.windowRole) === 'work' ? '工作' : normalizeChatWindowRole(s.windowRole) === 'archived' ? '封存' : '聊天'}</span>
                     </div>
                   )}
                   <div className="chat-session-mono mt-1.5 flex justify-between text-[10px] opacity-40">
@@ -1503,7 +1560,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           <AnimatePresence>
             {visibleContextWarning && <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="mx-4 mb-1 flex items-center gap-2">
               <button type="button" onClick={() => { setContextWarning(null); setWindowSettingsOpen(true) }} className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-left text-[11px] ${visibleContextWarning.level === 95 ? 'border-red-500/35 bg-red-500/10 text-red-600' : n ? 'border-amber-400/25 bg-amber-400/10 text-amber-300' : 'border-amber-600/20 bg-amber-50 text-amber-700'}`}>
-                上下文 {Math.round(ccStatus.context.usedPercentage || visibleContextWarning.level)}% · {visibleContextWarning.level === 95 ? '建议现在压缩' : '建议近期压缩'} <span className="ml-1 underline underline-offset-2">查看</span>
+                上下文 {Math.round(ccStatus.context.usedPercentage || visibleContextWarning.level)}% · {normalizeChatWindowRole(activeSession?.windowRole) === 'work' ? visibleContextWarning.level >= 70 ? '回复结束后自动维护' : '接近工作窗维护线' : visibleContextWarning.level === 95 ? '建议现在压缩' : '建议近期压缩'} <span className="ml-1 underline underline-offset-2">查看</span>
               </button>
               <button type="button" aria-label="关闭上下文预警" onClick={() => setContextWarning(null)} className="rounded-full p-1.5 opacity-45"><X size={14}/></button>
             </motion.div>}
@@ -2010,7 +2067,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <header className="flex justify-end px-3 py-1">
                     <button type="button" aria-label="关闭" onClick={() => setRoomPanel(null)} className="rounded-full p-2 opacity-55 hover:opacity-100"><X size={18}/></button>
                   </header>
-                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'future' ? <FutureLetterView /> : roomPanel === 'dictionary' ? <FireDictionaryView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" sessionId={wakeDetailSessionId || activeSession?.id} /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'toolbox' ? <ToolboxView /> : roomPanel === 'games' ? <CedarToyView /> : roomPanel === 'engawa' ? <EngawaView /> : <TesisView />}</div>
+                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'future' ? <FutureLetterView /> : roomPanel === 'dictionary' ? <FireDictionaryView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" sessionId={wakeDetailSessionId || activeSession?.id} /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'toolbox' ? <ToolboxView /> : roomPanel === 'games' ? <CedarToyView /> : roomPanel === 'engawa' ? <EngawaView /> : roomPanel === 'kitchen' ? <KitchenetteView onClose={() => setRoomPanel(null)} /> : <TesisView />}</div>
                 </motion.section>
               </>
             )}
@@ -2035,7 +2092,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFutureLetter={() => setRoomPanel('future')} onDictionary={() => setRoomPanel('dictionary')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onMedia={() => setRoomPanel('media')} onEnergy={() => setRoomPanel('energy')} onTesis={() => setRoomPanel('tesis')} onGames={() => setRoomPanel('games')} onEngawa={() => setRoomPanel('engawa')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFutureLetter={() => setRoomPanel('future')} onDictionary={() => setRoomPanel('dictionary')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onMedia={() => setRoomPanel('media')} onEnergy={() => setRoomPanel('energy')} onTesis={() => setRoomPanel('tesis')} onGames={() => setRoomPanel('games')} onEngawa={() => setRoomPanel('engawa')} onKitchen={() => setRoomPanel('kitchen')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />

@@ -1,6 +1,8 @@
 *
 !Dockerfile.lumbre-cc-gateway-preview
 !Dockerfile.pencil-worker
+!Dockerfile.munch-kitchenette
+!munch-kitchenette.NOTICE
 !cc-probe/
 !cc-probe/contract.mjs
 !cc-probe/managed-settings.json

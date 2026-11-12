@@ -24,7 +24,7 @@ export function normalizeCcContextState(value: unknown): CcContextState | undefi
   if (!value || typeof value !== 'object') return undefined
   const input = value as Record<string, unknown>
   const rawWarning = input.warningLevel ?? input.ccContextWarningLevel
-  const warningLevel = rawWarning === 85 || rawWarning === 95 ? rawWarning : undefined
+  const warningLevel = rawWarning === 55 || rawWarning === 70 || rawWarning === 85 || rawWarning === 95 ? rawWarning : undefined
   const rawCompactionValue = input.lastCompaction ?? input.lastCcCompaction
   const rawCompaction = rawCompactionValue && typeof rawCompactionValue === 'object'
     ? rawCompactionValue as Record<string, unknown>

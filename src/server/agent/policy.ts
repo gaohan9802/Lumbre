@@ -14,6 +14,10 @@ export function evaluateToolPolicy(
   const level = resolveToolRisk(tool, input)
   if (level === 'black') return { allowed: false, level, reason: 'Black-level operations are never allowed' }
 
+  if (context.source === 'work' && (level !== 'green' || tool.level !== 'green' || !!tool.resolveLevel)) {
+    return { allowed: false, level, reason: 'Work windows may only use strictly read-only life tools' }
+  }
+
   if (!tool.allowedSources.includes(context.source)) {
     return {
       allowed: false,

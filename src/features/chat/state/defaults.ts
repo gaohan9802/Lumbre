@@ -60,6 +60,8 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   activeSessionId: defaultSessionId,
   sessions: [{
     id: defaultSessionId,
+    windowRole: 'chat',
+    windowRoleUpdatedAt: 0,
     title: '新的对话',
     messages: [],
     generationRoute: DEFAULT_CHAT_ROUTE,

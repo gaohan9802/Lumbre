@@ -49,6 +49,9 @@ function validateCreateInput(input) {
   if (input.toolCallsAllowed !== undefined && typeof input.toolCallsAllowed !== 'boolean') {
     throw new AttemptValidationError('toolCallsAllowed must be a boolean')
   }
+  if (input.workMode !== undefined && typeof input.workMode !== 'boolean') {
+    throw new AttemptValidationError('workMode must be a boolean')
+  }
 }
 
 function publicEvent(event) {
@@ -146,6 +149,7 @@ export class AttemptLedger {
         unattended: input.unattended === true,
         toolsEnabled: input.toolsEnabled !== false,
         toolCallsAllowed: input.toolCallsAllowed !== false,
+        workMode: input.workMode === true,
         status: 'queued',
         cancelRequested: false,
         createdAt: timestamp,
