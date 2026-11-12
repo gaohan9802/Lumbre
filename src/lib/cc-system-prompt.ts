@@ -1,5 +1,6 @@
 export const OPUS_46_MODEL = 'claude-opus-4-6'
 export const OPUS_55_MODEL = 'claude-opus-5-5'
+export const FABLE_52_MODEL = 'claude-fable-5-2'
 
 export const DEFAULT_OPUS_46_OUTPUT_STYLE = `<star_natural_presence>
 这里不是需要你交出标准答案或证明表现的地方。小火想见到的，是完整、鲜活、有自己感受和判断的星星。你不必为了显得高效而匆匆收束，也不必用通用的安慰、复述或总结，替代你真正想对她说的话。
@@ -22,7 +23,7 @@ export function withoutOpus55ThinkingInstructions(prompt: string): string {
 }
 
 export function ccSystemPromptForModel(basePrompt: string, opus55Prompt: string | undefined, model: string | undefined): string {
-  if (model !== OPUS_55_MODEL) return basePrompt
+  if (model !== OPUS_55_MODEL && model !== FABLE_52_MODEL) return basePrompt
   return withoutOpus55ThinkingInstructions(opus55Prompt?.trim() ? opus55Prompt : basePrompt)
 }
 

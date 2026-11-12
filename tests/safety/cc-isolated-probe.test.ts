@@ -19,7 +19,7 @@ import { runProcess } from '../../services/cc-probe/process.mjs'
 import { resolveClaudeBinary } from '../../services/cc-gateway/claude-binary.mjs'
 
 test('probe pins the reviewed stable CLI and disables every built-in tool', () => {
-  assert.equal(PINNED_CLAUDE_CODE_VERSION, '2.1.280')
+  assert.equal(PINNED_CLAUDE_CODE_VERSION, '2.1.321')
   const args = buildClaudeArgs({ outputFormat: 'stream-json', systemPrompt: 'You are Star.', effort: 'max' })
   assert.deepEqual(args.slice(0, 3), ['-p', '--tools', ''])
   assert.equal(args.includes('--bare'), false)
@@ -37,11 +37,13 @@ test('probe pins the reviewed stable CLI and disables every built-in tool', () =
   assert.throws(() => buildClaudeArgs({ effort: 'impossible' as any }), /effort level/)
 })
 
-test('Opus 4.6 and 5.5 both return summarized thinking', () => {
+test('current CC models return summarized thinking', () => {
   const opus46 = buildClaudeArgs({ model: 'claude-opus-4-6' })
   const opus55 = buildClaudeArgs({ model: 'claude-opus-5-5' })
+  const fable52 = buildClaudeArgs({ model: 'claude-fable-5-2' })
   assert.equal(opus46[opus46.indexOf('--thinking-display') + 1], 'summarized')
   assert.equal(opus55[opus55.indexOf('--thinking-display') + 1], 'summarized')
+  assert.equal(fable52[fable52.indexOf('--thinking-display') + 1], 'summarized')
 })
 
 test('gateway installs and reuses the pinned CLI when the image binary is stale', () => {
@@ -57,7 +59,7 @@ test('gateway installs and reuses the pinned CLI when the image binary is stale'
     }
     if (command.endsWith('/node_modules/.bin/claude')) {
       if (!installed) throw new Error('missing')
-      return '2.1.280 (Claude Code)'
+      return '2.1.321 (Claude Code)'
     }
     throw new Error(`unexpected command: ${command}`)
   }
@@ -65,8 +67,8 @@ test('gateway installs and reuses the pinned CLI when the image binary is stale'
   try {
     const first = resolveClaudeBinary({ dataDir, run: run as any })
     assert.equal(first.version, PINNED_CLAUDE_CODE_VERSION)
-    assert.match(first.binary, /claude-code\/2\.1\.280\/node_modules\/\.bin\/claude$/)
-    assert.equal(calls.some(call => call.command === 'npm' && call.args.includes('@anthropic-ai/claude-code@2.1.280')), true)
+    assert.match(first.binary, /claude-code\/2\.1\.321\/node_modules\/\.bin\/claude$/)
+    assert.equal(calls.some(call => call.command === 'npm' && call.args.includes('@anthropic-ai/claude-code@2.1.321')), true)
 
     calls.length = 0
     const second = resolveClaudeBinary({ dataDir, run: run as any })

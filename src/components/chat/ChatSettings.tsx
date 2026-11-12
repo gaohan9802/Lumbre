@@ -146,11 +146,11 @@ export function ChatSettings(props: Props) {
         </>}
         {panel === 'star' && <>
           <div role="tablist" aria-label="选择模型人设" className={`grid grid-cols-2 gap-1 rounded-2xl p-1 ${card}`}>
-            {([['base', 'Opus 4.6'], ['opus55', 'Opus 5.5']] as const).map(([target, label]) => <button key={target} role="tab" aria-selected={promptTarget === target} onClick={() => confirm(() => setPromptTarget(target))} className={`rounded-xl px-3 py-2 text-sm ${promptTarget === target ? 'chat-theme-surface shadow-sm' : 'opacity-55'}`}>{label}</button>)}
+            {([['base', 'Opus 4.6'], ['opus55', '5.5 / Fable 5.2']] as const).map(([target, label]) => <button key={target} role="tab" aria-selected={promptTarget === target} onClick={() => confirm(() => setPromptTarget(target))} className={`rounded-xl px-3 py-2 text-sm ${promptTarget === target ? 'chat-theme-surface shadow-sm' : 'opacity-55'}`}>{label}</button>)}
           </div>
           {promptTarget === 'base'
             ? <>{promptEditor('base', '现有人设（保持原样）', settings.systemPrompt, '尚未设置人设', '修改后相关 CC 窗口会重建 session')}{promptEditor('style46', '星星本色（回复风格）', settings.ccOpus46OutputStyle, '未设置回复风格', '不改变 session')}</>
-            : promptEditor('opus55', '专用人设（思考不显示）', settings.ccOpus55SystemPrompt, '将自动使用移除思考链要求后的现有人设', '修改后相关 CC 窗口会重建 session')}
+            : promptEditor('opus55', '5.5 / Fable 5.2 专用人设（思考不显示）', settings.ccOpus55SystemPrompt, '将自动使用移除思考链要求后的现有人设', '修改后相关 CC 窗口会重建 session')}
         </>}
         {panel === 'settings' && <>
           {slider('温度', settings.temperature, v => setSettings({ temperature: v }), 0, 2, .05, settings.temperature.toFixed(2))}

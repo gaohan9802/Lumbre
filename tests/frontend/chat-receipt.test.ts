@@ -38,3 +38,12 @@ test('CC receipt uses the official Opus 5.5 one-hour cache list price', () => {
 
   assert.ok(Math.abs((value || 0) - 0.0926672) < 1e-12)
 })
+
+test('CC receipt uses the official Fable 5.2 one-hour cache list price', () => {
+  const message = {
+    route: 'claude-code', modelId: 'claude-fable-5-2',
+    input_tokens: 1_000_000, output_tokens: 1_000_000,
+    cache_read_tokens: 1_000_000, cache_creation_tokens: 1_000_000,
+  } as any
+  assert.equal(estimateListPrice({ apiProfiles: [] } as any, message), 64.2)
+})

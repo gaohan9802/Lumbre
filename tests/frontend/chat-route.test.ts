@@ -78,6 +78,7 @@ test('context warnings use fixed thresholds and retain one safe compaction recei
 })
 
 test('CC exposes current model families and only sends supported effort levels', () => {
+  assert.equal(isCcModel('claude-fable-5-2'), true)
   assert.equal(isCcModel('claude-fable-5-1'), true)
   assert.equal(isCcModel('claude-sonnet-5'), true)
   assert.equal(isCcModel('claude-haiku-4-5-20251001'), true)

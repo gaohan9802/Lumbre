@@ -1,4 +1,5 @@
 export const CC_MODELS = [
+  { id: 'claude-fable-5-2', name: 'Fable 5.2' },
   { id: 'claude-fable-5-1', name: 'Fable 5.1' },
   { id: 'claude-fable-5', name: 'Fable 5' },
   { id: 'claude-opus-5-5', name: 'Opus 5.5' },

@@ -11,6 +11,7 @@ import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw, Bell, BellOff, Hear
 import { WishlistView } from '@/components/wishlist/WishlistView'
 import { formatMadrid } from '@/lib/madrid-time'
 import { normalizeChatRoute } from '@/lib/chat-route'
+import { CC_MODELS } from '@/lib/cc-model'
 
 interface WakeLog {
   id: string
@@ -339,7 +340,7 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
                 {sessions.map(session => {
                   const enabled = !!config?.wakeSessionIds.includes(session.id)
                   const model = normalizeChatRoute(session.generationRoute) === 'claude-code'
-                    ? session.ccModel === 'claude-opus-5-5' ? 'Opus 5.5' : 'Opus 4.6'
+                    ? CC_MODELS.find(item => item.id === session.ccModel)?.name || session.ccModel || 'Opus 4.6'
                     : 'API'
                   return <div key={session.id} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${n ? 'bg-night-surface' : 'chat-dialog-field'}`}>
                     <div className="min-w-0 flex-1"><p className="truncate text-sm">{session.title}</p><p className="text-[9px] opacity-40">{model}</p></div>
@@ -428,7 +429,7 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
                   const setting = config.warmCaches[session.id]
                   const enabled = !!setting?.enabled
                   const status = setting ? { idle: '等待真实 CC 活动', warmed: '保温成功', busy: '正在回复，稍后再试', cold: '已冷却，等待真实消息', miss: '本次未命中', failed: '保温失败', 'no-session': '还没有可保温的 session' }[setting.status] : '尚未开启'
-                  const model = session.ccModel === 'claude-opus-5-5' ? 'Opus 5.5' : 'Opus 4.6'
+                  const model = CC_MODELS.find(item => item.id === session.ccModel)?.name || session.ccModel || 'Opus 4.6'
                   return <div key={session.id} className={`rounded-xl px-3 py-2 ${n ? 'bg-night-surface' : 'chat-dialog-field'}`}>
                     <div className="flex items-center gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm">{session.title}</p><p className="text-[9px] opacity-40">{model} · {status}</p></div><button role="switch" aria-checked={enabled} aria-label={`${session.title}缓存保温${enabled ? '关闭' : '开启'}`} onClick={() => void updateSessionRule('warmCacheSession', session.id, !enabled)} className={`relative h-6 w-11 shrink-0 rounded-full transition ${enabled ? n ? 'bg-night-amber' : 'bg-[#DBB9B3]' : n ? 'bg-night-card' : 'bg-[#DBB9B3]/20'}`}><span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-5' : ''}`}/></button></div>
                     {enabled && setting && <div className="mt-1 text-[9px] opacity-45">{nextWake?.warmCaches?.[session.id] ? `预计 ${fmtTime(nextWake.warmCaches[session.id]!)}` : ''}{setting.lastAttemptAt > 0 ? `${nextWake?.warmCaches?.[session.id] ? ' · ' : ''}上次 ${fmtRelative(setting.lastAttemptAt)} · 读 ${Math.round((setting.cacheReadTokens || 0) / 100) / 10}K · 写 ${Math.round((setting.cacheCreationTokens || 0) / 100) / 10}K` : ''}{setting.error ? ` · ${setting.error}` : ''}</div>}

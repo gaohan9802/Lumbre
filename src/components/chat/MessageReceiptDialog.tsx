@@ -9,6 +9,9 @@ import { formatMadrid } from '@/lib/madrid-time'
 type Prices = { input: number; output: number; cacheRead: number; cacheWrite: number }
 
 function pricesFor(settings: ChatSettings, message: ChatMessage): Prices | null {
+  if (message.route === 'claude-code' && /claude-fable-5-2/i.test(message.modelId || '')) {
+    return { input: 8, output: 40, cacheRead: 0.2, cacheWrite: 16 }
+  }
   if (message.route === 'claude-code' && /claude-opus-5-5/i.test(message.modelId || '')) {
     return { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 8 }
   }

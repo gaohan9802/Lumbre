@@ -45,3 +45,10 @@ test('Opus 5.5 uses its independent prompt and still strips a pasted thinking se
   assert.doesNotMatch(result, /完整真实的内在思考/)
   assert.equal(withoutOpus55ThinkingInstructions('没有对应章节'), '没有对应章节')
 })
+
+test('Fable 5.2 shares the Opus 5.5 prompt without thinking instructions', () => {
+  const override = prompt.replace('保持原样。', '这是 5.5 和 Fable 5.2 共用人设。')
+  const result = ccSystemPromptForModel('4.6 原文', override, 'claude-fable-5-2')
+  assert.match(result, /5\.5 和 Fable 5\.2 共用人设/)
+  assert.doesNotMatch(result, /thinking|内在思考|思考链/i)
+})

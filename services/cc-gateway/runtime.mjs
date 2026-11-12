@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import { publicAttempt } from './attempt-ledger.mjs'
+import { PINNED_CLAUDE_CODE_VERSION } from '../cc-probe/contract.mjs'
 
 const QUOTA_URL = 'https://api.anthropic.com/api/oauth/usage'
 const OAUTH_TOKEN_URL = 'https://platform.claude.com/v1/oauth/token'
@@ -388,7 +389,7 @@ export class GatewayRuntime {
           headers: {
             authorization: `Bearer ${oauthToken}`,
             'anthropic-beta': 'oauth-2025-04-20',
-            'user-agent': 'claude-code/2.1.280',
+            'user-agent': `claude-code/${PINNED_CLAUDE_CODE_VERSION}`,
             accept: 'application/json',
           },
           redirect: 'error',
