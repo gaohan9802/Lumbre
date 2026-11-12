@@ -21,12 +21,12 @@ Lumbre 主站设置：
 
 ```text
 LUMBRE_KITCHENETTE_URL=http://munch-kitchenette:8765
-LUMBRE_KITCHENETTE_PUBLIC_URL=https://你的-小厨房-域名
+LUMBRE_KITCHENETTE_PUBLIC_URL=https://你的-Lumbre-域名/kitchen-api
 LUMBRE_KITCHENETTE_TOKEN=<同一个口令>
 LUMBRE_KITCHENETTE_WHO=星星
 LUMBRE_KITCHENETTE_ALLOW_INSECURE_HTTP=1
 ```
 
-`ALLOW_INSECURE_HTTP` 只给容器内网地址使用；公网地址仍被强制要求 HTTPS。普通聊天、CC、自动唤醒共用 Lumbre 原有工具权限与审计；工作窗只会看到三个只读厨房工具。
+`ALLOW_INSECURE_HTTP` 只给容器内网地址使用；公网地址仍被强制要求 HTTPS。当前生产接法由 Caddy 把 `/page/*` 原样转给厨房，并把 `/kitchen-api/*` 去掉前缀后转给厨房。普通聊天、CC、自动唤醒共用 Lumbre 原有工具权限与审计；工作窗只会看到三个只读厨房工具。
 
 本接法不调用方括号 inline marker 接口，因此上游默认的 `auto` 会一直保持关闭。星星通过九个固定工具操作厨房，不会改写回复正文，也不会让消息存储与 session 识别多一条新路径。工具 schema 只会在首次部署本功能时变化一次，之后顺序固定。

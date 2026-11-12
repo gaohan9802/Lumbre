@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 
-type KitchenConfig = { pageUrl: string; credential: string; who: string }
+type KitchenConfig = { pageUrl: string; apiBase: string; credential: string; who: string }
 
 export function KitchenetteView({ onClose }: { onClose?: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null)
@@ -33,7 +33,7 @@ export function KitchenetteView({ onClose }: { onClose?: () => void }) {
       if (event.data.type === 'ready') {
         frame.current?.contentWindow?.postMessage({
           v: 1, id: 'lumbre-init', type: 'init',
-          payload: { credential: config.credential, who: config.who, apiBase: config.pageUrl },
+          payload: { credential: config.credential, who: config.who, apiBase: config.apiBase },
         }, origin)
       } else if (event.data.id === 'lumbre-init') {
         if (event.data.ok) { setLoading(false); setError('') }

@@ -24,6 +24,17 @@ function cleanOrigin(value: string, name: string, allowInternalHttp: boolean): s
   return url.origin
 }
 
+function cleanPublicBase(value: string): string {
+  let url: URL
+  try { url = new URL(value) } catch { throw new Error('LUMBRE_KITCHENETTE_PUBLIC_URL 不是有效地址') }
+  const loopback = ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('LUMBRE_KITCHENETTE_PUBLIC_URL 必须是干净的 HTTP(S) 地址')
+  }
+  if (url.protocol !== 'https:' && !loopback) throw new Error('LUMBRE_KITCHENETTE_PUBLIC_URL 必须使用 HTTPS')
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+}
+
 function configFromEnvironment(env = process.env): KitchenetteConfig | null {
   const rawBase = String(env.LUMBRE_KITCHENETTE_URL || '').trim()
   const rawPublic = String(env.LUMBRE_KITCHENETTE_PUBLIC_URL || '').trim()
@@ -35,7 +46,7 @@ function configFromEnvironment(env = process.env): KitchenetteConfig | null {
   if (!who || who.length > 64 || Array.from(who).some(char => char.charCodeAt(0) < 32)) throw new Error('小厨房角色名无效')
   return {
     baseUrl: cleanOrigin(rawBase, 'LUMBRE_KITCHENETTE_URL', allowInternalHttp),
-    publicUrl: cleanOrigin(rawPublic, 'LUMBRE_KITCHENETTE_PUBLIC_URL', false),
+    publicUrl: cleanPublicBase(rawPublic),
     token,
     who,
   }
@@ -71,7 +82,7 @@ async function rpc(config: KitchenetteConfig, method: string, params: Record<str
 
 export function kitchenetteBrowserConfig() {
   const config = configFromEnvironment()
-  return config ? { pageUrl: config.publicUrl, credential: config.token, who: config.who } : null
+  return config ? { pageUrl: new URL(config.publicUrl).origin, apiBase: config.publicUrl, credential: config.token, who: config.who } : null
 }
 
 export function kitchenetteConfigured(): boolean {

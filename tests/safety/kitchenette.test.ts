@@ -14,7 +14,7 @@ const originalEnv = {
 
 beforeEach(() => {
   process.env.LUMBRE_KITCHENETTE_URL = 'https://kitchen.internal.example'
-  process.env.LUMBRE_KITCHENETTE_PUBLIC_URL = 'https://kitchen.example.com'
+  process.env.LUMBRE_KITCHENETTE_PUBLIC_URL = 'https://lumbre.example.com/kitchen-api/'
   process.env.LUMBRE_KITCHENETTE_TOKEN = 'fixture-kitchen-token-at-least-32-characters'
   process.env.LUMBRE_KITCHENETTE_WHO = '星星'
   delete process.env.LUMBRE_KITCHENETTE_ALLOW_INSECURE_HTTP
@@ -60,7 +60,8 @@ test('cooking methods match the pinned kitchen protocol', () => {
 
 test('browser config reveals only the public endpoint and credential to the authenticated UI', () => {
   assert.deepEqual(kitchenetteBrowserConfig(), {
-    pageUrl: 'https://kitchen.example.com',
+    pageUrl: 'https://lumbre.example.com',
+    apiBase: 'https://lumbre.example.com/kitchen-api',
     credential: 'fixture-kitchen-token-at-least-32-characters',
     who: '星星',
   })
@@ -70,7 +71,7 @@ test('kitchen rejects unknown tools and insecure public endpoints before fetch',
   let fetched = false
   globalThis.fetch = async () => { fetched = true; return new Response('{}') }
   await assert.rejects(() => executeKitchenetteTool('not-a-kitchen-tool', {}), /未知/)
-  process.env.LUMBRE_KITCHENETTE_PUBLIC_URL = 'http://kitchen.example.com'
+  process.env.LUMBRE_KITCHENETTE_PUBLIC_URL = 'http://kitchen.example.com/kitchen-api'
   process.env.LUMBRE_KITCHENETTE_ALLOW_INSECURE_HTTP = '1'
   assert.throws(() => kitchenetteBrowserConfig(), /HTTPS/)
   assert.equal(fetched, false)
