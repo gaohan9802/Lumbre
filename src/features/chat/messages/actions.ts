@@ -2,6 +2,7 @@ import { getActiveSession } from '@/features/chat/state/accessors'
 import { normalizeSettings } from '@/features/chat/migrations/browser-state'
 import { sessionTitleFromMessage, snapshotOfMessage } from '@/features/chat/sessions/messages'
 import { ALL_MESSAGES_TOMBSTONE } from '@/lib/chat-message-sync'
+import { lastUserMessageAt } from '@/lib/chat-activity'
 import type { ChatMessage, ChatSession, ChatSettings, MessageVersion } from '@/features/chat/state/types'
 
 type ChatState = { settings: ChatSettings; messages: ChatMessage[] }
@@ -33,7 +34,14 @@ export function createMessageActions(set: SetChatState): MessageActions {
         if (s.messages.some(message => message.id === m.id)) return s
         const nextMessages = [...s.messages, m]
         const shouldAutoTitle = s.title === '新的对话' && m.role === 'user' && s.messages.length === 0
-        return { ...s, title: shouldAutoTitle ? sessionTitleFromMessage(m.content) : s.title, messages: nextMessages, messageCount: Math.max(s.messageCount || 0, nextMessages.length), updatedAt: Date.now() }
+        return {
+          ...s,
+          title: shouldAutoTitle ? sessionTitleFromMessage(m.content) : s.title,
+          messages: nextMessages,
+          messageCount: Math.max(s.messageCount || 0, nextMessages.length),
+          lastUserMessageAt: m.role === 'user' ? Math.max(lastUserMessageAt(s), Number(m.timestamp) || 0) : lastUserMessageAt(s),
+          updatedAt: Date.now(),
+        }
       })
       const nextSettings = { ...settings, sessions }
       return { settings: nextSettings, messages: getActiveSession(nextSettings)?.messages || [] }

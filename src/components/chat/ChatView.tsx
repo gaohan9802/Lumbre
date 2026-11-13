@@ -23,6 +23,7 @@ import { BookmarkDialog } from './BookmarkDialog'
 import { SummaryDialog } from './SummaryDialog'
 import { ChatWindowSettings } from './ChatWindowSettings'
 import { normalizeChatWindowRole } from '@/lib/chat-window-role'
+import { lastUserMessageAt } from '@/lib/chat-activity'
 import { MessageReceiptDialog } from './MessageReceiptDialog'
 import { MarkdownText } from './MarkdownText'
 import { APP_TIME_ZONE, formatMadrid, madridDateKey, madridDayBounds } from '@/lib/madrid-time'
@@ -1374,7 +1375,18 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     <div className="chat-theme chat-theme-ui chat-page-shell chat-session-drawer chat-theme-border relative flex h-full w-[86vw] max-w-[340px] flex-col overflow-hidden border-r">
       <div className={`relative z-10 space-y-3 px-5 pb-3 ${mobile ? 'pt-[max(3.5rem,calc(env(safe-area-inset-top)+1rem))]' : 'pt-14'}`}>
         <div className="flex items-center justify-between">
-          <div className="chat-session-title text-[28px] font-bold leading-none">Sessions</div>
+          <div className="flex items-center gap-1">
+            <div className="chat-session-title text-[28px] font-bold leading-none">Sessions</div>
+            <button
+              type="button"
+              aria-label="新建聊天窗"
+              title="新建聊天窗"
+              onClick={() => { createSession(); setSessionActionsId(null); if (mobile) setSessionDrawerOpen(false) }}
+              className="chat-theme-icon mt-1 grid h-5 w-5 place-items-center rounded-full opacity-20 transition-opacity hover:opacity-60"
+            >
+              <Plus size={10} strokeWidth={1.5}/>
+            </button>
+          </div>
           <motion.button
             type="button"
             aria-label={n ? '切换到日间模式' : '切换到夜间模式'}
@@ -1429,7 +1441,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       {active && <span aria-hidden="true" className="chat-session-orange-dot h-2 w-2 shrink-0 rounded-full" />}
                       {s.pinned && <Pin size={11} className="chat-theme-accent" />}
                       {s.title}
-                      <span className="shrink-0 rounded-full border border-current/15 px-1.5 py-0.5 text-[8px] font-normal opacity-45">{normalizeChatWindowRole(s.windowRole) === 'work' ? '工作' : normalizeChatWindowRole(s.windowRole) === 'archived' ? '封存' : '聊天'}</span>
                     </div>
                   )}
                   <div className="chat-session-mono mt-1.5 flex justify-between text-[10px] opacity-40">
@@ -1438,7 +1449,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                       {wakeWindowConfig.wakeSessionIds.includes(s.id) && <span title="唤醒" aria-label="唤醒已开启"><Radio aria-hidden="true" size={10} strokeWidth={1.7} /></span>}
                       {wakeWindowConfig.warmCaches[s.id]?.enabled && <span title="保温" aria-label="保温已开启"><Flame aria-hidden="true" size={10} strokeWidth={1.7} /></span>}
                     </span>
-                    <span>{fmtShortDate(s.updatedAt)}</span>
+                    <span>{fmtShortDate(lastUserMessageAt(s))}</span>
                   </div>
                 </div>
                 <div ref={sessionActionsId === s.id ? sessionActionsRef : undefined} className="relative" onClick={(e) => e.stopPropagation()}>

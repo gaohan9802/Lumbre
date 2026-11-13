@@ -4,6 +4,7 @@ import { mergeCcModel } from '@/lib/cc-model'
 import { mergeCcContextState, mergeChatWindowConfig } from '@/lib/chat-window-config'
 import { mergeChatWindowRole } from '@/lib/chat-window-role'
 import { mergeChatMessages, mergeMessageTombstones } from '@/lib/chat-message-sync'
+import { lastUserMessageAt } from '@/lib/chat-activity'
 
 export function isBlankSession(session: any) {
   return (session?.messages?.length || 0) === 0
@@ -76,6 +77,11 @@ function preserveMergedSummary(base: any, existing: any, incoming: any) {
     messages,
     messageTombstones,
     messageCount: base.partial ? Math.max(Number(base.messageCount) || 0, messages.length) : messages.length,
+    lastUserMessageAt: lastUserMessageAt({
+      lastUserMessageAt: Math.max(lastUserMessageAt(existing), lastUserMessageAt(incoming)),
+      createdAt: base.createdAt,
+      messages,
+    }),
     updatedAt: needsRepublish
       ? Math.max(Date.now(), Number(existing?.updatedAt) || 0, Number(incoming?.updatedAt) || 0) + 1
       : base.updatedAt,

@@ -4,6 +4,7 @@ import { mergeCcModel } from '@/lib/cc-model'
 import { mergeCcContextState, mergeChatWindowConfig } from '@/lib/chat-window-config'
 import { mergeChatWindowRole, normalizeChatWindowRole, type ChatWindowRole } from '@/lib/chat-window-role'
 import { mergeChatMessages, mergeMessageTombstones, messageDeletedAt, normalizeMessageTombstones } from '@/lib/chat-message-sync'
+import { lastUserMessageAt } from '@/lib/chat-activity'
 /**
  * Durable incremental chat storage.
  *
@@ -48,6 +49,7 @@ export interface SessionManifestItem {
   title?: string
   pinned?: boolean
   createdAt?: number
+  lastUserMessageAt?: number
   generationRoute?: 'api' | 'claude-code'
   generationRouteUpdatedAt?: number
   ccModel?: string
@@ -97,6 +99,7 @@ function normalizeManifest(raw: any): SyncManifest {
           title: typeof s.title === 'string' ? s.title : undefined,
           pinned: !!s.pinned,
           createdAt: Number(s.createdAt) || undefined,
+          lastUserMessageAt: lastUserMessageAt(s),
         }))
       : [],
     tombstones: raw?.tombstones && typeof raw.tombstones === 'object' ? raw.tombstones : {},
@@ -187,6 +190,11 @@ function pickSession(a: any, b: any) {
     messages,
     messageTombstones,
     messageCount: winner.partial ? Math.max(Number(winner.messageCount) || 0, messages.length) : messages.length,
+    lastUserMessageAt: lastUserMessageAt({
+      lastUserMessageAt: Math.max(lastUserMessageAt(a), lastUserMessageAt(b)),
+      createdAt: winner.createdAt,
+      messages,
+    }),
   }
   const messageLayerChanged = JSON.stringify(messages) !== JSON.stringify(winner?.messages || [])
     || JSON.stringify(messageTombstones) !== JSON.stringify(winner?.messageTombstones || {})
@@ -270,12 +278,14 @@ function sessionManifestItem(session: any, messageCount: number): SessionManifes
     title: session.title,
     pinned: !!session.pinned,
     createdAt: Number(session.createdAt) || 0,
+    lastUserMessageAt: lastUserMessageAt(session),
   }
 }
 
 function repairManifestSession(manifest: SyncManifest, session: any, messageCount: number): void {
   const current = manifest.sessions.find(item => item.id === session.id)
-  if (!current || (current.updatedAt === Number(session.updatedAt) && current.messageCount === messageCount)) return
+  if (!current || (current.updatedAt === Number(session.updatedAt) && current.messageCount === messageCount
+    && current.lastUserMessageAt === lastUserMessageAt(session))) return
   saveManifest({
     ...manifest,
     sessions: manifest.sessions.map(item => item.id === session.id ? sessionManifestItem(session, messageCount) : item),
@@ -307,7 +317,7 @@ function ensureInitialized() {
       for (const session of sessions) writeSession(session, false)
       saveManifest({
         version: 2,
-        sessions: sessions.map(s => ({ ...mergeConversationMode(s, null), ...mergeConversationRoute(s, null), ...mergeCcModel(s, null), ...mergeChatWindowRole(s, null), windowConfigUpdatedAt: Math.max(0, Number(s.windowConfigUpdatedAt) || 0), ccContextStateUpdatedAt: Math.max(0, Number(s.ccContextStateUpdatedAt) || 0), id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0 })),
+        sessions: sessions.map(s => ({ ...mergeConversationMode(s, null), ...mergeConversationRoute(s, null), ...mergeCcModel(s, null), ...mergeChatWindowRole(s, null), windowConfigUpdatedAt: Math.max(0, Number(s.windowConfigUpdatedAt) || 0), ccContextStateUpdatedAt: Math.max(0, Number(s.ccContextStateUpdatedAt) || 0), id: s.id, updatedAt: Number(s.updatedAt) || 0, messageCount: s.messages?.length || 0, title: s.title, pinned: !!s.pinned, createdAt: Number(s.createdAt) || 0, lastUserMessageAt: lastUserMessageAt(s) })),
         tombstones,
         config: sanitizeChatConfig(legacy.config),
         configUpdatedAt: Number(legacy.configUpdatedAt) || 0,
@@ -326,7 +336,15 @@ export function loadSyncManifest(): SyncManifest {
     if (manifestCache?.mtimeMs === mtimeMs) return manifestCache.value
     const raw = readChatManifest() as any
     const value = normalizeManifest(raw)
-    if (JSON.stringify(raw?.config) !== JSON.stringify(value.config)) saveManifest(value)
+    const missingActivity = Array.isArray(raw?.sessions)
+      && raw.sessions.some((item: any) => !(Number(item?.lastUserMessageAt) > 0))
+    if (missingActivity) {
+      value.sessions = value.sessions.map(item => {
+        const session = readChatSession(item.id) as any
+        return { ...item, lastUserMessageAt: lastUserMessageAt(session?.id === item.id ? session : item) }
+      })
+    }
+    if (missingActivity || JSON.stringify(raw?.config) !== JSON.stringify(value.config)) saveManifest(value)
     else manifestCache = { mtimeMs, value }
     return value
   }
@@ -443,7 +461,8 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
       if ((incoming.messages || []).every((message: any) => ids.has(String(message?.id || '')))) continue
     }
     const existing = existingMeta ? loadSyncSessions([incoming.id])[0] : null
-    const winner = existing ? pickSession(existing, incoming) : incoming
+    const selected = existing ? pickSession(existing, incoming) : incoming
+    const winner = { ...selected, lastUserMessageAt: lastUserMessageAt(selected) }
     const deletedAt = tombstones[winner.id] || 0
     if (deletedAt >= (Number(winner.updatedAt) || 0) || isBlankSession(winner)) {
       meta.delete(winner.id)
@@ -462,7 +481,7 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
       id: winner.id,
       updatedAt: Number(winner.updatedAt) || 0,
       messageCount: winner.messages?.length || 0,
-      title: winner.title, pinned: !!winner.pinned, createdAt: Number(winner.createdAt) || 0,
+      title: winner.title, pinned: !!winner.pinned, createdAt: Number(winner.createdAt) || 0, lastUserMessageAt: lastUserMessageAt(winner),
     })
   }
 
@@ -527,7 +546,13 @@ export function appendSyncSessionMessage(sessionId: string, message: any): { app
     }
     const now = Math.max(Date.now(), (Number(session.updatedAt) || 0) + 1, Number(message?.timestamp) || 0)
     const storedMessage = externalizeSessionImages({ messages: [message] }).messages[0]
-    const updated = { ...session, updatedAt: now }
+    const updated = {
+      ...session,
+      lastUserMessageAt: message?.role === 'user'
+        ? Math.max(lastUserMessageAt(session), Number(message?.timestamp) || 0)
+        : lastUserMessageAt(session),
+      updatedAt: now,
+    }
     appendChatSessionMessage(sessionId, storedMessage, updated, madridDateKey())
     const next: SyncManifest = {
       ...manifest,
@@ -589,6 +614,9 @@ export function upsertSyncSessionMessage(sessionId: string, message: any, meta: 
       messages: oldMeta ? undefined : [message],
       messageCount: messageCount + 1,
       partial: false,
+      lastUserMessageAt: message?.role === 'user'
+        ? Math.max(lastUserMessageAt(base), Number(message?.timestamp) || 0)
+        : lastUserMessageAt(base),
       updatedAt: now,
     }
     if (oldMeta) {

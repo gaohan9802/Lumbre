@@ -5,6 +5,7 @@ import { mergeConversationRoute } from '@/lib/chat-route'
 import { mergeCcModel } from '@/lib/cc-model'
 import { mergeCcContextState, mergeChatWindowConfig } from '@/lib/chat-window-config'
 import { mergeChatWindowRole, normalizeChatWindowRole } from '@/lib/chat-window-role'
+import { lastUserMessageAt } from '@/lib/chat-activity'
 
 /**
  * ChatSync — incremental multi-device sync owned by the chat feature.
@@ -33,7 +34,7 @@ let bootstrapped = false
 let pushedSnapshot: Record<string, number> = {}
 let pushedConfigAt = -1
 
-type ManifestItem = { windowRole?: 'chat' | 'work' | 'archived'; windowRoleUpdatedAt?: number; generationRoute?: 'api' | 'claude-code'; generationRouteUpdatedAt?: number; ccModel?: string; ccModelUpdatedAt?: number; conversationMode?: 'long' | 'short'; conversationModeUpdatedAt?: number; windowConfigUpdatedAt?: number; ccContextStateUpdatedAt?: number; id: string; updatedAt: number; messageCount?: number; title?: string; pinned?: boolean; createdAt?: number }
+type ManifestItem = { windowRole?: 'chat' | 'work' | 'archived'; windowRoleUpdatedAt?: number; generationRoute?: 'api' | 'claude-code'; generationRouteUpdatedAt?: number; ccModel?: string; ccModelUpdatedAt?: number; conversationMode?: 'long' | 'short'; conversationModeUpdatedAt?: number; windowConfigUpdatedAt?: number; ccContextStateUpdatedAt?: number; id: string; updatedAt: number; messageCount?: number; title?: string; pinned?: boolean; createdAt?: number; lastUserMessageAt?: number }
 
 function snapshotFromManifest(items: ManifestItem[] = []) {
   const next: Record<string, number> = {}
@@ -132,6 +133,7 @@ async function pullIncremental() {
     ...mergeChatWindowRole(item, null),
     id: item.id, title: item.title || '历史对话', messages: [], pinned: !!item.pinned,
     createdAt: Number(item.createdAt) || Number(item.updatedAt) || Date.now(),
+    lastUserMessageAt: lastUserMessageAt(item),
     updatedAt: Number(item.updatedAt) || 0, messageCount: Number(item.messageCount) || 0,
     partial: true,
   }))
@@ -141,7 +143,7 @@ async function pullIncremental() {
   const local = state.settings.sessions
   const localMap = new Map(local.map(s => [s.id, s]))
   const newestRemote = manifest.filter(item => normalizeChatWindowRole(item.windowRole) !== 'archived')
-    .sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))[0]
+    .sort((a, b) => lastUserMessageAt(b) - lastUserMessageAt(a))[0]
   const currentActive = localMap.get(state.settings.activeSessionId)
   const preferredId = (!currentActive || isBlankSession(currentActive)) ? newestRemote?.id : currentActive.id
 
@@ -162,7 +164,7 @@ async function pullIncremental() {
     const latest = hydrated.settings.sessions
       .filter(s => normalizeChatWindowRole(s.windowRole) !== 'archived')
       .filter(s => !isBlankSession(s))
-      .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+      .sort((a, b) => lastUserMessageAt(b) - lastUserMessageAt(a))[0]
     if (latest) hydrated.setActiveSession(latest.id)
   }
 

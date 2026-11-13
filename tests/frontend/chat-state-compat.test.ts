@@ -37,6 +37,8 @@ test('legacy browser chat state upgrades without losing messages, summaries, boo
   assert.equal(migrated.settings.ccOpus55SystemPrompt, 'legacy prompt')
   assert.equal(migrated.settings.contextLength, 88)
   assert.equal(migrated.settings.sessions[0].messages[0].content, 'old hello')
+  assert.equal(migrated.settings.sessions[0].lastUserMessageAt, 10)
+  assert.equal(migrated.settings.sessions[1].lastUserMessageAt, 25)
   assert.equal(migrated.settings.sessions[0].summaries[0].eventSummary, 'old summary text')
   assert.equal(migrated.settings.sessions[0].windowRole, 'chat')
   assert.equal(migrated.settings.sessions[1].windowRole, 'archived')
@@ -78,6 +80,27 @@ test('switching sessions never sends a message into the previous conversation', 
   assert.deepEqual(result.find(item => item.id === 'a')?.messages.map(item => item.id), ['a1'])
   assert.deepEqual(result.find(item => item.id === 'b')?.messages.map(item => item.id), ['b1'])
   useChatStore.setState(original)
+})
+
+test('session activity follows only real user messages', async () => {
+  const { getSortedSessions, useChatStore } = await import('../../src/lib/chatStore')
+  const original = useChatStore.getState()
+  const session = (id: string, lastUserMessageAt: number, updatedAt: number) => ({
+    id, title: id, pinned: false, createdAt: 1, lastUserMessageAt, updatedAt, messages: [],
+  })
+  try {
+    useChatStore.setState({
+      settings: { ...original.settings, activeSessionId: 'older', sessions: [session('older', 10, 1_000), session('newer', 20, 20)] },
+      messages: [],
+    })
+    assert.deepEqual(getSortedSessions(useChatStore.getState().settings).map(item => item.id), ['newer', 'older'])
+    useChatStore.getState().addMessage({ id: 'assistant', role: 'assistant', content: 'wake', timestamp: 30 })
+    assert.equal(useChatStore.getState().settings.sessions.find(item => item.id === 'older')?.lastUserMessageAt, 10)
+    useChatStore.getState().addMessage({ id: 'user', role: 'user', content: 'hello', timestamp: 40 })
+    assert.equal(useChatStore.getState().settings.sessions.find(item => item.id === 'older')?.lastUserMessageAt, 40)
+  } finally {
+    useChatStore.setState(original)
+  }
 })
 
 test('credential status refresh does not publish a phantom config change', async () => {

@@ -176,6 +176,7 @@ export interface ChatSession {
   messageTombstones?: Record<string, number>
   pinned: boolean
   createdAt: number
+  lastUserMessageAt?: number
   updatedAt: number
   partial?: boolean
   messageCount?: number

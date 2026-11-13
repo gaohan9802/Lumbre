@@ -6,6 +6,7 @@ import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 import { mergeChatMessages, normalizeChatAttachments, normalizeMessageTombstones } from '@/lib/chat-message-sync'
 import { normalizeStickerRef } from '@/lib/stickers'
 import { normalizeChatWindowRole } from '@/lib/chat-window-role'
+import { lastUserMessageAt } from '@/lib/chat-activity'
 import { DEFAULT_ANTHROPIC_BASE, DEFAULT_APPEARANCE, DEFAULT_OPENAI_BASE, DEFAULT_SETTINGS, makeChatId } from '@/features/chat/state/defaults'
 import type {
   ApiProfile, ApiProvider, BubbleLayout, ChatMessage, ChatSettings, ChatSummary, ContentBlock,
@@ -209,6 +210,7 @@ export function normalizeSettings(settings: any): ChatSettings {
         messageTombstones,
         pinned: !!session.pinned,
         createdAt: session.createdAt || Date.now(),
+        lastUserMessageAt: lastUserMessageAt({ ...session, messages }),
         updatedAt: session.updatedAt || session.createdAt || Date.now(),
         partial: !!session.partial,
         messageCount: session.partial ? Math.max(Number(session.messageCount) || 0, messages.length) : messages.length,

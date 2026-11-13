@@ -25,3 +25,17 @@ test('durable sync keeps only the newest active chat and work window', () => {
   assert.deepEqual(sessions.filter(item => item.windowRole === 'work').map(item => item.id), ['work-new'])
   assert.deepEqual(sessions.filter(item => item.windowRole === 'archived').map(item => item.id).sort(), ['chat-old', 'work-old'])
 })
+
+test('durable session activity advances only for user messages', () => {
+  sync.mergeSyncDelta({ sessions: [{
+    id: 'activity', title: 'activity', messages: [{ id: 'user-1', role: 'user', content: 'hello', timestamp: 10 }],
+    createdAt: 1, updatedAt: 10, pinned: false,
+  }], tombstones: {} })
+  assert.equal(sync.loadSyncManifest().sessions.find(item => item.id === 'activity')?.lastUserMessageAt, 10)
+
+  sync.appendSyncSessionMessage('activity', { id: 'wake', role: 'assistant', content: 'awake', timestamp: 20 })
+  assert.equal(sync.loadSyncManifest().sessions.find(item => item.id === 'activity')?.lastUserMessageAt, 10)
+
+  sync.appendSyncSessionMessage('activity', { id: 'user-2', role: 'user', content: 'again', timestamp: 30 })
+  assert.equal(sync.loadSyncManifest().sessions.find(item => item.id === 'activity')?.lastUserMessageAt, 30)
+})
