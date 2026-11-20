@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
-import { publicAttempt } from './attempt-ledger.mjs'
+import { AttemptValidationError, publicAttempt } from './attempt-ledger.mjs'
 import { PINNED_CLAUDE_CODE_VERSION } from '../cc-probe/contract.mjs'
 
 const QUOTA_URL = 'https://api.anthropic.com/api/oauth/usage'
@@ -113,13 +113,35 @@ export class GatewayRuntime {
   }
 
   submit(input) {
-    this.warmController?.abort()
+    if (!input.requireResume) this.warmController?.abort()
     const existing = this.ledger.getByIdempotencyKey(input.idempotencyKey)
     if (existing) return { attempt: publicAttempt(existing), reused: true }
+    if (input.requireResume && (this.busy() || this.warmController || this.compactController)) {
+      throw new AttemptValidationError('The CC gateway is busy. Try again after the current turn finishes.')
+    }
+    const protectedTurnInFlight = [...this.queue, ...this.controllers.keys()].some(id => {
+      const active = this.ledger.get(id)
+      return active?.requireResume && active.conversationId === input.conversationId
+    })
+    if (protectedTurnInFlight) throw new AttemptValidationError('A protected voice turn is still running.')
     const prepared = input.context
       ? this.contextBridge?.prepare(input)
       : { prompt: input.prompt, resumeSessionId: null, sessionPlan: null }
     if (!prepared) throw new Error('CC context bridge is not configured')
+    if (prepared.sessionPlan?.reason === 'reply_anchor_missing' && this.ledger.get(prepared.sessionPlan.baseAttemptId)?.requireResume) {
+      throw new AttemptValidationError('The last protected voice reply has not reached chat history yet.')
+    }
+    if (input.requireResume) {
+      if (prepared.sessionPlan?.mode !== 'resume') throw new AttemptValidationError('An existing CC session could not be resumed.')
+      const base = this.ledger.get(prepared.sessionPlan.baseAttemptId)
+      if (!base || base.model !== input.model || (base.effort || null) !== (input.effort || null)
+        || (base.toolsEnabled !== false) !== (input.toolsEnabled !== false)) {
+        throw new AttemptValidationError('The active CC model, effort or tool schema has changed.')
+      }
+      if (!this.executor.checkpointSession?.(prepared.resumeSessionId)) {
+        throw new AttemptValidationError('The existing CC transcript is unavailable.')
+      }
+    }
     const { attempt, created } = this.ledger.createOrGet({ ...input, ...prepared })
     if (created) {
       this.emitLatest(attempt)
@@ -183,6 +205,11 @@ export class GatewayRuntime {
     const checkpoint = queued?.resumeSessionId
       ? this.executor.checkpointSession?.(queued.resumeSessionId) || null
       : null
+    if (queued?.requireResume && !checkpoint) {
+      const failed = this.ledger.markFailed(id, { code: 'resume_unavailable', message: 'The existing CC transcript is unavailable.', resumeSafe: true })
+      this.emitLatest(failed)
+      return
+    }
     const running = this.ledger.markRunning(id, checkpoint)
     this.emitLatest(running)
     const controller = new AbortController()
@@ -219,6 +246,12 @@ export class GatewayRuntime {
       if (latest?.cancelRequested) {
         const cancelled = this.ledger.markCancelled(id)
         this.emitLatest(cancelled)
+        return
+      }
+      if (running.requireResume && result.sessionId !== running.resumeSessionId) {
+        const resumeSafe = this.executor.restoreSession?.(running.resumeSessionId, checkpoint) === true
+        const failed = this.ledger.markFailed(id, { code: 'resume_mismatch', message: 'Claude Code did not resume the expected session.', resumeSafe })
+        this.emitLatest(failed)
         return
       }
       const completed = this.ledger.markCompleted(id, result)
@@ -465,6 +498,6 @@ export class GatewayRuntime {
   }
 
   capabilities() {
-    return { lumbreTools: this.executor.toolBridgeEnabled === true }
+    return { lumbreTools: this.executor.toolBridgeEnabled === true, resumeOnlyTurns: true }
   }
 }

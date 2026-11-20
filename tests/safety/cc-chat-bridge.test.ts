@@ -27,6 +27,23 @@ function configure() {
   }
 }
 
+test('a resume-only request never submits to a gateway without the protection', async () => {
+  const restore = configure()
+  const paths: string[] = []
+  try {
+    const response = await createCcChatResponse({
+      body: { stream: true, session_id: 'conversation-1', turn_id: 'voice-1', cc_require_resume: true },
+      system: 'You are Star.', volatileContext: 'voice',
+      fetchImpl: async input => {
+        paths.push(new URL(String(input)).pathname)
+        return Response.json({ capabilities: { lumbreTools: true } })
+      },
+    })
+    assert.equal(response.status, 503)
+    assert.deepEqual(paths, ['/healthz'])
+  } finally { restore() }
+})
+
 test('Lumbre proxies one CC attempt as its normal chat stream without exposing the session id', async () => {
   const restore = configure()
   let submitted: any

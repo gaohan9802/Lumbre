@@ -39,6 +39,9 @@ export async function middleware(request: NextRequest) {
 
   if (isPublic) return securityHeaders(NextResponse.next())
 
+  // The StackChan route authenticates its own bearer token.
+  if (pathname === '/api/stackchan/v1/chat/completions') return securityHeaders(NextResponse.next())
+
   // Do not expose filesystem probes, source inspection or model-call diagnostics
   // in a production deployment, even to an authenticated browser session.
   if (shouldBlockDebugApi(pathname)) {

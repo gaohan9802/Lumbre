@@ -1,5 +1,9 @@
 import type { Bookmark, ChatMessage } from '../state/types'
 
+export function formatBookmarkBlock(items: Bookmark[]) {
+  return items.length ? `[书签提醒]\n${items.map(bookmark => bookmark.content).join('\n---\n')}` : ''
+}
+
 export function getTriggeredBookmarks(bookmarks: Bookmark[], recentMessages: ChatMessage[]): Bookmark[] {
   const triggered: Bookmark[] = []
   for (const bookmark of bookmarks) {

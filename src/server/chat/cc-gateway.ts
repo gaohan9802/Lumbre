@@ -152,6 +152,7 @@ async function submitAttempt(config: CcGatewayConfig, body: any, system: string,
       tool_calls_allowed: body.tool_calls_allowed !== false,
       work_mode: body.work_mode === true,
       session_action: body.cc_session_action === 'rebase' ? 'rebase' : undefined,
+      require_resume: body.cc_require_resume === true ? true : undefined,
       context: {
         system,
         bookmarkInjections: typeof body.bookmark_injections === 'string' ? body.bookmark_injections : '',
@@ -248,6 +249,13 @@ export async function createCcChatResponse({
 
   let submitted: CcAttempt
   try {
+    if (body.cc_require_resume === true) {
+      const response = await gatewayFetch(config, '/healthz', {}, fetchImpl)
+      const health = await safeJson(response)
+      if (!response.ok || health?.capabilities?.resumeOnlyTurns !== true) {
+        return Response.json({ error: 'CC 网关尚未启用会话续接保护。' }, { status: 503 })
+      }
+    }
     submitted = await submitAttempt(config, body, system, volatileContext, model, effort, fetchImpl)
   } catch (error: any) {
     return Response.json({ error: error?.message || 'CC 网关连接失败；不会自动改走 API。' }, { status: 502 })

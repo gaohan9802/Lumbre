@@ -46,6 +46,7 @@ import { chatRouteLabel, isRecoverableChatDisconnect, normalizeChatRoute, type C
 import { ccContextLevel } from '@/lib/chat-window-config'
 import { CC_MODELS, DEFAULT_CC_MODEL, isCcModel, normalizeCcEffortForModel } from '@/lib/cc-model'
 import { ccSystemPromptForModel } from '@/lib/cc-system-prompt'
+import { formatBookmarkBlock } from '@/features/chat/summaries/bookmarks'
 import { chatMessageContentForModel, isSupportedChatFile, MAX_CHAT_ATTACHMENTS, MAX_CHAT_ATTACHMENT_BYTES } from '@/lib/chat-message-sync'
 import { measureReceiptText } from '@/lib/chat-receipt'
 import { sticker, stickerFromToolInput, type StickerRef } from '@/lib/stickers'
@@ -762,9 +763,6 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
     const triggered = getTriggeredBookmarks(settings.bookmarks, messages)
     const persistentBookmarks = triggered.filter(bookmark => bookmark.alwaysOn)
     const transientBookmarks = triggered.filter(bookmark => !bookmark.alwaysOn)
-    const bookmarkBlock = (items: typeof triggered) => items.length
-      ? `[书签提醒]\n${items.map(bookmark => bookmark.content).join('\n---\n')}`
-      : ''
     const windowPrompt = activeSession?.windowConfig?.systemPrompt
     const basePrompt = windowPrompt || settings.systemPrompt
     const systemPrompt = (route === 'claude-code'
@@ -772,13 +770,13 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
       : basePrompt) || undefined
     const readingInjection = contextInjection.trim()
     const memoryInjection = [
-      bookmarkBlock(persistentBookmarks.filter(bookmark => bookmark.position === 'start')),
-      bookmarkBlock(persistentBookmarks.filter(bookmark => bookmark.position === 'end')),
+      formatBookmarkBlock(persistentBookmarks.filter(bookmark => bookmark.position === 'start')),
+      formatBookmarkBlock(persistentBookmarks.filter(bookmark => bookmark.position === 'end')),
     ].filter(Boolean).join('\n\n')
     const clientVolatileContext = [
-      bookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'start')),
+      formatBookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'start')),
       readingInjection,
-      bookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'end')),
+      formatBookmarkBlock(transientBookmarks.filter(bookmark => bookmark.position === 'end')),
       CHAT_PRESENTATION_PROTOCOL,
     ].filter(Boolean).join('\n\n')
 

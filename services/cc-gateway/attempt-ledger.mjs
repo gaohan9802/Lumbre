@@ -143,6 +143,7 @@ export class AttemptLedger {
         prompt: input.prompt,
         systemPrompt: input.systemPrompt || null,
         resumeSessionId: input.resumeSessionId || null,
+        ...(input.requireResume === true ? { requireResume: true } : {}),
         sessionPlan: input.sessionPlan || null,
         model: input.model,
         effort: input.effort || null,

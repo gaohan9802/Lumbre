@@ -65,7 +65,7 @@ export interface ChatAttachment {
 export interface ChatMessage extends MessageVersion {
   id: string
   role: 'user' | 'assistant'
-  transport?: 'wechat'
+  transport?: 'wechat' | 'stackchan'
   transportBatchId?: string
   transportExternalId?: string
   images?: string[]

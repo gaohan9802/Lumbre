@@ -6,6 +6,7 @@ import test from 'node:test'
 
 import { AttemptLedger } from '../../services/cc-gateway/attempt-ledger.mjs'
 import { ContextBridge } from '../../services/cc-gateway/context-bridge.mjs'
+import { GatewayRuntime } from '../../services/cc-gateway/runtime.mjs'
 
 function context(messages: any[]) {
   return { system: 'You are Star.', bookmarkInjections: 'shared memory', volatileContext: 'now', messages }
@@ -18,6 +19,48 @@ function complete(ledger: any, bridge: any, input: any, sessionId = '550e8400-e2
   ledger.markCompleted(attempt.id, { text: 'first answer', sessionId, usage: null, ...result })
   return { attempt: ledger.get(attempt.id), prepared }
 }
+
+test('a protected voice turn can only reuse the current CC session and cache inputs', async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-resume-only-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const ledger = new AttemptLedger(root)
+  const bridge = new ContextBridge(ledger)
+  const first = { id: 'u1', role: 'user', route: 'claude-code', content: 'hello' }
+  const options = { conversationId: 'conversation-1', model: 'sonnet', effort: 'high', toolsEnabled: true }
+  const baseline = complete(ledger, bridge, { ...options, idempotencyKey: 'turn-1', context: context([first]) })
+  const anchor = { id: 'a1', role: 'assistant', route: 'claude-code', ccAttemptId: baseline.attempt.id, content: 'first answer' }
+  const voice = { id: 'u2', role: 'user', route: 'claude-code', content: 'voice question' }
+  const input = { ...options, requireResume: true, toolCallsAllowed: false, idempotencyKey: 'turn-2', context: context([first, anchor, voice]) }
+  const sessionId = baseline.attempt.result.sessionId
+  let execution: any
+  let transcriptAvailable = false
+  const runtime = new GatewayRuntime({ ledger, contextBridge: bridge as any, executor: {
+    checkpointSession: () => transcriptAvailable ? { size: 100 } : null,
+    run: async (request: any) => {
+      execution = request
+      return { text: 'voice answer', sessionId, usage: null }
+    },
+  } })
+
+  assert.throws(() => runtime.submit({ ...input, context: context([voice]) }), /could not be resumed/)
+  assert.throws(() => runtime.submit({ ...input, context: { ...input.context, system: 'different prefix' } }), /could not be resumed/)
+  assert.throws(() => runtime.submit({ ...input, model: 'opus' }), /has changed/)
+  assert.throws(() => runtime.submit({ ...input, effort: 'max' }), /has changed/)
+  assert.throws(() => runtime.submit({ ...input, toolsEnabled: false }), /has changed/)
+  assert.throws(() => runtime.submit(input), /transcript is unavailable/)
+  assert.equal(ledger.list().length, 1)
+
+  transcriptAvailable = true
+  const submitted = runtime.submit(input)
+  assert.equal(submitted.attempt?.sessionMode, 'resume')
+  assert.throws(() => runtime.submit({ ...input, idempotencyKey: 'browser-turn', requireResume: false }), /still running/)
+  await runtime.waitForIdle()
+  assert.equal(execution.resumeSessionId, sessionId)
+  assert.equal(execution.toolsEnabled, true)
+  assert.equal(execution.toolCallsAllowed, false)
+  assert.equal(runtime.get(submitted.attempt!.id)?.result.sessionId, sessionId)
+  assert.throws(() => runtime.submit({ ...input, idempotencyKey: 'browser-turn', requireResume: false }), /has not reached chat history/)
+})
 
 test('first CC turn bootstraps from canonical Lumbre context without storing context content twice', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-context-first-'))
