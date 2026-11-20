@@ -96,14 +96,14 @@ test('subscription quota stays server-side, cached, and falls back to the last g
   assert.equal(stale.quota.fiveHour.usedPercentage, 18.4)
 })
 
-test('subscription quota refreshes and persists the full-scope login without exposing it', async () => {
+test('subscription quota refreshes before expiry and persists the full-scope login without exposing it', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-oauth-'))
   const credentialsPath = path.join(root, '.credentials.json')
   const now = Date.parse('2026-09-08T12:00:00.000Z')
   writeFileSync(credentialsPath, JSON.stringify({ claudeAiOauth: {
     accessToken: 'expired-access-token',
     refreshToken: 'old-refresh-token',
-    expiresAt: now - 1,
+    expiresAt: now + 5 * 60 * 1000,
     scopes: ['user:inference', 'user:profile'],
   } }), { mode: 0o600 })
 
@@ -142,6 +142,71 @@ test('subscription quota refreshes and persists the full-scope login without exp
     assert.equal(stored.refreshToken, 'fresh-refresh-token')
     assert.equal(stored.expiresAt, now + 28_800_000)
     assert.doesNotMatch(JSON.stringify(metrics), /access-token|refresh-token/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('subscription quota retries a revoked access token once after refreshing it', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-oauth-revoked-'))
+  const credentialsPath = path.join(root, '.credentials.json')
+  const now = Date.parse('2026-09-08T12:00:00.000Z')
+  writeFileSync(credentialsPath, JSON.stringify({ claudeAiOauth: {
+    accessToken: 'revoked-access-token',
+    refreshToken: 'valid-refresh-token',
+    expiresAt: now + 60 * 60 * 1000,
+  } }), { mode: 0o600 })
+
+  let usageCalls = 0
+  try {
+    const runtime = new GatewayRuntime({
+      ledger: { list: () => [] },
+      executor: {},
+      oauthCredentialsPath: credentialsPath,
+      clock: () => now,
+      fetchImpl: async (url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).endsWith('/v1/oauth/token')) return Response.json({
+          access_token: 'fresh-access-token', refresh_token: 'fresh-refresh-token', expires_in: 28_800,
+        })
+        usageCalls++
+        if (usageCalls === 1) return new Response('{}', { status: 401 })
+        assert.equal((init?.headers as Record<string, string>).authorization, 'Bearer fresh-access-token')
+        return Response.json({ five_hour: { utilization: 9 }, seven_day: { utilization: 2 } })
+      },
+    })
+
+    const metrics: any = await runtime.metrics('conversation-1')
+    assert.equal(usageCalls, 2)
+    assert.equal(metrics.quota.available, true)
+    assert.equal(metrics.quota.fiveHour.usedPercentage, 9)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('subscription quota reports reauthentication when the refresh token is rejected', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'lumbre-cc-oauth-rejected-'))
+  const credentialsPath = path.join(root, '.credentials.json')
+  const now = Date.parse('2026-09-08T12:00:00.000Z')
+  writeFileSync(credentialsPath, JSON.stringify({ claudeAiOauth: {
+    accessToken: 'expired-access-token',
+    refreshToken: 'revoked-refresh-token',
+    expiresAt: now - 1,
+  } }), { mode: 0o600 })
+
+  try {
+    const runtime = new GatewayRuntime({
+      ledger: { list: () => [] },
+      executor: {},
+      oauthCredentialsPath: credentialsPath,
+      clock: () => now,
+      fetchImpl: async () => new Response('{"error":"invalid_grant"}', { status: 400 }),
+    })
+
+    const metrics: any = await runtime.metrics('conversation-1')
+    assert.equal(metrics.quota.available, false)
+    assert.equal(metrics.quota.reason, 'oauth_reauth_required')
+    assert.doesNotMatch(JSON.stringify(metrics), /access-token|refresh-token|invalid_grant/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

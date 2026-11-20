@@ -1504,7 +1504,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                     <span className="shrink-0 tabular-nums">{ccStatus.quota.sevenDay ? fmtMetricReset(ccStatus.quota.sevenDay.resetsAt) : fmtMetricTime(ccStatus.quota.collectedAt)}</span>
                   </div>
                 </>
-              ) : <div className="flex justify-between"><span>暂不可读</span><span>{ccStatus.available ? '线路在线' : '线路离线'}</span></div>}
+              ) : <div className="flex justify-between"><span>{ccStatus.quota.reason === 'oauth_reauth_required' ? '登录已失效' : '暂不可读'}</span><span>{ccStatus.available ? '线路在线' : '线路离线'}</span></div>}
 
           <div className="chat-session-rule my-2" />
           {ccStatus.context.available ? (

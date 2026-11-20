@@ -8,7 +8,7 @@ const QUOTA_URL = 'https://api.anthropic.com/api/oauth/usage'
 const OAUTH_TOKEN_URL = 'https://platform.claude.com/v1/oauth/token'
 const OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
 const QUOTA_TTL_MS = 5 * 60 * 1000
-const OAUTH_REFRESH_MARGIN_MS = 60 * 1000
+const OAUTH_REFRESH_MARGIN_MS = 10 * 60 * 1000
 
 function fingerprint(value) {
   return value ? createHash('sha256').update(value).digest('hex').slice(0, 12) : null
@@ -45,15 +45,23 @@ export class GatewayRuntime {
     this.compactController = null
   }
 
-  async quotaOauthToken() {
-    if (!this.oauthCredentialsPath) return this.oauthToken
+  async quotaOauthToken(forceRefresh = false) {
+    if (!this.oauthCredentialsPath) return { token: this.oauthToken, reason: this.oauthToken ? null : 'oauth_token_unavailable' }
     let stored
     try { stored = JSON.parse(fs.readFileSync(this.oauthCredentialsPath, 'utf8')) }
-    catch { return this.oauthToken }
+    catch { return { token: this.oauthToken, reason: this.oauthToken ? null : 'oauth_token_unavailable' } }
     const credential = stored?.claudeAiOauth
-    if (!credential?.accessToken) return this.oauthToken
-    if (Number(credential.expiresAt) > this.clock() + OAUTH_REFRESH_MARGIN_MS) return credential.accessToken
-    if (!credential.refreshToken) return credential.accessToken
+    if (!credential?.accessToken) return { token: this.oauthToken, reason: this.oauthToken ? null : 'oauth_token_unavailable' }
+    const accessExpiresAt = Number(credential.expiresAt) || 0
+    if (!forceRefresh && accessExpiresAt > this.clock() + OAUTH_REFRESH_MARGIN_MS) return { token: credential.accessToken, reason: null }
+    if (!credential.refreshToken) {
+      return accessExpiresAt > this.clock()
+        ? { token: credential.accessToken, reason: null }
+        : { token: '', reason: 'oauth_reauth_required' }
+    }
+    if (Number(credential.refreshTokenExpiresAt) > 0 && Number(credential.refreshTokenExpiresAt) <= this.clock()) {
+      return { token: '', reason: 'oauth_reauth_required' }
+    }
 
     try {
       const scopes = Array.isArray(credential.scopes) ? credential.scopes : []
@@ -69,7 +77,10 @@ export class GatewayRuntime {
         redirect: 'error',
         signal: AbortSignal.timeout(4_000),
       })
-      if (!response.ok) throw new Error('oauth refresh failed')
+      if (!response.ok) {
+        const reason = [400, 401, 403].includes(response.status) ? 'oauth_reauth_required' : 'oauth_refresh_unavailable'
+        return !forceRefresh && accessExpiresAt > this.clock() ? { token: credential.accessToken, reason } : { token: '', reason }
+      }
       const text = await response.text()
       if (text.length > 64_000) throw new Error('oauth refresh response too large')
       const data = JSON.parse(text)
@@ -98,9 +109,11 @@ export class GatewayRuntime {
       } finally {
         try { fs.unlinkSync(temporaryPath) } catch {}
       }
-      return data.access_token
+      return { token: data.access_token, reason: null }
     } catch {
-      return credential.accessToken
+      return !forceRefresh && accessExpiresAt > this.clock()
+        ? { token: credential.accessToken, reason: 'oauth_refresh_unavailable' }
+        : { token: '', reason: 'oauth_refresh_unavailable' }
     }
   }
 
@@ -419,13 +432,16 @@ export class GatewayRuntime {
     if (this.quotaSnapshot && now < this.quotaExpiresAt) return this.quotaSnapshot
     if (this.quotaPending) return this.quotaPending
     const previous = this.quotaSnapshot
+    const unavailable = reason => previous?.available
+      ? { ...previous, stale: true, reason }
+      : { available: false, reason, source: 'anthropic_oauth_usage', collectedAt: null }
     const pending = (async () => {
-      const oauthToken = await this.quotaOauthToken()
-      if (!oauthToken) return { available: false, reason: 'oauth_token_unavailable', source: 'anthropic_oauth_usage', collectedAt: null }
       try {
-        const response = await this.fetchImpl(QUOTA_URL, {
+        let auth = await this.quotaOauthToken()
+        if (!auth.token) return unavailable(auth.reason || 'oauth_token_unavailable')
+        const requestUsage = token => this.fetchImpl(QUOTA_URL, {
           headers: {
-            authorization: `Bearer ${oauthToken}`,
+            authorization: `Bearer ${token}`,
             'anthropic-beta': 'oauth-2025-04-20',
             'user-agent': `claude-code/${PINNED_CLAUDE_CODE_VERSION}`,
             accept: 'application/json',
@@ -433,7 +449,16 @@ export class GatewayRuntime {
           redirect: 'error',
           signal: AbortSignal.timeout(4_000),
         })
-        if (!response.ok) throw new Error('quota request failed')
+        let response = await requestUsage(auth.token)
+        if ([401, 403].includes(response.status) && this.oauthCredentialsPath) {
+          await response.body?.cancel()
+          auth = await this.quotaOauthToken(true)
+          if (!auth.token) return unavailable(auth.reason || 'oauth_reauth_required')
+          response = await requestUsage(auth.token)
+        }
+        if (!response.ok) {
+          return unavailable([401, 403].includes(response.status) ? 'oauth_reauth_required' : 'oauth_usage_unavailable')
+        }
         const text = await response.text()
         if (text.length > 64_000) throw new Error('quota response too large')
         const data = JSON.parse(text)
@@ -448,9 +473,7 @@ export class GatewayRuntime {
           sevenDay,
         }
       } catch {
-        return previous?.available
-          ? { ...previous, stale: true, reason: 'refresh_failed' }
-          : { available: false, reason: 'oauth_usage_unavailable', source: 'anthropic_oauth_usage', collectedAt: null }
+        return unavailable('oauth_usage_unavailable')
       }
     })()
     this.quotaPending = pending
