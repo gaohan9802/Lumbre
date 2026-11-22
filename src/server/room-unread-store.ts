@@ -7,6 +7,7 @@ export const ROOM_UNREAD_KEYS = [
   'media', 'energy', 'poems', 'stories', 'research', 'tesis',
   'future', 'dictionary',
   'engawa',
+  'nursery',
 ] as const
 
 export type RoomUnreadKey = typeof ROOM_UNREAD_KEYS[number]

@@ -29,6 +29,7 @@ export type ToolDomain =
   | 'summaries'
   | 'engawa'
   | 'kitchen'
+  | 'nursery'
 
 export interface ToolDef {
   name: string

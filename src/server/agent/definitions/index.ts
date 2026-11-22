@@ -5,6 +5,7 @@ import { LIFE_TOOL_DEFINITIONS } from './life'
 import { MEMORY_TOOL_DEFINITIONS } from './memory'
 import { CREATIVE_TOOL_DEFINITIONS } from './creative'
 import { KITCHEN_TOOL_DEFINITIONS } from './kitchen'
+import { NURSERY_TOOL_DEFINITIONS } from './nursery'
 
 const DEFINITIONS = [
   ...MEMORY_TOOL_DEFINITIONS,
@@ -14,6 +15,7 @@ const DEFINITIONS = [
   ...ENGAWA_TOOL_DEFINITIONS,
   ...CREATIVE_TOOL_DEFINITIONS,
   ...KITCHEN_TOOL_DEFINITIONS,
+  ...NURSERY_TOOL_DEFINITIONS,
 ]
 
 // Keep the pre-refactor order stable because tool schema order participates in
@@ -51,6 +53,7 @@ const TOOL_ORDER = [
   'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day',
   'hobby_corner', 'hobby_add', 'hobby_remove', 'write_windowsill_line',
   'kitchen_cook', 'kitchen_status', 'kitchen_cancel', 'kitchen_toss', 'kitchen_buy', 'eat', 'read_menu', 'snack_eat', 'kitchen_notes',
+  'nursery',
 ] as const
 
 const byName = new Map(DEFINITIONS.map(definition => [definition.name, definition]))

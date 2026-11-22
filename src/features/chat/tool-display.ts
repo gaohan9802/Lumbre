@@ -150,6 +150,7 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   read_menu: '翻了翻小厨房菜单',
   snack_eat: '拿了一份零食',
   kitchen_notes: '看了看厨房留言',
+  nursery: '去看了看孩子',
 }
 
 let toolDisplayOverrides: Record<string, string> = {}

@@ -3,6 +3,7 @@ import { authCookie, isAuthConfigured, verifySessionToken } from './lib/auth'
 import { shouldBlockDebugApi } from './server/safety-baseline'
 import { isTrustedCcToolBridgeRequest } from './server/chat/cc-tool-bridge-auth'
 import { isTrustedHealthSyncRequest } from './server/health-sync-auth'
+import { isTrustedNurseryEventRequest } from './server/nursery-auth'
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -61,6 +62,11 @@ export async function middleware(request: NextRequest) {
   // The isolated CC gateway has no browser cookie. It can reach exactly this
   // endpoint with a separate bridge secret; the route repeats the check.
   if (pathname === '/api/internal/cc-tools' && isTrustedCcToolBridgeRequest(request.headers.get('authorization'))) {
+    return securityHeaders(NextResponse.next())
+  }
+
+  // The private Nursery sidecar posts lifecycle events without a browser cookie.
+  if (pathname === '/api/internal/nursery-events' && isTrustedNurseryEventRequest(request.headers.get('authorization'))) {
     return securityHeaders(NextResponse.next())
   }
 

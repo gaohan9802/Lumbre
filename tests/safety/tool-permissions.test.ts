@@ -26,9 +26,9 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 151)
-  assert.equal(registry.ALL_TOOLS.length, 151)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 151)
+  assert.equal(registry.registeredToolCount(), 152)
+  assert.equal(registry.ALL_TOOLS.length, 152)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 152)
   for (const removed of ['write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline']) {
     assert.equal(registry.ALL_TOOLS.some(tool => tool.name === removed), false, removed)
   }
@@ -38,8 +38,9 @@ test('all legacy tool contracts have exactly one policy registration', () => {
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_energy_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-25, -9).map(tool => tool.name), ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove', 'write_windowsill_line'])
-  assert.deepEqual(registry.ALL_TOOLS.slice(-9).map(tool => tool.name), ['kitchen_cook', 'kitchen_status', 'kitchen_cancel', 'kitchen_toss', 'kitchen_buy', 'eat', 'read_menu', 'snack_eat', 'kitchen_notes'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-26, -10).map(tool => tool.name), ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove', 'write_windowsill_line'])
+  assert.deepEqual(registry.ALL_TOOLS.slice(-10, -1).map(tool => tool.name), ['kitchen_cook', 'kitchen_status', 'kitchen_cancel', 'kitchen_toss', 'kitchen_buy', 'eat', 'read_menu', 'snack_eat', 'kitchen_notes'])
+  assert.equal(registry.ALL_TOOLS.at(-1)?.name, 'nursery')
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
 
@@ -66,6 +67,7 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   const engawaWrite = registry.getRegisteredTool('hobby_add')!
   const engawaRemove = registry.getRegisteredTool('hobby_remove')!
   const engawaLine = registry.getRegisteredTool('write_windowsill_line')!
+  const nursery = registry.getRegisteredTool('nursery')!
 
   assert.deepEqual(policy.evaluateToolPolicy(read, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(write, {}, chat), { allowed: true, level: 'yellow' })
@@ -92,6 +94,8 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.deepEqual(policy.evaluateToolPolicy(engawaLine, {}, wake), { allowed: true, level: 'yellow' })
   assert.equal(policy.evaluateToolPolicy(engawaRemove, {}, chat).requiresConfirmation, true)
   assert.deepEqual(policy.evaluateToolPolicy(engawaRemove, {}, wake), { allowed: true, level: 'red' })
+  assert.deepEqual(policy.evaluateToolPolicy(nursery, { command: 'status' }, chat), { allowed: true, level: 'green' })
+  assert.deepEqual(policy.evaluateToolPolicy(nursery, { command: 'feed 晚安' }, wake), { allowed: true, level: 'yellow' })
 })
 
 test('Sticker tools list the catalog, reject unknown ids and normalize optional fields', async () => {
@@ -107,7 +111,7 @@ test('unattended wake receives every registered tool including CedarToy games', 
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake' })
   const names = registry.toolsForContext(wake).map(tool => tool.name)
   assert.equal(names.length, registry.registeredToolCount())
-  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'read_health_summary', 'read_energy_summary', 'delete_energy_entry', 'save_pantry_item', 'save_grocery_item', 'delete_grocery_item', 'save_energy_goal', 'delete_energy_goal', 'set_password', 'confirm_void_coupon', 'bite_otter_nape']) {
+  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'read_health_summary', 'read_energy_summary', 'delete_energy_entry', 'save_pantry_item', 'save_grocery_item', 'delete_grocery_item', 'save_energy_goal', 'delete_energy_goal', 'set_password', 'confirm_void_coupon', 'bite_otter_nape', 'nursery']) {
     assert.equal(names.includes(allowed), true, allowed)
   }
   const trace = registry.toolsForContext(wake).find(tool => tool.name === 'trace')!

@@ -1,0 +1,21 @@
+FROM python:3.12-slim
+
+RUN groupadd --system --gid 1001 nursery \
+    && useradd --system --uid 1001 --gid nursery --home /app nursery
+
+WORKDIR /app
+COPY services/nursery/bridge.py /app/bridge.py
+COPY services/nursery/vendor /app/vendor
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/vendor \
+    NURSERY_PORT=8800 \
+    NURSERY_SAVES_DIR=/data/saves \
+    NURSERY_ARCHIVE_DB=/tmp/lumbre-nursery-archive.sqlite
+
+USER nursery
+EXPOSE 8800
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/health', timeout=2).read()"
+CMD ["python", "/app/bridge.py"]

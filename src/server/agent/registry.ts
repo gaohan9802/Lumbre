@@ -7,6 +7,7 @@ import { LIFE_TOOL_POLICIES } from './tools/life'
 import { MEMORY_TOOL_POLICIES } from './tools/memory'
 import { CREATIVE_TOOL_POLICIES } from './tools/creative'
 import { KITCHEN_TOOL_POLICIES } from './tools/kitchen'
+import { NURSERY_TOOL_POLICIES } from './tools/nursery'
 import type { RegisteredTool, ToolDef, ToolPolicySpec } from './types'
 import type { ToolCallContext } from './context'
 import { evaluateToolPolicy } from './policy'
@@ -20,6 +21,7 @@ const POLICIES: ToolPolicySpec[] = [
   ...ENGAWA_TOOL_POLICIES,
   ...CREATIVE_TOOL_POLICIES,
   ...KITCHEN_TOOL_POLICIES,
+  ...NURSERY_TOOL_POLICIES,
 ]
 
 function buildRegistry(): Map<string, RegisteredTool> {

@@ -60,6 +60,7 @@ import { executeCedarToyTool } from './cedartoy'
 import { ENGAWA_TOOL_NAMES, executeEngawaTool } from './engawa'
 import { writeEngawaLine } from './engawa-history-store'
 import { executeKitchenetteTool } from './kitchenette'
+import { executeNurseryCommand } from './nursery'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
 const BRAIN_TOOLS = new Set(['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
@@ -99,6 +100,7 @@ export async function executeRegisteredToolHandler(
     }
 
     if (name.startsWith('cedar_')) return await executeCedarToyTool(name, input)
+    if (name === 'nursery') return await executeNurseryCommand(String(input.command || ''))
     if (['kitchen_cook', 'kitchen_status', 'kitchen_cancel', 'kitchen_toss', 'kitchen_buy', 'eat', 'read_menu', 'snack_eat', 'kitchen_notes'].includes(name)) {
       return await executeKitchenetteTool(name, input)
     }

@@ -364,6 +364,8 @@ test('chat rooms keep the night palette and compact reading type', () => {
   assert.match(guestbook, /max-w-3xl/)
   assert.doesNotMatch(guestbook, /const rotations|transform: `rotate/)
   assert.match(chatSettings, /api\/room-unread/)
+  assert.match(chatSettings, /room\('Nursery',[\s\S]*roomUnread\.nursery/)
+  assert.match(chat, /roomPanel === 'nursery' \? <NurseryView \/>/)
   assert.match(chatSettings, /openRoom\('notes'/)
   assert.match(chatSettings, /lumbre-guestbook-read/)
   assert.match(chatSettings, /星星本色（回复风格）/)

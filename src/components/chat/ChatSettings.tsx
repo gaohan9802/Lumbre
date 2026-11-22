@@ -7,7 +7,7 @@ import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
-type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'poems' | 'stories' | 'research' | 'tesis' | 'future' | 'dictionary' | 'engawa'
+type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'poems' | 'stories' | 'research' | 'tesis' | 'future' | 'dictionary' | 'engawa' | 'nursery'
 interface Props {
   open: boolean
   onClose: () => void
@@ -30,6 +30,7 @@ interface Props {
   onGames?: () => void
   onEngawa?: () => void
   onKitchen?: () => void
+  onNursery?: () => void
 }
 
 export function ChatSettings(props: Props) {
@@ -142,7 +143,7 @@ export function ChatSettings(props: Props) {
           </section>
           <section className="chat-room-card px-3 pb-2 pt-5">
             <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">TOGETHER</h3>
-            <div className="grid grid-cols-2">{room('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}{room('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}{room('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}{room('小游戏', () => navigate(props.onGames))}{room('小厨房', () => navigate(props.onKitchen))}{room('豹子的窗台', () => openRoom('engawa', props.onEngawa), roomUnread.engawa)}</div>
+            <div className="grid grid-cols-2">{room('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}{room('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}{room('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}{room('小游戏', () => navigate(props.onGames))}{room('小厨房', () => navigate(props.onKitchen))}{room('豹子的窗台', () => openRoom('engawa', props.onEngawa), roomUnread.engawa)}{room('Nursery', () => openRoom('nursery', props.onNursery), roomUnread.nursery)}</div>
           </section>
         </>}
         {panel === 'star' && <>
