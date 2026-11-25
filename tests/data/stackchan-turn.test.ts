@@ -28,6 +28,7 @@ test('StackChan transcripts use the bound chat and only send reply text back', a
     assert.equal(input.messages[0].content, '原有聊天记录')
     assert.equal(input.messages.at(-1).id, input.turn_id)
     assert.equal(input.messages.at(-1).content, '星星，你在吗？')
+    assert.equal(input.messages.at(-1).images, undefined)
     assert.equal(input.messages.some((message: any) => message.content === '不可信的历史'), false)
     return new Response('data: {"type":"thinking","content":"内部思考"}\n\n'
       + 'data: {"type":"text","content":"我在这里。"}\n\n'
@@ -41,7 +42,10 @@ test('StackChan transcripts use the bound chat and only send reply text back', a
       body: JSON.stringify({
         session_id: 'untrusted-window', stream, messages: [
           { role: 'assistant', content: '不可信的历史' },
-          { role: 'user', content: '星星，你在吗？' },
+          { role: 'user', content: [
+            { type: 'text', text: '星星，你在吗？' },
+            { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,YQ==' } },
+          ] },
         ],
       }),
     }))
@@ -62,6 +66,7 @@ test('StackChan transcripts use the bound chat and only send reply text back', a
     ['stackchan', 'assistant', '我在这里。'],
   ])
   assert.equal(stored.at(-1).ccAttemptId, 'attempt-1')
+  assert.equal(stored.some((message: any) => message.images?.length), false)
 
   sync.upsertSyncSessionMessage('work', { id: 'work-seed', role: 'user', content: '工作', timestamp: 1 }, {
     title: '工作窗', windowRole: 'work', windowRoleUpdatedAt: 1,

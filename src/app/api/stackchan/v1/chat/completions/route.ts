@@ -4,11 +4,21 @@ import { createTransportBatchId, runTransportTurn } from '@/server/chat/transpor
 
 export const runtime = 'nodejs'
 
-const maxBodyBytes = 64 * 1024
+const maxBodyBytes = 16 * 1024
 const noStore = { 'Cache-Control': 'no-store' }
 
 function error(message: string, status: number) {
   return Response.json({ error: { message } }, { status, headers: noStore })
+}
+
+function latestUserInput(messages: { role?: unknown; content?: unknown }[]) {
+  const content = messages.findLast(message => message?.role === 'user')?.content
+  if (typeof content === 'string') return content.trim()
+  if (!Array.isArray(content)) return ''
+  const text = content
+    .filter(part => part && typeof part === 'object' && (part as any).type === 'text')
+    .map(part => String((part as any).text || '').trim()).filter(Boolean).join('\n')
+  return text
 }
 
 export async function POST(request: Request) {
@@ -28,8 +38,7 @@ export async function POST(request: Request) {
     return error('Invalid JSON', 400)
   }
   const messages = Array.isArray(body?.messages) ? body.messages : []
-  const content = messages.findLast(message => message?.role === 'user')?.content
-  const text = typeof content === 'string' ? content.trim() : ''
+  const text = latestUserInput(messages)
   if (!text || text.length > 4000) return error('Expected a user transcript of 1–4000 characters', 400)
 
   const requestId = request.headers.get('idempotency-key') || randomUUID()

@@ -74,7 +74,9 @@ export function persistTransportPart(transport: Transport, sessionId: string, ba
     route: normalizeChatRoute(session.generationRoute),
     replyMode: 'short',
     content: part.text,
-    images: part.images.length ? part.images : undefined,
+    // StackChan photos are turn-scoped: Star can see them, but they do not
+    // become permanent chat/cache payload after the voice turn.
+    images: transport === 'stackchan' ? undefined : part.images.length ? part.images : undefined,
     timestamp: part.timestamp,
     transport,
     transportBatchId: batchId,
@@ -117,7 +119,7 @@ async function generateTurn(transport: Transport, sessionId: string, batchId: st
     route: normalizeChatRoute(message.route),
     ccAttemptId: message.ccAttemptId,
     content: chatMessageContentForModel(message),
-    images: rawImages.get(message.id) || message.images,
+    images: transport === 'stackchan' ? undefined : rawImages.get(message.id) || message.images,
     timestamp: message.timestamp,
   }))
   const turnId = messages.at(-1)?.id
