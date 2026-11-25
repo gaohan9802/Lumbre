@@ -68,7 +68,7 @@ function buildMessages(config: GatewayProviderConfig): any[] {
 }
 
 function toolResultContent(execution: GatewayToolExecution, origin?: string): any {
-  if (execution.name === 'view_foto') {
+  if (execution.name === 'view_foto' || execution.name === 'read_study_notebook') {
     try {
       const parsed = JSON.parse(execution.result)
       if (parsed?.url) {

@@ -112,34 +112,6 @@ export const LIFE_TOOL_DEFINITIONS = [
     }
   },
   {
-    "name": "read_thesis",
-    "description": "查看小火的论文进度：每个章节的标题、总页数、当前页数、完成百分比，以及论文整体总页数和完成百分比，还有每天的进度折线数据点和已有评论。",
-    "input_schema": {
-      "type": "object",
-      "properties": {}
-    }
-  },
-  {
-    "name": "comment_thesis",
-    "description": "给论文进度写一条评论(鼓励/建议/复盘)。会显示在论文页的AI评论区，带日期。",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "author": {
-          "type": "string",
-          "description": "star 或 fire，默认 star(🐆)"
-        },
-        "content": {
-          "type": "string",
-          "description": "评论内容"
-        }
-      },
-      "required": [
-        "content"
-      ]
-    }
-  },
-  {
     "name": "view_wish",
     "description": "查看 2026 愿望清单。返回星星(🐆)和小火(🦦)两栏的所有愿望：每条的id、属于谁(author: star/fire)、标题、描述、优先级(want想要/really很想要/dying死了都要)、状态(wishing许愿中/doing进行中/done已实现)、“我也想要”的likes、评论。",
     "input_schema": {

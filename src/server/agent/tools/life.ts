@@ -8,9 +8,6 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'remove_todo', domain: 'todo', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除待办' },
   { name: 'comment_todo', domain: 'todo', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
 
-  { name: 'read_thesis', domain: 'thesis', level: 'green', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'comment_thesis', domain: 'thesis', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
-
   { name: 'view_wish', domain: 'wishes', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'write_wish', domain: 'wishes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'edit_wish', domain: 'wishes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },

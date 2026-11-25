@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test, { after, before } from 'node:test'
@@ -12,13 +12,11 @@ import { DataPathError } from '../../src/server/data/errors'
 const root = mkdtempSync(path.join(tmpdir(), 'lumbre-small-state-stores-'))
 process.env.DATA_DIR = root
 let wish: typeof import('../../src/server/wish-store')
-let thesis: typeof import('../../src/server/thesis-store')
 let usage: typeof import('../../src/server/usage')
 let period: typeof import('../../src/server/period-store')
 
 before(async () => {
   wish = await import('../../src/server/wish-store')
-  thesis = await import('../../src/server/thesis-store')
   usage = await import('../../src/server/usage')
   period = await import('../../src/server/period-store')
 })
@@ -37,15 +35,6 @@ test('wish storage preserves CRUD behavior and safely recovers corrupt JSON', ()
   writeFileSync(file, '{broken wish json', 'utf8')
   wish.addWish('fire', 'recovered wish')
   assert.equal(readFileSync(`${file}.bak`, 'utf8'), '{broken wish json')
-})
-
-test('thesis storage preserves chapters, progress, comments, and backups', () => {
-  const chapter = thesis.addChapter('fixture chapter', 20)
-  assert.equal(thesis.updateChapter(chapter.id, { currentPages: 7 }), 'ok')
-  assert.equal(thesis.commentThesis('star', 'keep going'), 'ok')
-  assert.deepEqual(thesis.getThesis().totals, { done: 7, total: 20, percent: 35 })
-  assert.equal(thesis.removeChapter(chapter.id), 'ok')
-  assert.equal(existsSync(path.join(root, 'thesis', 'thesis.json.bak')), true)
 })
 
 test('usage storage obeys DATA_DIR and appends records without changing statistics', () => {
@@ -77,11 +66,9 @@ test('period storage safely recovers corrupt state', () => {
 
 test('malformed entries are isolated instead of breaking whole domain reads', () => {
   writeFileSync(path.join(root, 'wishlist', 'wishlist.json'), JSON.stringify({ wishes: [null, { id: 'kept', title: 'still readable' }] }), 'utf8')
-  writeFileSync(path.join(root, 'thesis', 'thesis.json'), JSON.stringify({ chapters: [null, { id: 'bad-numbers', title: 'bad', totalPages: '20' }], comments: [], progress: [] }), 'utf8')
   writeFileSync(path.join(root, 'period', 'state.json'), JSON.stringify({ cycle_days: 'wrong', period_length: null, history: [null] }), 'utf8')
 
   assert.deepEqual(wish.getWishes().wishes.map(value => value.id), ['kept'])
-  assert.equal(thesis.getThesis().chapters.length, 0)
   assert.equal(period.getPeriodState().cycle_days, 28)
 })
 

@@ -96,7 +96,7 @@ export const chatApi = {
   ccStatus: (conversationId?: string) => chatApiJson<CcStatus>(`/api/chat/cc-status${conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ''}`, {}, 6_000),
 
   compactCc: (body: { session_id: string; model?: string; mode?: 'chat' | 'work' }) =>
-    chatApiJson<{ status: string; before?: CcStatus['context']; after?: CcStatus['context']; error?: string }>('/api/chat/cc-compact', jsonInit('POST', body), 0),
+    chatApiJson<{ status: string; checkpoint?: { id: string } | null; before?: CcStatus['context']; after?: CcStatus['context']; error?: string }>('/api/chat/cc-compact', jsonInit('POST', body), 0),
 
   cancelCcAttempt: (body: { session_id: string; turn_id: string }) =>
     chatApiJson<{ ok: boolean; attempt?: { id: string; status: string } }>('/api/chat/cc-attempt/cancel', jsonInit('POST', body), 8_000),

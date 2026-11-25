@@ -27,7 +27,6 @@ function madridTime(d: Date | number = new Date()): string {
   }).format(date)
 }
 import { getTodos, commentTodo, addTodo, editTodo, removeTodo } from './todo-store'
-import { getThesis, commentThesis } from './thesis-store'
 import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { commentMediaEvent, deleteMediaContent, getMediaWork, listMediaLibrary, listMediaTimeline, saveMediaEntry, writeMediaNote } from './media-library-store'
 import { deleteCoreadAnnotation, readCoread, updateCoreadProgress, writeCoreadAnnotation } from './coread-store'
@@ -47,6 +46,7 @@ import { appendPoemLine, createPoem, deletePoem, deletePoemLine, editPoemLine, g
 import { addWheelOption, deleteWheelOption, editWheelOption, readWheel, spinWheel } from './intimacy-wheel-store'
 import { appendStorySection, createStory, deleteStory, getStory, listStories, updateStory, updateStorySection } from './story-store'
 import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
+import { addStudyComment, answerStudyQuestion, listStudyOverview, listStudyQuestions, readStudyBlocks, readStudyQuestionContext, searchStudy, studyAssetForTool, studyNoteOutline } from './study-store'
 import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
 import { drawPicture } from './pencil-case'
@@ -248,9 +248,9 @@ export async function executeRegisteredToolHandler(
     if (name === 'read_energy_summary') {
       return JSON.stringify(readEnergyToolSummary(input.date, input.days || 7))
     }
-    if (name === 'search_summaries') return JSON.stringify(searchSummaryArchive(input))
+    if (name === 'search_summaries') return JSON.stringify(searchSummaryArchive(input, context?.source === 'work' ? undefined : context?.sessionId))
     if (name === 'read_summary') {
-      const entry = readSummaryArchiveEntry(input.id)
+      const entry = readSummaryArchiveEntry(input.id, context?.source === 'work' ? undefined : context?.sessionId)
       return JSON.stringify({
         id: entry.id, level: entry.level, period: entry.periodKey,
         start_at: new Date(entry.startAt).toISOString(), end_at: new Date(entry.endAt).toISOString(),
@@ -567,25 +567,6 @@ export async function executeRegisteredToolHandler(
       case 'void_coupon': return JSON.stringify({ok:true,coupon:requestVoid(input.id, 'star')})
       case 'confirm_void_coupon': return JSON.stringify({ok:true,coupon:confirmVoid(input.id, 'fire')})
 
-      // Tesis (thesis) → local store
-      case 'read_thesis': {
-        const t = getThesis()
-        return JSON.stringify({
-          totals: t.totals,
-          chapters: t.chapters.map((c: any) => ({
-            id: c.id, title: c.title,
-            totalPages: c.totalPages, currentPages: c.currentPages,
-            percent: c.totalPages > 0 ? Math.round((c.currentPages / c.totalPages) * 100) : 0,
-          })),
-          progress: t.progress,
-          comments: t.comments.map((c: any) => ({ author: c.author, content: c.content, time: c.time })),
-        })
-      }
-      case 'comment_thesis': {
-        const r = commentThesis(input.author || 'star', input.content)
-        return r === 'ok' ? '💬 已在论文区留下评论' : r
-      }
-
       // Wishlist (2026 愿望清单) → local store
       case 'view_wish': {
         const s = getWishes()
@@ -726,6 +707,21 @@ export async function executeRegisteredToolHandler(
           return JSON.stringify({ ok: true, entity, id: item.id, archived: item.archived })
         }
         throw new Error('未知研究操作')
+      }
+      case 'read_study_notebook': {
+        if (input.mode === 'overview') return JSON.stringify(listStudyOverview())
+        if (input.mode === 'search') return JSON.stringify({ results: searchStudy(input.query, input.limit) })
+        if (input.mode === 'outline') return JSON.stringify(studyNoteOutline(input.note_id))
+        if (input.mode === 'blocks') return JSON.stringify(readStudyBlocks(input.note_id, input.start, input.limit, input.offset))
+        if (input.mode === 'question') return JSON.stringify(readStudyQuestionContext(input.note_id, input.question_id))
+        if (input.mode === 'questions') return JSON.stringify({ questions: listStudyQuestions(input.status) })
+        if (input.mode === 'view_asset') return JSON.stringify(studyAssetForTool(input.asset_id))
+        throw new Error('未知学习笔记读取方式')
+      }
+      case 'respond_study_notebook': {
+        if (input.action === 'answer') return JSON.stringify({ ok: true, reply: answerStudyQuestion(input.note_id, input.question_id, input.content, input.operation_key) })
+        if (input.action === 'comment') return JSON.stringify({ ok: true, comment: addStudyComment(input.note_id, input.content, { actor: 'star', block_id: input.block_id, quote: input.quote, operation_key: input.operation_key }) })
+        throw new Error('未知学习笔记互动')
       }
       case 'read_intimacy_wheel': return JSON.stringify(readWheel())
       case 'update_intimacy_wheel': {

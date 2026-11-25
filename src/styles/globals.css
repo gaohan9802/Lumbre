@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+.study-code .hljs-keyword, .study-code .hljs-selector-tag, .study-code .hljs-literal { color: #e7a1ac; }
+.study-code .hljs-string, .study-code .hljs-attr { color: #c9d99a; }
+.study-code .hljs-number, .study-code .hljs-symbol { color: #dfbd88; }
+.study-code .hljs-comment { color: #8e8586; font-style: italic; }
+.study-code .hljs-title, .study-code .hljs-function { color: #9fc7de; }
+.study-code .hljs-built_in, .study-code .hljs-type { color: #cbb7e8; }
+.study-markdown ruby { ruby-position: over; }
+.study-markdown rt { font-size: .55em; opacity: .65; }
+.study-display-math .katex-display { margin: 0; }
+
 @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
 
 @font-face {

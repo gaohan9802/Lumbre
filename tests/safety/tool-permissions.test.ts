@@ -123,10 +123,10 @@ test('unattended wake receives every registered tool including CedarToy games', 
 test('work windows receive strictly read-only life tools', async () => {
   const work = contextModule.createToolContext({ source: 'work', actorId: 'work', sessionId: 'work-session' })
   const names = registry.toolsForContext(work).map(tool => tool.name)
-  for (const readable of ['read_diary', 'search_summaries', 'read_summary', 'read_health_summary', 'read_energy_summary', 'kitchen_status', 'read_menu', 'kitchen_notes']) {
+  for (const readable of ['read_diary', 'search_summaries', 'read_summary', 'read_study_notebook', 'read_health_summary', 'read_energy_summary', 'kitchen_status', 'read_menu', 'kitchen_notes']) {
     assert.equal(names.includes(readable), true, readable)
   }
-  for (const mutating of ['write_diary', 'update_diary', 'delete_diary', 'trace', 'write_story', 'send_email', 'kitchen_cook', 'eat']) {
+  for (const mutating of ['write_diary', 'update_diary', 'delete_diary', 'trace', 'write_story', 'respond_study_notebook', 'send_email', 'kitchen_cook', 'eat']) {
     assert.equal(names.includes(mutating), false, mutating)
   }
   assert.match(await executor.executeTool('write_diary', { content: 'blocked' }, work), /strictly read-only/)

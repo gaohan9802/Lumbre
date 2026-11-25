@@ -55,7 +55,6 @@ import { TodoView } from '@/components/todo/TodoView'
 import { useWeather, weatherStickerPath } from '@/lib/useWeather'
 import dynamic from 'next/dynamic'
 
-const TesisView = dynamic(() => import('@/components/tesis/TesisView').then(module => module.TesisView), { ssr: false })
 const NotesView = dynamic(() => import('@/components/notes/NotesView').then(module => module.NotesView), { ssr: false })
 const DiaryView = dynamic(() => import('@/components/diary/DiaryView').then(module => module.DiaryView), { ssr: false })
 const PhotosView = dynamic(() => import('@/components/photos/PhotosView').then(module => module.PhotosView), { ssr: false })
@@ -75,9 +74,10 @@ const CedarToyView = dynamic(() => import('@/components/games/CedarToyView').the
 const EngawaView = dynamic(() => import('@/components/engawa/EngawaView').then(module => module.EngawaView), { ssr: false })
 const KitchenetteView = dynamic(() => import('@/components/kitchen/KitchenetteView').then(module => module.KitchenetteView), { ssr: false })
 const NurseryView = dynamic(() => import('@/components/nursery/NurseryView').then(module => module.NurseryView), { ssr: false })
+const StudyView = dynamic(() => import('@/components/study/StudyView').then(module => module.StudyView), { ssr: false })
 
-type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'future' | 'dictionary' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'energy' | 'tesis' | 'toolbox' | 'games' | 'engawa' | 'kitchen' | 'nursery'
-const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', future: '醒来以后', dictionary: '小火辞典', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', energy: '能量手账', tesis: 'Tesis', toolbox: '工具箱', games: '小游戏', engawa: '豹子的窗台', kitchen: '小厨房', nursery: 'Nursery' }
+type RoomPanel = 'notes' | 'diary' | 'photos' | 'poems' | 'stories' | 'research' | 'future' | 'dictionary' | 'wake' | 'memory' | 'favorites' | 'wishlist' | 'media' | 'energy' | 'toolbox' | 'games' | 'engawa' | 'kitchen' | 'nursery' | 'study'
+const roomLabels: Record<RoomPanel, string> = { notes: '小纸条', diary: '日记', photos: '照片', poems: '共诗', stories: '枕边集', research: '星野手记', future: '醒来以后', dictionary: '小火辞典', wake: '心跳唤醒', memory: '记忆', favorites: '收藏夹', wishlist: '愿望清单', media: '书影记录', energy: '能量手账', toolbox: '工具箱', games: '小游戏', engawa: '豹子的窗台', kitchen: '小厨房', nursery: 'Nursery', study: '小书桌' }
 
 interface FavoriteSourceItem {
   kind: 'memory' | 'diary' | 'chat'
@@ -2077,7 +2077,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
                   <header className="flex justify-end px-3 py-1">
                     <button type="button" aria-label="关闭" onClick={() => setRoomPanel(null)} className="rounded-full p-2 opacity-55 hover:opacity-100"><X size={18}/></button>
                   </header>
-                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'future' ? <FutureLetterView /> : roomPanel === 'dictionary' ? <FireDictionaryView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" sessionId={wakeDetailSessionId || activeSession?.id} /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'toolbox' ? <ToolboxView /> : roomPanel === 'games' ? <CedarToyView /> : roomPanel === 'engawa' ? <EngawaView /> : roomPanel === 'kitchen' ? <KitchenetteView onClose={() => setRoomPanel(null)} /> : roomPanel === 'nursery' ? <NurseryView /> : <TesisView />}</div>
+                  <div className="min-h-0 flex-1 overflow-hidden">{roomPanel === 'notes' ? <NotesView /> : roomPanel === 'diary' ? <DiaryView /> : roomPanel === 'photos' ? <PhotosView /> : roomPanel === 'poems' ? <PoemsView /> : roomPanel === 'stories' ? <StoriesView /> : roomPanel === 'research' ? <ResearchView /> : roomPanel === 'future' ? <FutureLetterView /> : roomPanel === 'dictionary' ? <FireDictionaryView /> : roomPanel === 'wake' ? <DreamsView fixedTab="reality" sessionId={wakeDetailSessionId || activeSession?.id} /> : roomPanel === 'memory' ? <MemoryView /> : roomPanel === 'favorites' ? <FavoritesView /> : roomPanel === 'wishlist' ? <WishlistView /> : roomPanel === 'media' ? <MediaLibraryView /> : roomPanel === 'energy' ? <EnergyView /> : roomPanel === 'toolbox' ? <ToolboxView /> : roomPanel === 'games' ? <CedarToyView /> : roomPanel === 'engawa' ? <EngawaView /> : roomPanel === 'kitchen' ? <KitchenetteView onClose={() => setRoomPanel(null)} /> : roomPanel === 'nursery' ? <NurseryView /> : roomPanel === 'study' ? <StudyView /> : null}</div>
                 </motion.section>
               </>
             )}
@@ -2102,7 +2102,7 @@ export function ChatView({ embedded = false, contextInjection = '', inputPlaceho
           </AnimatePresence>
 
           {/* settings / model / bookmark dialogs */}
-          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFutureLetter={() => setRoomPanel('future')} onDictionary={() => setRoomPanel('dictionary')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onMedia={() => setRoomPanel('media')} onEnergy={() => setRoomPanel('energy')} onTesis={() => setRoomPanel('tesis')} onGames={() => setRoomPanel('games')} onEngawa={() => setRoomPanel('engawa')} onKitchen={() => setRoomPanel('kitchen')} onNursery={() => setRoomPanel('nursery')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <ChatSettings initialPanel={chatSettingsPanel} onCoupons={() => window.dispatchEvent(new CustomEvent('lumbre-open-coupons'))} onTodo={() => setTodoOpen(true)} onNotes={() => setRoomPanel('notes')} onDiary={() => setRoomPanel('diary')} onPhotos={() => setRoomPanel('photos')} onPoems={() => setRoomPanel('poems')} onStories={() => setRoomPanel('stories')} onResearch={() => setRoomPanel('research')} onFutureLetter={() => setRoomPanel('future')} onDictionary={() => setRoomPanel('dictionary')} onFavorites={() => setRoomPanel('favorites')} onWishlist={() => setRoomPanel('wishlist')} onMedia={() => setRoomPanel('media')} onEnergy={() => setRoomPanel('energy')} onGames={() => setRoomPanel('games')} onEngawa={() => setRoomPanel('engawa')} onKitchen={() => setRoomPanel('kitchen')} onNursery={() => setRoomPanel('nursery')} onStudy={() => setRoomPanel('study')} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <ModelDialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} />
           <SummaryDialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} session={activeSession} />
           <BookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} />

@@ -7,14 +7,13 @@ import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
-type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'poems' | 'stories' | 'research' | 'tesis' | 'future' | 'dictionary' | 'engawa' | 'nursery'
+type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'poems' | 'stories' | 'research' | 'future' | 'dictionary' | 'engawa' | 'nursery' | 'study'
 interface Props {
   open: boolean
   onClose: () => void
   initialPanel?: ChatSettingsPanel
   onCoupons?: () => void
   onTodo?: () => void
-  onTesis?: () => void
   onNotes?: () => void
   onDiary?: () => void
   onPhotos?: () => void
@@ -31,6 +30,7 @@ interface Props {
   onEngawa?: () => void
   onKitchen?: () => void
   onNursery?: () => void
+  onStudy?: () => void
 }
 
 export function ChatSettings(props: Props) {
@@ -135,7 +135,7 @@ export function ChatSettings(props: Props) {
         {panel === 'menu' && <>
           <section className="chat-room-card px-3 pb-2 pt-5">
             <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">DAILY</h3>
-            <div className="grid grid-cols-2">{room('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}{room('Todo', () => openRoom('todo', props.onTodo), roomUnread.todo)}{room('小纸条', () => openRoom('notes', props.onNotes), roomUnread.notes)}{room('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}{room('饮食运动', () => openRoom('energy', props.onEnergy), roomUnread.energy)}{room('Tesis', () => openRoom('tesis', props.onTesis), roomUnread.tesis)}</div>
+            <div className="grid grid-cols-2">{room('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}{room('Todo', () => openRoom('todo', props.onTodo), roomUnread.todo)}{room('小纸条', () => openRoom('notes', props.onNotes), roomUnread.notes)}{room('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}{room('饮食运动', () => openRoom('energy', props.onEnergy), roomUnread.energy)}{room('小书桌', () => openRoom('study', props.onStudy), roomUnread.study)}</div>
           </section>
           <section className="chat-room-card px-3 pb-2 pt-5">
             <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">KEEPSAKES</h3>

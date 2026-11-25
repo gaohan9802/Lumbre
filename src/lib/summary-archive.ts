@@ -9,6 +9,8 @@ export interface SummaryArchiveWriter {
 
 export interface SummaryArchiveEntry {
   id: string
+  sessionId?: string
+  kind?: 'checkpoint'
   level: SummaryArchiveLevel
   periodKey: string
   startAt: number

@@ -11,10 +11,11 @@ process.env.DATA_DIR = root
 let repository: typeof import('../../src/server/data/repositories/summary-archive')
 let archive: typeof import('../../src/server/summary-archive')
 let runtime: typeof import('../../src/server/tool-runtime')
+let sync: typeof import('../../src/server/chat-sync')
 
-function entry(id: string, level: SummaryArchiveEntry['level'], periodKey: string, startAt: number, sourceIds: string[] = []): SummaryArchiveEntry {
+function entry(id: string, level: SummaryArchiveEntry['level'], periodKey: string, startAt: number, sourceIds: string[] = [], sessionId?: string): SummaryArchiveEntry {
   return {
-    id, level, periodKey, startAt, endAt: startAt + 1, createdAt: startAt, updatedAt: startAt,
+    id, sessionId, level, periodKey, startAt, endAt: startAt + 1, createdAt: startAt, updatedAt: startAt,
     title: level === 'daily' ? undefined : id, content: id, sourceIds, sourceDigest: id,
     locked: false, needsCorrection: false,
   }
@@ -24,14 +25,15 @@ before(async () => {
   repository = await import('../../src/server/data/repositories/summary-archive')
   archive = await import('../../src/server/summary-archive')
   runtime = await import('../../src/server/tool-runtime')
+  sync = await import('../../src/server/chat-sync')
   const entries = [
-    entry('daily-1', 'daily', '2026-10-01', 1),
-    entry('daily-2', 'daily', '2026-10-02', 2),
-    entry('daily-3', 'daily', '2026-10-03', 3),
-    entry('daily-4', 'daily', '2026-10-04', 4),
-    entry('weekly-1', 'weekly', '2026-10-01..2026-10-07', 5, ['daily-2']),
-    entry('monthly-1', 'monthly', '2026-10', 6, ['weekly-1']),
-    entry('daily-nov', 'daily', '2026-11-01', 7),
+    entry('daily-1', 'daily', '2026-10-01', 1, [], 'chat-a'),
+    entry('daily-2', 'daily', '2026-10-02', 2, [], 'chat-a'),
+    entry('daily-3', 'daily', '2026-10-03', 3, [], 'chat-a'),
+    entry('daily-4', 'daily', '2026-10-04', 4, [], 'chat-a'),
+    entry('weekly-1', 'weekly', '2026-10-01..2026-10-07', 5, ['daily-2'], 'chat-a'),
+    entry('monthly-1', 'monthly', '2026-10', 6, ['weekly-1'], 'chat-a'),
+    entry('daily-nov', 'daily', '2026-11-01', 7, [], 'chat-b'),
   ]
   repository.updateSummaryArchiveData(current => ({ ...current, entries }))
 })
@@ -54,6 +56,15 @@ test('work context receives one recent household day plus the stage card', () =>
   assert.doesNotMatch(context, /daily-4/)
   assert.match(context, /daily-nov/)
   assert.match(context, /weekly-1/)
+})
+
+test('chat context and search stay inside the current window', () => {
+  const context = archive.summaryArchiveContext('chat-a')
+  assert.match(context, /daily-4/)
+  assert.match(context, /weekly-1/)
+  assert.doesNotMatch(context, /daily-nov/)
+  assert.deepEqual(archive.searchSummaryArchive({}, 'chat-b').map(item => item.id), ['daily-nov'])
+  assert.throws(() => archive.readSummaryArchiveEntry('daily-nov', 'chat-a'), /找不到/)
 })
 
 test('household summaries accept chat windows only', () => {
@@ -94,6 +105,32 @@ test('summary read tool returns the exact card without internal source or writer
   assert.equal(result.sourceIds, undefined)
   assert.equal(result.sourceDigest, undefined)
   assert.equal(result.writer, undefined)
+})
+
+test('chat compaction checkpoint saves only uncovered rounds and is idempotent', async () => {
+  const sessionId = 'checkpoint-chat'
+  sync.mergeSyncDelta({ sessions: [{
+    id: sessionId, title: '46', windowRole: 'chat', windowRoleUpdatedAt: 1,
+    generationRoute: 'claude-code', ccModel: 'claude-opus-4-6', createdAt: 1, updatedAt: 40, pinned: false,
+    messages: [
+      { id: 'checkpoint-user', role: 'user', content: '别忘记这一件事', timestamp: 30 },
+      { id: 'checkpoint-assistant', role: 'assistant', content: '我会记住', timestamp: 40 },
+    ],
+  }], tombstones: {} })
+  let writes = 0
+  const write = async (_conversationId: string, prompt: string, model?: string) => {
+    writes += 1
+    assert.match(prompt, /别忘记这一件事/)
+    assert.equal(model, 'claude-opus-4-6')
+    return { status: 'completed', text: '一份压缩前记忆。', transcriptRemoved: true, usage: { cache_read_input_tokens: 12 } }
+  }
+  const saved = await archive.checkpointChatSummary(sessionId, write as any)
+  assert.equal(saved?.kind, 'checkpoint')
+  assert.equal(saved?.sessionId, sessionId)
+  assert.deepEqual(saved?.sourceIds, ['checkpoint-user', 'checkpoint-assistant'])
+  assert.equal((await archive.checkpointChatSummary(sessionId, write as any)), null)
+  assert.equal(writes, 1)
+  repository.updateSummaryArchiveData(current => ({ ...current, entries: current.entries.filter(item => item.sessionId !== sessionId) }))
 })
 
 test('daily maintenance compacts only at the 35% threshold', async () => {

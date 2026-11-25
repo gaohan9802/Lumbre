@@ -112,7 +112,8 @@ export function ChatWindowSettings({
     onClose()
   }
   const compact = async () => {
-    if (!window.confirm('压缩当前 CC 上下文？\n\n不会删除 Lumbre 聊天、摘要或记忆；失败时会恢复压缩前的 CC transcript。')) return
+    const savesCheckpoint = !persistedWorkMode && session.ccModel === 'claude-opus-4-6'
+    if (!window.confirm(`压缩当前 CC 上下文？\n\n${savesCheckpoint ? 'Opus 4.6 会先保存一张压缩前摘要；' : ''}不会删除 Lumbre 聊天、摘要或记忆。${savesCheckpoint ? '摘要或' : ''}压缩失败时，原 CC transcript 会保留。`)) return
     setCompactState('running'); setCompactMessage('')
     try {
       const result = persistedWorkMode
@@ -130,7 +131,8 @@ export function ChatWindowSettings({
         lastCompaction: { at: Date.now(), source: 'manual', beforeTokens: before, afterTokens: after },
       }))
       onCompacted()
-      setCompactMessage(before != null && after != null ? `已压缩 · ${fmtTokens(before)} → ${fmtTokens(after)}` : '已完成压缩')
+      const saved = !persistedWorkMode && result.checkpoint ? '已保存压缩前摘要 · ' : ''
+      setCompactMessage(before != null && after != null ? `${saved}已压缩 · ${fmtTokens(before)} → ${fmtTokens(after)}` : `${saved}已完成压缩`)
       await onRefreshCc()
     } catch (cause: any) {
       setCompactMessage(cause?.message || '压缩失败，原会话已保留。')
@@ -148,8 +150,8 @@ export function ChatWindowSettings({
         <section className="space-y-2">
           <h3 className="px-1 text-[10px] tracking-[.18em] opacity-40">窗口用途</h3>
           <div className={`space-y-2 rounded-2xl border p-4 ${card}`}>
-            <label className="block text-xs">用途<select value={windowRole} onChange={event => { const value = event.target.value as ChatWindowRole; setLocalWindowRole(value); if (value === 'work') setRoute('claude-code') }} className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-xs outline-none ${control}`}><option value="chat">活跃聊天窗</option><option value="work">活跃工作窗</option><option value="archived">封存</option></select></label>
-            <p className="text-[10px] leading-5 opacity-50">聊天窗共享家中摘要；工作窗只保留自己的工作记录，并且生活工具只读；封存窗不参加自动摘要。改变用途时会为新的工具边界安全重建一次 CC session。</p>
+            <label className="block text-xs">用途<select value={windowRole} onChange={event => { const value = event.target.value as ChatWindowRole; setLocalWindowRole(value); if (value === 'work') setRoute('claude-code') }} className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-xs outline-none ${control}`}><option value="chat">聊天窗</option><option value="work">工作窗（唯一）</option><option value="archived">封存</option></select></label>
+            <p className="text-[10px] leading-5 opacity-50">每个聊天窗保留自己的摘要；工作窗只保留自己的工作记录，并且生活工具只读；封存窗不参加自动摘要。改变用途时会为新的工具边界安全重建一次 CC session。</p>
           </div>
         </section>
 

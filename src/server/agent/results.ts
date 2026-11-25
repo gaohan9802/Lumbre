@@ -23,10 +23,10 @@ export function toolResultForHistory(name: string, result: string): string {
       if (Array.isArray(list)) return limitToolResult(JSON.stringify(list.map(({ url: _url, ...rest }: any) => rest)))
     } catch {}
   }
-  if (name === 'view_foto') {
+  if (name === 'view_foto' || name === 'read_study_notebook') {
     try {
-      const { url: _url, ...rest } = JSON.parse(result)
-      return limitToolResult(JSON.stringify(rest))
+      const parsed = JSON.parse(result)
+      if (parsed?.url) { const { url: _url, ...rest } = parsed; return limitToolResult(JSON.stringify(rest)) }
     } catch {}
   }
   return limitToolResult(result)
@@ -43,13 +43,13 @@ export function toolResultText(name: string, result: string): string {
     } catch {}
     return limitToolResult(result.replace(REDACTED_CONFIRMATION_TOKEN, ''), 2000)
   }
-  if (name === 'read_foto' || name === 'view_foto') return toolResultForHistory(name, result)
+  if (name === 'read_foto' || name === 'view_foto' || name === 'read_study_notebook') return toolResultForHistory(name, result)
   return limitToolResult(result)
 }
 
 export function toolResultContent(name: string, result: string): Array<Record<string, unknown>> {
   const text = toolResultText(name, result)
-  if (name !== 'view_foto') return [{ type: 'text', text }]
+  if (name !== 'view_foto' && name !== 'read_study_notebook') return [{ type: 'text', text }]
   try {
     const parsed = JSON.parse(result)
     const match = /^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\r\n]+)$/i.exec(String(parsed?.url || ''))

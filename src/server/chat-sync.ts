@@ -485,9 +485,8 @@ function mergeSyncDeltaUnlocked(client: SyncState): SyncManifest {
     })
   }
 
-  // Offline devices can promote different windows at the same time. Keep the
-  // newest promotion and durably archive the older one before publishing.
-  for (const role of ['chat', 'work'] as const) {
+  // Work windows are exclusive; ordinary chat windows can stay active together.
+  for (const role of ['work'] as const) {
     const active = Array.from(meta.values())
       .filter(item => normalizeChatWindowRole(item.windowRole) === role)
       .sort((a, b) => (Number(b.windowRoleUpdatedAt) || 0) - (Number(a.windowRoleUpdatedAt) || 0) || b.updatedAt - a.updatedAt)

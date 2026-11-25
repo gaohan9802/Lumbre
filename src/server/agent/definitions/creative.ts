@@ -240,4 +240,29 @@ export const CREATIVE_TOOL_DEFINITIONS = [
       required: ['sticker_id'],
     },
   },
+  {
+    name: 'read_study_notebook',
+    description: '阅读小火的「小书桌」。笔记可能很长：先用 overview/search/outline，再用 blocks 分页阅读；回答问题只用 question 取问题附近的上下文。图片默认只返回说明，确实需要看画面时才用 view_asset。你只能读取，不能修改小火的笔记。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        mode: { type: 'string', enum: ['overview', 'search', 'outline', 'blocks', 'question', 'questions', 'view_asset'] },
+        query: { type: 'string' }, note_id: { type: 'string' }, question_id: { type: 'string' }, asset_id: { type: 'string' },
+        status: { type: 'string', enum: ['open', 'answered', 'resolved'] }, start: { type: 'integer' }, offset: { type: 'integer', description: 'blocks 返回 next_offset 时照抄；用于继续读取同一个长内容块' }, limit: { type: 'integer' },
+      },
+      required: ['mode'],
+    },
+  },
+  {
+    name: 'respond_study_notebook',
+    description: '在「小书桌」中回答小火的问题，或给某篇笔记留评论。answer 前先用 read_study_notebook(mode=question) 读问题附近内容；回答可以用 Markdown、LaTeX 和代码块。每次写入必须给稳定 operation_key，重试时沿用，避免重复。不能修改、移动、归档或删除小火的正文。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['answer', 'comment'] }, note_id: { type: 'string' }, question_id: { type: 'string' },
+        block_id: { type: 'string' }, quote: { type: 'string' }, content: { type: 'string' }, operation_key: { type: 'string' },
+      },
+      required: ['action', 'note_id', 'content', 'operation_key'],
+    },
+  },
 ] satisfies ToolDef[]

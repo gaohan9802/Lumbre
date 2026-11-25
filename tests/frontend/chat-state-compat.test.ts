@@ -48,7 +48,7 @@ test('legacy browser chat state upgrades without losing messages, summaries, boo
   store.completeLegacyModelCredentialMigration(['legacy-profile'])
 })
 
-test('one active chat and one active work window are enforced locally', async () => {
+test('multiple chat windows stay active while work windows remain exclusive locally', async () => {
   const { useChatStore } = await import('../../src/lib/chatStore')
   const original = useChatStore.getState()
   try {
@@ -57,7 +57,7 @@ test('one active chat and one active work window are enforced locally', async ()
     useChatStore.getState().setWindowRole('chat-b', 'chat')
     useChatStore.getState().setWindowRole('work-b', 'work')
     const sessions = useChatStore.getState().settings.sessions
-    assert.deepEqual(sessions.filter(item => item.windowRole === 'chat').map(item => item.id), ['chat-b'])
+    assert.deepEqual(sessions.filter(item => item.windowRole === 'chat').map(item => item.id), ['chat-a', 'chat-b'])
     assert.deepEqual(sessions.filter(item => item.windowRole === 'work').map(item => item.id), ['work-b'])
     assert.equal(sessions.find(item => item.id === 'work-b')?.generationRoute, 'claude-code')
   } finally {

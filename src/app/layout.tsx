@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import '@/styles/globals.css'
+import 'katex/dist/katex.min.css'
 import { ThemeProvider } from '@/components/layout/ThemeProvider'
 import { ServiceWorkerRegistration } from '@/components/layout/ServiceWorkerRegistration'
 

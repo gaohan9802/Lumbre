@@ -40,6 +40,8 @@ test('internal bridge exposes only registered Lumbre chat tools behind its own s
   assert.equal(response.headers.get('cache-control'), 'no-store')
   const body = await response.json()
   assert.equal(body.tools.length, 152)
+  assert.equal(body.tools.some((tool: any) => tool.name === 'read_study_notebook'), true)
+  assert.equal(body.tools.some((tool: any) => tool.name === 'respond_study_notebook'), true)
   assert.equal(body.tools.some((tool: any) => ['Bash', 'Shell', 'Read', 'Write', 'Edit'].includes(tool.name)), false)
   assert.equal(body.tools.some((tool: any) => tool.name === 'read_diary'), true)
   assert.equal(body.tools.some((tool: any) => tool.name === 'reply_guestbook'), true)
@@ -154,8 +156,10 @@ test('work bridge lists and executes only read-only Lumbre tools', async () => {
   const tools = (await listed.json()).tools
   assert.equal(tools.some((tool: any) => tool.name === 'read_diary'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'read_summary'), true)
+  assert.equal(tools.some((tool: any) => tool.name === 'read_study_notebook'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'write_diary'), false)
   assert.equal(tools.some((tool: any) => tool.name === 'delete_note'), false)
+  assert.equal(tools.some((tool: any) => tool.name === 'respond_study_notebook'), false)
 
   const denied = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
     method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),

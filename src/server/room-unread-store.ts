@@ -4,7 +4,7 @@ import { resolveDataPath } from './data/safe-path'
 
 export const ROOM_UNREAD_KEYS = [
   'coupons', 'todo', 'notes', 'diary', 'wishlist', 'photos', 'favorites',
-  'media', 'energy', 'poems', 'stories', 'research', 'tesis',
+  'media', 'energy', 'poems', 'stories', 'research', 'study',
   'future', 'dictionary',
   'engawa',
   'nursery',
@@ -12,7 +12,8 @@ export const ROOM_UNREAD_KEYS = [
 
 export type RoomUnreadKey = typeof ROOM_UNREAD_KEYS[number]
 type RoomUnreadCounts = Record<RoomUnreadKey, number>
-interface RoomUnreadData { counts: Partial<RoomUnreadCounts>; updated_at: string | null }
+type StoredRoomUnreadCounts = Partial<RoomUnreadCounts> & { tesis?: number }
+interface RoomUnreadData { counts: StoredRoomUnreadCounts; updated_at: string | null }
 
 const FILE = resolveDataPath(getDataDir(), 'room-unread.json')
 const fallback = (): RoomUnreadData => ({ counts: {}, updated_at: null })
@@ -20,7 +21,7 @@ const fallback = (): RoomUnreadData => ({ counts: {}, updated_at: null })
 function isData(value: unknown): value is RoomUnreadData {
   const data = value as Partial<RoomUnreadData> | null
   return !!data && typeof data === 'object' && !!data.counts && typeof data.counts === 'object'
-    && Object.entries(data.counts).every(([key, count]) => isRoomUnreadKey(key) && Number.isInteger(count) && Number(count) >= 0)
+    && Object.entries(data.counts).every(([key, count]) => (isRoomUnreadKey(key) || key === 'tesis') && Number.isInteger(count) && Number(count) >= 0)
     && (data.updated_at === null || typeof data.updated_at === 'string')
 }
 
@@ -35,18 +36,22 @@ export function readRoomUnreadCounts(): RoomUnreadCounts {
   return Object.fromEntries(ROOM_UNREAD_KEYS.map(room => [room, saved[room] || 0])) as RoomUnreadCounts
 }
 
+function liveCounts(counts: StoredRoomUnreadCounts): Partial<RoomUnreadCounts> {
+  return Object.fromEntries(ROOM_UNREAD_KEYS.flatMap(room => counts[room] === undefined ? [] : [[room, counts[room]]]))
+}
+
 export function incrementRoomUnread(room: RoomUnreadKey): number {
   let count = 0
   updateJsonFile<RoomUnreadData>(FILE, options, data => {
     count = Math.min(9_999, (data.counts[room] || 0) + 1)
-    return { counts: { ...data.counts, [room]: count }, updated_at: new Date().toISOString() }
+    return { counts: { ...liveCounts(data.counts), [room]: count }, updated_at: new Date().toISOString() }
   })
   return count
 }
 
 export function markRoomRead(room: RoomUnreadKey): void {
   updateJsonFile<RoomUnreadData>(FILE, options, data => ({
-    counts: { ...data.counts, [room]: 0 },
+    counts: { ...liveCounts(data.counts), [room]: 0 },
     updated_at: new Date().toISOString(),
   }))
 }

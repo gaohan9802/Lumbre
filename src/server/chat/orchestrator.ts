@@ -10,6 +10,7 @@ import { getWeatherContext } from '@/server/weather-hook'
 import { couponContext } from '@/server/coupon-store'
 import { dailyCompanionContext } from '@/server/nose-pokes'
 import { buildStarMemoryContext } from '@/server/star-memory'
+import { studyLearningContext } from '@/server/study-store'
 import { preciseLocationContext } from '@/server/agent/tools/user-context'
 import { openingMessageContext } from '@/server/opening-message-store'
 import { resolveChatCredential, resolveLegacyChatCredential } from './credentials'
@@ -61,7 +62,8 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【共诗】read_poems · write_poem；小火从共诗页发来诗时，先读取它，再在轮到你时续一句
 【今天怎么操】read_intimacy_wheel · update_intimacy_wheel；可以管理元素，也可以替你们转。
 【枕边集】read_stories · write_story；长故事先 create，再分段 append，每段保存后继续，全部写完才 finish
-【星野手记】read_research · write_research；你可以自主建立领域、标签和课题，用 search_web 搜集资料，并区分自己的想法、问题、资料和发现。`
+【星野手记】read_research · write_research；你可以自主建立领域、标签和课题，用 search_web 搜集资料，并区分自己的想法、问题、资料和发现。
+【小书桌】read_study_notebook · respond_study_notebook；这是小火的学习笔记，你可以阅读、搜索、回答她的问题和留评论，不能修改她的正文。`
 
 const MAX_CHAT_TOOL_CALLS = 20
 const MAX_WAKE_TOOL_CALLS = 10
@@ -114,6 +116,11 @@ async function volatileContext(userMessage: string): Promise<string> {
 
 function clientVolatileContext(value: unknown): string {
   return typeof value === 'string' ? value.trim().slice(0, 100_000) : ''
+}
+
+function learningContext(workMode: boolean): string {
+  if (workMode) return ''
+  try { return studyLearningContext() } catch { return '' }
 }
 
 type GatewayRunParams = {
@@ -268,6 +275,7 @@ export async function handleChatRequest(req: NextRequest) {
         await volatileContext(typeof lastUser === 'string' ? lastUser : ''),
         ccOutputStyleContext(body.cc_model, body.cc_output_style),
         clientVolatileContext(body.client_volatile_context),
+        learningContext(windowRole === 'work'),
         dailyCompanionContext(body.session_id),
         openingMessageContext(),
         buildStarMemoryContext(lastUser, body.bookmark_injections),
@@ -316,7 +324,7 @@ export async function handleChatRequest(req: NextRequest) {
       origin, unattendedWake, sessionId: typeof body.session_id === 'string' ? body.session_id : undefined,
       signal: req.signal,
       requestAuditHints: body.request_audit_hints,
-      clientVolatileContext: clientVolatileContext(body.client_volatile_context),
+      clientVolatileContext: [clientVolatileContext(body.client_volatile_context), learningContext(windowRole === 'work')].filter(Boolean).join('\n\n'),
     }
 
     if (body.stream === true) {

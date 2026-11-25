@@ -44,7 +44,7 @@ export function createSessionActions(set: SetChatState): SessionActions {
       const sessions = state.settings.sessions.map(session => {
         const nextRole = session.id === id
           ? selected
-          : selected !== 'archived' && normalizeChatWindowRole(session.windowRole) === selected
+          : selected === 'work' && normalizeChatWindowRole(session.windowRole) === 'work'
             ? 'archived'
             : normalizeChatWindowRole(session.windowRole)
         if (nextRole === normalizeChatWindowRole(session.windowRole)) return session
@@ -120,10 +120,7 @@ export function createSessionActions(set: SetChatState): SessionActions {
       set((state) => {
         const settings = normalizeSettings(state.settings)
         const nextSession = { id, title: '新的对话', messages: [], windowRole: 'chat' as const, windowRoleUpdatedAt: now, generationRoute: DEFAULT_CHAT_ROUTE, generationRouteUpdatedAt: 0, pinned: false, createdAt: now, updatedAt: now }
-        const sessions = settings.sessions.map(session => normalizeChatWindowRole(session.windowRole) === 'chat'
-          ? { ...session, windowRole: 'archived' as const, windowRoleUpdatedAt: now, updatedAt: Math.max(now, session.updatedAt + 1) }
-          : session)
-        return { settings: { ...settings, sessions: [nextSession, ...sessions], activeSessionId: id }, messages: [] }
+        return { settings: { ...settings, sessions: [nextSession, ...settings.sessions], activeSessionId: id }, messages: [] }
       })
       return id
     },
@@ -289,8 +286,8 @@ export function createSessionActions(set: SetChatState): SessionActions {
           messageCount: tail.length,
         }
         const nextRole = normalizeChatWindowRole(active.windowRole)
-        const sessions = nextRole === 'archived' ? settings.sessions : settings.sessions.map(session =>
-          normalizeChatWindowRole(session.windowRole) === nextRole
+        const sessions = nextRole !== 'work' ? settings.sessions : settings.sessions.map(session =>
+          normalizeChatWindowRole(session.windowRole) === 'work'
             ? { ...session, windowRole: 'archived' as const, windowRoleUpdatedAt: now, updatedAt: Math.max(now, session.updatedAt + 1) }
             : session)
         const nextSettings = { ...settings, sessions: [nextSession, ...sessions], activeSessionId: id }

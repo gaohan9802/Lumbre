@@ -110,6 +110,8 @@ export const TOOL_DISPLAY_LABELS: Record<string, string> = {
   write_story: '写了一个故事',
   read_research: '翻看了星野手记',
   write_research: '把研究结果写进了手记',
+  read_study_notebook: '翻看了小书桌',
+  respond_study_notebook: '回应了学习笔记',
   bite_otter_nape: '咬一口小水獭的后颈',
   read_detroit: '查看底特律进度',
   play_detroit: '继续玩底特律',

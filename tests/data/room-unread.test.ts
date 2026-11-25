@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test, { after, before } from 'node:test'
@@ -18,6 +18,7 @@ test('room unread counts persist per room and clear independently', () => {
   assert.equal(unread.readRoomUnreadCounts().dictionary, 0)
   assert.equal(unread.readRoomUnreadCounts().engawa, 0)
   assert.equal(unread.readRoomUnreadCounts().nursery, 0)
+  assert.equal(unread.readRoomUnreadCounts().study, 0)
   unread.incrementRoomUnread('photos')
   unread.incrementRoomUnread('photos')
   unread.incrementRoomUnread('diary')
@@ -35,4 +36,14 @@ test('room unread counts persist per room and clear independently', () => {
   unread.markRoomRead('photos')
   assert.equal(unread.readRoomUnreadCounts().photos, 0)
   assert.equal(unread.readRoomUnreadCounts().diary, 1)
+})
+
+test('legacy tesis unread count is ignored without dropping other rooms', () => {
+  const file = path.join(root, 'room-unread.json')
+  writeFileSync(file, JSON.stringify({ counts: { tesis: 4, diary: 2 }, updated_at: null }))
+
+  assert.equal(unread.readRoomUnreadCounts().diary, 2)
+  unread.markRoomRead('diary')
+
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).counts, { diary: 0 })
 })

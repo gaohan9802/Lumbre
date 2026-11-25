@@ -53,14 +53,14 @@ export const chat = {
 }
 
 export const summaries = {
-  list: () => get('/api/summaries'),
+  list: (sessionId?: string) => get(`/api/summaries${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`),
   update: (id: string, patch: Record<string, unknown>) => post('/api/summaries', { action: 'update', id, patch }),
   remove: (id: string) => post('/api/summaries', { action: 'delete', id }),
   regenerate: (id: string) => apiRequest('/api/summaries', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'regenerate', id }),
   }, 10 * 60_000),
-  run: () => apiRequest('/api/summaries', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'run' }),
+  run: (sessionId?: string) => apiRequest('/api/summaries', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'run', session_id: sessionId }),
   }, 10 * 60_000),
 }
 
@@ -168,14 +168,6 @@ export const todo = {
 
 
 
-// ── Tesis (thesis progress) ─────────────────────────────
-export const tesis = {
-  list:    () => get('/api/thesis/list'),
-  add:     (title: string, totalPages: number) => post('/api/thesis/add', { title, totalPages }),
-  update:  (id: string, patch: { title?: string; totalPages?: number; currentPages?: number }) => post('/api/thesis/update', { id, ...patch }),
-  remove:  (id: string) => post('/api/thesis/remove', { id }),
-  comment: (author: string, content: string) => post('/api/thesis/comment', { author, content }),
-}
 
 // ── Wishlist (2026 愿望清单) ───────────────────────────
 export const wish = {
@@ -264,6 +256,16 @@ export const stories = {
 export const research = {
   overview: () => get('/api/research'),
   topic: (id: string, offset = 0) => get(`/api/research?topic_id=${encodeURIComponent(id)}&offset=${offset}`),
+}
+
+export const study = {
+  overview: (includeArchived = false) => get(`/api/study${includeArchived ? '?archived=1' : ''}`),
+  note: (id: string) => get(`/api/study?mode=note&id=${encodeURIComponent(id)}`),
+  search: (query: string) => get(`/api/study?mode=search&q=${encodeURIComponent(query)}`),
+  questions: (status = '') => get(`/api/study?mode=questions${status ? `&status=${encodeURIComponent(status)}` : ''}`),
+  activity: () => get('/api/study?mode=activity'),
+  act: (action: string, data: Record<string, unknown> = {}) => post('/api/study', { action, ...data }),
+  upload: (kind: 'image' | 'ink', data_url: string, caption = '', strokes?: unknown[]) => post('/api/study/assets', { kind, data_url, caption, strokes }),
 }
 
 export const intimacyWheel = {

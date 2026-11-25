@@ -16,6 +16,8 @@ function validEntry(value: unknown): value is SummaryArchiveEntry {
   if (!value || typeof value !== 'object') return false
   const entry = value as SummaryArchiveEntry
   return typeof entry.id === 'string'
+    && (entry.sessionId === undefined || typeof entry.sessionId === 'string')
+    && (entry.kind === undefined || entry.kind === 'checkpoint')
     && ['daily', 'weekly', 'monthly'].includes(entry.level)
     && typeof entry.periodKey === 'string'
     && Number.isFinite(entry.startAt)
