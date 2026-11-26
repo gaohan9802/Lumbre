@@ -65,6 +65,15 @@ test('Star answers are idempotent and survive a later user note save', () => {
   assert.equal(question?.type === 'question' ? question.replies[0]?.content : '', '因为函数要求单值对应。')
 })
 
+test('a user follow-up stays in the original question thread and reopens it', () => {
+  const reply = study.addStudyQuestionReply(noteId, questionId, '那为什么不能对应两个输出？')
+  const latest = study.getStudyNote(noteId)
+  const question = latest.blocks.find(block => block.id === questionId)
+  assert.equal(reply.author, 'fire')
+  assert.equal(question?.type === 'question' ? question.status : '', 'open')
+  assert.equal(question?.type === 'question' ? question.replies.at(-1)?.content : '', '那为什么不能对应两个输出？')
+})
+
 test('comments, assets and learning activity stay bounded', () => {
   const first = study.addStudyComment(noteId, '这里的例子很清楚。', { actor: 'star', operation_key: 'comment-operation-1' })
   const retried = study.addStudyComment(noteId, '不会重复。', { actor: 'star', operation_key: 'comment-operation-1' })

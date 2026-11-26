@@ -55,10 +55,10 @@ function codeBlock(language: string, body: string, key: string) {
   </div>
 }
 
-function StudyMarkdownView({ content }: { content: string }) {
+function StudyMarkdownView({ content, idPrefix }: { content: string; idPrefix?: string }) {
   const lines = content.replace(/\r\n/g, '\n').split('\n')
   const nodes: React.ReactNode[] = []
-  let i = 0
+  let i = 0, headingIndex = 0
   while (i < lines.length) {
     const line = lines[i]
     if (line.startsWith('```')) {
@@ -83,7 +83,7 @@ function StudyMarkdownView({ content }: { content: string }) {
     const heading = line.match(/^(#{1,6})\s+(.+)$/)
     if (heading) {
       const level = heading[1].length
-      nodes.push(<div key={i} role="heading" aria-level={level} className={`${level === 1 ? 'text-2xl' : level === 2 ? 'text-xl' : level === 3 ? 'text-lg' : 'text-base'} mb-2 mt-6 font-semibold leading-tight first:mt-0`}>{inline(heading[2])}</div>); i++; continue
+      nodes.push(<div id={idPrefix ? `study-heading-${idPrefix}-${headingIndex++}` : undefined} key={i} role="heading" aria-level={level} className={`${level === 1 ? 'text-2xl' : level === 2 ? 'text-xl' : level === 3 ? 'text-lg' : 'text-base'} mb-2 mt-6 scroll-mt-20 font-semibold leading-tight first:mt-0`}>{inline(heading[2])}</div>); i++; continue
     }
     if (/^>\s?/.test(line)) {
       const quote: string[] = []

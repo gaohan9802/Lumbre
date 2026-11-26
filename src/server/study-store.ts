@@ -223,6 +223,20 @@ export function answerStudyQuestion(noteId: unknown, questionIdValue: unknown, c
   })
   recordActivity(noteSnapshot, 'answer', section); return saved
 }
+export function addStudyQuestionReply(noteId: unknown, questionIdValue: unknown, contentValue: unknown): StudyReply {
+  const questionId = safeId(questionIdValue, 'study question id'), content = text(contentValue, 20_000)
+  if (!content) throw new Error('追问内容不能为空')
+  let saved!: StudyReply, noteSnapshot!: StudyNote, section: string | undefined
+  updateJsonFile<StudyNote>(noteFile(noteId), { validate: validNote }, note => {
+    const index = note.blocks.findIndex(block => block.type === 'question' && block.id === questionId)
+    const question = note.blocks[index] as StudyQuestionBlock | undefined
+    if (!question || question.type !== 'question') throw new Error('学习问题不存在')
+    saved = { id: randomUUID(), author: 'fire', content, created_at: now() }
+    question.replies.push(saved); question.status = 'open'; question.updated_at = saved.created_at; note.updated_at = saved.created_at
+    section = sectionBefore(note.blocks, index); noteSnapshot = note; return note
+  })
+  recordActivity(noteSnapshot, 'question', section); return saved
+}
 export function addStudyComment(noteId: unknown, contentValue: unknown, options: { actor?: unknown; block_id?: unknown; quote?: unknown; operation_key?: unknown } = {}): StudyComment {
   const content = text(contentValue, 10_000), operationKey = text(options.operation_key, 180)
   if (!content) throw new Error('评论不能为空')
