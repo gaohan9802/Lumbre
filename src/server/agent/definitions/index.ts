@@ -1,10 +1,8 @@
 import { EXTERNAL_TOOL_DEFINITIONS } from './external'
-import { ENGAWA_TOOL_DEFINITIONS } from './engawa'
 import { JOURNAL_TOOL_DEFINITIONS } from './journal'
 import { LIFE_TOOL_DEFINITIONS } from './life'
 import { MEMORY_TOOL_DEFINITIONS } from './memory'
 import { CREATIVE_TOOL_DEFINITIONS } from './creative'
-import { KITCHEN_TOOL_DEFINITIONS } from './kitchen'
 import { NURSERY_TOOL_DEFINITIONS } from './nursery'
 
 const DEFINITIONS = [
@@ -12,9 +10,7 @@ const DEFINITIONS = [
   ...JOURNAL_TOOL_DEFINITIONS,
   ...LIFE_TOOL_DEFINITIONS,
   ...EXTERNAL_TOOL_DEFINITIONS,
-  ...ENGAWA_TOOL_DEFINITIONS,
   ...CREATIVE_TOOL_DEFINITIONS,
-  ...KITCHEN_TOOL_DEFINITIONS,
   ...NURSERY_TOOL_DEFINITIONS,
 ]
 
@@ -23,23 +19,17 @@ const DEFINITIONS = [
 const TOOL_ORDER = [
   'breath', 'hold', 'grow', 'trace', 'pulse', 'dream', 'recall_memory', 'remember', 'review_memory', 'lock_memory', 'manage_formal_memory', 'manage_memory_family',
   'write_diary', 'read_diary', 'comment_diary', 'update_diary', 'delete_diary', 'unlock_diary', 'set_password', 'timeline',
-  'write_note', 'read_notes', 'reply_note', 'delete_note',
   'list_foto_albums', 'read_foto', 'view_foto', 'save_chat_foto', 'edit_foto', 'delete_foto', 'comment_foto', 'read_travel_journal', 'write_travel_journal',
   'read_todo', 'add_todo', 'edit_todo', 'remove_todo', 'comment_todo',
-  'view_wish', 'write_wish', 'edit_wish', 'delete_wish', 'like_wish', 'comment_wish',
   'wake_me',
   'search_web', 'fetch_txt', 'fetch_markdown', 'fetch_html', 'fetch_json',
   'get_weather', 'get_location',
   'update_period', 'read_period', 'read_health_summary',
-  'read_energy_summary', 'log_energy_intake', 'log_energy_exercise', 'record_body_measurement', 'edit_energy_entry', 'delete_energy_entry',
-  'save_pantry_item', 'delete_pantry_item', 'save_grocery_item', 'delete_grocery_item', 'save_energy_goal', 'delete_energy_goal',
   'gmail_status', 'send_email', 'read_emails', 'search_emails', 'read_email_detail', 'reply_email',
   'read_bookmarks', 'add_bookmark', 'edit_bookmark',
-  'read_coupons', 'create_coupon', 'sign_coupon', 'edit_coupon', 'use_coupon', 'void_coupon', 'confirm_void_coupon',
   'read_poems', 'write_poem', 'read_intimacy_wheel', 'update_intimacy_wheel', 'draw_picture',
-  'read_stories', 'write_story', 'read_research', 'write_research', 'read_study_notebook', 'respond_study_notebook',
+  'read_stories', 'write_story', 'read_study_notebook', 'respond_study_notebook',
   'bite_otter_nape',
-  'read_detroit', 'play_detroit',
   'read_media_library', 'save_media_entry', 'read_coread_text', 'write_coread_annotation', 'update_coread_progress', 'write_media_note', 'comment_media_event', 'delete_media_content',
   'read_guestbook', 'write_guestbook', 'reply_guestbook', 'delete_guestbook_message',
   'write_opening_message', 'clear_opening_message',
@@ -48,10 +38,6 @@ const TOOL_ORDER = [
   'list_stickers', 'send_sticker',
   'search_summaries', 'read_summary',
   'cedar_list_games', 'cedar_get_guide', 'cedar_play', 'cedar_account',
-  'web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove',
-  'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day',
-  'hobby_corner', 'hobby_add', 'hobby_remove', 'write_windowsill_line',
-  'kitchen_cook', 'kitchen_status', 'kitchen_cancel', 'kitchen_toss', 'kitchen_buy', 'eat', 'read_menu', 'snack_eat', 'kitchen_notes',
   'nursery',
 ] as const
 

@@ -88,14 +88,6 @@ export const diary = {
     post('/api/diary/delete', { author, target_date, time_id }),
 }
 
-// ── Notes ───────────────────────────────────────────────
-export const notes = {
-  read:   (params: { keyword?: string; limit?: number } = {}) => post('/api/notes/read', params),
-  write:  (author: string, content: string, tags?: string) => post('/api/notes/write', { author, content, tags }),
-  reply:  (note_id: string, author: string, content: string) => post('/api/notes/reply', { note_id, author, content }),
-  delete: (note_id: string, author: string) => post('/api/notes/delete', { note_id, author }),
-}
-
 // ── Memory ──────────────────────────────────────────────
 export const memory = {
   search: (query?: string, params: any = {}) => post('/api/memory/search', { query, ...params }),
@@ -141,21 +133,6 @@ export const travelVisits = {
   remove: (id: string) => post('/api/travel-visits', { action: 'delete', id }),
 }
 
-export const energy = {
-  dashboard: (date?: string, days = 7) => get(`/api/energy?${new URLSearchParams({ ...(date ? { date } : {}), days: String(days) }).toString()}`),
-  saveProfile: (profile: Record<string, unknown>) => post('/api/energy', { action: 'profile', profile }),
-  saveMeasurement: (measurement: Record<string, unknown>) => post('/api/energy', { action: 'measurement', measurement }),
-  saveEntry: (entry: Record<string, unknown>) => post('/api/energy', { action: 'entry', entry }),
-  remove: (id: string) => post('/api/energy', { action: 'delete', id }),
-  savePantry: (item: Record<string, unknown>) => post('/api/energy', { action: 'pantry', item }),
-  removePantry: (id: string) => post('/api/energy', { action: 'delete_pantry', id }),
-  saveGrocery: (item: Record<string, unknown>) => post('/api/energy', { action: 'grocery', item }),
-  removeGrocery: (id: string) => post('/api/energy', { action: 'delete_grocery', id }),
-  clearCompletedGroceries: () => post('/api/energy', { action: 'clear_completed_groceries' }),
-  saveGoal: (goal: Record<string, unknown>) => post('/api/energy', { action: 'goal', goal }),
-  removeGoal: (id: string) => post('/api/energy', { action: 'delete_goal', id }),
-}
-
 // ── Todo ────────────────────────────────────────────────
 export const todo = {
   list:    (date?: string) => get('/api/todo/list' + (date ? `?date=${date}` : '')),
@@ -168,19 +145,6 @@ export const todo = {
 
 
 
-
-// ── Wishlist (2026 愿望清单) ───────────────────────────
-export const wish = {
-  list: () => get('/api/wish/list'),
-  add: (author: string, title: string, opts: { desc?: string; priority?: string } = {}) =>
-    post('/api/wish/add', { author, title, ...opts }),
-  edit: (id: string, patch: { title?: string; desc?: string; priority?: string; status?: string }) =>
-    post('/api/wish/edit', { id, ...patch }),
-  remove: (id: string) => post('/api/wish/delete', { id }),
-  like: (id: string, author: string) => post('/api/wish/like', { id, author }),
-  comment: (id: string, author: string, content: string) =>
-    post('/api/wish/comment', { id, author, content }),
-}
 
 // ── Private book & screen log ───────────────────────────
 export const mediaLibrary = {
@@ -228,19 +192,6 @@ export const period = {
 }
 
 
-// ── Coupon promise wallet ──────────────────────────────
-
-export const coupons = {
-  list: () => get('/api/coupons'),
-  add: (data: any) => post('/api/coupons', { action: 'add', ...data }),
-  sign: (id: string, actor: string) => post('/api/coupons', { action: 'sign', id, actor }),
-  remove: (id: string, actor: string) => post('/api/coupons', { action: 'delete', id, actor }),
-  edit: (id: string, patch: any, actor: string) => post('/api/coupons', { action: 'edit', id, patch, actor }),
-  use: (id: string, actor: string) => post('/api/coupons', { action: 'use', id, actor }),
-  void: (id: string, actor: string) => post('/api/coupons', { action: 'void', id, actor }),
-  confirmVoid: (id: string, actor: string) => post('/api/coupons', { action: 'confirm_void', id, actor }),
-}
-
 export const poems = {
   list: (includeArchived = false) => get(`/api/poems${includeArchived ? '?archived=1' : ''}`),
   get: (id: string) => get(`/api/poems?id=${encodeURIComponent(id)}`),
@@ -251,11 +202,6 @@ export const stories = {
   list: () => get('/api/stories'),
   get: (id: string) => get(`/api/stories?id=${encodeURIComponent(id)}`),
   act: (action: string, data: Record<string, unknown> = {}) => post('/api/stories', { action, ...data }),
-}
-
-export const research = {
-  overview: () => get('/api/research'),
-  topic: (id: string, offset = 0) => get(`/api/research?topic_id=${encodeURIComponent(id)}&offset=${offset}`),
 }
 
 export const study = {

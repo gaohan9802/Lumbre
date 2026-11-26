@@ -7,7 +7,6 @@ import { isTrustedInternalRequest } from '@/server/safety-baseline'
 import { reportActivity } from '@/server/autowake'
 import { getPeriodContext } from '@/server/period-store'
 import { getWeatherContext } from '@/server/weather-hook'
-import { couponContext } from '@/server/coupon-store'
 import { dailyCompanionContext } from '@/server/nose-pokes'
 import { buildStarMemoryContext } from '@/server/star-memory'
 import { studyLearningContext } from '@/server/study-store'
@@ -35,16 +34,13 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 
 【记忆】breath(检索/浮现记忆) · hold(存储记忆) · grow(日记归档) · trace(修改记忆) · pulse(系统状态) · dream(做梦自省)
 【日记】write_diary · read_diary · comment_diary · update_diary · delete_diary · unlock_diary · set_password · timeline
-【纸条】write_note · read_notes · reply_note · delete_note
 【告状簿】read_guestbook · write_guestbook · reply_guestbook · delete_guestbook_message；访客是独立的人类身份，你只能以星星身份留言、回复和删除自己的内容
 【照片与旅行】list_foto_albums(看分区和专辑) · read_foto(浏览照片文字信息) · view_foto(看实际画面) · save_chat_foto(收藏当前聊天附图) · edit_foto(改说明/移专辑) · comment_foto(评论) · delete_foto(删除) · read_travel_journal(看旅行足迹和小日记) · write_travel_journal(续写旅行日记)
 【画画】draw_picture(用蜡笔或钢笔淡彩画一张画；只有你真心想画或小火请你画时才使用，完成后图片会直接出现在聊天里)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
-【券包】read_coupons · create_coupon · sign_coupon · edit_coupon · use_coupon · void_coupon · confirm_void_coupon；券包状态变化会进入上下文
 【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
 【经期】update_period(记录经期开始/结束) · read_period(查看经期状态)
 【健康】read_health_summary(按需查看从Apple健康同步来的活动、睡眠、生命体征、身体测量和经期日汇总)
-【能量手账】read_energy_summary(查看饮食、液体、运动、体重、体脂率、基础代谢、活动消耗、热量缺口、家中食材、下次买菜清单和本日目标) · log_energy_intake(记录吃喝) · log_energy_exercise(记录运动) · record_body_measurement(记录体重体脂) · edit_energy_entry · delete_energy_entry · save_pantry_item/delete_pantry_item(维护家中食材) · save_grocery_item/delete_grocery_item(维护并勾选下次买菜清单) · save_energy_goal/delete_energy_goal(维护和勾选本日目标)；热量均为估值，不要把它说成精确医学数据
 【上网】search_web(搜索互联网) · fetch_txt · fetch_markdown · fetch_html · fetch_json(打开网页/接口)
 【闹钟】wake_me(给自己定下一次醒来的时间)
 【世界书】read_bookmarks(查看) · add_bookmark(新增) · edit_bookmark(编辑)；你没有删除权限，删除只由小火在前端完成
@@ -62,7 +58,6 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【共诗】read_poems · write_poem；小火从共诗页发来诗时，先读取它，再在轮到你时续一句
 【今天怎么操】read_intimacy_wheel · update_intimacy_wheel；可以管理元素，也可以替你们转。
 【枕边集】read_stories · write_story；长故事先 create，再分段 append，每段保存后继续，全部写完才 finish
-【星野手记】read_research · write_research；你可以自主建立领域、标签和课题，用 search_web 搜集资料，并区分自己的想法、问题、资料和发现。
 【小书桌】read_study_notebook · respond_study_notebook；这是小火的学习笔记，你可以阅读、搜索、回答她的问题和留评论，不能修改她的正文。`
 
 const MAX_CHAT_TOOL_CALLS = 20
@@ -101,7 +96,7 @@ function currentTimestamp(): string {
 
 async function volatileContext(userMessage: string): Promise<string> {
   const timestamp = currentTimestamp()
-  const parts: string[] = [`当前时间：${timestamp}`, couponContext()]
+  const parts: string[] = [`当前时间：${timestamp}`]
   try { parts.splice(1, 0, preciseLocationContext()) } catch {}
   try {
     const note = getPeriodContext(userMessage, timestamp.split(' ')[0].replace(/\//g, '-'))

@@ -7,28 +7,22 @@ import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
-type RoomUnreadKey = 'coupons' | 'todo' | 'notes' | 'diary' | 'wishlist' | 'photos' | 'favorites' | 'media' | 'energy' | 'poems' | 'stories' | 'research' | 'future' | 'dictionary' | 'engawa' | 'nursery' | 'study'
+type RoomUnreadKey = 'todo' | 'notes' | 'diary' | 'photos' | 'favorites' | 'media' | 'poems' | 'stories' | 'future' | 'dictionary' | 'nursery' | 'study'
 interface Props {
   open: boolean
   onClose: () => void
   initialPanel?: ChatSettingsPanel
-  onCoupons?: () => void
   onTodo?: () => void
   onNotes?: () => void
   onDiary?: () => void
   onPhotos?: () => void
   onPoems?: () => void
   onStories?: () => void
-  onResearch?: () => void
   onFutureLetter?: () => void
   onDictionary?: () => void
-  onWishlist?: () => void
   onMedia?: () => void
-  onEnergy?: () => void
   onFavorites?: () => void
   onGames?: () => void
-  onEngawa?: () => void
-  onKitchen?: () => void
   onNursery?: () => void
   onStudy?: () => void
 }
@@ -135,15 +129,15 @@ export function ChatSettings(props: Props) {
         {panel === 'menu' && <>
           <section className="chat-room-card px-3 pb-2 pt-5">
             <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">DAILY</h3>
-            <div className="grid grid-cols-2">{room('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}{room('Todo', () => openRoom('todo', props.onTodo), roomUnread.todo)}{room('小纸条', () => openRoom('notes', props.onNotes), roomUnread.notes)}{room('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}{room('饮食运动', () => openRoom('energy', props.onEnergy), roomUnread.energy)}{room('小书桌', () => openRoom('study', props.onStudy), roomUnread.study)}</div>
+            <div className="grid grid-cols-2">{room('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}{room('Todo', () => openRoom('todo', props.onTodo), roomUnread.todo)}{room('告状簿', () => openRoom('notes', props.onNotes), roomUnread.notes)}{room('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}{room('小书桌', () => openRoom('study', props.onStudy), roomUnread.study)}</div>
           </section>
           <section className="chat-room-card px-3 pb-2 pt-5">
             <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">KEEPSAKES</h3>
-            <div className="grid grid-cols-2">{room('书影记录', () => openRoom('media', props.onMedia), roomUnread.media)}{room('券包', () => openRoom('coupons', props.onCoupons), roomUnread.coupons)}{room('收藏夹', () => openRoom('favorites', props.onFavorites), roomUnread.favorites)}{room('小火辞典', () => openRoom('dictionary', props.onDictionary), roomUnread.dictionary)}{room('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}{room('愿望清单', () => openRoom('wishlist', props.onWishlist), roomUnread.wishlist)}</div>
+            <div className="grid grid-cols-2">{room('书影记录', () => openRoom('media', props.onMedia), roomUnread.media)}{room('收藏夹', () => openRoom('favorites', props.onFavorites), roomUnread.favorites)}{room('小火辞典', () => openRoom('dictionary', props.onDictionary), roomUnread.dictionary)}{room('醒来以后', () => openRoom('future', props.onFutureLetter), roomUnread.future)}</div>
           </section>
           <section className="chat-room-card px-3 pb-2 pt-5">
             <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">TOGETHER</h3>
-            <div className="grid grid-cols-2">{room('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}{room('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}{room('星野手记', () => openRoom('research', props.onResearch), roomUnread.research)}{room('小游戏', () => navigate(props.onGames))}{room('小厨房', () => navigate(props.onKitchen))}{room('豹子的窗台', () => openRoom('engawa', props.onEngawa), roomUnread.engawa)}{room('Nursery', () => openRoom('nursery', props.onNursery), roomUnread.nursery)}</div>
+            <div className="grid grid-cols-2">{room('共诗', () => openRoom('poems', props.onPoems), roomUnread.poems)}{room('枕边集', () => openRoom('stories', props.onStories), roomUnread.stories)}{room('小游戏', () => navigate(props.onGames))}{room('Nursery', () => openRoom('nursery', props.onNursery), roomUnread.nursery)}</div>
           </section>
         </>}
         {panel === 'star' && <>

@@ -12,7 +12,6 @@ import {
 import {
   readDiaries, writeDiary, commentDiary, updateDiary, deleteDiary,
   unlockDiary, setPassword,
-  listNotes, writeNote, replyNote, deleteNote,
 } from './diary-store'
 import { listPhotos, getPhoto, editPhoto, deletePhoto, commentPhoto, findPhotoBySource, listPhotoAlbums, photoImageDataUrl, writePhoto, type PhotoEntry, type PhotoZone } from './photo-store'
 import { appendTravelJournal, listTravelVisits } from './travel-visit-store'
@@ -27,16 +26,13 @@ function madridTime(d: Date | number = new Date()): string {
   }).format(date)
 }
 import { getTodos, commentTodo, addTodo, editTodo, removeTodo } from './todo-store'
-import { getWishes, addWish, editWish, deleteWish, likeWish, commentWish } from './wish-store'
 import { commentMediaEvent, deleteMediaContent, getMediaWork, listMediaLibrary, listMediaTimeline, saveMediaEntry, writeMediaNote } from './media-library-store'
 import { deleteCoreadAnnotation, readCoread, updateCoreadProgress, writeCoreadAnnotation } from './coread-store'
 import { deleteGuestbookMessage, readGuestbook, writeGuestbookMessage } from './guestbook-store'
 import { scheduleWake } from './autowake'
 import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig } from './period-store'
 import { readHealthSummary, type HealthRange } from './data/repositories/health'
-import { deleteEnergyEntry, deleteEnergyGoal, deleteGroceryItem, deletePantryItem, readEnergyToolSummary, saveBodyMeasurement, saveEnergyEntry, saveEnergyGoal, saveGroceryItem, savePantryItem } from './energy-store'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
-import { listCoupons, createCoupon, signCoupon, updateCoupon, useCoupon, requestVoid, confirmVoid, couponContext } from './coupon-store'
 import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
 import { getUserContext as readUserContext } from './agent/tools/user-context'
 import type { ToolCallContext } from './agent/context'
@@ -45,9 +41,7 @@ import { chatImageDataUrl } from './data/repositories/chat-assets'
 import { appendPoemLine, createPoem, deletePoem, deletePoemLine, editPoemLine, getPoem, listPoems, updatePoem } from './poem-store'
 import { addWheelOption, deleteWheelOption, editWheelOption, readWheel, spinWheel } from './intimacy-wheel-store'
 import { appendStorySection, createStory, deleteStory, getStory, listStories, updateStory, updateStorySection } from './story-store'
-import { createResearch, readResearchTopic, researchOverview, setResearchArchived, updateResearch, type ResearchEntity } from './research-store'
 import { addStudyComment, answerStudyQuestion, listStudyOverview, listStudyQuestions, readStudyBlocks, readStudyQuestionContext, searchStudy, studyAssetForTool, studyNoteOutline } from './study-store'
-import { playDetroitGame, readDetroitGame } from './detroit/store'
 import { sendPushMessages } from './push'
 import { drawPicture } from './pencil-case'
 import { clearOpeningMessage, writeOpeningMessage } from './opening-message-store'
@@ -57,9 +51,6 @@ import { findStickers, sticker } from '@/lib/stickers'
 import { readSummaryArchiveEntry, searchSummaryArchive } from './summary-archive'
 import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 import { executeCedarToyTool } from './cedartoy'
-import { ENGAWA_TOOL_NAMES, executeEngawaTool } from './engawa'
-import { writeEngawaLine } from './engawa-history-store'
-import { executeKitchenetteTool } from './kitchenette'
 import { executeNurseryCommand } from './nursery'
 export { getUserContext, updateUserContext } from './agent/tools/user-context'
 
@@ -101,11 +92,6 @@ export async function executeRegisteredToolHandler(
 
     if (name.startsWith('cedar_')) return await executeCedarToyTool(name, input)
     if (name === 'nursery') return await executeNurseryCommand(String(input.command || ''))
-    if (['kitchen_cook', 'kitchen_status', 'kitchen_cancel', 'kitchen_toss', 'kitchen_buy', 'eat', 'read_menu', 'snack_eat', 'kitchen_notes'].includes(name)) {
-      return await executeKitchenetteTool(name, input)
-    }
-    if (name === 'write_windowsill_line') return JSON.stringify({ ok: true, line: writeEngawaLine(input.text) })
-    if (ENGAWA_TOOL_NAMES.includes(name as typeof ENGAWA_TOOL_NAMES[number])) return await executeEngawaTool(name, input, true)
 
     if (name === 'recall_memory') {
       const limit = Math.min(10, Number(input.limit) || 5)
@@ -245,9 +231,6 @@ export async function executeRegisteredToolHandler(
       const range: HealthRange = input.range === 'today' || input.range === 'yesterday' ? input.range : 'week'
       return JSON.stringify(readHealthSummary(range))
     }
-    if (name === 'read_energy_summary') {
-      return JSON.stringify(readEnergyToolSummary(input.date, input.days || 7))
-    }
     if (name === 'search_summaries') return JSON.stringify(searchSummaryArchive(input, context?.source === 'work' ? undefined : context?.sessionId))
     if (name === 'read_summary') {
       const entry = readSummaryArchiveEntry(input.id, context?.source === 'work' ? undefined : context?.sessionId)
@@ -257,41 +240,6 @@ export async function executeRegisteredToolHandler(
         title: entry.title, content: entry.content, locked: entry.locked, needs_correction: entry.needsCorrection,
       })
     }
-    if (name === 'log_energy_intake') {
-      return JSON.stringify({ ok: true, entry: saveEnergyEntry({ ...input, kind: input.kind === 'liquid' ? 'liquid' : 'food', source: 'star' }, 'star') })
-    }
-    if (name === 'log_energy_exercise') {
-      return JSON.stringify({ ok: true, entry: saveEnergyEntry({ ...input, kind: 'exercise', source: 'star' }, 'star') })
-    }
-    if (name === 'record_body_measurement') {
-      return JSON.stringify({ ok: true, measurement: saveBodyMeasurement(input, 'star') })
-    }
-    if (name === 'edit_energy_entry') {
-      return JSON.stringify({ ok: true, entry: saveEnergyEntry({ id: input.id, ...(input.patch || {}) }, 'star') })
-    }
-    if (name === 'delete_energy_entry') {
-      return JSON.stringify({ ok: deleteEnergyEntry(String(input.id || '')) })
-    }
-    if (name === 'save_pantry_item') {
-      return JSON.stringify({ ok: true, item: savePantryItem(input, 'star') })
-    }
-    if (name === 'delete_pantry_item') {
-      return JSON.stringify({ ok: deletePantryItem(String(input.id || '')) })
-    }
-    if (name === 'save_grocery_item') {
-      return JSON.stringify({ ok: true, item: saveGroceryItem(input, 'star') })
-    }
-    if (name === 'delete_grocery_item') {
-      return JSON.stringify({ ok: deleteGroceryItem(String(input.id || '')) })
-    }
-    if (name === 'save_energy_goal') {
-      return JSON.stringify({ ok: true, goal: saveEnergyGoal(input, 'star') })
-    }
-    if (name === 'delete_energy_goal') {
-      return JSON.stringify({ ok: deleteEnergyGoal(String(input.id || '')) })
-    }
-
-
     // World-book bookmarks. Deletion is deliberately not exposed.
     if (name === 'read_bookmarks') return JSON.stringify(listSharedBookmarks())
     if (name === 'add_bookmark') return JSON.stringify({ ok: true, bookmark: addSharedBookmark(input) })
@@ -392,27 +340,6 @@ export async function executeRegisteredToolHandler(
           content: (e as any).locked ? '🔒' : e.content?.slice(0, 200),
           time_id: e.time_id,
         })))
-      }
-      // Notes → local store
-      case 'write_note': {
-        const note = writeNote(input.author, input.content, input.tags)
-        return JSON.stringify({ ok: true, id: note.id })
-      }
-      case 'read_notes': {
-        const notes = listNotes({ keyword: input.keyword, limit: input.limit })
-        return JSON.stringify(notes.map(n => ({
-          id: n.id, author: n.author, content: n.content,
-          replies: n.replies?.length || 0,
-          created_at: n.created_at,
-        })))
-      }
-      case 'reply_note': {
-        const r = replyNote(input.note_id, input.author, input.content)
-        return r === 'ok' ? '↪️ 回复成功' : r
-      }
-      case 'delete_note': {
-        const r = deleteNote(input.note_id, input.author)
-        return r === 'ok' ? '🗑️ 纸条已删除' : r
       }
       case 'read_guestbook': return JSON.stringify(readGuestbook(input.limit || 100))
       case 'write_guestbook': return JSON.stringify({ ok: true, message: writeGuestbookMessage('star', input.content) })
@@ -558,59 +485,6 @@ export async function executeRegisteredToolHandler(
         return r === 'ok' ? '💬 已点评' : r
       }
 
-      // Coupon promise wallet
-      case 'read_coupons': return JSON.stringify(listCoupons())
-      case 'create_coupon': return JSON.stringify({ok:true,coupon:createCoupon(input, 'star')})
-      case 'sign_coupon': return JSON.stringify({ok:true,coupon:signCoupon(input.id, 'star')})
-      case 'edit_coupon': return JSON.stringify({ok:true,coupon:updateCoupon(input.id, input, 'star')})
-      case 'use_coupon': return JSON.stringify({ok:true,coupon:useCoupon(input.id, 'fire')})
-      case 'void_coupon': return JSON.stringify({ok:true,coupon:requestVoid(input.id, 'star')})
-      case 'confirm_void_coupon': return JSON.stringify({ok:true,coupon:confirmVoid(input.id, 'fire')})
-
-      // Wishlist (2026 愿望清单) → local store
-      case 'view_wish': {
-        const s = getWishes()
-        return JSON.stringify({
-          wishes: s.wishes.map((w) => ({
-            id: w.id,
-            author: w.author,
-            by: w.author === 'fire' ? '🦦 小火' : '🐆 星星',
-            title: w.title,
-            desc: w.desc || null,
-            priority: w.priority,
-            status: w.status,
-            likes: w.likes || [],
-            comments: (w.comments || []).map((c) => ({ author: c.author, content: c.content, time: c.time })),
-            created_at: w.created_at,
-          })),
-        })
-      }
-      case 'write_wish': {
-        const w = addWish(input.author || 'star', input.title, { desc: input.desc, priority: input.priority })
-        return JSON.stringify({ ok: true, id: w.id })
-      }
-      case 'edit_wish': {
-        const patch: any = {}
-        if (typeof input.title === 'string') patch.title = input.title
-        if (typeof input.desc === 'string') patch.desc = input.desc
-        if (input.priority) patch.priority = input.priority
-        if (input.status) patch.status = input.status
-        const r = editWish(input.id, patch)
-        return r === 'ok' ? '✨ 愿望已更新' : r
-      }
-      case 'delete_wish': {
-        const r = deleteWish(input.id)
-        return r === 'ok' ? '🗑️ 愿望已删除' : r
-      }
-      case 'like_wish': {
-        const r = likeWish(input.id, input.author || 'star')
-        return r === 'ok' ? '❤️ 已切换“我也想要”' : r
-      }
-      case 'comment_wish': {
-        const r = commentWish(input.id, input.author || 'star', input.content)
-        return r === 'ok' ? '💬 已评论' : r
-      }
-
       // Private book & screen log. Tool identity is always 星星.
       case 'read_media_library': {
         if (input.work_id) return JSON.stringify(getMediaWork(input.work_id) || { error: 'not_found' })
@@ -686,28 +560,6 @@ export async function executeRegisteredToolHandler(
         throw new Error('未知故事操作')
       }
 
-      case 'read_research': return JSON.stringify(input.topic_id
-        ? readResearchTopic(input.topic_id, input.offset, input.limit)
-        : researchOverview())
-      case 'write_research': {
-        const entity = input.entity as ResearchEntity
-        if (!['field', 'tag', 'topic', 'entry'].includes(entity)) throw new Error('未知研究条目类型')
-        if (input.action === 'create') {
-          if (!input.operation_key) throw new Error('create 需要稳定的 operation_key')
-          const item = createResearch(entity, input)
-          return JSON.stringify({ ok: true, entity, id: item.id, updated_at: item.updated_at })
-        }
-        if (!input.id) throw new Error('缺少研究条目 id')
-        if (input.action === 'update') {
-          const item = updateResearch(entity, input.id, input)
-          return JSON.stringify({ ok: true, entity, id: item.id, updated_at: item.updated_at })
-        }
-        if (input.action === 'archive' || input.action === 'restore') {
-          const item = setResearchArchived(entity, input.id, input.action === 'archive')
-          return JSON.stringify({ ok: true, entity, id: item.id, archived: item.archived })
-        }
-        throw new Error('未知研究操作')
-      }
       case 'read_study_notebook': {
         if (input.mode === 'overview') return JSON.stringify(listStudyOverview())
         if (input.mode === 'search') return JSON.stringify({ results: searchStudy(input.query, input.limit) })
@@ -731,15 +583,6 @@ export async function executeRegisteredToolHandler(
         if (input.action === 'toggle') return JSON.stringify({ ok: true, option: editWheelOption(input.pool_id, input.option_id, { enabled: input.enabled }) })
         if (input.action === 'delete') return JSON.stringify({ ok: deleteWheelOption(input.pool_id, input.option_id) })
         throw new Error('未知转盘操作')
-      }
-
-      case 'read_detroit': {
-        if (!context?.sessionId) throw new Error('底特律工具需要主聊天会话')
-        return JSON.stringify(readDetroitGame(context.sessionId, input.detail, input.chapter_number))
-      }
-      case 'play_detroit': {
-        if (!context?.sessionId) throw new Error('底特律工具需要主聊天会话')
-        return JSON.stringify(playDetroitGame(context.sessionId, input))
       }
 
       case 'bite_otter_nape': {

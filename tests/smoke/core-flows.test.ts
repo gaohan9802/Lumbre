@@ -150,7 +150,7 @@ test('chat supports non-streaming and streaming response contracts without real 
       redToolTurn += 1
       if (redToolTurn === 1) {
         return new Response(JSON.stringify({
-          content: [{ type: 'tool_use', id: 'tool-red-1', name: 'delete_note', input: { note_id: 'missing-fixture', author: 'star' } }],
+          content: [{ type: 'tool_use', id: 'tool-red-1', name: 'delete_guestbook_message', input: { message_id: 'missing-fixture' } }],
           stop_reason: 'tool_use',
           usage: { input_tokens: 2, output_tokens: 1 },
         }), { status: 200, headers: { 'content-type': 'application/json' } })

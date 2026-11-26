@@ -1,41 +1,22 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test, { after, before } from 'node:test'
-import { fileURLToPath } from 'node:url'
 
 import { madridDateKey } from '../../src/lib/madrid-time'
 import { DataPathError } from '../../src/server/data/errors'
 
 const root = mkdtempSync(path.join(tmpdir(), 'lumbre-small-state-stores-'))
 process.env.DATA_DIR = root
-let wish: typeof import('../../src/server/wish-store')
 let usage: typeof import('../../src/server/usage')
 let period: typeof import('../../src/server/period-store')
 
 before(async () => {
-  wish = await import('../../src/server/wish-store')
   usage = await import('../../src/server/usage')
   period = await import('../../src/server/period-store')
 })
 after(() => rmSync(root, { recursive: true, force: true }))
-
-test('wish storage preserves CRUD behavior and safely recovers corrupt JSON', () => {
-  const created = wish.addWish('fire', 'fixture wish', { priority: 'really' })
-  assert.equal(wish.editWish(created.id, { status: 'doing' }), 'ok')
-  assert.equal(wish.likeWish(created.id, 'star'), 'ok')
-  assert.equal(wish.commentWish(created.id, 'fire', 'fixture comment'), 'ok')
-  assert.equal(wish.getWishes().wishes[0]?.comments[0]?.content, 'fixture comment')
-  assert.equal(wish.deleteWish(created.id), 'ok')
-  assert.equal(wish.getWishes().wishes.length, 0)
-
-  const file = path.join(root, 'wishlist', 'wishlist.json')
-  writeFileSync(file, '{broken wish json', 'utf8')
-  wish.addWish('fire', 'recovered wish')
-  assert.equal(readFileSync(`${file}.bak`, 'utf8'), '{broken wish json')
-})
 
 test('usage storage obeys DATA_DIR and appends records without changing statistics', () => {
   usage.recordUsage(100, 40, 'fixture-model', 'fixture-provider')
@@ -65,27 +46,7 @@ test('period storage safely recovers corrupt state', () => {
 })
 
 test('malformed entries are isolated instead of breaking whole domain reads', () => {
-  writeFileSync(path.join(root, 'wishlist', 'wishlist.json'), JSON.stringify({ wishes: [null, { id: 'kept', title: 'still readable' }] }), 'utf8')
   writeFileSync(path.join(root, 'period', 'state.json'), JSON.stringify({ cycle_days: 'wrong', period_length: null, history: [null] }), 'utf8')
 
-  assert.deepEqual(wish.getWishes().wishes.map(value => value.id), ['kept'])
   assert.equal(period.getPeriodState().cycle_days, 28)
-})
-
-test('single-file domain repositories serialize concurrent writers', async () => {
-  const worker = fileURLToPath(new URL('../fixtures/state-store-worker.ts', import.meta.url))
-  const childRoot = path.join(root, 'concurrent')
-  mkdirSync(childRoot, { recursive: true })
-
-  await Promise.all(Array.from({ length: 4 }, (_, index) => new Promise<void>((resolve, reject) => {
-    const child = spawn(process.execPath, ['--import', 'tsx', worker, 'wish', '10', `worker-${index}`], {
-      env: { ...process.env, DATA_DIR: childRoot },
-      stdio: 'inherit',
-    })
-    child.once('error', reject)
-    child.once('exit', code => code === 0 ? resolve() : reject(new Error(`worker exited with ${code}`)))
-  })))
-
-  const saved = JSON.parse(readFileSync(path.join(childRoot, 'wishlist', 'wishlist.json'), 'utf8'))
-  assert.equal(saved.wishes.length, 40)
 })

@@ -1,37 +1,29 @@
-/** Central data repository for diaries, notes, and their existing shared config. */
+/** Central data repository for diaries and their existing shared config. */
 import fs from 'node:fs'
 import path from 'node:path'
 import { formatMadrid, parseMadridDateTime } from '@/lib/madrid-time'
 import { getDataDir } from '../config'
 import { DataCorruptionError, DataFileNotFoundError } from '../errors'
-import { readJsonFile, removeJsonFile, removeJsonFileIf, updateJsonFile, writeJsonFile } from '../json-file'
+import { readJsonFile, removeJsonFile, updateJsonFile, writeJsonFile } from '../json-file'
 import { withFileLock } from '../lock'
 import { assertDateKey, assertIdentifier, resolveDataPath } from '../safe-path'
 
 const ACTOR = /^(?:star|fire)$/
 const TIME_ID = /^\d{4}$/
-const NOTE_ID = /^[A-Za-z0-9_-]{1,128}$/
 const DATA_DIR = getDataDir()
 const DIARY_DIR = resolveDataPath(DATA_DIR, 'diaries')
-const NOTES_DIR = resolveDataPath(DATA_DIR, 'notes')
 const CONFIG_FILE = resolveDataPath(DATA_DIR, 'config.json')
 const SEED_LOCK = resolveDataPath(DATA_DIR, '.journal-seed')
 
 function actor(value: string): string {
   return assertIdentifier(value, ACTOR, 'author')
 }
-
 function timeId(value: string): string {
   return assertIdentifier(value, TIME_ID, 'diary time id')
 }
 
-function noteId(value: string): string {
-  return assertIdentifier(value, NOTE_ID, 'note id')
-}
-
 function ensureDirs(): void {
   fs.mkdirSync(DIARY_DIR, { recursive: true })
-  fs.mkdirSync(NOTES_DIR, { recursive: true })
 }
 
 export interface DiaryEntry {
@@ -49,15 +41,6 @@ export interface DiaryEntry {
   updated_at: string | null
 }
 
-export interface NoteEntry {
-  id: string
-  author: string
-  content: string
-  tags: string[]
-  replies: { author: string; content: string; time: string }[]
-  created_at: string
-}
-
 function isDiaryEntry(value: unknown): boolean {
   const entry = value as Partial<DiaryEntry> | null
   return !!entry && typeof entry === 'object'
@@ -65,14 +48,6 @@ function isDiaryEntry(value: unknown): boolean {
     && typeof entry.author === 'string'
     && typeof entry.content === 'string'
     && typeof entry.time_id === 'string'
-}
-
-function isNoteEntry(value: unknown): boolean {
-  const entry = value as Partial<NoteEntry> | null
-  return !!entry && typeof entry === 'object'
-    && typeof entry.id === 'string'
-    && typeof entry.author === 'string'
-    && typeof entry.content === 'string'
 }
 
 function diaryFile(entry: Pick<DiaryEntry, 'date' | 'time_id' | 'author'>): string {
@@ -90,11 +65,7 @@ function availableDiaryTimeId(date: string, authorValue: string, preferred: stri
   throw new Error('No diary time slot is available for this day')
 }
 
-function noteFile(id: string): string {
-  return resolveDataPath(NOTES_DIR, `${noteId(id)}.json`)
-}
-
-function findSeedFile(name: 'diaries.json' | 'notes.json'): string | null {
+function findSeedFile(name: 'diaries.json'): string | null {
   const candidates = [
     resolveDataPath(DATA_DIR, name),
     path.join(process.cwd(), 'src', 'seed', name),
@@ -119,23 +90,6 @@ function migrateIfNeeded(): void {
           console.log(`[journal-repository] Seeded ${written} diaries from ${seedPath}`)
         } catch (error) {
           console.error('[journal-repository] Failed to seed diaries:', error)
-        }
-      }
-    }
-
-    if (fs.readdirSync(NOTES_DIR).filter(file => file.endsWith('.json')).length === 0) {
-      const seedPath = findSeedFile('notes.json')
-      if (seedPath) {
-        try {
-          const notes = readJsonFile<unknown[]>(seedPath, { validate: Array.isArray })
-          let written = 0
-          for (const value of notes) {
-            if (!isNoteEntry(value)) continue
-            try { writeJsonFile(noteFile((value as NoteEntry).id), value); written += 1 } catch {}
-          }
-          console.log(`[journal-repository] Seeded ${written} notes from ${seedPath}`)
-        } catch (error) {
-          console.error('[journal-repository] Failed to seed notes:', error)
         }
       }
     }
@@ -372,59 +326,4 @@ export function unlockDiary(targetAuthor: string, password: string, targetDate?:
     entries = entries.filter(entry => entry.time_id === id)
   }
   return { entries }
-}
-
-export function listNotes(opts: { keyword?: string; limit?: number } = {}): NoteEntry[] {
-  ensureDirs()
-  const notes: NoteEntry[] = []
-  for (const file of fs.readdirSync(NOTES_DIR).filter(name => name.endsWith('.json'))) {
-    try { notes.push(readJsonFile(resolveDataPath(NOTES_DIR, file), { validate: isNoteEntry })) } catch {}
-  }
-  notes.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
-  const filtered = opts.keyword
-    ? notes.filter(note => `${note.content} ${(note.tags || []).join(' ')}`.toLowerCase().includes(opts.keyword!.toLowerCase()))
-    : notes
-  return filtered.slice(0, opts.limit || 50)
-}
-
-export function writeNote(authorValue: string, content: string, tags?: string): NoteEntry {
-  const now = new Date()
-  const id = now.toISOString().replace(/[-:T.]/g, '').slice(0, 14) + '_' + Math.random().toString(16).slice(2, 6)
-  const note: NoteEntry = {
-    id,
-    author: actor(authorValue),
-    content,
-    tags: tags ? tags.split(/\s+/).filter(Boolean) : [],
-    replies: [],
-    created_at: now.toISOString(),
-  }
-  writeJsonFile(noteFile(id), note)
-  return note
-}
-
-export function replyNote(id: string, authorValue: string, content: string): string {
-  try {
-    updateJsonFile<NoteEntry>(noteFile(id), { validate: isNoteEntry }, note => {
-      if (!note.replies) note.replies = []
-      note.replies.push({ author: authorValue, content, time: new Date().toISOString() })
-      return note
-    })
-    return 'ok'
-  } catch (error) {
-    if (isMissingOrCorrupt(error)) return 'not_found'
-    throw error
-  }
-}
-
-export function deleteNote(id: string, authorValue: string): string {
-  const file = noteFile(id)
-  try {
-    const result = removeJsonFileIf<NoteEntry>(file, { validate: isNoteEntry }, note => note.author === authorValue)
-    if (result === 'removed') return 'ok'
-    if (result === 'rejected') return 'forbidden'
-    return 'not_found'
-  } catch (error) {
-    if (isMissingOrCorrupt(error)) return 'not_found'
-    throw error
-  }
 }

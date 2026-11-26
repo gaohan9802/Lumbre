@@ -9,14 +9,17 @@ process.env.DATA_DIR = root
 
 let study: typeof import('../../src/server/study-store')
 let fieldId = ''
+let sectionId = ''
 let noteId = ''
 let questionId = ''
 
 before(async () => {
   study = await import('../../src/server/study-store')
   const field = study.createStudyField('数学')
-  const note = study.createStudyNote(field.id, '函数入门')
+  const section = study.createStudySection(field.id, '基础')
+  const note = study.createStudyNote(field.id, '函数入门', section.id)
   fieldId = field.id
+  sectionId = section.id
   noteId = note.id
   questionId = 'question-one'
   study.saveStudyNote(note.id, note.updated_at, {
@@ -33,9 +36,23 @@ after(() => rmSync(root, { recursive: true, force: true }))
 test('study notebook keeps fields, searchable notes and outlines', () => {
   const overview = study.listStudyOverview()
   assert.equal(overview.fields[0]?.id, fieldId)
+  assert.equal(overview.sections[0]?.id, sectionId)
+  assert.equal(overview.notes[0]?.section_id, sectionId)
   assert.equal(overview.notes[0]?.open_question_count, 1)
   assert.equal(study.searchStudy('定义域')[0]?.id, noteId)
   assert.deepEqual(study.studyNoteOutline(noteId).headings.map(item => item.title), ['1.1 函数', '1.2 映射'])
+})
+
+test('archiving a field or child page hides it without deleting its notes', () => {
+  const field = study.createStudyField('编程')
+  const section = study.createStudySection(field.id, 'Python')
+  const note = study.createStudyNote(field.id, '语法', section.id)
+  study.updateStudySection(section.id, { archived: true })
+  assert.equal(study.listStudyOverview().notes.some(item => item.id === note.id), false)
+  assert.equal(study.searchStudy('语法').some(item => item.id === note.id), false)
+  assert.equal(study.getStudyNote(note.id).title, '语法')
+  study.updateStudyField(field.id, { archived: true })
+  assert.equal(study.listStudyOverview().fields.some(item => item.id === field.id), false)
 })
 
 test('long blocks are paged below the tool context budget', () => {

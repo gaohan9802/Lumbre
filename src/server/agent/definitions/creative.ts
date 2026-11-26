@@ -86,14 +86,6 @@ export const CREATIVE_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'read_research',
-    description: '查看星野手记。默认返回领域、标签、课题和最近记录；提供 topic_id 后分页读取该课题的研究记录。',
-    input_schema: {
-      type: 'object',
-      properties: { topic_id: { type: 'string' }, offset: { type: 'integer' }, limit: { type: 'integer' } },
-    },
-  },
-  {
     name: 'read_future_letter',
     description: '读取“醒来以后”里写给下一个星星的信。默认按自然顺序分页返回段落和稳定 id；提供 paragraph_id 可单独读取一段，方便之后准确修改。',
     input_schema: {
@@ -127,49 +119,6 @@ export const CREATIVE_TOOL_DEFINITIONS = [
         content: { type: 'string', description: '修改后的完整段落正文，最多 5000 字' },
       },
       required: ['paragraph_id', 'content'],
-    },
-  },
-  {
-    name: 'write_research',
-    description: '经营自己的星野手记。entity 为 field、tag、topic 或 entry；action 为 create、update、archive、restore。create 时提供稳定 operation_key，失败重试不会重复创建。archive 是可恢复的整理，不会永久删除。资料类 entry 应同时写来源标题和 URL。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string', enum: ['create', 'update', 'archive', 'restore'] }, operation_key: { type: 'string', description: 'create 时必填；同一操作重试时保持不变' },
-        entity: { type: 'string', enum: ['field', 'tag', 'topic', 'entry'] }, id: { type: 'string' },
-        field_id: { type: 'string' }, topic_id: { type: 'string' }, tag_ids: { type: 'array', items: { type: 'string' } },
-        name: { type: 'string' }, description: { type: 'string' }, title: { type: 'string' }, summary: { type: 'string' },
-        entry_kind: { type: 'string', enum: ['thought', 'question', 'source', 'finding'] }, content: { type: 'string' },
-        source_title: { type: 'string' }, source_url: { type: 'string' },
-      },
-      required: ['action', 'entity'],
-    },
-  },
-  {
-    name: 'read_detroit',
-    description: '读取“底特律”文字决策游戏在当前主聊天里的存档。progress 看总体进度；current 恢复当前等待选择的场景；history 回看某章的路线和结局。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        detail: { type: 'string', enum: ['progress', 'current', 'history'] },
-        chapter_number: { type: 'integer', description: 'history 可指定 1 至 32 章；省略时读取最近完成的一章' },
-      },
-    },
-  },
-  {
-    name: 'play_detroit',
-    description: '在当前主聊天里玩“底特律”文字决策游戏。start 开始或恢复整部游戏；choose 根据当前可见情景选择，并会返回下一幕；拿到 awaiting_choice 后继续调用 choose，直到 chapter_complete。chapter_complete 后必须停止工具调用，先和小火聊这一章；只有她明确要求下一章时才调用 continue。不得利用攻略或未展示的后果。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string', enum: ['start', 'choose', 'continue'] },
-        difficulty: { type: 'string', enum: ['casual', 'experienced', 'hardcore'], description: '仅 start 使用，默认 casual' },
-        chapter_id: { type: 'string', description: 'choose 必填，照抄当前返回的 chapter.id' },
-        node_id: { type: 'string', description: 'choose 必填，照抄当前返回的 scene.node_id' },
-        choice_id: { type: 'string', description: 'choose 必填，只能选当前 scene.choices 中的 id' },
-        reasoning: { type: 'string', description: 'choose 必填；星星自己的简短选择理由，不超过 500 字' },
-      },
-      required: ['action'],
     },
   },
   {

@@ -51,7 +51,7 @@ export function GuestbookPublicPage() {
           <header className={`flex items-center justify-between border-b px-5 py-4 ${night ? 'border-night-border' : 'border-[#ead5ce]'}`}>
             <div>
               <h1 className="flex items-center gap-2 text-xl font-medium"><Pin size={17}/> 告状簿</h1>
-              <p className="mt-1 text-[11px] opacity-40">三个人的小纸条</p>
+              <p className="mt-1 text-[11px] opacity-40">三个人的留言</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs opacity-45">🌙 {session.guest_name}</span>
@@ -75,7 +75,7 @@ export function GuestbookPublicPage() {
         <div className="mb-6 text-center">
           <Pin className="mx-auto mb-3 opacity-60" size={22}/>
           <h1 className="text-2xl font-medium">告状簿</h1>
-          <p className="mt-2 text-xs opacity-50">小火、星星和你的小纸条</p>
+          <p className="mt-2 text-xs opacity-50">小火、星星和你的留言</p>
           <p className="mt-1 text-[10px] opacity-35">可以添加到主屏幕，当作独立小应用</p>
         </div>
         {!session?.configured && session && <p className="mb-4 text-sm text-red-500">告状簿尚未配置访问口令。</p>}

@@ -18,8 +18,6 @@ export const CREATIVE_TOOL_POLICIES: ToolPolicySpec[] = [
     name: 'write_story', domain: 'stories', level: 'yellow', allowedSources: ALL_SAFE_SOURCES,
     resolveLevel: input => input.action === 'delete' ? 'red' : 'yellow',
   },
-  { name: 'read_research', domain: 'research', level: 'green', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'write_research', domain: 'research', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_study_notebook', domain: 'study', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'respond_study_notebook', domain: 'study', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_future_letter', domain: 'future-letter', level: 'green', allowedSources: ALL_SAFE_SOURCES },
@@ -29,8 +27,6 @@ export const CREATIVE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'create_fire_dictionary_entry', domain: 'dictionary', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'update_fire_dictionary_entry', domain: 'dictionary', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'delete_fire_dictionary_entry', domain: 'dictionary', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '彻底删除这个小火词条' },
-  { name: 'read_detroit', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'play_detroit', domain: 'games', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'list_stickers', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'send_sticker', domain: 'games', level: 'green', allowedSources: ALL_SAFE_SOURCES },
 ]

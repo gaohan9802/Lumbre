@@ -13,10 +13,6 @@ export const JOURNAL_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'search_summaries', domain: 'summaries', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_summary', domain: 'summaries', level: 'green', allowedSources: ALL_SAFE_SOURCES },
 
-  { name: 'write_note', domain: 'notes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'read_notes', domain: 'notes', level: 'green', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'reply_note', domain: 'notes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'delete_note', domain: 'notes', level: 'red', allowedSources: ALL_SAFE_SOURCES, confirmationLabel: '删除纸条' },
   { name: 'read_guestbook', domain: 'notes', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'write_guestbook', domain: 'notes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'reply_guestbook', domain: 'notes', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },

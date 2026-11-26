@@ -26,24 +26,24 @@ test('toolbox lists every registered tool with model and frontend names', () => 
 })
 
 test('bulk edits change the runtime description and can return to defaults', () => {
-  const original = catalog.toolCatalogSnapshot().tools.find(tool => tool.name === 'read_notes')!
+  const original = catalog.toolCatalogSnapshot().tools.find(tool => tool.name === 'read_guestbook')!
   let snapshot = catalog.updateToolCatalog([{
-    name: 'read_notes',
-    description: '只查看家里的纸条，不做修改。',
-    displayLabel: '看了自定义纸条名',
+    name: 'read_guestbook',
+    description: '只查看家里的告状簿，不做修改。',
+    displayLabel: '看了自定义告状簿名',
   }])
-  const changed = snapshot.tools.find(tool => tool.name === 'read_notes')!
+  const changed = snapshot.tools.find(tool => tool.name === 'read_guestbook')!
   assert.equal(changed.customizedDescription, true)
   assert.equal(changed.customizedDisplayLabel, true)
-  const runtime = registry.toolsForContext(context.createToolContext()).find(tool => tool.name === 'read_notes')!
-  assert.equal(runtime.description, '只查看家里的纸条，不做修改。')
+  const runtime = registry.toolsForContext(context.createToolContext()).find(tool => tool.name === 'read_guestbook')!
+  assert.equal(runtime.description, '只查看家里的告状簿，不做修改。')
 
   snapshot = catalog.updateToolCatalog([{
-    name: 'read_notes',
+    name: 'read_guestbook',
     description: original.defaultDescription,
     displayLabel: original.defaultDisplayLabel,
   }])
-  const restored = snapshot.tools.find(tool => tool.name === 'read_notes')!
+  const restored = snapshot.tools.find(tool => tool.name === 'read_guestbook')!
   assert.equal(restored.customizedDescription, false)
   assert.equal(restored.customizedDisplayLabel, false)
 })
@@ -51,8 +51,8 @@ test('bulk edits change the runtime description and can return to defaults', () 
 test('toolbox rejects unknown, duplicate and empty edits', () => {
   assert.throws(() => catalog.updateToolCatalog([{ name: 'unknown', description: 'x', displayLabel: 'x' }]), /未知/)
   assert.throws(() => catalog.updateToolCatalog([
-    { name: 'read_notes', description: 'x', displayLabel: 'x' },
-    { name: 'read_notes', description: 'y', displayLabel: 'y' },
+    { name: 'read_guestbook', description: 'x', displayLabel: 'x' },
+    { name: 'read_guestbook', description: 'y', displayLabel: 'y' },
   ]), /重复/)
-  assert.throws(() => catalog.updateToolCatalog([{ name: 'read_notes', description: '', displayLabel: 'x' }]), /不能为空/)
+  assert.throws(() => catalog.updateToolCatalog([{ name: 'read_guestbook', description: '', displayLabel: 'x' }]), /不能为空/)
 })

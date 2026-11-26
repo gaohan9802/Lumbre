@@ -16,7 +16,6 @@ test('room unread counts persist per room and clear independently', () => {
   assert.equal(unread.readRoomUnreadCounts().photos, 0)
   assert.equal(unread.readRoomUnreadCounts().future, 0)
   assert.equal(unread.readRoomUnreadCounts().dictionary, 0)
-  assert.equal(unread.readRoomUnreadCounts().engawa, 0)
   assert.equal(unread.readRoomUnreadCounts().nursery, 0)
   assert.equal(unread.readRoomUnreadCounts().study, 0)
   unread.incrementRoomUnread('photos')
@@ -28,8 +27,6 @@ test('room unread counts persist per room and clear independently', () => {
   assert.equal(unread.readRoomUnreadCounts().future, 1)
   unread.incrementRoomUnread('dictionary')
   assert.equal(unread.readRoomUnreadCounts().dictionary, 1)
-  unread.incrementRoomUnread('engawa')
-  assert.equal(unread.readRoomUnreadCounts().engawa, 1)
   unread.incrementRoomUnread('nursery')
   assert.equal(unread.readRoomUnreadCounts().nursery, 1)
 
@@ -38,9 +35,9 @@ test('room unread counts persist per room and clear independently', () => {
   assert.equal(unread.readRoomUnreadCounts().diary, 1)
 })
 
-test('legacy tesis unread count is ignored without dropping other rooms', () => {
+test('retired room unread counts are ignored without dropping other rooms', () => {
   const file = path.join(root, 'room-unread.json')
-  writeFileSync(file, JSON.stringify({ counts: { tesis: 4, diary: 2 }, updated_at: null }))
+  writeFileSync(file, JSON.stringify({ counts: { tesis: 4, energy: 3, engawa: 2, coupons: 2, wishlist: 2, research: 2, diary: 2 }, updated_at: null }))
 
   assert.equal(unread.readRoomUnreadCounts().diary, 2)
   unread.markRoomRead('diary')

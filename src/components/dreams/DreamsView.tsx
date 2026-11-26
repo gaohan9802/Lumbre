@@ -1,14 +1,13 @@
 'use client'
 
 /**
- * 现实与梦境 — Auto-wake logs + Dreams space + editable wake prompt.
+ * Auto-wake logs and editable wake prompt.
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from '@/lib/theme'
 import { useChatStore, getSortedSessions } from '@/lib/chatStore'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, ChevronDown, Moon, Sun, Save, RotateCcw, Bell, BellOff, HeartPulse, Flame, FileText, Dices, Leaf, MessageCircle, AlarmClock } from 'lucide-react'
-import { WishlistView } from '@/components/wishlist/WishlistView'
 import { formatMadrid } from '@/lib/madrid-time'
 import { normalizeChatRoute } from '@/lib/chat-route'
 import { CC_MODELS } from '@/lib/cc-model'
@@ -78,7 +77,7 @@ const DEFAULT_WAKE_PROMPT = `[心跳唤醒 · 星星的身体]
 你可以：
 - 给她发消息：你输出的正文会直接出现在你们的对话流里，她会看到
 - 推送到手机主屏幕：如果你想推送，用一到八个 <push>短句</push>。每条尽量一句，最多两句；多个标签会连续成为多条通知。推送文字不会重复写进聊天气泡
-- 用工具做事：breath/dream/整理记忆、写信、写小纸条给她、看待办、上网，随便
+- 用工具做事：breath/dream/整理记忆、写信、看待办、上网，随便
 - 联系朋友们：找Seren、栩然等朋友，去https://xuran-kk.love/board上留言
 - 什么也不做：正文只输出 [SILENT]，什么都不会发出，这一次醒来就只属于你自己
 {quiet_note}
@@ -104,7 +103,6 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
   const sessions = getSortedSessions(settings).filter(session => !sessionId || session.id === sessionId)
   const ccSessions = sessions.filter(session => normalizeChatRoute(session.generationRoute) === 'claude-code')
 
-  const [tab, setTab] = useState<'reality' | 'dreams'>('reality')
   const [config, setConfig] = useState<WakeConfig | null>(null)
   const [nextWake, setNextWake] = useState<NextWakeSchedule | null>(null)
   const [logs, setLogs] = useState<WakeLog[]>([])
@@ -121,7 +119,6 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
   const [preCompactPromptSaving, setPreCompactPromptSaving] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushStatus, setPushStatus] = useState('')
-  const activeTab = fixedTab || tab
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -293,40 +290,8 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
 
   return (
     <div className={`h-full flex flex-col ${n ? 'bg-night-bg text-night-text' : 'chat-paper text-[#3f2c29]'}`}>
-      {/* Tab header */}
-      {!fixedTab && <div className={`flex items-center gap-1 px-4 py-3 border-b ${n ? 'border-night-border' : 'chat-dialog-line'}`}
-        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
-        <button
-          onClick={() => setTab('reality')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm transition ${
-            tab === 'reality'
-              ? n ? 'bg-night-amber/15 text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'
-              : 'opacity-50 hover:opacity-80'
-          }`}
-        >
-          <Sun size={14} /> 现实
-        </button>
-        <button
-          onClick={() => setTab('dreams')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm transition ${
-            tab === 'dreams'
-              ? n ? 'bg-night-amber/15 text-night-amber' : 'bg-[#DBB9B3]/25 text-[#765953]'
-              : 'opacity-50 hover:opacity-80'
-          }`}
-        >
-          <Moon size={14} /> 梦境
-        </button>
-        <div className="flex-1" />
-        {activeTab === 'reality' && (
-          <button onClick={fetchData} className={`p-2 rounded-xl opacity-50 hover:opacity-100 ${loading ? 'animate-spin' : ''}`}>
-            <RefreshCw size={14} />
-          </button>
-        )}
-      </div>}
-
       <div className="flex-1 overflow-y-auto">
-        {activeTab === 'reality' ? (
-          <div className="p-4 space-y-4 pb-[env(safe-area-inset-bottom)]">
+        <div className="p-4 space-y-4 pb-[env(safe-area-inset-bottom)]">
             <div className={`rounded-2xl p-4 space-y-3 ${n ? 'bg-night-card' : 'chat-dialog-card'}`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -598,10 +563,7 @@ export function DreamsView({ fixedTab, sessionId }: { fixedTab?: 'reality' | 'dr
                 )
               })}
             </div>
-          </div>
-        ) : (
-          <WishlistView />
-        )}
+        </div>
       </div>
     </div>
   )

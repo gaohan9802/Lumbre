@@ -4,10 +4,7 @@ async function main(): Promise<void> {
   const [store, countText, workerId] = process.argv.slice(2)
   const count = Number(countText)
 
-  if (store === 'wish') {
-    const { addWish } = await import('../../src/server/wish-store')
-    for (let i = 0; i < count; i += 1) addWish('fire', `${workerId}-${i}`)
-  } else if (store === 'usage') {
+  if (store === 'usage') {
     const { recordUsage } = await import('../../src/server/usage')
     for (let i = 0; i < count; i += 1) recordUsage(10, 5, 'fixture', workerId)
   } else if (store === 'push') {

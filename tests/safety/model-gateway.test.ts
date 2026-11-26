@@ -154,7 +154,7 @@ test('OpenAI-compatible adapter preserves images, tools, streaming events, usage
     if (turn === 1) {
       firstBody = body
       return new Response(JSON.stringify({
-        choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_notes', arguments: '{}' } }] }, finish_reason: 'tool_calls' }],
+        choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_guestbook', arguments: '{}' } }] }, finish_reason: 'tool_calls' }],
         usage: { prompt_tokens: 5, completion_tokens: 1 },
       }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
@@ -171,9 +171,9 @@ test('OpenAI-compatible adapter preserves images, tools, streaming events, usage
     const json = await nonStream.json()
     assert.equal(json.content, 'openai done')
     assert.equal(json.input_tokens, 9)
-    assert.equal(json.tool_calls[0].name, 'read_notes')
+    assert.equal(json.tool_calls[0].name, 'read_guestbook')
     assert.equal(firstBody.messages.some((message: any) => Array.isArray(message.content) && message.content.some((part: any) => part.type === 'image_url')), true)
-    assert.equal(firstBody.tools.some((tool: any) => tool.function?.name === 'read_notes'), true)
+    assert.equal(firstBody.tools.some((tool: any) => tool.function?.name === 'read_guestbook'), true)
     assert.equal(authHeader, 'Bearer server-only-openai-key')
 
     const stream = await route.POST(new NextRequest('http://localhost/api/chat', {

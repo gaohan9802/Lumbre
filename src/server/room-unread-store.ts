@@ -3,16 +3,16 @@ import { readJsonFile, updateJsonFile } from './data/json-file'
 import { resolveDataPath } from './data/safe-path'
 
 export const ROOM_UNREAD_KEYS = [
-  'coupons', 'todo', 'notes', 'diary', 'wishlist', 'photos', 'favorites',
-  'media', 'energy', 'poems', 'stories', 'research', 'study',
+  'todo', 'notes', 'diary', 'photos', 'favorites',
+  'media', 'poems', 'stories', 'study',
   'future', 'dictionary',
-  'engawa',
   'nursery',
 ] as const
 
 export type RoomUnreadKey = typeof ROOM_UNREAD_KEYS[number]
 type RoomUnreadCounts = Record<RoomUnreadKey, number>
-type StoredRoomUnreadCounts = Partial<RoomUnreadCounts> & { tesis?: number }
+const RETIRED_ROOM_UNREAD_KEYS = ['tesis', 'energy', 'engawa', 'coupons', 'wishlist', 'research'] as const
+type StoredRoomUnreadCounts = Partial<RoomUnreadCounts> & Partial<Record<typeof RETIRED_ROOM_UNREAD_KEYS[number], number>>
 interface RoomUnreadData { counts: StoredRoomUnreadCounts; updated_at: string | null }
 
 const FILE = resolveDataPath(getDataDir(), 'room-unread.json')
@@ -21,7 +21,7 @@ const fallback = (): RoomUnreadData => ({ counts: {}, updated_at: null })
 function isData(value: unknown): value is RoomUnreadData {
   const data = value as Partial<RoomUnreadData> | null
   return !!data && typeof data === 'object' && !!data.counts && typeof data.counts === 'object'
-    && Object.entries(data.counts).every(([key, count]) => (isRoomUnreadKey(key) || key === 'tesis') && Number.isInteger(count) && Number(count) >= 0)
+    && Object.entries(data.counts).every(([key, count]) => (isRoomUnreadKey(key) || RETIRED_ROOM_UNREAD_KEYS.includes(key as typeof RETIRED_ROOM_UNREAD_KEYS[number])) && Number.isInteger(count) && Number(count) >= 0)
     && (data.updated_at === null || typeof data.updated_at === 'string')
 }
 

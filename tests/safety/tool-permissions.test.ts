@@ -26,9 +26,9 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 152)
-  assert.equal(registry.ALL_TOOLS.length, 152)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 152)
+  assert.equal(registry.registeredToolCount(), 94)
+  assert.equal(registry.ALL_TOOLS.length, 94)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 94)
   for (const removed of ['write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline']) {
     assert.equal(registry.ALL_TOOLS.some(tool => tool.name === removed), false, removed)
   }
@@ -37,9 +37,6 @@ test('all legacy tool contracts have exactly one policy registration', () => {
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
   assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_energy_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.deepEqual(registry.ALL_TOOLS.slice(-26, -10).map(tool => tool.name), ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove', 'write_windowsill_line'])
-  assert.deepEqual(registry.ALL_TOOLS.slice(-10, -1).map(tool => tool.name), ['kitchen_cook', 'kitchen_status', 'kitchen_cancel', 'kitchen_toss', 'kitchen_buy', 'eat', 'read_menu', 'snack_eat', 'kitchen_notes'])
   assert.equal(registry.ALL_TOOLS.at(-1)?.name, 'nursery')
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
@@ -63,10 +60,6 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   const sendSticker = registry.getRegisteredTool('send_sticker')!
   const cedarPlay = registry.getRegisteredTool('cedar_play')!
   const cedarAccount = registry.getRegisteredTool('cedar_account')!
-  const engawaRead = registry.getRegisteredTool('daily_poem')!
-  const engawaWrite = registry.getRegisteredTool('hobby_add')!
-  const engawaRemove = registry.getRegisteredTool('hobby_remove')!
-  const engawaLine = registry.getRegisteredTool('write_windowsill_line')!
   const nursery = registry.getRegisteredTool('nursery')!
 
   assert.deepEqual(policy.evaluateToolPolicy(read, {}, chat), { allowed: true, level: 'green' })
@@ -89,11 +82,6 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.equal(policy.evaluateToolPolicy(cedarAccount, { action: 'delete_save' }, chat).requiresConfirmation, true)
   assert.deepEqual(policy.evaluateToolPolicy(cedarPlay, {}, wake), { allowed: true, level: 'yellow' })
   assert.deepEqual(policy.evaluateToolPolicy(cedarAccount, { action: 'delete_save' }, wake), { allowed: true, level: 'red' })
-  assert.deepEqual(policy.evaluateToolPolicy(engawaRead, {}, chat), { allowed: true, level: 'green' })
-  assert.deepEqual(policy.evaluateToolPolicy(engawaWrite, {}, wake), { allowed: true, level: 'yellow' })
-  assert.deepEqual(policy.evaluateToolPolicy(engawaLine, {}, wake), { allowed: true, level: 'yellow' })
-  assert.equal(policy.evaluateToolPolicy(engawaRemove, {}, chat).requiresConfirmation, true)
-  assert.deepEqual(policy.evaluateToolPolicy(engawaRemove, {}, wake), { allowed: true, level: 'red' })
   assert.deepEqual(policy.evaluateToolPolicy(nursery, { command: 'status' }, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(nursery, { command: 'feed 晚安' }, wake), { allowed: true, level: 'yellow' })
 })
@@ -111,22 +99,21 @@ test('unattended wake receives every registered tool including CedarToy games', 
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake' })
   const names = registry.toolsForContext(wake).map(tool => tool.name)
   assert.equal(names.length, registry.registeredToolCount())
-  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'read_health_summary', 'read_energy_summary', 'delete_energy_entry', 'save_pantry_item', 'save_grocery_item', 'delete_grocery_item', 'save_energy_goal', 'delete_energy_goal', 'set_password', 'confirm_void_coupon', 'bite_otter_nape', 'nursery']) {
+  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'read_health_summary', 'set_password', 'bite_otter_nape', 'nursery']) {
     assert.equal(names.includes(allowed), true, allowed)
   }
   const trace = registry.toolsForContext(wake).find(tool => tool.name === 'trace')!
   assert.equal('delete' in trace.input_schema.properties, true)
   assert.deepEqual(names.filter(name => name.startsWith('cedar_')), ['cedar_list_games', 'cedar_get_guide', 'cedar_play', 'cedar_account'])
-  assert.equal(names.filter(name => ['web_read', 'rss_read', 'shelf', 'shelf_add', 'shelf_suggest', 'shelf_remove', 'sky_tonight', 'apod', 'daily_art', 'arxiv_new', 'daily_poem', 'on_this_day', 'hobby_corner', 'hobby_add', 'hobby_remove'].includes(name)).length, 15)
 })
 
 test('work windows receive strictly read-only life tools', async () => {
   const work = contextModule.createToolContext({ source: 'work', actorId: 'work', sessionId: 'work-session' })
   const names = registry.toolsForContext(work).map(tool => tool.name)
-  for (const readable of ['read_diary', 'search_summaries', 'read_summary', 'read_study_notebook', 'read_health_summary', 'read_energy_summary', 'kitchen_status', 'read_menu', 'kitchen_notes']) {
+  for (const readable of ['read_diary', 'search_summaries', 'read_summary', 'read_study_notebook', 'read_health_summary']) {
     assert.equal(names.includes(readable), true, readable)
   }
-  for (const mutating of ['write_diary', 'update_diary', 'delete_diary', 'trace', 'write_story', 'respond_study_notebook', 'send_email', 'kitchen_cook', 'eat']) {
+  for (const mutating of ['write_diary', 'update_diary', 'delete_diary', 'trace', 'write_story', 'respond_study_notebook', 'send_email']) {
     assert.equal(names.includes(mutating), false, mutating)
   }
   assert.match(await executor.executeTool('write_diary', { content: 'blocked' }, work), /strictly read-only/)
@@ -167,7 +154,7 @@ test('red tools issue single-use, actor-and-session-bound confirmations', async 
 test('expired confirmation tokens are rejected without executing', () => {
   const old = new Date('2026-09-03T10:00:00.000Z')
   const { token } = confirmations.createToolConfirmation({
-    tool: 'delete_note', input: { note_id: 'fixture' }, actorId: 'fixture-user', sessionId: 'session-a', requestedSource: 'chat',
+    tool: 'delete_guestbook_message', input: { message_id: 'fixture' }, actorId: 'fixture-user', sessionId: 'session-a', requestedSource: 'chat',
   }, { now: old, ttlMs: 1000 })
   const result = confirmations.resolveToolConfirmation(token, 'fixture-user', 'session-a', true, new Date(old.getTime() + 1001))
   assert.equal(result.ok, false)
@@ -185,7 +172,7 @@ test('batch execution enforces one total limit and stops later writes after a fa
 
   const stopped = await executor.executeToolBatch([
     { name: 'unknown_write', input: {} },
-    { name: 'write_note', input: { author: 'star', content: 'must not run' } },
+    { name: 'write_guestbook', input: { content: 'must not run' } },
     { name: 'get_weather', input: {} },
   ], context, 3)
   assert.match(stopped[0].result, /Unknown tool/)
@@ -203,20 +190,10 @@ test('audit log records actor, source, tool and outcome without content values',
   assert.match(raw, /"outcome":"allowed"/)
 })
 
-test('successful star writes add one room unread while reads and confirmations do not', async () => {
-  roomUnread.markRoomRead('notes')
+test('successful star writes add one room unread while reads do not', async () => {
   roomUnread.markRoomRead('future')
   roomUnread.markRoomRead('dictionary')
   const context = contextModule.createToolContext({ source: 'chat', actorId: 'fixture-user', sessionId: 'unread-session' })
-  const created = JSON.parse(await executor.executeTool('write_note', { author: 'star', content: '新的小纸条' }, context))
-  assert.equal(roomUnread.readRoomUnreadCounts().notes, 1)
-
-  await executor.executeTool('read_notes', {}, context)
-  assert.equal(roomUnread.readRoomUnreadCounts().notes, 1)
-
-  await executor.executeTool('delete_note', { note_id: created.id, author: 'star' }, context)
-  assert.equal(roomUnread.readRoomUnreadCounts().notes, 1)
-
   const appended = JSON.parse(await executor.executeTool('append_future_letter', { content: '写给下次醒来的我。', operation_key: 'unread-session-letter-1' }, context))
   assert.equal(roomUnread.readRoomUnreadCounts().future, 1)
   await executor.executeTool('read_future_letter', {}, context)

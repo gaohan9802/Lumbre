@@ -14,13 +14,15 @@ process.env.LUMBRE_CC_TOOL_BRIDGE_SECRET = secret
 
 let NextRequest: typeof import('next/server').NextRequest
 let route: typeof import('../../src/app/api/internal/cc-tools/route')
-let notes: typeof import('../../src/server/diary-store')
+let journal: typeof import('../../src/server/diary-store')
+let guestbook: typeof import('../../src/server/guestbook-store')
 let chatSync: typeof import('../../src/server/chat-sync')
 
 before(async () => {
   ;({ NextRequest } = await import('next/server'))
   route = await import('../../src/app/api/internal/cc-tools/route')
-  notes = await import('../../src/server/diary-store')
+  journal = await import('../../src/server/diary-store')
+  guestbook = await import('../../src/server/guestbook-store')
   chatSync = await import('../../src/server/chat-sync')
 })
 after(() => rmSync(root, { recursive: true, force: true }))
@@ -39,7 +41,7 @@ test('internal bridge exposes only registered Lumbre chat tools behind its own s
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('cache-control'), 'no-store')
   const body = await response.json()
-  assert.equal(body.tools.length, 152)
+  assert.equal(body.tools.length, 94)
   assert.equal(body.tools.some((tool: any) => tool.name === 'read_study_notebook'), true)
   assert.equal(body.tools.some((tool: any) => tool.name === 'respond_study_notebook'), true)
   assert.equal(body.tools.some((tool: any) => ['Bash', 'Shell', 'Read', 'Write', 'Edit'].includes(tool.name)), false)
@@ -54,23 +56,18 @@ test('internal bridge exposes only registered Lumbre chat tools behind its own s
   assert.equal(body.tools.some((tool: any) => tool.name === 'list_stickers'), true)
   assert.equal(body.tools.some((tool: any) => tool.name === 'send_sticker'), true)
   assert.equal(body.tools.some((tool: any) => tool.name === 'cedar_play'), true)
-  assert.equal(body.tools.some((tool: any) => tool.name === 'daily_poem'), true)
-  assert.equal(body.tools.some((tool: any) => tool.name === 'hobby_add'), true)
-  assert.equal(body.tools.some((tool: any) => tool.name === 'write_windowsill_line'), true)
-  assert.equal(body.tools.some((tool: any) => tool.name === 'kitchen_cook'), true)
-  assert.equal(body.tools.some((tool: any) => tool.name === 'read_menu'), true)
   assert.equal(body.tools.some((tool: any) => tool.name === 'nursery'), true)
 })
 
 test('bridge reuses Lumbre policy, hides confirmation tokens from Claude and keeps them for the UI', async () => {
-  const note = notes.writeNote('star', 'CC bridge red confirmation fixture')
+  const message = guestbook.writeGuestbookMessage('star', 'CC bridge red confirmation fixture')
   const response = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
     method: 'POST',
     headers: authHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify({
       session_id: 'conversation-1',
-      name: 'delete_note',
-      input: { note_id: note.id, author: 'star' },
+      name: 'delete_guestbook_message',
+      input: { message_id: message.id },
     }),
   }))
   assert.equal(response.status, 200)
@@ -79,7 +76,7 @@ test('bridge reuses Lumbre policy, hides confirmation tokens from Claude and kee
   assert.equal(pending.code, 'CONFIRMATION_REQUIRED')
   assert.equal(typeof pending.confirmation.token, 'string')
   assert.doesNotMatch(JSON.stringify(body.content), new RegExp(pending.confirmation.token))
-  assert.equal(notes.listNotes().some(item => item.id === note.id), true)
+  assert.equal(guestbook.readGuestbook().messages.some(item => item.id === message.id), true)
 })
 
 test('view_foto can load the exact image attached to the current CC conversation', async () => {
@@ -124,12 +121,12 @@ test('unattended CC wakes can execute the full registered Lumbre tool set', asyn
   const tools = (await listed.json()).tools
   assert.equal(tools.some((tool: any) => tool.name === 'wake_me'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'update_diary'), true)
-  assert.equal(tools.some((tool: any) => tool.name === 'delete_note'), true)
+  assert.equal(tools.some((tool: any) => tool.name === 'delete_guestbook_message'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'send_email'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'cedar_play'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'cedar_account'), true)
 
-  const diary = notes.writeDiary({
+  const diary = journal.writeDiary({
     date: '2026-09-19', author: 'star', title: 'wake fixture', content: 'before', visibility: 'public',
   })
   const updated = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
@@ -140,15 +137,15 @@ test('unattended CC wakes can execute the full registered Lumbre tool set', asyn
     }),
   }))
   assert.match((await updated.json()).result, /追加成功/)
-  assert.match(notes.readDiaries('star', { target_date: diary.date })[0].content, /after wake/)
+  assert.match(journal.readDiaries('star', { target_date: diary.date })[0].content, /after wake/)
 
-  const note = notes.writeNote('star', 'unattended delete fixture')
+  const message = guestbook.writeGuestbookMessage('star', 'unattended delete fixture')
   const deleted = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {
     method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
-    body: JSON.stringify({ session_id: 'conversation-1', source: 'unattended-wake', name: 'delete_note', input: { note_id: note.id, author: 'star' } }),
+    body: JSON.stringify({ session_id: 'conversation-1', source: 'unattended-wake', name: 'delete_guestbook_message', input: { message_id: message.id } }),
   }))
-  assert.match((await deleted.json()).result, /已删除/)
-  assert.equal(notes.listNotes().some(item => item.id === note.id), false)
+  assert.equal(JSON.parse((await deleted.json()).result).result, 'ok')
+  assert.equal(guestbook.readGuestbook().messages.some(item => item.id === message.id), false)
 })
 
 test('work bridge lists and executes only read-only Lumbre tools', async () => {
@@ -158,7 +155,7 @@ test('work bridge lists and executes only read-only Lumbre tools', async () => {
   assert.equal(tools.some((tool: any) => tool.name === 'read_summary'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'read_study_notebook'), true)
   assert.equal(tools.some((tool: any) => tool.name === 'write_diary'), false)
-  assert.equal(tools.some((tool: any) => tool.name === 'delete_note'), false)
+  assert.equal(tools.some((tool: any) => tool.name === 'delete_guestbook_message'), false)
   assert.equal(tools.some((tool: any) => tool.name === 'respond_study_notebook'), false)
 
   const denied = await route.POST(new NextRequest('http://lumbre.test/api/internal/cc-tools', {

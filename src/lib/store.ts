@@ -2,12 +2,12 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-type Tab = 'chat' | 'poems' | 'stories' | 'research' | 'diary' | 'notes' | 'todo' | 'photos' | 'memory' | 'dreams'
+type Tab = 'chat' | 'poems' | 'stories' | 'diary' | 'notes' | 'todo' | 'photos' | 'memory' | 'dreams'
 
-const VALID_TABS: Tab[] = ['chat', 'poems', 'stories', 'research', 'diary', 'notes', 'todo', 'photos', 'memory', 'dreams']
+const VALID_TABS: Tab[] = ['chat', 'poems', 'stories', 'diary', 'notes', 'todo', 'photos', 'memory', 'dreams']
 
 export function migrateAppState(persisted: any) {
-  if (persisted?.state?.activeTab === 'tesis' || persisted?.state?.activeTab === 'timeline') persisted.state.activeTab = 'chat'
+  if (['tesis', 'timeline', 'research'].includes(persisted?.state?.activeTab)) persisted.state.activeTab = 'chat'
   if (persisted?.state?.activeTab === 'wishlist') persisted.state.activeTab = 'dreams'
   if (persisted?.state?.activeTab === 'coupons') persisted.state.activeTab = 'chat'
   if (persisted?.state) delete persisted.state.sidebarOpen

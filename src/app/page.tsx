@@ -26,24 +26,21 @@ function ViewLoading() {
 // PWA had to parse the whole application before showing anything.
 const ChatSync = dynamic(() => import('@/features/chat/sync/ChatSync').then(m => m.ChatSync), { ssr: false })
 const ChatView = dynamic(() => import('@/components/chat/ChatRecoveryBoundary').then(m => m.ChatRecoveryBoundary), { loading: ViewLoading, ssr: false })
-const CouponsView = dynamic(() => import('@/components/coupons/CouponsView').then(m => m.CouponsView), { loading: ViewLoading, ssr: false })
 const DiaryView = dynamic(() => import('@/components/diary/DiaryView').then(m => m.DiaryView), { loading: ViewLoading, ssr: false })
-const NotesView = dynamic(() => import('@/components/notes/NotesView').then(m => m.NotesView), { loading: ViewLoading, ssr: false })
+const GuestbookView = dynamic(() => import('@/components/notes/GuestbookView').then(m => m.GuestbookView), { loading: ViewLoading, ssr: false })
 const TodoView = dynamic(() => import('@/components/todo/TodoView').then(m => m.TodoView), { loading: ViewLoading, ssr: false })
 const PhotosView = dynamic(() => import('@/components/photos/PhotosView').then(m => m.PhotosView), { loading: ViewLoading, ssr: false })
 const MemoryView = dynamic(() => import('@/components/memory/MemoryView').then(m => m.MemoryView), { loading: ViewLoading, ssr: false })
 const DreamsView = dynamic(() => import('@/components/dreams/DreamsView').then(m => m.DreamsView), { loading: ViewLoading, ssr: false })
 const PoemsView = dynamic(() => import('@/components/poems/PoemsView').then(m => m.PoemsView), { loading: ViewLoading, ssr: false })
 const StoriesView = dynamic(() => import('@/components/stories/StoriesView').then(m => m.StoriesView), { loading: ViewLoading, ssr: false })
-const ResearchView = dynamic(() => import('@/components/research/ResearchView').then(m => m.ResearchView), { loading: ViewLoading, ssr: false })
 
 const views = {
   chat: ChatView,
   poems: PoemsView,
   stories: StoriesView,
-  research: ResearchView,
   diary: DiaryView,
-  notes: NotesView,
+  notes: GuestbookView,
   todo: TodoView,
   photos: PhotosView,
   memory: MemoryView,
@@ -80,7 +77,6 @@ export default function Home() {
   return (
     <div className="h-[var(--app-height,100dvh)] overflow-hidden" style={{ transform: 'translateY(var(--app-top, 0px))' }}>
       <ChatSync />
-      <CouponsView />
       <Sidebar />
       <main className="flex h-full flex-col overflow-hidden relative">
         {activeTab !== 'chat' && <TopBar />}

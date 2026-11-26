@@ -27,23 +27,11 @@ test('diary repository preserves file layout, visibility, comments, updates, and
   assert.equal(existsSync(`${file}.bak`), true)
 })
 
-test('notes preserve layout, serialize concurrent-style changes, and enforce deletion ownership', () => {
-  const note = journal.writeNote('fire', 'fixture note', 'tag')
-  const file = path.join(root, 'notes', `${note.id}.json`)
-  assert.equal(journal.replyNote(note.id, 'star', 'reply'), 'ok')
-  assert.equal(journal.deleteNote(note.id, 'star'), 'forbidden')
-  assert.equal(existsSync(file), true)
-  assert.equal(journal.deleteNote(note.id, 'fire'), 'ok')
-  assert.equal(readFileSync(`${file}.bak`, 'utf8').includes('reply'), true)
-})
-
 test('journal rejects unsafe client path fields while isolating corrupt legacy files', () => {
   assert.throws(() => journal.readDiaries('fire', { target_date: '../config' }), DataPathError)
   assert.throws(() => journal.writeDiary({
     date: '2026-02-30', author: 'fire', title: 'bad', content: 'bad', visibility: 'public',
   }), DataPathError)
-  assert.throws(() => journal.replyNote('../config', 'fire', 'bad'), DataPathError)
-
   const malformed = path.join(root, 'diaries', 'undefined_1004_undefined.json')
   mkdirSync(path.dirname(malformed), { recursive: true })
   writeFileSync(malformed, '{broken legacy diary', 'utf8')

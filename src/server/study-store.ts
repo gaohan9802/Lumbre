@@ -10,6 +10,7 @@ export type StudyQuestionStatus = 'open' | 'answered' | 'resolved'
 export type StudyBlock = StudyMarkdownBlock | StudyQuestionBlock | StudyAssetBlock
 
 export interface StudyField { id: string; name: string; archived: boolean; created_at: string; updated_at: string }
+export interface StudySection { id: string; field_id: string; name: string; archived: boolean; created_at: string; updated_at: string }
 export interface StudyReply { id: string; author: StudyActor; content: string; operation_key?: string; created_at: string }
 export interface StudyMarkdownBlock { id: string; type: 'markdown'; content: string }
 export interface StudyQuestionBlock {
@@ -21,13 +22,13 @@ export interface StudyComment {
   id: string; author: StudyActor; content: string; block_id?: string; quote?: string; operation_key?: string; created_at: string
 }
 export interface StudyNote {
-  id: string; field_id: string; title: string; tags: string[]; pinned: boolean; archived: boolean
+  id: string; field_id: string; section_id?: string; title: string; tags: string[]; pinned: boolean; archived: boolean
   blocks: StudyBlock[]; comments: StudyComment[]; created_at: string; updated_at: string
 }
 export interface StudyAsset {
   id: string; kind: 'image' | 'ink'; mime: 'image/jpeg' | 'image/png' | 'image/webp'; caption: string; strokes?: unknown[]; created_at: string
 }
-interface StudyIndex { fields: StudyField[] }
+interface StudyIndex { fields: StudyField[]; sections: StudySection[] }
 interface StudyActivity {
   id: string; at: string; last_at: string; kind: 'create' | 'edit' | 'question' | 'answer' | 'image' | 'ink'
   field_id: string; field_name: string; note_id: string; note_title: string; section?: string
@@ -39,10 +40,11 @@ const NOTES_DIR = resolveDataPath(ROOT, 'notes')
 const ASSETS_DIR = resolveDataPath(ROOT, 'assets')
 const ACTIVITY_DIR = resolveDataPath(ROOT, 'activity')
 const ID = /^[A-Za-z0-9_-]{1,128}$/
-const emptyIndex = (): StudyIndex => ({ fields: [] })
+const emptyIndex = (): StudyIndex => ({ fields: [], sections: [] })
 const indexOptions = {
   fallback: emptyIndex, fallbackOnInvalid: true,
-  validate: (value: unknown) => !!value && typeof value === 'object' && Array.isArray((value as StudyIndex).fields),
+  validate: (value: unknown) => !!value && typeof value === 'object' && Array.isArray((value as StudyIndex).fields)
+    && ((value as Partial<StudyIndex>).sections === undefined || Array.isArray((value as Partial<StudyIndex>).sections)),
 }
 const now = () => new Date().toISOString()
 const text = (value: unknown, max: number) => String(value || '').trim().slice(0, max)
@@ -65,12 +67,23 @@ function validAsset(value: unknown): value is StudyAsset {
 function validActivity(value: unknown): value is StudyActivity[] {
   return Array.isArray(value) && value.every(item => !!item && typeof item === 'object' && typeof item.id === 'string' && typeof item.at === 'string')
 }
-function readIndex(): StudyIndex { return readJsonFile(INDEX_FILE, indexOptions) }
+function readIndex(): StudyIndex {
+  const data = readJsonFile(INDEX_FILE, indexOptions)
+  return { fields: data.fields, sections: Array.isArray(data.sections) ? data.sections : [] }
+}
 function readAllNotes(): StudyNote[] {
   if (!fs.existsSync(NOTES_DIR)) return []
   return fs.readdirSync(NOTES_DIR).filter(file => file.endsWith('.json')).flatMap(file => {
     try { return [readJsonFile<StudyNote>(resolveDataPath(NOTES_DIR, file), { validate: validNote })] } catch { return [] }
   })
+}
+function visibleStudyData(includeArchived = false) {
+  const index = readIndex(), fields = index.fields.filter(field => includeArchived || !field.archived)
+  const allowedFields = new Set(fields.map(field => field.id))
+  const sections = index.sections.filter(section => allowedFields.has(section.field_id) && (includeArchived || !section.archived))
+  const allowedSections = new Set(sections.map(section => section.id))
+  const notes = readAllNotes().filter(note => allowedFields.has(note.field_id) && (!note.section_id || allowedSections.has(note.section_id)) && (includeArchived || !note.archived))
+  return { fields, sections, notes }
 }
 export function getStudyNote(id: unknown): StudyNote { return readJsonFile(noteFile(id), { validate: validNote }) }
 
@@ -128,23 +141,21 @@ function recordActivity(note: StudyNote, kind: StudyActivity['kind'], section?: 
 }
 
 export function listStudyOverview(includeArchived = false) {
-  const fields = readIndex().fields.filter(field => includeArchived || !field.archived)
-  const allowed = new Set(fields.map(field => field.id))
-  const notes = readAllNotes().filter(note => allowed.has(note.field_id) && (includeArchived || !note.archived))
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at.localeCompare(a.updated_at))
+  const { fields, sections, notes: visibleNotes } = visibleStudyData(includeArchived)
+  const notes = visibleNotes.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at.localeCompare(a.updated_at))
   const summaries = notes.map(note => ({
-    id: note.id, field_id: note.field_id, title: note.title, tags: note.tags, pinned: note.pinned, archived: note.archived, updated_at: note.updated_at,
+    id: note.id, field_id: note.field_id, ...(note.section_id ? { section_id: note.section_id } : {}), title: note.title, tags: note.tags, pinned: note.pinned, archived: note.archived, updated_at: note.updated_at,
     question_count: note.blocks.filter(block => block.type === 'question').length,
     open_question_count: note.blocks.filter(block => block.type === 'question' && block.status !== 'resolved').length,
   }))
-  return { fields, notes: summaries, recent: summaries.slice(0, 6) }
+  return { fields, sections, notes: summaries, recent: summaries.slice(0, 6) }
 }
 export function createStudyField(nameValue: unknown): StudyField {
   const name = text(nameValue, 80)
   if (!name) throw new Error('分区名称不能为空')
   const at = now()
   const field: StudyField = { id: randomUUID(), name, archived: false, created_at: at, updated_at: at }
-  updateJsonFile(INDEX_FILE, indexOptions, data => { data.fields.push(field); return data })
+  updateJsonFile(INDEX_FILE, indexOptions, data => { data.sections ||= []; data.fields.push(field); return data })
   return field
 }
 export function updateStudyField(idValue: unknown, patch: Record<string, unknown>): StudyField {
@@ -159,12 +170,35 @@ export function updateStudyField(idValue: unknown, patch: Record<string, unknown
   })
   return saved
 }
-export function createStudyNote(fieldIdValue: unknown, titleValue: unknown): StudyNote {
+export function createStudySection(fieldIdValue: unknown, nameValue: unknown): StudySection {
+  const fieldId = safeId(fieldIdValue, 'study field id'), name = text(nameValue, 100)
+  if (!name) throw new Error('子页名称不能为空')
+  if (!readIndex().fields.some(field => field.id === fieldId && !field.archived)) throw new Error('学习分区不存在')
+  const at = now(), section: StudySection = { id: randomUUID(), field_id: fieldId, name, archived: false, created_at: at, updated_at: at }
+  updateJsonFile(INDEX_FILE, indexOptions, data => { data.sections ||= []; data.sections.push(section); return data })
+  return section
+}
+export function updateStudySection(idValue: unknown, patch: Record<string, unknown>): StudySection {
+  const id = safeId(idValue, 'study section id')
+  let saved!: StudySection
+  updateJsonFile(INDEX_FILE, indexOptions, data => {
+    data.sections ||= []
+    const section = data.sections.find(item => item.id === id)
+    if (!section) throw new Error('学习子页不存在')
+    if (patch.name !== undefined) section.name = text(patch.name, 100) || section.name
+    if (patch.archived !== undefined) section.archived = patch.archived === true
+    section.updated_at = now(); saved = section; return data
+  })
+  return saved
+}
+export function createStudyNote(fieldIdValue: unknown, titleValue: unknown, sectionIdValue?: unknown): StudyNote {
   const fieldId = safeId(fieldIdValue, 'study field id')
-  const field = readIndex().fields.find(item => item.id === fieldId && !item.archived)
+  const index = readIndex(), field = index.fields.find(item => item.id === fieldId && !item.archived)
   if (!field) throw new Error('学习分区不存在')
+  const sectionId = sectionIdValue ? safeId(sectionIdValue, 'study section id') : undefined
+  if (sectionId && !index.sections.some(item => item.id === sectionId && item.field_id === fieldId && !item.archived)) throw new Error('学习子页不存在')
   const at = now()
-  const note: StudyNote = { id: randomUUID(), field_id: fieldId, title: text(titleValue, 180) || '未命名笔记', tags: [], pinned: false, archived: false, blocks: [{ id: randomUUID(), type: 'markdown', content: '' }], comments: [], created_at: at, updated_at: at }
+  const note: StudyNote = { id: randomUUID(), field_id: fieldId, ...(sectionId ? { section_id: sectionId } : {}), title: text(titleValue, 180) || '未命名笔记', tags: [], pinned: false, archived: false, blocks: [{ id: randomUUID(), type: 'markdown', content: '' }], comments: [], created_at: at, updated_at: at }
   writeJsonFile(noteFile(note.id), note); recordActivity(note, 'create'); return note
 }
 export function saveStudyNote(idValue: unknown, expectedUpdatedAt: unknown, patch: Record<string, unknown>): StudyNote {
@@ -254,7 +288,7 @@ export function addStudyComment(noteId: unknown, contentValue: unknown, options:
 export function listStudyQuestions(statusValue?: unknown) {
   const status = ['open', 'answered', 'resolved'].includes(String(statusValue)) ? String(statusValue) : ''
   const fields = new Map(readIndex().fields.map(field => [field.id, field.name]))
-  return readAllNotes().flatMap(note => note.blocks.flatMap((block, index) => block.type === 'question' && (!status || block.status === status) ? [{ note_id: note.id, note_title: note.title, field_id: note.field_id, field_name: fields.get(note.field_id) || '未分区', section: sectionBefore(note.blocks, index), question: block }] : [])).sort((a, b) => b.question.updated_at.localeCompare(a.question.updated_at))
+  return visibleStudyData().notes.flatMap(note => note.blocks.flatMap((block, index) => block.type === 'question' && (!status || block.status === status) ? [{ note_id: note.id, note_title: note.title, field_id: note.field_id, field_name: fields.get(note.field_id) || '未分区', section: sectionBefore(note.blocks, index), question: block }] : [])).sort((a, b) => b.question.updated_at.localeCompare(a.question.updated_at))
 }
 function searchable(note: StudyNote): string {
   return [note.title, ...note.tags, ...note.blocks.flatMap(block => block.type === 'markdown' ? [block.content] : block.type === 'question' ? [block.question, block.quote || '', ...block.replies.map(reply => reply.content)] : [block.caption]), ...note.comments.map(comment => `${comment.content} ${comment.quote || ''}`)].join('\n')
@@ -263,7 +297,7 @@ export function searchStudy(queryValue: unknown, limitValue: unknown = 20) {
   const query = text(queryValue, 200).toLocaleLowerCase()
   if (!query) return []
   const limit = Math.max(1, Math.min(30, Number(limitValue) || 20)), fields = new Map(readIndex().fields.map(field => [field.id, field.name]))
-  return readAllNotes().filter(note => !note.archived).flatMap(note => {
+  return visibleStudyData().notes.flatMap(note => {
     const haystack = searchable(note), index = haystack.toLocaleLowerCase().indexOf(query)
     return index < 0 ? [] : [{ id: note.id, field_id: note.field_id, field_name: fields.get(note.field_id), title: note.title, tags: note.tags, updated_at: note.updated_at, excerpt: haystack.slice(Math.max(0, index - 90), index + query.length + 150) }]
   }).sort((a, b) => Number(b.title.toLocaleLowerCase().includes(query)) - Number(a.title.toLocaleLowerCase().includes(query)) || b.updated_at.localeCompare(a.updated_at)).slice(0, limit)
