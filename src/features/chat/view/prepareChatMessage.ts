@@ -38,7 +38,7 @@ export function prepareChatMessage(message: ChatMessage): PreparedChatMessage {
   const displayContentBlocks = baseDisplayBlocks
     ? presentAssistantBlocks(baseDisplayBlocks, {
         split: false,
-        allowTransparentAction: !(message as any)._wake && !message.images?.length && !message.attachments?.length && !message.sharedCard && !message.sticker,
+        allowTransparentAction: !(message as any)._wake && !message.images?.length && !message.attachments?.length && !message.sharedCard,
       })
     : undefined
   const firstTextBlockIndex = displayContentBlocks?.findIndex(block => block.type === 'text' && !!block.content?.trim()) ?? -1

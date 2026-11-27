@@ -12,7 +12,6 @@ export type ToolDomain =
   | 'context'
   | 'period'
   | 'health'
-  | 'mail'
   | 'web'
   | 'bookmarks'
   | 'poems'

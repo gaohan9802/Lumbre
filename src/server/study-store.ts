@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import { addMadridDays, formatMadrid, madridIsoWeekday, parseMadridDateTime } from '@/lib/madrid-time'
 import { getDataDir } from './data/config'
@@ -9,7 +9,7 @@ export type StudyActor = 'fire' | 'star'
 export type StudyQuestionStatus = 'open' | 'answered' | 'resolved'
 export type StudyBlock = StudyMarkdownBlock | StudyQuestionBlock | StudyAssetBlock
 
-export interface StudyField { id: string; name: string; archived: boolean; created_at: string; updated_at: string }
+export interface StudyField { id: string; name: string; mark?: string; archived: boolean; created_at: string; updated_at: string }
 export interface StudySection { id: string; field_id: string; name: string; archived: boolean; created_at: string; updated_at: string }
 export interface StudyReply { id: string; author: StudyActor; content: string; operation_key?: string; created_at: string }
 export interface StudyMarkdownBlock { id: string; type: 'markdown'; content: string }
@@ -28,6 +28,7 @@ export interface StudyNote {
 export interface StudyAsset {
   id: string; kind: 'image' | 'ink'; mime: 'image/jpeg' | 'image/png' | 'image/webp'; caption: string; strokes?: unknown[]; created_at: string
 }
+export interface StudyQuickNote { content: string; updated_at: string }
 interface StudyIndex { fields: StudyField[]; sections: StudySection[] }
 interface StudyActivity {
   id: string; at: string; last_at: string; kind: 'create' | 'edit' | 'question' | 'answer' | 'image' | 'ink'
@@ -36,6 +37,7 @@ interface StudyActivity {
 
 const ROOT = resolveDataPath(getDataDir(), 'study')
 const INDEX_FILE = resolveDataPath(ROOT, 'index.json')
+const QUICK_NOTE_FILE = resolveDataPath(ROOT, 'quick-note.json')
 const NOTES_DIR = resolveDataPath(ROOT, 'notes')
 const ASSETS_DIR = resolveDataPath(ROOT, 'assets')
 const ACTIVITY_DIR = resolveDataPath(ROOT, 'activity')
@@ -54,6 +56,12 @@ const noteFile = (id: unknown) => resolveDataPath(NOTES_DIR, `${safeId(id, 'stud
 const assetMetaFile = (id: unknown) => resolveDataPath(ASSETS_DIR, `${safeId(id, 'study asset id')}.json`)
 const activityFile = (day: string) => resolveDataPath(ACTIVITY_DIR, `${day}.json`)
 
+function starOperationId(kind: string, operationKeyValue: unknown): string {
+  const operationKey = text(operationKeyValue, 180)
+  if (!operationKey) throw new Error('operation_key 不能为空')
+  return `star-${createHash('sha256').update(`study:${kind}:${operationKey}`).digest('hex').slice(0, 32)}`
+}
+
 function validNote(value: unknown): value is StudyNote {
   const note = value as Partial<StudyNote> | null
   return !!note && typeof note === 'object' && typeof note.id === 'string' && typeof note.field_id === 'string'
@@ -66,6 +74,9 @@ function validAsset(value: unknown): value is StudyAsset {
 }
 function validActivity(value: unknown): value is StudyActivity[] {
   return Array.isArray(value) && value.every(item => !!item && typeof item === 'object' && typeof item.id === 'string' && typeof item.at === 'string')
+}
+function validQuickNote(value: unknown): value is StudyQuickNote {
+  return !!value && typeof value === 'object' && typeof (value as StudyQuickNote).content === 'string' && typeof (value as StudyQuickNote).updated_at === 'string'
 }
 function readIndex(): StudyIndex {
   const data = readJsonFile(INDEX_FILE, indexOptions)
@@ -146,7 +157,7 @@ export function listStudyOverview(includeArchived = false) {
   const summaries = notes.map(note => ({
     id: note.id, field_id: note.field_id, ...(note.section_id ? { section_id: note.section_id } : {}), title: note.title, tags: note.tags, pinned: note.pinned, archived: note.archived, updated_at: note.updated_at,
     question_count: note.blocks.filter(block => block.type === 'question').length,
-    open_question_count: note.blocks.filter(block => block.type === 'question' && block.status !== 'resolved').length,
+    open_question_count: note.blocks.filter(block => block.type === 'question' && block.status === 'open').length,
   }))
   return { fields, sections, notes: summaries, recent: summaries.slice(0, 6) }
 }
@@ -165,10 +176,38 @@ export function updateStudyField(idValue: unknown, patch: Record<string, unknown
     const field = data.fields.find(item => item.id === id)
     if (!field) throw new Error('学习分区不存在')
     if (patch.name !== undefined) field.name = text(patch.name, 80) || field.name
+    if (patch.mark !== undefined) {
+      const mark = text(patch.mark, 8)
+      if (mark) field.mark = mark
+      else delete field.mark
+    }
     if (patch.archived !== undefined) field.archived = patch.archived === true
     field.updated_at = now(); saved = field; return data
   })
   return saved
+}
+export function moveStudyField(idValue: unknown, directionValue: unknown): StudyField[] {
+  const id = safeId(idValue, 'study field id'), direction = directionValue === 'down' ? 1 : directionValue === 'up' ? -1 : 0
+  if (!direction) throw new Error('分区移动方向无效')
+  return updateJsonFile(INDEX_FILE, indexOptions, data => {
+    const index = data.fields.findIndex(field => field.id === id)
+    if (index < 0) throw new Error('学习分区不存在')
+    let target = index + direction
+    while (target >= 0 && target < data.fields.length && data.fields[target].archived !== data.fields[index].archived) target += direction
+    if (target < 0 || target >= data.fields.length) return undefined
+    ;[data.fields[index], data.fields[target]] = [data.fields[target], data.fields[index]]
+    return data
+  }).fields
+}
+export function readStudyQuickNote(): StudyQuickNote {
+  return readJsonFile(QUICK_NOTE_FILE, { fallback: () => ({ content: '', updated_at: '' }), fallbackOnInvalid: true, validate: validQuickNote })
+}
+export function saveStudyQuickNote(contentValue: unknown, expectedUpdatedAt: unknown): StudyQuickNote {
+  const content = String(contentValue || '').slice(0, 20_000)
+  return updateJsonFile(QUICK_NOTE_FILE, { fallback: () => ({ content: '', updated_at: '' }), fallbackOnInvalid: true, validate: validQuickNote }, current => {
+    if (typeof expectedUpdatedAt === 'string' && current.updated_at !== expectedUpdatedAt) throw new Error('随手记已在别处更新，请重新打开')
+    return { content, updated_at: now() }
+  })
 }
 export function createStudySection(fieldIdValue: unknown, nameValue: unknown): StudySection {
   const fieldId = safeId(fieldIdValue, 'study field id'), name = text(nameValue, 100)
@@ -200,6 +239,79 @@ export function createStudyNote(fieldIdValue: unknown, titleValue: unknown, sect
   const at = now()
   const note: StudyNote = { id: randomUUID(), field_id: fieldId, ...(sectionId ? { section_id: sectionId } : {}), title: text(titleValue, 180) || '未命名笔记', tags: [], pinned: false, archived: false, blocks: [{ id: randomUUID(), type: 'markdown', content: '' }], comments: [], created_at: at, updated_at: at }
   writeJsonFile(noteFile(note.id), note); recordActivity(note, 'create'); return note
+}
+export function createStudyFieldByStar(nameValue: unknown, operationKeyValue: unknown): StudyField {
+  const name = text(nameValue, 80)
+  if (!name) throw new Error('分区名称不能为空')
+  const id = starOperationId('field', operationKeyValue), at = now()
+  let saved!: StudyField
+  updateJsonFile(INDEX_FILE, indexOptions, data => {
+    const existing = data.fields.find(field => field.id === id)
+    if (existing) { saved = existing; return undefined }
+    saved = { id, name, archived: false, created_at: at, updated_at: at }; data.fields.push(saved); return data
+  })
+  return saved
+}
+export function createStudySectionByStar(fieldIdValue: unknown, nameValue: unknown, operationKeyValue: unknown): StudySection {
+  const fieldId = safeId(fieldIdValue, 'study field id'), name = text(nameValue, 100), id = starOperationId('section', operationKeyValue)
+  if (!name) throw new Error('子页名称不能为空')
+  let saved!: StudySection
+  updateJsonFile(INDEX_FILE, indexOptions, data => {
+    if (!data.fields.some(field => field.id === fieldId && !field.archived)) throw new Error('学习分区不存在')
+    data.sections ||= []
+    const existing = data.sections.find(section => section.id === id)
+    if (existing) { saved = existing; return undefined }
+    const at = now(); saved = { id, field_id: fieldId, name, archived: false, created_at: at, updated_at: at }; data.sections.push(saved); return data
+  })
+  return saved
+}
+export function createStudyNoteByStar(fieldIdValue: unknown, titleValue: unknown, contentValue: unknown, operationKeyValue: unknown, sectionIdValue?: unknown): StudyNote {
+  const fieldId = safeId(fieldIdValue, 'study field id'), index = readIndex(), id = starOperationId('note', operationKeyValue)
+  if (!index.fields.some(field => field.id === fieldId && !field.archived)) throw new Error('学习分区不存在')
+  const sectionId = sectionIdValue ? safeId(sectionIdValue, 'study section id') : undefined
+  if (sectionId && !index.sections.some(section => section.id === sectionId && section.field_id === fieldId && !section.archived)) throw new Error('学习子页不存在')
+  const at = now(), candidate: StudyNote = {
+    id, field_id: fieldId, ...(sectionId ? { section_id: sectionId } : {}), title: text(titleValue, 180) || '星星的新笔记', tags: [], pinned: false, archived: false,
+    blocks: [{ id: starOperationId('note-block', operationKeyValue), type: 'markdown', content: String(contentValue || '').slice(0, 50_000) }], comments: [], created_at: at, updated_at: at,
+  }
+  const saved = updateJsonFile<StudyNote>(noteFile(id), { fallback: () => candidate, validate: validNote }, current => {
+    if (current !== candidate) return undefined
+    return candidate
+  })
+  return saved
+}
+export function appendStudyNoteByStar(noteIdValue: unknown, contentValue: unknown, operationKeyValue: unknown) {
+  const content = String(contentValue || '').trim().slice(0, 50_000)
+  if (!content) throw new Error('追加内容不能为空')
+  const blockId = starOperationId(`append:${safeId(noteIdValue, 'study note id')}`, operationKeyValue)
+  const index = readIndex()
+  let saved!: StudyNote, block!: StudyMarkdownBlock, deduplicated = false
+  updateJsonFile<StudyNote>(noteFile(noteIdValue), { validate: validNote }, note => {
+    if (note.archived || !index.fields.some(field => field.id === note.field_id && !field.archived)
+      || (note.section_id && !index.sections.some(section => section.id === note.section_id && !section.archived))) throw new Error('学习笔记已归档')
+    const existing = note.blocks.find(item => item.id === blockId)
+    if (existing) {
+      if (existing.type !== 'markdown') throw new Error('追加内容标识冲突')
+      saved = note; block = existing; deduplicated = true; return undefined
+    }
+    block = { id: blockId, type: 'markdown', content }; note.blocks.push(block); note.updated_at = now(); saved = note; return note
+  })
+  return { note: saved, block, deduplicated }
+}
+export function moveStudyNote(idValue: unknown, expectedUpdatedAt: unknown, fieldIdValue: unknown, sectionIdValue?: unknown): StudyNote {
+  const fieldId = safeId(fieldIdValue, 'study field id'), index = readIndex()
+  if (!index.fields.some(field => field.id === fieldId && !field.archived)) throw new Error('学习分区不存在')
+  const sectionId = sectionIdValue ? safeId(sectionIdValue, 'study section id') : undefined
+  if (sectionId && !index.sections.some(section => section.id === sectionId && section.field_id === fieldId && !section.archived)) throw new Error('学习子页不存在')
+  let saved!: StudyNote
+  updateJsonFile<StudyNote>(noteFile(idValue), { validate: validNote }, note => {
+    if (typeof expectedUpdatedAt === 'string' && expectedUpdatedAt && note.updated_at !== expectedUpdatedAt) throw new Error('笔记已在别处更新，请重新打开后继续编辑')
+    note.field_id = fieldId
+    if (sectionId) note.section_id = sectionId
+    else delete note.section_id
+    note.updated_at = now(); saved = note; return note
+  })
+  return saved
 }
 export function saveStudyNote(idValue: unknown, expectedUpdatedAt: unknown, patch: Record<string, unknown>): StudyNote {
   const file = noteFile(idValue)
@@ -287,8 +399,8 @@ export function addStudyComment(noteId: unknown, contentValue: unknown, options:
 }
 export function listStudyQuestions(statusValue?: unknown) {
   const status = ['open', 'answered', 'resolved'].includes(String(statusValue)) ? String(statusValue) : ''
-  const fields = new Map(readIndex().fields.map(field => [field.id, field.name]))
-  return visibleStudyData().notes.flatMap(note => note.blocks.flatMap((block, index) => block.type === 'question' && (!status || block.status === status) ? [{ note_id: note.id, note_title: note.title, field_id: note.field_id, field_name: fields.get(note.field_id) || '未分区', section: sectionBefore(note.blocks, index), question: block }] : [])).sort((a, b) => b.question.updated_at.localeCompare(a.question.updated_at))
+  const visible = visibleStudyData(), fields = new Map(visible.fields.map(field => [field.id, field.name])), sections = new Map(visible.sections.map(section => [section.id, section.name]))
+  return visible.notes.flatMap(note => note.blocks.flatMap((block, index) => block.type === 'question' && (!status || block.status === status) ? [{ note_id: note.id, note_title: note.title, field_id: note.field_id, field_name: fields.get(note.field_id) || '未分区', page_name: note.section_id ? sections.get(note.section_id) || '未分类' : '未分类', section: sectionBefore(note.blocks, index), question: block }] : [])).sort((a, b) => b.question.updated_at.localeCompare(a.question.updated_at))
 }
 function searchable(note: StudyNote): string {
   return [note.title, ...note.tags, ...note.blocks.flatMap(block => block.type === 'markdown' ? [block.content] : block.type === 'question' ? [block.question, block.quote || '', ...block.replies.map(reply => reply.content)] : [block.caption]), ...note.comments.map(comment => `${comment.content} ${comment.quote || ''}`)].join('\n')
@@ -296,10 +408,10 @@ function searchable(note: StudyNote): string {
 export function searchStudy(queryValue: unknown, limitValue: unknown = 20) {
   const query = text(queryValue, 200).toLocaleLowerCase()
   if (!query) return []
-  const limit = Math.max(1, Math.min(30, Number(limitValue) || 20)), fields = new Map(readIndex().fields.map(field => [field.id, field.name]))
-  return visibleStudyData().notes.flatMap(note => {
+  const visible = visibleStudyData(), limit = Math.max(1, Math.min(30, Number(limitValue) || 20)), fields = new Map(visible.fields.map(field => [field.id, field.name])), sections = new Map(visible.sections.map(section => [section.id, section.name]))
+  return visible.notes.flatMap(note => {
     const haystack = searchable(note), index = haystack.toLocaleLowerCase().indexOf(query)
-    return index < 0 ? [] : [{ id: note.id, field_id: note.field_id, field_name: fields.get(note.field_id), title: note.title, tags: note.tags, updated_at: note.updated_at, excerpt: haystack.slice(Math.max(0, index - 90), index + query.length + 150) }]
+    return index < 0 ? [] : [{ id: note.id, field_id: note.field_id, field_name: fields.get(note.field_id), page_name: note.section_id ? sections.get(note.section_id) || '未分类' : '未分类', title: note.title, tags: note.tags, updated_at: note.updated_at, excerpt: haystack.slice(Math.max(0, index - 90), index + query.length + 150) }]
   }).sort((a, b) => Number(b.title.toLocaleLowerCase().includes(query)) - Number(a.title.toLocaleLowerCase().includes(query)) || b.updated_at.localeCompare(a.updated_at)).slice(0, limit)
 }
 export function studyNoteOutline(noteId: unknown) {

@@ -26,17 +26,16 @@ before(async () => {
 after(() => rmSync(root, { recursive: true, force: true }))
 
 test('all legacy tool contracts have exactly one policy registration', () => {
-  assert.equal(registry.registeredToolCount(), 94)
-  assert.equal(registry.ALL_TOOLS.length, 94)
-  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 94)
-  for (const removed of ['write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline']) {
+  assert.equal(registry.registeredToolCount(), 84)
+  assert.equal(registry.ALL_TOOLS.length, 84)
+  assert.equal(new Set(registry.ALL_TOOLS.map(tool => tool.name)).size, 84)
+  for (const removed of ['write_timeline_encouragements', 'read_timeline_encouragements', 'edit_timeline_encouragement', 'delete_timeline_encouragement', 'read_life_timeline', 'get_weather', 'get_location', 'gmail_status', 'send_email', 'read_emails', 'search_emails', 'read_email_detail', 'reply_email', 'list_stickers', 'send_sticker']) {
     assert.equal(registry.ALL_TOOLS.some(tool => tool.name === removed), false, removed)
   }
   assert.equal(registry.getRegisteredTool('timeline')?.domain, 'diary')
   assert.deepEqual(registry.ALL_TOOLS.slice(0, 6).map(tool => tool.name), ['breath', 'hold', 'grow', 'trace', 'pulse', 'dream'])
-  assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'get_weather'), true)
-  assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_period') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
-  assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'gmail_status'), true)
+  assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'fetch_json') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'update_period'), true)
+  assert.equal(registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_health_summary') < registry.ALL_TOOLS.findIndex(tool => tool.name === 'read_bookmarks'), true)
   assert.equal(registry.ALL_TOOLS.at(-1)?.name, 'nursery')
   assert.equal(registry.ALL_TOOLS.some(tool => tool.name === 'read_opening_message'), false)
 })
@@ -57,7 +56,6 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   const readDictionary = registry.getRegisteredTool('read_fire_dictionary')!
   const writeDictionary = registry.getRegisteredTool('create_fire_dictionary_entry')!
   const deleteDictionary = registry.getRegisteredTool('delete_fire_dictionary_entry')!
-  const sendSticker = registry.getRegisteredTool('send_sticker')!
   const cedarPlay = registry.getRegisteredTool('cedar_play')!
   const cedarAccount = registry.getRegisteredTool('cedar_account')!
   const nursery = registry.getRegisteredTool('nursery')!
@@ -77,7 +75,6 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.deepEqual(policy.evaluateToolPolicy(readDictionary, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(writeDictionary, {}, chat), { allowed: true, level: 'yellow' })
   assert.equal(policy.evaluateToolPolicy(deleteDictionary, {}, chat).requiresConfirmation, true)
-  assert.deepEqual(policy.evaluateToolPolicy(sendSticker, {}, chat), { allowed: true, level: 'green' })
   assert.deepEqual(policy.evaluateToolPolicy(cedarPlay, {}, chat), { allowed: true, level: 'yellow' })
   assert.equal(policy.evaluateToolPolicy(cedarAccount, { action: 'delete_save' }, chat).requiresConfirmation, true)
   assert.deepEqual(policy.evaluateToolPolicy(cedarPlay, {}, wake), { allowed: true, level: 'yellow' })
@@ -86,20 +83,11 @@ test('green, yellow, red, and black policy decisions fail closed', () => {
   assert.deepEqual(policy.evaluateToolPolicy(nursery, { command: 'feed 晚安' }, wake), { allowed: true, level: 'yellow' })
 })
 
-test('Sticker tools list the catalog, reject unknown ids and normalize optional fields', async () => {
-  const context = contextModule.createToolContext({ source: 'chat', actorId: 'fixture-user', sessionId: 'session-a' })
-  const listed = JSON.parse(await executor.executeTool('list_stickers', { category: 'duo', query: '抱抱' }, context))
-  assert.deepEqual(listed.stickers.map((item: any) => item.id), ['duo-hug'])
-  const sent = JSON.parse(await executor.executeTool('send_sticker', { sticker_id: 'duo-hug', caption: '抱一下', entrance: 'visit' }, context))
-  assert.deepEqual(sent, { ok: true, sticker_id: 'duo-hug', label: '抱抱', caption: '抱一下', entrance: 'visit' })
-  assert.match(await executor.executeTool('send_sticker', { sticker_id: 'not-real' }, context), /未知的表情/)
-})
-
 test('unattended wake receives every registered tool including CedarToy games', () => {
   const wake = contextModule.createToolContext({ source: 'unattended-wake', actorId: 'wake' })
   const names = registry.toolsForContext(wake).map(tool => tool.name)
   assert.equal(names.length, registry.registeredToolCount())
-  for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email', 'get_location', 'update_period', 'read_health_summary', 'set_password', 'bite_otter_nape', 'nursery']) {
+  for (const allowed of ['delete_diary', 'remove_todo', 'update_period', 'read_health_summary', 'set_password', 'bite_otter_nape', 'nursery']) {
     assert.equal(names.includes(allowed), true, allowed)
   }
   const trace = registry.toolsForContext(wake).find(tool => tool.name === 'trace')!
@@ -113,7 +101,7 @@ test('work windows receive strictly read-only life tools', async () => {
   for (const readable of ['read_diary', 'search_summaries', 'read_summary', 'read_study_notebook', 'read_health_summary']) {
     assert.equal(names.includes(readable), true, readable)
   }
-  for (const mutating of ['write_diary', 'update_diary', 'delete_diary', 'trace', 'write_story', 'respond_study_notebook', 'send_email']) {
+  for (const mutating of ['write_diary', 'update_diary', 'delete_diary', 'trace', 'write_story', 'respond_study_notebook']) {
     assert.equal(names.includes(mutating), false, mutating)
   }
   assert.match(await executor.executeTool('write_diary', { content: 'blocked' }, work), /strictly read-only/)
@@ -164,8 +152,8 @@ test('expired confirmation tokens are rejected without executing', () => {
 test('batch execution enforces one total limit and stops later writes after a failed write', async () => {
   const context = contextModule.createToolContext({ source: 'chat', actorId: 'fixture-user', sessionId: 'session-a' })
   const limited = await executor.executeToolBatch([
-    { name: 'get_weather', input: {} },
     { name: 'read_period', input: {} },
+    { name: 'read_health_summary', input: {} },
   ], context, 1)
   assert.equal(limited.length, 2)
   assert.match(limited[1].result, /limit reached/)
@@ -173,7 +161,7 @@ test('batch execution enforces one total limit and stops later writes after a fa
   const stopped = await executor.executeToolBatch([
     { name: 'unknown_write', input: {} },
     { name: 'write_guestbook', input: { content: 'must not run' } },
-    { name: 'get_weather', input: {} },
+    { name: 'read_period', input: {} },
   ], context, 3)
   assert.match(stopped[0].result, /Unknown tool/)
   assert.match(stopped[1].result, /previous write/)
@@ -182,11 +170,11 @@ test('batch execution enforces one total limit and stops later writes after a fa
 
 test('audit log records actor, source, tool and outcome without content values', async () => {
   const context = contextModule.createToolContext({ source: 'chat', actorId: 'audit-user', sessionId: 'audit-session' })
-  await executor.executeTool('get_weather', {}, context)
+  await executor.executeTool('read_period', {}, context)
   const raw = readFileSync(path.join(root, 'tool-audit.jsonl'), 'utf8')
   assert.match(raw, /"actorId":"audit-user"/)
   assert.match(raw, /"source":"chat"/)
-  assert.match(raw, /"tool":"get_weather"/)
+  assert.match(raw, /"tool":"read_period"/)
   assert.match(raw, /"outcome":"allowed"/)
 })
 

@@ -13,7 +13,7 @@ export async function GET() {
 }
 
 // Server-side proxy: open-meteo (weather, no key) + bigdatacloud (reverse geocode, no key)
-// Also caches the location for AI tools (get_weather, get_location)
+// Also caches the location for automatic AI context injection.
 export async function POST(req: NextRequest) {
   try {
     const { lat, lon, accuracy } = await req.json()

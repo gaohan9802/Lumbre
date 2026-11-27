@@ -27,8 +27,7 @@ export function useChatViewState(sessionId: string) {
   const setPendingImages = useCallback((value: SetStateAction<string[]>) => setDraftField('pendingImages', value), [setDraftField])
   const setPendingAttachments = useCallback((value: SetStateAction<ChatComposerDraft['pendingAttachments']>) => setDraftField('pendingAttachments', value), [setDraftField])
   const setPendingShare = useCallback((value: SetStateAction<ChatComposerDraft['pendingShare']>) => setDraftField('pendingShare', value), [setDraftField])
-  const setPendingSticker = useCallback((value: SetStateAction<ChatComposerDraft['pendingSticker']>) => setDraftField('pendingSticker', value), [setDraftField])
-  const { input, pendingImages, pendingAttachments, pendingShare, pendingSticker } = composerDraft
+  const { input, pendingImages, pendingAttachments, pendingShare } = composerDraft
   const [isLoading, setIsLoading] = useState(false)
   const [sendStarting, setSendStarting] = useState(false)
   const [streamText, setStreamText] = useState('')
@@ -75,7 +74,7 @@ export function useChatViewState(sessionId: string) {
     editingSessionId, setEditingSessionId,
     editingTitle, setEditingTitle, editingMsgId, setEditingMsgId, editingMsgText, setEditingMsgText,
     copiedId, setCopiedId, mounted, setMounted,
-    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingAttachments, setPendingAttachments, pendingShare, setPendingShare, pendingSticker, setPendingSticker,
+    uploadingImg, setUploadingImg, pendingImages, setPendingImages, pendingAttachments, setPendingAttachments, pendingShare, setPendingShare,
     visibleCount, setVisibleCount, historyLoading, setHistoryLoading, photoPrompt, setPhotoPrompt,
     deleteMenuId, setDeleteMenuId, messageActionsId, setMessageActionsId,
     messagesEndRef, inputRef, imgInputRef, scrollRef, stickBottomRef, abortControllerRef,

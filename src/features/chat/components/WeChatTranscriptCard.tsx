@@ -4,8 +4,6 @@ import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import type { ChatMessage } from '@/features/chat/state/types'
 import { MarkdownText } from '@/components/chat/MarkdownText'
-import { StickerArt } from '@/components/chat/StickerPicker'
-import { sticker } from '@/lib/stickers'
 
 function time(value: number) {
   return new Intl.DateTimeFormat('zh-CN', {
@@ -16,7 +14,6 @@ function time(value: number) {
 function preview(message: ChatMessage) {
   if (message.content.trim()) return message.content.trim().replace(/\s+/g, ' ')
   if (message.images?.length) return '[图片]'
-  if (message.sticker) return `[表情：${sticker(message.sticker.id)?.label || '表情'}]`
   return '[微信消息]'
 }
 
@@ -49,7 +46,6 @@ export function WeChatTranscriptCard({ messages }: { messages: ChatMessage[] }) 
             <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[86%] ${message.role === 'user' ? 'chat-theme-user rounded-2xl rounded-br-md' : 'chat-ai-bubble'} px-3 py-2 text-[13px] leading-relaxed`}>
                 {!!message.images?.length && <div className="mb-1.5 flex flex-wrap gap-1.5">{message.images.map((src, index) => <img key={`${message.id}-${index}`} src={src} alt="微信图片" loading="lazy" decoding="async" className="max-h-44 max-w-[180px] rounded-lg object-cover" />)}</div>}
-                {message.sticker && sticker(message.sticker.id) && <StickerArt id={message.sticker.id} className="h-24 w-24" />}
                 {!!message.content.trim() && <MarkdownText content={message.content} />}
                 <div className={`mt-1 text-[9px] opacity-35 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>{time(message.timestamp)}</div>
               </div>

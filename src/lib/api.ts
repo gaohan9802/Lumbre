@@ -143,6 +143,11 @@ export const todo = {
   comment: (id: string, author: string, content: string, date?: string) => post('/api/todo/comment', { id, author, content, date }),
 }
 
+export const habits = {
+  list: () => get('/api/habits'),
+  act: (action: string, data: Record<string, unknown> = {}) => post('/api/habits', { action, ...data }),
+}
+
 
 
 
@@ -210,6 +215,7 @@ export const study = {
   search: (query: string) => get(`/api/study?mode=search&q=${encodeURIComponent(query)}`),
   questions: (status = '') => get(`/api/study?mode=questions${status ? `&status=${encodeURIComponent(status)}` : ''}`),
   activity: () => get('/api/study?mode=activity'),
+  quickNote: () => get('/api/study?mode=quick-note'),
   act: (action: string, data: Record<string, unknown> = {}) => post('/api/study', { action, ...data }),
   upload: (kind: 'image' | 'ink', data_url: string, caption = '', strokes?: unknown[]) => post('/api/study/assets', { kind, data_url, caption, strokes }),
 }

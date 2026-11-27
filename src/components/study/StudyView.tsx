@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  Activity, Archive, Bold, Check, ChevronLeft, Code2, Edit3, Image as ImageIcon, List,
-  MessageCircle, MessageCircleQuestion, MoreHorizontal, NotebookPen, PenTool, Pin, Plus, Quote,
-  Search, Share2, Sigma, Trash2, X,
+  Activity, Archive, ArrowDown, ArrowUp, Bold, Check, ChevronLeft, Code2, Edit3, FileText, Folder, Image as ImageIcon, List,
+  FolderInput, MessageCircle, MessageCircleQuestion, MoreHorizontal, NotebookPen, PenTool, Pin, Plus, Quote,
+  Search, Share2, Sigma, StickyNote, Trash2, X,
 } from 'lucide-react'
 import { study as api } from '@/lib/api'
 import { compressImage } from '@/lib/image'
@@ -13,7 +13,7 @@ import { useTheme } from '@/lib/theme'
 import { StudyMarkdown } from './StudyMarkdown'
 import { InkCanvas } from './InkCanvas'
 
-type Field = { id: string; name: string; archived: boolean }
+type Field = { id: string; name: string; mark?: string; archived: boolean }
 type Section = { id: string; field_id: string; name: string; archived: boolean }
 type NoteSummary = { id: string; field_id: string; section_id?: string; title: string; tags: string[]; pinned: boolean; updated_at: string; question_count: number; open_question_count: number }
 type Reply = { id: string; author: 'fire' | 'star'; content: string; created_at: string }
@@ -23,14 +23,14 @@ type AssetBlock = { id: string; type: 'image' | 'ink'; asset_id: string; caption
 type Block = MarkdownBlock | QuestionBlock | AssetBlock
 type Comment = { id: string; author: 'fire' | 'star'; content: string; block_id?: string; quote?: string; created_at: string }
 type Note = { id: string; field_id: string; section_id?: string; title: string; tags: string[]; pinned: boolean; archived: boolean; blocks: Block[]; comments: Comment[]; created_at: string; updated_at: string }
-type QuestionItem = { note_id: string; note_title: string; field_id: string; field_name: string; section?: string; question: QuestionBlock }
+type QuestionItem = { note_id: string; note_title: string; field_id: string; field_name: string; page_name: string; section?: string; question: QuestionBlock }
 type ActivityItem = { id: string; at: string; kind: string; field_name: string; note_id: string; note_title: string; section?: string }
 
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
 const shortDate = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Europe/Madrid', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 const timeOnly = (value: string) => new Date(value).toLocaleTimeString('zh-CN', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false })
 const questionLabel = { open: '等待回答', answered: '已回答', resolved: '已解决' } as const
-const UNSORTED = '__unsorted__'
+const FIELD_MARKS = ['∑', '</>', 'あ', '✦', '○', '△', '◇', '∞', '⌁', '✎', '☾', '♫']
 const fitTextarea = (element: HTMLTextAreaElement) => { element.style.height = '0'; element.style.height = `${Math.max(192, element.scrollHeight)}px` }
 
 function sectionBefore(blocks: Block[], target: string) {
@@ -42,11 +42,12 @@ function sectionBefore(blocks: Block[], target: string) {
   return heading
 }
 
-function fieldMark(name: string, index: number) {
-  if (/数学/.test(name)) return '∑'
-  if (/编程|代码|Python|HTML/i.test(name)) return '</>'
-  if (/日语|日本语/.test(name)) return 'あ'
-  return String(index + 1).padStart(2, '0')
+function fieldMark(field: Field) {
+  if (field.mark) return field.mark
+  if (/数学/.test(field.name)) return '∑'
+  if (/编程|代码|Python|HTML/i.test(field.name)) return '</>'
+  if (/日语|日本语/.test(field.name)) return 'あ'
+  return '✦'
 }
 
 export function StudyView({ onClose }: { onClose?: () => void }) {
@@ -65,9 +66,18 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
   const [newField, setNewField] = useState('')
   const [newSection, setNewSection] = useState('')
   const [newNote, setNewNote] = useState('')
+  const [rootCreateKind, setRootCreateKind] = useState<'section' | 'note'>('section')
+  const [fieldSettings, setFieldSettings] = useState<Field | null>(null)
+  const [fieldNameDraft, setFieldNameDraft] = useState('')
+  const [fieldMarkDraft, setFieldMarkDraft] = useState('')
+  const [quickOpen, setQuickOpen] = useState(false)
+  const [quickNote, setQuickNote] = useState<{ content: string; updated_at: string } | null>(null)
+  const [quickDraft, setQuickDraft] = useState('')
+  const [quickSaveState, setQuickSaveState] = useState<'saved' | 'saving' | 'error'>('saved')
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchRan, setSearchRan] = useState(false)
   const [questionsOpen, setQuestionsOpen] = useState(false)
   const [questions, setQuestions] = useState<QuestionItem[]>([])
   const [questionFilter, setQuestionFilter] = useState('')
@@ -79,6 +89,9 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
   const [questionDraft, setQuestionDraft] = useState('')
   const [inkOpen, setInkOpen] = useState(false)
   const [noteMenuOpen, setNoteMenuOpen] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [moveFieldId, setMoveFieldId] = useState('')
+  const [moveSectionId, setMoveSectionId] = useState('')
   const [insertMenuOpen, setInsertMenuOpen] = useState(false)
   const [mobileFieldsOpen, setMobileFieldsOpen] = useState(false)
   const imageInput = useRef<HTMLInputElement>(null)
@@ -88,6 +101,7 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
   const savingRef = useRef(false)
   const queuedRef = useRef(false)
   const revisionRef = useRef(0)
+  const quickSavingRef = useRef(false)
 
   const setDirty = (value: boolean) => { dirtyRef.current = value; setDirtyState(value) }
   useEffect(() => { noteRef.current = note }, [note])
@@ -102,7 +116,7 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
   const loadNote = useCallback(async (id: string, questionId?: string) => {
     if (dirtyRef.current && !window.confirm('还有未保存的修改，要放弃并打开其他笔记吗？')) return
     const data = await api.note(id)
-    setNote(data.note); noteRef.current = data.note; setFieldId(data.note.field_id); setSectionId(data.note.section_id || UNSORTED); setDirty(false); setSaveState('saved'); setEditing(false); setError('')
+    setNote(data.note); noteRef.current = data.note; setFieldId(data.note.field_id); setSectionId(data.note.section_id || null); setDirty(false); setSaveState('saved'); setEditing(false); setError('')
     if (questionId) requestAnimationFrame(() => setTimeout(() => document.querySelector(`[data-question-id="${CSS.escape(questionId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80))
   }, [])
   const leaveNote = () => {
@@ -154,9 +168,9 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
     const data = await api.act('create_section', { field_id: fieldId, name: newSection.trim() })
     setNewSection(''); await loadOverview(); setSectionId(data.section.id)
   }
-  const createNote = async (title = newNote) => {
-    if (!fieldId || !sectionId || !title.trim()) return
-    const data = await api.act('create_note', { field_id: fieldId, ...(sectionId !== UNSORTED ? { section_id: sectionId } : {}), title: title.trim() }); setNewNote(''); await loadOverview(); await loadNote(data.note.id); setEditing(true)
+  const createNote = async (title = newNote, targetSectionId: string | null = sectionId) => {
+    if (!fieldId || !title.trim()) return
+    const data = await api.act('create_note', { field_id: fieldId, ...(targetSectionId ? { section_id: targetSectionId } : {}), title: title.trim() }); setNewNote(''); await loadOverview(); await loadNote(data.note.id); setEditing(true)
   }
   const selectField = (id: string) => {
     if (dirtyRef.current && !window.confirm('还有未保存的修改，要放弃并切换分区吗？')) return
@@ -164,15 +178,79 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
   }
   const archiveField = async (id: string) => {
     if (!window.confirm('删除这个分区吗？里面的子页和笔记会一起从小书桌隐藏，数据会保留。')) return
-    await api.act('update_field', { id, patch: { archived: true } }); setSectionId(null); setNote(null); await loadOverview()
+    await api.act('update_field', { id, patch: { archived: true } }); setFieldSettings(null); setSectionId(null); setNote(null); await loadOverview()
   }
   const archiveSection = async (id: string) => {
     if (!window.confirm('删除这个子页吗？里面的笔记会从小书桌隐藏，数据会保留。')) return
     await api.act('update_section', { id, patch: { archived: true } }); setSectionId(null); setNote(null); await loadOverview()
   }
+  const renameSection = async (section: Section) => {
+    const name = window.prompt('修改子页名称', section.name)?.trim()
+    if (!name || name === section.name) return
+    try { await api.act('update_section', { id: section.id, patch: { name } }); await loadOverview(); setError('') }
+    catch (cause: any) { setError(cause?.message || '子页改名失败') }
+  }
+  const openFieldSettings = (field: Field) => {
+    setFieldSettings(field); setFieldNameDraft(field.name); setFieldMarkDraft(field.mark || fieldMark(field))
+  }
+  const saveFieldSettings = async () => {
+    if (!fieldSettings || !fieldNameDraft.trim()) return
+    try {
+      await api.act('update_field', { id: fieldSettings.id, patch: { name: fieldNameDraft.trim(), mark: fieldMarkDraft } })
+      await loadOverview(); setFieldSettings(null); setError('')
+    } catch (cause: any) { setError(cause?.message || '分区设置保存失败') }
+  }
+  const moveFieldOrder = async (direction: 'up' | 'down') => {
+    if (!fieldSettings) return
+    try { await api.act('move_field', { id: fieldSettings.id, direction }); await loadOverview(); setError('') }
+    catch (cause: any) { setError(cause?.message || '分区移动失败') }
+  }
+  const openQuickNote = async () => {
+    try {
+      const data = await api.quickNote(); setQuickNote(data.note); setQuickDraft(data.note.content); setQuickSaveState('saved'); setQuickOpen(true)
+    } catch (cause: any) { setError(cause?.message || '随手记加载失败') }
+  }
+  useEffect(() => {
+    if (!quickOpen || !quickNote || quickDraft === quickNote.content) return
+    const timer = window.setTimeout(async () => {
+      if (quickSavingRef.current) return
+      quickSavingRef.current = true; setQuickSaveState('saving')
+      try {
+        const data = await api.act('save_quick_note', { content: quickDraft, expected_updated_at: quickNote.updated_at })
+        setQuickNote(data.note); setQuickSaveState('saved')
+      } catch { setQuickSaveState('error') }
+      finally { quickSavingRef.current = false }
+    }, 650)
+    return () => window.clearTimeout(timer)
+  }, [quickDraft, quickNote, quickOpen])
+  const closeQuickNote = async () => {
+    if (!quickNote || quickDraft === quickNote.content) { setQuickOpen(false); return }
+    if (quickSavingRef.current) return
+    quickSavingRef.current = true; setQuickSaveState('saving')
+    try {
+      const data = await api.act('save_quick_note', { content: quickDraft, expected_updated_at: quickNote.updated_at })
+      setQuickNote(data.note); setQuickSaveState('saved'); setQuickOpen(false)
+    } catch {
+      setQuickSaveState('error')
+      if (window.confirm('随手记还没有保存，仍然关闭吗？')) setQuickOpen(false)
+    } finally { quickSavingRef.current = false }
+  }
+  const openMove = () => {
+    if (!note) return
+    setMoveFieldId(note.field_id); setMoveSectionId(note.section_id || ''); setMoveOpen(true); setNoteMenuOpen(false)
+  }
+  const moveNote = async () => {
+    const current = noteRef.current
+    if (!current || !moveFieldId) return
+    if (dirtyRef.current) { await save(); if (dirtyRef.current) return }
+    try {
+      const data = await api.act('move_note', { id: current.id, expected_updated_at: noteRef.current?.updated_at, field_id: moveFieldId, section_id: moveSectionId || null })
+      await loadOverview(); setNote(data.note); noteRef.current = data.note; setFieldId(data.note.field_id); setSectionId(data.note.section_id || null); setMoveOpen(false); setError('')
+    } catch (cause: any) { setError(cause?.message || '笔记移动失败') }
+  }
   const fieldSections = sections.filter(item => item.field_id === fieldId)
   const unsortedNotes = notes.filter(item => item.field_id === fieldId && !item.section_id)
-  const filteredNotes = notes.filter(item => item.field_id === fieldId && (sectionId === UNSORTED ? !item.section_id : item.section_id === sectionId))
+  const filteredNotes = notes.filter(item => item.field_id === fieldId && item.section_id === sectionId)
 
   const replaceBlock = (id: string, patch: Partial<Block>) => updateNote(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...patch } as Block : block) }))
   const insertAfter = (afterId: string | undefined, block: Block) => updateNote(current => {
@@ -237,7 +315,8 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
   const shareNote = () => {
     if (!note) return
     const headings = note.blocks.flatMap(block => block.type === 'markdown' ? Array.from(block.content.matchAll(/^#{1,6}\s+(.+)$/gm)).map(match => match[1].trim()) : []).slice(0, 8)
-    shareToChat({ kind: 'study-note', title: `学习笔记 · ${note.title}`, subtitle: `${fields.find(field => field.id === note.field_id)?.name || '小书桌'}${note.tags.length ? ` · ${note.tags.map(tag => `#${tag}`).join(' ')}` : ''}`, body: headings.length ? `包含：${headings.join('、')}` : '一篇正在生长的学习笔记。', metadata: { note_id: note.id } })
+    const page = note.section_id ? sections.find(section => section.id === note.section_id)?.name : '未分类'
+    shareToChat({ kind: 'study-note', title: `学习笔记 · ${note.title}`, subtitle: `${fields.find(field => field.id === note.field_id)?.name || '小书桌'} / ${page || '未分类'}${note.tags.length ? ` · ${note.tags.map(tag => `#${tag}`).join(' ')}` : ''}`, body: headings.length ? `包含：${headings.join('、')}` : '一篇正在生长的学习笔记。', metadata: { note_id: note.id } })
   }
   const shareQuestion = (block: QuestionBlock) => {
     if (!note) return
@@ -247,7 +326,10 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
   const openQuestions = async () => { const data = await api.questions(questionFilter); setQuestions(data.questions || []); setQuestionsOpen(true) }
   useEffect(() => { if (questionsOpen) void api.questions(questionFilter).then(data => setQuestions(data.questions || [])) }, [questionFilter, questionsOpen])
   const openActivity = async () => { setActivity(await api.activity()); setActivityOpen(true) }
-  const search = async () => { if (!searchQuery.trim()) return setSearchResults([]); const data = await api.search(searchQuery); setSearchResults(data.results || []) }
+  const search = async () => {
+    if (!searchQuery.trim()) { setSearchResults([]); setSearchRan(false); return }
+    const data = await api.search(searchQuery); setSearchResults(data.results || []); setSearchRan(true)
+  }
   const setQuestionStatus = async (block: QuestionBlock, status: 'open' | 'resolved') => {
     if (!note) return
     if (dirtyRef.current) { await save(); if (dirtyRef.current) return }
@@ -256,6 +338,7 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
 
   const panel = night ? 'border border-night-border bg-night-surface' : 'chat-theme-panel chat-theme-border border'
   const fieldName = fields.find(field => field.id === note?.field_id)?.name || '小书桌'
+  const sectionName = note?.section_id ? sections.find(section => section.id === note.section_id)?.name : '未分类'
   const outline = note?.blocks.flatMap(block => block.type === 'markdown'
     ? Array.from(block.content.matchAll(/^(#{1,6})\s+(.+)$/gm)).map((match, index) => ({ id: `study-heading-${block.id}-${index}`, level: match[1].length, title: match[2].trim() }))
     : []) || []
@@ -274,9 +357,10 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
     <div className="flex h-full min-h-0 flex-col">
       <header className="chat-room-header flex shrink-0 items-center gap-2 px-3 py-2.5 sm:px-5">
         {note && <button aria-label="返回笔记列表" onClick={leaveNote} className="chat-theme-icon rounded-full p-2 md:hidden"><ChevronLeft size={18}/></button>}
-        <NotebookPen size={17} className="chat-theme-accent"/>
-        <div className="min-w-0"><h1 className="chat-session-title text-lg font-bold">小书桌</h1><p className="truncate text-[9px] opacity-40">{note ? `${fieldName} / ${note.title}` : '在这里慢慢学习'}</p></div>
+        <NotebookPen size={17} className={`chat-theme-accent shrink-0 ${note ? 'hidden sm:block' : ''}`}/>
+        <div className="min-w-0"><h1 className="chat-session-title text-lg font-bold">小书桌</h1><p className="truncate text-[9px] opacity-40"><span className="sm:hidden">{note ? `${sectionName} · ${note.title}` : '在这里慢慢学习'}</span><span className="hidden sm:inline">{note ? `${fieldName} / ${sectionName} / ${note.title}` : '在这里慢慢学习'}</span></p></div>
         <div className="flex-1"/>
+        <button aria-label="打开随手记" onClick={() => void openQuickNote()} className="chat-theme-icon rounded-full p-2 opacity-65"><StickyNote size={16}/></button>
         <button aria-label="搜索笔记" onClick={() => setSearchOpen(true)} className="chat-theme-icon rounded-full p-2 opacity-65"><Search size={16}/></button>
         <button aria-label="提问箱" onClick={() => void openQuestions()} className="chat-theme-icon relative rounded-full p-2 opacity-65"><MessageCircleQuestion size={17}/>{notes.reduce((sum, item) => sum + item.open_question_count, 0) > 0 && <span className="chat-theme-accent-bg absolute right-0 top-0 min-w-4 rounded-full px-1 text-center text-[8px] leading-4">{Math.min(99, notes.reduce((sum, item) => sum + item.open_question_count, 0))}</span>}</button>
         <button aria-label="学习动态" onClick={() => void openActivity()} className="chat-theme-icon rounded-full p-2 opacity-65"><Activity size={17}/></button>
@@ -284,29 +368,33 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="study-nav chat-theme-sidebar chat-theme-border hidden w-[150px] shrink-0 flex-col border-r p-3 md:flex lg:w-[180px]">
+        <aside className="study-nav chat-theme-sidebar chat-theme-border hidden w-[150px] shrink-0 flex-col border-r p-3 md:flex xl:w-[180px]">
           <p className="chat-session-mono px-2 py-2 text-[9px] tracking-[.18em] opacity-40">学习分区</p>
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">{fields.map((field, index) => <div key={field.id} className={`study-field-tab group flex items-center ${fieldId === field.id ? 'is-active' : ''}`}><button onClick={() => selectField(field.id)} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2.5 text-left"><span className="chat-session-mono w-7 shrink-0 text-[9px] opacity-45">{fieldMark(field.name, index)}</span><span className="min-w-0 flex-1 truncate text-xs">{field.name}</span><span className="text-[8px] opacity-30">{notes.filter(item => item.field_id === field.id).length}</span></button>{fieldId === field.id && <button aria-label={`删除分区 ${field.name}`} onClick={() => void archiveField(field.id)} className="mr-1 rounded-full p-1 opacity-35 hover:opacity-80"><Trash2 size={11}/></button>}</div>)}</div>
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">{fields.map(field => <div key={field.id} className={`study-field-tab group flex items-center ${fieldId === field.id ? 'is-active' : ''}`}><button onClick={() => selectField(field.id)} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2.5 text-left"><span className="chat-session-mono w-7 shrink-0 text-center text-[11px] opacity-55">{fieldMark(field)}</span><span className="min-w-0 flex-1 truncate text-xs">{field.name}</span><span className="text-[8px] opacity-30">{notes.filter(item => item.field_id === field.id).length}</span></button>{fieldId === field.id && <button aria-label={`分区设置 ${field.name}`} onClick={() => openFieldSettings(field)} className="mr-1 rounded-full p-1 opacity-40 hover:opacity-80"><MoreHorizontal size={12}/></button>}</div>)}</div>
           <div className="mt-2 flex gap-1"><input value={newField} onChange={event => setNewField(event.target.value)} onKeyDown={event => event.key === 'Enter' && void createField()} placeholder="新分区" className="chat-theme-placeholder min-w-0 flex-1 border-b border-current/15 bg-transparent px-1 py-2 text-xs outline-none"/><button aria-label="添加分区" onClick={() => void createField()} className="chat-theme-icon rounded-full p-2"><Plus size={14}/></button></div>
         </aside>
 
-        <aside className={`${note ? 'hidden md:flex' : 'flex'} study-nav chat-theme-sidebar chat-theme-border w-full shrink-0 flex-col border-r p-3 md:w-[220px] lg:w-[260px]`}>
+        <aside className={`${note ? 'hidden md:flex' : 'flex'} study-nav chat-theme-sidebar chat-theme-border w-full shrink-0 flex-col border-r p-3 md:w-[220px] xl:w-[260px]`}>
           {!fields.length ? <div className="m-auto w-full max-w-xs p-4 text-center"><p className="font-serif text-xl">从今天开始学一点什么</p><p className="mt-2 text-xs opacity-50">先建一个学习分区。</p><div className="mt-5 grid grid-cols-3 gap-2">{[['∑', '数学'], ['</>', '编程'], ['あ', '日语']].map(([mark, name]) => <button key={name} onClick={() => void createField(name)} className="chat-session-receipt px-3 py-4"><span className="chat-session-mono block text-lg">{mark}</span><span className="mt-2 block text-xs">{name}</span></button>)}</div><div className="mt-4 flex gap-2"><input value={newField} onChange={event => setNewField(event.target.value)} placeholder="其他分区" className="chat-theme-input min-w-0 flex-1 rounded-xl border px-3 py-2 text-xs outline-none"/><button onClick={() => void createField()} className="chat-theme-accent-bg rounded-xl px-3 text-xs">创建</button></div></div> : <>
-            <div className="mb-2 flex items-center gap-1 px-1">{sectionId && <button aria-label="返回子页" onClick={() => { setSectionId(null); setNote(null) }} className="chat-theme-icon rounded-full p-1"><ChevronLeft size={15}/></button>}<button onClick={() => setMobileFieldsOpen(value => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left md:pointer-events-none"><span className="min-w-0 flex-1 truncate font-medium">{sectionId ? (sectionId === UNSORTED ? '未分类' : sections.find(item => item.id === sectionId)?.name) : fields.find(field => field.id === fieldId)?.name || '小书桌'}</span><span className="text-[9px] opacity-40">{sectionId ? `${filteredNotes.length} 篇` : `${fieldSections.length + (unsortedNotes.length ? 1 : 0)} 个子页`}</span><MoreHorizontal size={15} className="opacity-45 md:hidden"/></button>{sectionId && sectionId !== UNSORTED ? <button aria-label="删除子页" onClick={() => void archiveSection(sectionId)} className="chat-theme-icon rounded-full p-1.5 opacity-45"><Trash2 size={13}/></button> : !sectionId && fieldId ? <button aria-label="删除分区" onClick={() => void archiveField(fieldId)} className="chat-theme-icon rounded-full p-1.5 opacity-45"><Trash2 size={13}/></button> : null}</div>
-            {mobileFieldsOpen && <div className="chat-theme-panel chat-theme-border mb-3 grid grid-cols-2 gap-1 rounded-2xl border p-2 md:hidden">{fields.map((field, index) => <button key={field.id} onClick={() => { selectField(field.id); setMobileFieldsOpen(false) }} className={`flex items-center gap-2 rounded-xl px-2 py-2 text-left text-xs ${field.id === fieldId ? 'chat-theme-accent-soft' : ''}`}><span className="chat-session-mono text-[9px] opacity-45">{fieldMark(field.name, index)}</span><span className="truncate">{field.name}</span></button>)}</div>}
-            {!sectionId ? <><div className="chat-theme-input mb-3 flex rounded-2xl border px-2"><input value={newSection} onChange={event => setNewSection(event.target.value)} onKeyDown={event => event.key === 'Enter' && void createSection()} placeholder="新子页名称" className="chat-theme-placeholder min-w-0 flex-1 bg-transparent px-2 py-2.5 text-xs outline-none"/><button aria-label="创建子页" onClick={() => void createSection()} className="chat-theme-icon rounded-full p-2"><Plus size={14}/></button></div><div className="min-h-0 flex-1 overflow-y-auto">{fieldSections.map(item => <button key={item.id} onClick={() => setSectionId(item.id)} className="study-note-slip w-full px-3 py-3 text-left"><p className="font-serif text-sm">{item.name}</p><p className="chat-session-mono mt-1 text-[8px] opacity-40">{notes.filter(noteItem => noteItem.section_id === item.id).length} 篇笔记</p></button>)}{!!unsortedNotes.length && <button onClick={() => setSectionId(UNSORTED)} className="study-note-slip w-full px-3 py-3 text-left"><p className="font-serif text-sm">未分类</p><p className="chat-session-mono mt-1 text-[8px] opacity-40">{unsortedNotes.length} 篇旧笔记</p></button>}{!fieldSections.length && !unsortedNotes.length && <p className="py-12 text-center text-xs opacity-35">先建一个子页，再开始写笔记</p>}</div></> : <><div className="chat-theme-input mb-3 flex rounded-2xl border px-2"><input value={newNote} onChange={event => setNewNote(event.target.value)} onKeyDown={event => event.key === 'Enter' && void createNote()} placeholder="新笔记标题" className="chat-theme-placeholder min-w-0 flex-1 bg-transparent px-2 py-2.5 text-xs outline-none"/><button aria-label="创建笔记" onClick={() => void createNote()} className="chat-theme-icon rounded-full p-2"><Plus size={14}/></button></div><div className="min-h-0 flex-1 overflow-y-auto">{filteredNotes.map(item => <button key={item.id} onClick={() => void loadNote(item.id)} className={`study-note-slip w-full px-3 py-3 text-left ${note?.id === item.id ? 'is-active' : ''}`}><div className="flex items-start gap-2"><p className="min-w-0 flex-1 truncate font-serif text-sm">{item.title}</p>{item.pinned && <Pin size={11} className="chat-theme-accent shrink-0"/>}</div><p className="chat-session-mono mt-1 text-[8px] opacity-40">{shortDate(item.updated_at)}{item.open_question_count ? ` · ${item.open_question_count} 待答` : ''}</p></button>)}{!filteredNotes.length && <p className="py-12 text-center text-xs opacity-35">这个子页还没有笔记</p>}</div></>}
+            <div className="mb-2 flex items-center gap-1 px-1">{sectionId && <button aria-label="返回分区" onClick={() => { setSectionId(null); setNote(null) }} className="chat-theme-icon rounded-full p-1"><ChevronLeft size={15}/></button>}<button onClick={() => setMobileFieldsOpen(value => !value)} className="flex min-w-0 flex-1 items-center gap-2 text-left md:pointer-events-none"><span className="min-w-0 flex-1 truncate font-medium">{sectionId ? sections.find(item => item.id === sectionId)?.name : fields.find(field => field.id === fieldId)?.name || '小书桌'}</span><span className="text-[9px] opacity-40">{sectionId ? `${filteredNotes.length} 篇` : `${fieldSections.length} 个子页 · ${unsortedNotes.length} 篇`}</span><MoreHorizontal size={15} className="opacity-45 md:hidden"/></button>{sectionId ? <><button aria-label="修改子页名称" onClick={() => { const section = sections.find(item => item.id === sectionId); if (section) void renameSection(section) }} className="chat-theme-icon rounded-full p-1.5 opacity-45"><Edit3 size={13}/></button><button aria-label="删除子页" onClick={() => void archiveSection(sectionId)} className="chat-theme-icon rounded-full p-1.5 opacity-45"><Trash2 size={13}/></button></> : fieldId ? <button aria-label="分区设置" onClick={() => { const field = fields.find(item => item.id === fieldId); if (field) openFieldSettings(field) }} className="chat-theme-icon rounded-full p-1.5 opacity-45"><MoreHorizontal size={14}/></button> : null}</div>
+            {mobileFieldsOpen && <div className="chat-theme-panel chat-theme-border mb-3 grid grid-cols-2 gap-1 rounded-2xl border p-2 md:hidden">{fields.map(field => <button key={field.id} onClick={() => { selectField(field.id); setMobileFieldsOpen(false) }} className={`flex items-center gap-2 rounded-xl px-2 py-2 text-left text-xs ${field.id === fieldId ? 'chat-theme-accent-soft' : ''}`}><span className="chat-session-mono w-6 text-center text-[11px] opacity-55">{fieldMark(field)}</span><span className="truncate">{field.name}</span></button>)}</div>}
+            {!sectionId ? <>
+              <div className="mb-2 grid grid-cols-2 gap-1 rounded-xl bg-current/[.035] p-1 text-[10px]"><button onClick={() => setRootCreateKind('section')} className={`flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 ${rootCreateKind === 'section' ? 'chat-theme-surface shadow-sm' : 'opacity-45'}`}><Folder size={12}/>子页</button><button onClick={() => setRootCreateKind('note')} className={`flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 ${rootCreateKind === 'note' ? 'chat-theme-surface shadow-sm' : 'opacity-45'}`}><FileText size={12}/>笔记</button></div>
+              <div className="chat-theme-input mb-3 flex rounded-2xl border px-2"><input value={rootCreateKind === 'section' ? newSection : newNote} onChange={event => rootCreateKind === 'section' ? setNewSection(event.target.value) : setNewNote(event.target.value)} onKeyDown={event => event.key === 'Enter' && void (rootCreateKind === 'section' ? createSection() : createNote(newNote, null))} placeholder={rootCreateKind === 'section' ? '新子页名称' : '新笔记标题'} className="chat-theme-placeholder min-w-0 flex-1 bg-transparent px-2 py-2.5 text-xs outline-none"/><button aria-label={rootCreateKind === 'section' ? '创建子页' : '创建一级笔记'} onClick={() => void (rootCreateKind === 'section' ? createSection() : createNote(newNote, null))} className="chat-theme-icon rounded-full p-2"><Plus size={14}/></button></div>
+              <div className="min-h-0 flex-1 overflow-y-auto">{fieldSections.map(item => <button key={item.id} onClick={() => setSectionId(item.id)} className="study-note-slip flex w-full items-start gap-2 px-3 py-3 text-left"><Folder size={14} className="mt-0.5 shrink-0 opacity-40"/><span className="min-w-0 flex-1"><span className="block truncate font-serif text-sm">{item.name}</span><span className="chat-session-mono mt-1 block text-[8px] opacity-40">{notes.filter(noteItem => noteItem.section_id === item.id).length} 篇笔记</span></span></button>)}{unsortedNotes.map(item => <button key={item.id} onClick={() => void loadNote(item.id)} className={`study-note-slip flex w-full items-start gap-2 px-3 py-3 text-left ${note?.id === item.id ? 'is-active' : ''}`}><FileText size={14} className="mt-0.5 shrink-0 opacity-40"/><span className="min-w-0 flex-1"><span className="flex items-start gap-2"><span className="min-w-0 flex-1 truncate font-serif text-sm">{item.title}</span>{item.pinned && <Pin size={11} className="chat-theme-accent shrink-0"/>}</span><span className="chat-session-mono mt-1 block text-[8px] opacity-40">{shortDate(item.updated_at)}{item.open_question_count ? ` · ${item.open_question_count} 待答` : ''}</span></span></button>)}{!fieldSections.length && !unsortedNotes.length && <p className="py-12 text-center text-xs opacity-35">新建一个子页，或直接写一篇笔记</p>}</div>
+            </> : <><div className="chat-theme-input mb-3 flex rounded-2xl border px-2"><input value={newNote} onChange={event => setNewNote(event.target.value)} onKeyDown={event => event.key === 'Enter' && void createNote()} placeholder="新笔记标题" className="chat-theme-placeholder min-w-0 flex-1 bg-transparent px-2 py-2.5 text-xs outline-none"/><button aria-label="创建笔记" onClick={() => void createNote()} className="chat-theme-icon rounded-full p-2"><Plus size={14}/></button></div><div className="min-h-0 flex-1 overflow-y-auto">{filteredNotes.map(item => <button key={item.id} onClick={() => void loadNote(item.id)} className={`study-note-slip w-full px-3 py-3 text-left ${note?.id === item.id ? 'is-active' : ''}`}><div className="flex items-start gap-2"><p className="min-w-0 flex-1 truncate font-serif text-sm">{item.title}</p>{item.pinned && <Pin size={11} className="chat-theme-accent shrink-0"/>}</div><p className="chat-session-mono mt-1 text-[8px] opacity-40">{shortDate(item.updated_at)}{item.open_question_count ? ` · ${item.open_question_count} 待答` : ''}</p></button>)}{!filteredNotes.length && <p className="py-12 text-center text-xs opacity-35">这个子页还没有笔记</p>}</div></>}
           </>}
         </aside>
 
         <main className={`${note ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col overflow-hidden`}>
           {note ? <>
             <div className="chat-theme-surface chat-theme-border flex shrink-0 items-center gap-1 border-b px-3 py-2">
-              <span className={`mr-auto text-[9px] ${saveState === 'error' ? 'text-red-500' : 'opacity-40'}`}>{saveState === 'saving' ? '正在保存' : saveState === 'error' ? '保存失败' : `已保存 · ${shortDate(note.updated_at)}`}</span>
+              <button disabled={saveState !== 'error'} onClick={() => void save()} className={`mr-auto text-left text-[9px] ${saveState === 'error' ? 'text-red-500 underline underline-offset-2' : 'opacity-40'}`}>{saveState === 'saving' ? '正在保存' : saveState === 'error' ? '保存失败 · 点此重试' : `已保存 · ${shortDate(note.updated_at)}`}</button>
               {!!outline.length && <button aria-label="笔记目录" onClick={() => setOutlineOpen(true)} className="chat-theme-icon rounded-full p-2 opacity-55"><List size={15}/></button>}
               <button aria-label="星星的批注" onClick={() => setCommentsOpen(true)} className="chat-theme-icon relative rounded-full p-2 opacity-55"><MessageCircle size={15}/>{note.comments.length > 0 && <span className="chat-theme-accent-bg absolute right-0 top-0 h-2 w-2 rounded-full"/>}</button>
               <button aria-label="分享笔记到 Chat" onClick={shareNote} className="chat-theme-icon rounded-full p-2 opacity-55"><Share2 size={15}/></button>
               <button onClick={toggleEditing} className="chat-theme-accent-soft chat-theme-accent rounded-full px-3 py-1.5 text-xs">{editing ? <><Check size={13} className="mr-1 inline"/>完成</> : <><Edit3 size={13} className="mr-1 inline"/>编辑</>}</button>
-              <div className="relative"><button aria-label="笔记菜单" onClick={() => setNoteMenuOpen(value => !value)} className="chat-theme-icon rounded-full p-2 opacity-55"><MoreHorizontal size={16}/></button>{noteMenuOpen && <div className={`absolute right-0 top-10 z-30 w-36 rounded-2xl p-1 shadow-xl ${panel}`}><button onClick={() => { updateNote(current => ({ ...current, pinned: !current.pinned })); setNoteMenuOpen(false) }} className="chat-theme-hover flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs"><Pin size={13}/>{note.pinned ? '取消置顶' : '置顶'}</button><button onClick={() => { if (window.confirm('将这篇笔记移入归档吗？')) updateNote(current => ({ ...current, archived: true })); setNoteMenuOpen(false) }} className="chat-theme-hover flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs"><Archive size={13}/>归档</button></div>}</div>
+              <div className="relative"><button aria-label="笔记菜单" onClick={() => setNoteMenuOpen(value => !value)} className="chat-theme-icon rounded-full p-2 opacity-55"><MoreHorizontal size={16}/></button>{noteMenuOpen && <div className={`absolute right-0 top-10 z-30 w-36 rounded-2xl p-1 shadow-xl ${panel}`}><button onClick={() => { updateNote(current => ({ ...current, pinned: !current.pinned })); setNoteMenuOpen(false) }} className="chat-theme-hover flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs"><Pin size={13}/>{note.pinned ? '取消置顶' : '置顶'}</button><button onClick={openMove} className="chat-theme-hover flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs"><FolderInput size={13}/>移动到…</button><button onClick={() => { if (window.confirm('将这篇笔记移入归档吗？')) updateNote(current => ({ ...current, archived: true })); setNoteMenuOpen(false) }} className="chat-theme-hover flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs"><Archive size={13}/>归档</button></div>}</div>
             </div>
             {editing && <div className="study-editor-toolbar chat-theme-input flex shrink-0 items-center gap-1 overflow-x-auto border px-3 py-2 md:rounded-none md:border-x-0 md:border-t-0">
               <button title="标题" onClick={() => applySyntax('\n## ', '\n', '小节标题')} className="rounded-lg px-2 py-1 text-xs hover:bg-current/5">H2</button>
@@ -331,9 +419,9 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
       </div>
     </div>
 
-    {searchOpen && <div className="fixed inset-0 z-[125] bg-black/45 p-4 backdrop-blur-sm"><div className={`mx-auto mt-[8dvh] max-h-[80dvh] max-w-2xl overflow-hidden rounded-[26px] ${panel}`}><div className="flex items-center gap-2 border-b border-current/10 p-4"><Search size={16}/><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} onKeyDown={event => event.key === 'Enter' && void search()} placeholder="搜索标题、正文、代码、公式、提问…" className="min-w-0 flex-1 bg-transparent text-sm outline-none"/><button onClick={() => void search()} className="rounded-full px-3 py-1 text-xs">搜索</button><button aria-label="关闭搜索" onClick={() => setSearchOpen(false)}><X size={17}/></button></div><div className="max-h-[65dvh] space-y-2 overflow-y-auto p-4">{searchResults.map(item => <button key={item.id} onClick={() => { setSearchOpen(false); void loadNote(item.id) }} className="w-full rounded-2xl border border-current/10 p-4 text-left"><p className="font-serif text-base">{item.title}</p><p className="mt-1 text-[10px] opacity-45">{item.field_name} · {shortDate(item.updated_at)}</p><p className="mt-2 line-clamp-3 text-xs leading-5 opacity-65">{item.excerpt}</p></button>)}{searchQuery && !searchResults.length && <p className="py-12 text-center text-xs opacity-35">按回车开始搜索</p>}</div></div></div>}
+    {searchOpen && <div className="fixed inset-0 z-[125] bg-black/45 p-4 backdrop-blur-sm"><div className={`mx-auto mt-[8dvh] max-h-[80dvh] max-w-2xl overflow-hidden rounded-[26px] ${panel}`}><div className="flex items-center gap-2 border-b border-current/10 p-4"><Search size={16}/><input autoFocus value={searchQuery} onChange={event => { setSearchQuery(event.target.value); setSearchRan(false) }} onKeyDown={event => event.key === 'Enter' && void search()} placeholder="搜索标题、正文、代码、公式、提问…" className="min-w-0 flex-1 bg-transparent text-sm outline-none"/><button onClick={() => void search()} className="rounded-full px-3 py-1 text-xs">搜索</button><button aria-label="关闭搜索" onClick={() => setSearchOpen(false)}><X size={17}/></button></div><div className="max-h-[65dvh] space-y-2 overflow-y-auto p-4">{searchResults.map(item => <button key={item.id} onClick={() => { setSearchOpen(false); void loadNote(item.id) }} className="w-full rounded-2xl border border-current/10 p-4 text-left"><p className="font-serif text-base">{item.title}</p><p className="mt-1 text-[10px] opacity-45">{item.field_name} / {item.page_name || '未分类'} · {shortDate(item.updated_at)}</p><p className="mt-2 line-clamp-3 text-xs leading-5 opacity-65">{item.excerpt}</p></button>)}{searchQuery && !searchResults.length && <p className="py-12 text-center text-xs opacity-35">{searchRan ? '没有找到相关笔记' : '按回车开始搜索'}</p>}</div></div></div>}
 
-    {questionsOpen && <Drawer title="提问箱" onClose={() => setQuestionsOpen(false)} night={night}><div className="mb-4 flex gap-1 overflow-x-auto">{[['', '全部'], ['open', '等待回答'], ['answered', '已回答'], ['resolved', '已解决']].map(([value, label]) => <button key={value} onClick={() => setQuestionFilter(value)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs ${questionFilter === value ? 'bg-current/10' : 'border border-current/10 opacity-55'}`}>{label}</button>)}</div><div className="space-y-2">{questions.map(item => <button key={item.question.id} onClick={() => { setQuestionsOpen(false); void loadNote(item.note_id, item.question.id) }} className="w-full rounded-2xl border border-current/10 p-4 text-left"><p className="text-[9px] opacity-45">{item.field_name} / {item.note_title}{item.section ? ` / ${item.section}` : ''}</p><p className="mt-2 font-serif text-sm leading-6">{item.question.question}</p><p className="mt-2 text-[9px] opacity-40">{questionLabel[item.question.status]} · {shortDate(item.question.updated_at)}</p></button>)}{!questions.length && <p className="py-12 text-center text-xs opacity-35">这里还没有问题</p>}</div></Drawer>}
+    {questionsOpen && <Drawer title="提问箱" onClose={() => setQuestionsOpen(false)} night={night}><div className="mb-4 flex gap-1 overflow-x-auto">{[['', '全部'], ['open', '等待回答'], ['answered', '已回答'], ['resolved', '已解决']].map(([value, label]) => <button key={value} onClick={() => setQuestionFilter(value)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs ${questionFilter === value ? 'bg-current/10' : 'border border-current/10 opacity-55'}`}>{label}</button>)}</div><div className="space-y-2">{questions.map(item => <button key={item.question.id} onClick={() => { setQuestionsOpen(false); void loadNote(item.note_id, item.question.id) }} className="w-full rounded-2xl border border-current/10 p-4 text-left"><p className="text-[9px] opacity-45">{item.field_name} / {item.page_name} / {item.note_title}{item.section ? ` / ${item.section}` : ''}</p><p className="mt-2 font-serif text-sm leading-6">{item.question.question}</p><p className="mt-2 text-[9px] opacity-40">{questionLabel[item.question.status]} · {shortDate(item.question.updated_at)}</p></button>)}{!questions.length && <p className="py-12 text-center text-xs opacity-35">这里还没有问题</p>}</div></Drawer>}
 
     {activityOpen && <Drawer title="学习动态" onClose={() => setActivityOpen(false)} night={night}><ActivityGroup title="今天" items={activity.today} exact onOpen={id => { setActivityOpen(false); void loadNote(id) }}/><ActivityGroup title="昨天" items={activity.yesterday} onOpen={id => { setActivityOpen(false); void loadNote(id) }}/><ActivityGroup title="本周较早" items={activity.older} onOpen={id => { setActivityOpen(false); void loadNote(id) }}/></Drawer>}
 
@@ -341,7 +429,10 @@ export function StudyView({ onClose }: { onClose?: () => void }) {
 
     {commentsOpen && note && <Drawer title={`星星的批注 · ${note.title}`} onClose={() => setCommentsOpen(false)} night={night}><div className="space-y-3">{note.comments.map(comment => <button key={comment.id} disabled={!comment.block_id} onClick={() => jumpToBlock(comment.block_id)} className="chat-theme-panel chat-theme-border w-full rounded-2xl border p-4 text-left disabled:cursor-default"><p className="text-[9px] opacity-40">{comment.author === 'star' ? '星星' : '小火'} · {shortDate(comment.created_at)}{comment.block_id ? ' · 跳到原文' : ''}</p>{comment.quote && <blockquote className="mt-2 border-l border-current/15 pl-2 text-xs opacity-45">{comment.quote}</blockquote>}<div className="mt-2 text-sm"><StudyMarkdown content={comment.content}/></div></button>)}{!note.comments.length && <p className="py-8 text-center text-xs opacity-35">星星还没有留下批注</p>}</div></Drawer>}
 
+    {quickOpen && <div className="fixed inset-0 z-[135] grid place-items-center bg-black/45 p-4 backdrop-blur-sm"><div className={`study-quick-note w-full max-w-lg rounded-[28px] p-5 ${panel}`}><div className="flex items-center gap-2"><StickyNote size={17} className="chat-theme-accent"/><h3 className="flex-1 font-serif text-lg">随手记</h3><span className={`text-[9px] ${quickSaveState === 'error' ? 'text-red-500' : 'opacity-40'}`}>{quickSaveState === 'saving' ? '保存中' : quickSaveState === 'error' ? '保存失败' : '已保存'}</span><button aria-label="关闭随手记" onClick={() => void closeQuickNote()}><X size={17}/></button></div><textarea autoFocus value={quickDraft} onChange={event => setQuickDraft(event.target.value)} placeholder="还没想好放在哪里的东西，先写在这里……" className="mt-4 min-h-[48dvh] w-full resize-none bg-transparent p-1 font-serif text-base leading-8 outline-none"/></div></div>}
+    {fieldSettings && <div className="fixed inset-0 z-[135] grid place-items-center bg-black/45 p-4 backdrop-blur-sm"><div className={`w-full max-w-sm rounded-[28px] p-5 ${panel}`}><div className="flex items-center"><h3 className="flex-1 font-serif text-lg">分区设置</h3><button aria-label="关闭分区设置" onClick={() => setFieldSettings(null)}><X size={17}/></button></div><label className="mt-5 block text-[10px] opacity-45">名称</label><input autoFocus value={fieldNameDraft} onChange={event => setFieldNameDraft(event.target.value)} className="chat-theme-input mt-2 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"/><label className="mt-4 block text-[10px] opacity-45">小符号</label><div className="mt-2 grid grid-cols-6 gap-2">{FIELD_MARKS.map(mark => <button key={mark} aria-label={`使用符号 ${mark}`} onClick={() => setFieldMarkDraft(mark)} className={`chat-session-mono grid aspect-square place-items-center rounded-xl border text-sm ${fieldMarkDraft === mark ? 'chat-theme-accent-soft chat-theme-border' : 'border-current/10 opacity-55'}`}>{mark}</button>)}</div><div className="mt-5 grid grid-cols-2 gap-2"><button disabled={fields.findIndex(field => field.id === fieldSettings.id) <= 0} onClick={() => void moveFieldOrder('up')} className="chat-theme-hover flex items-center justify-center gap-2 rounded-xl border border-current/10 px-3 py-2 text-xs disabled:opacity-25"><ArrowUp size={13}/>上移</button><button disabled={fields.findIndex(field => field.id === fieldSettings.id) >= fields.length - 1} onClick={() => void moveFieldOrder('down')} className="chat-theme-hover flex items-center justify-center gap-2 rounded-xl border border-current/10 px-3 py-2 text-xs disabled:opacity-25"><ArrowDown size={13}/>下移</button></div><div className="mt-5 flex items-center justify-between"><button onClick={() => void archiveField(fieldSettings.id)} className="flex items-center gap-1 px-2 py-2 text-xs text-red-500/70"><Trash2 size={13}/>删除分区</button><div className="flex gap-2"><button onClick={() => setFieldSettings(null)} className="rounded-full px-4 py-2 text-xs opacity-50">取消</button><button disabled={!fieldNameDraft.trim()} onClick={() => void saveFieldSettings()} className="chat-theme-accent-bg rounded-full px-4 py-2 text-xs disabled:opacity-30">保存</button></div></div></div></div>}
     {questionComposer && <div className="fixed inset-0 z-[135] grid place-items-center bg-black/45 p-4 backdrop-blur-sm"><div className={`w-full max-w-lg rounded-[26px] p-5 ${panel}`}><div className="flex items-center"><h3 className="flex-1 font-serif text-lg">{questionComposer.threadId ? '继续追问' : '插入提问'}</h3><button aria-label="取消提问" onClick={() => setQuestionComposer(null)}><X size={17}/></button></div>{questionComposer.quote && <blockquote className="mt-4 line-clamp-4 border-l border-current/20 pl-3 text-xs opacity-55">{questionComposer.quote}</blockquote>}<textarea autoFocus value={questionDraft} onChange={event => setQuestionDraft(event.target.value)} placeholder="你想问星星什么？" className="chat-theme-input mt-4 min-h-28 w-full rounded-2xl border p-4 text-sm outline-none"/><div className="mt-4 flex justify-end gap-2"><button onClick={() => setQuestionComposer(null)} className="rounded-full px-4 py-2 text-xs opacity-50">取消</button><button disabled={!questionDraft.trim()} onClick={() => void addQuestion()} className="chat-theme-accent-bg rounded-full px-4 py-2 text-xs disabled:opacity-30">{questionComposer.threadId ? '接着问' : '放进笔记'}</button></div></div></div>}
+    {moveOpen && note && <div className="fixed inset-0 z-[135] grid place-items-center bg-black/45 p-4 backdrop-blur-sm"><div className={`w-full max-w-sm rounded-[26px] p-5 ${panel}`}><div className="flex items-center"><h3 className="flex-1 font-serif text-lg">移动笔记</h3><button aria-label="取消移动" onClick={() => setMoveOpen(false)}><X size={17}/></button></div><label className="mt-5 block text-[10px] opacity-45">学习分区</label><select value={moveFieldId} onChange={event => { setMoveFieldId(event.target.value); setMoveSectionId('') }} className="chat-theme-input mt-2 w-full rounded-xl border px-3 py-2.5 text-sm outline-none">{fields.map(field => <option key={field.id} value={field.id}>{field.name}</option>)}</select><label className="mt-4 block text-[10px] opacity-45">子页</label><select value={moveSectionId} onChange={event => setMoveSectionId(event.target.value)} className="chat-theme-input mt-2 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"><option value="">未分类</option>{sections.filter(section => section.field_id === moveFieldId).map(section => <option key={section.id} value={section.id}>{section.name}</option>)}</select><div className="mt-5 flex justify-end gap-2"><button onClick={() => setMoveOpen(false)} className="rounded-full px-4 py-2 text-xs opacity-50">取消</button><button onClick={() => void moveNote()} className="chat-theme-accent-bg rounded-full px-4 py-2 text-xs">移动</button></div></div></div>}
     {inkOpen && <InkCanvas onClose={() => setInkOpen(false)} onSave={(dataUrl, strokes) => uploadData('ink', dataUrl, strokes)}/>}
   </div>
 }

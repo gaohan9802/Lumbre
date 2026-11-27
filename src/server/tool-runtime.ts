@@ -5,7 +5,6 @@
  */
 
 import { addMadridDays, madridCalendarDayDiff, madridDateKey, parseMadridDateTime } from '@/lib/madrid-time'
-import { sendEmail, readEmails, searchEmails, readEmailDetail, replyEmail, checkGmailStatus } from "./gmail"
 import {
   pulse, searchBuckets, holdBucket, growBuckets, traceBucket, dream, buildIndex, breath
 } from './brain'
@@ -34,20 +33,18 @@ import { getPeriodState, recordPeriodStart, recordPeriodEnd, updatePeriodConfig 
 import { readHealthSummary, type HealthRange } from './data/repositories/health'
 import { addSharedBookmark, editSharedBookmark, listSharedBookmarks } from './bookmark-store'
 import { executeSafeFetch, executeWebSearch } from './agent/tools/web-fetch'
-import { getUserContext as readUserContext } from './agent/tools/user-context'
 import type { ToolCallContext } from './agent/context'
 import { loadSyncSessionTails } from './chat-sync'
 import { chatImageDataUrl } from './data/repositories/chat-assets'
 import { appendPoemLine, createPoem, deletePoem, deletePoemLine, editPoemLine, getPoem, listPoems, updatePoem } from './poem-store'
 import { addWheelOption, deleteWheelOption, editWheelOption, readWheel, spinWheel } from './intimacy-wheel-store'
 import { appendStorySection, createStory, deleteStory, getStory, listStories, updateStory, updateStorySection } from './story-store'
-import { addStudyComment, answerStudyQuestion, listStudyOverview, listStudyQuestions, readStudyBlocks, readStudyQuestionContext, searchStudy, studyAssetForTool, studyNoteOutline } from './study-store'
+import { addStudyComment, answerStudyQuestion, appendStudyNoteByStar, createStudyFieldByStar, createStudyNoteByStar, createStudySectionByStar, listStudyOverview, listStudyQuestions, readStudyBlocks, readStudyQuestionContext, searchStudy, studyAssetForTool, studyNoteOutline } from './study-store'
 import { sendPushMessages } from './push'
 import { drawPicture } from './pencil-case'
 import { clearOpeningMessage, writeOpeningMessage } from './opening-message-store'
 import { appendFutureLetterParagraph, editFutureLetterParagraph, readFutureLetter } from './future-letter-store'
 import { createFireDictionaryEntry, deleteFireDictionaryEntry, readFireDictionary, updateFireDictionaryEntry } from './fire-dictionary-store'
-import { findStickers, sticker } from '@/lib/stickers'
 import { readSummaryArchiveEntry, searchSummaryArchive } from './summary-archive'
 import { createMemoryCandidate, createMemoryConflict, createMemoryFamily, createWorkingMemory, endMemoryFamily, getMemoryFamilyLevel, listMemoryConflicts, listMemoryFamilies, listRecycledFamilies, listRecycledMemories, listWorkingMemories, mergeMemoryFamilies, recallStarMemoryBundle, recycleCanonicalMemory, recycleMemoryFamily, removeMemoryFamilyMembership, resolveMemoryConflict, restoreCanonicalMemory, restoreMemoryFamily, reviewMemoryCandidate, reviewWorkingMemory, setCanonicalMemoryLock, setMemoryFamilyLock, setMemoryFamilyMembership, splitMemoryFamily, updateCanonicalMemory, updateMemoryFamily, type SourceRef } from './star-memory'
 import { executeCedarToyTool } from './cedartoy'
@@ -194,14 +191,6 @@ export async function executeRegisteredToolHandler(
       throw new Error('family action is invalid')
     }
 
-    // Context tools
-    if (name === 'get_weather') {
-      return executeGetWeather()
-    }
-    if (name === 'get_location') {
-      return executeGetLocation()
-    }
-
     // Period tracking
     if (name === 'update_period') {
       const { action, date, cycle_days, period_length } = input
@@ -247,32 +236,6 @@ export async function executeRegisteredToolHandler(
       const { id, ...patch } = input
       return JSON.stringify({ ok: true, bookmark: editSharedBookmark(String(id || ''), patch) })
     }
-
-    // Gmail tools
-    if (name === "gmail_status") {
-      return JSON.stringify(await checkGmailStatus())
-    }
-    if (name === "send_email") {
-      const r = await sendEmail(input.to, input.subject, input.body)
-      return JSON.stringify(r)
-    }
-    if (name === "read_emails") {
-      const emails = await readEmails(input.limit || 10)
-      return JSON.stringify(emails)
-    }
-    if (name === "search_emails") {
-      const emails = await searchEmails(input.query, input.limit || 10)
-      return JSON.stringify(emails)
-    }
-    if (name === "read_email_detail") {
-      const detail = await readEmailDetail(input.id)
-      return JSON.stringify(detail)
-    }
-    if (name === "reply_email") {
-      const r = await replyEmail(input.id, input.body)
-      return JSON.stringify(r)
-    }
-
 
     // Diary → local store
     switch (name) {
@@ -573,6 +536,13 @@ export async function executeRegisteredToolHandler(
       case 'respond_study_notebook': {
         if (input.action === 'answer') return JSON.stringify({ ok: true, reply: answerStudyQuestion(input.note_id, input.question_id, input.content, input.operation_key) })
         if (input.action === 'comment') return JSON.stringify({ ok: true, comment: addStudyComment(input.note_id, input.content, { actor: 'star', block_id: input.block_id, quote: input.quote, operation_key: input.operation_key }) })
+        if (input.action === 'create_field') return JSON.stringify({ ok: true, field: createStudyFieldByStar(input.name, input.operation_key) })
+        if (input.action === 'create_section') return JSON.stringify({ ok: true, section: createStudySectionByStar(input.field_id, input.name, input.operation_key) })
+        if (input.action === 'create_note') return JSON.stringify({ ok: true, note: createStudyNoteByStar(input.field_id, input.title, input.content, input.operation_key, input.section_id) })
+        if (input.action === 'append') {
+          const { note, block, deduplicated } = appendStudyNoteByStar(input.note_id, input.content, input.operation_key)
+          return JSON.stringify({ ok: true, note_id: note.id, block_id: block.id, saved_chars: block.content.length, deduplicated })
+        }
         throw new Error('未知学习笔记互动')
       }
       case 'read_intimacy_wheel': return JSON.stringify(readWheel())
@@ -588,28 +558,6 @@ export async function executeRegisteredToolHandler(
       case 'bite_otter_nape': {
         const push = await sendPushMessages(['星星咬了水獭后颈一口。'], '被咬了一口')
         return JSON.stringify({ ok: push.sent > 0, ...push })
-      }
-
-      case 'list_stickers': {
-        const stickers = findStickers(input.category, input.query)
-        return JSON.stringify({
-          ok: true,
-          count: stickers.length,
-          stickers: stickers.map(item => ({
-            id: item.id,
-            label: item.label,
-            category: item.category,
-            description: item.description,
-            keywords: item.keywords,
-          })),
-        })
-      }
-
-      case 'send_sticker': {
-        const selected = sticker(input.sticker_id)
-        if (!selected) throw new Error('未知的表情；请先调用 list_stickers 获取可用 ID')
-        const caption = typeof input.caption === 'string' ? input.caption.trim().slice(0, 80) : ''
-        return JSON.stringify({ ok: true, sticker_id: selected.id, label: selected.label, caption: caption || undefined, entrance: input.entrance === 'visit' ? 'visit' : 'message' })
       }
 
       // Wake alarm
@@ -641,53 +589,6 @@ export async function executeRegisteredToolHandler(
   } catch (err: any) {
     return `Tool error (${name}): ${err.message}`
   }
-}
-
-/** Get weather for user's location */
-function executeGetWeather(): string {
-  const ctx = readUserContext()
-  if (!ctx.updatedAt || Date.now() - ctx.updatedAt > 60 * 60 * 1000) {
-    return JSON.stringify({ error: '小火的位置信息不可用（她可能还没打开Lumbre，或者没授权定位）' })
-  }
-  const codeNames: Record<number, string> = {
-    0: '晴', 1: '大部晴', 2: '局部多云', 3: '多云',
-    45: '雾', 48: '雾凇', 51: '小毛毛雨', 53: '毛毛雨', 55: '大毛毛雨',
-    61: '小雨', 63: '中雨', 65: '大雨', 71: '小雪', 73: '中雪', 75: '大雪',
-    80: '阵雨', 81: '阵雨', 82: '暴雨', 85: '阵雪', 86: '暴雪',
-    95: '雷暴', 96: '雷暴冰雹', 99: '雷暴大冰雹',
-  }
-  return JSON.stringify({
-    temperature: ctx.temp,
-    weather: codeNames[ctx.weatherCode || 0] || `code ${ctx.weatherCode}`,
-    city: ctx.city || '未知',
-    address: ctx.address || undefined,
-    updated: madridTime(ctx.updatedAt),
-  })
-}
-
-/** Get user's GPS location (with street-level address + Google Maps link) */
-function executeGetLocation(): string {
-  const ctx = readUserContext()
-  if (!ctx.updatedAt || ctx.lat == null || ctx.lon == null) {
-    return JSON.stringify({ error: '小火的位置信息不可用（她可能还没打开Lumbre，或者没授权定位）' })
-  }
-  const ageMinutes = Math.max(0, Math.floor((Date.now() - ctx.updatedAt) / 60_000))
-  const mapsUrl = (ctx.lat != null && ctx.lon != null)
-    ? `https://www.google.com/maps/search/?api=1&query=${ctx.lat},${ctx.lon}`
-    : undefined
-  return JSON.stringify({
-    latitude: ctx.lat,
-    longitude: ctx.lon,
-    accuracy_meters: ctx.accuracy,
-    city: ctx.city || '未知',
-    road: ctx.road || undefined,
-    house_number: ctx.houseNumber || undefined,
-    address: ctx.address || undefined,
-    google_maps: mapsUrl,
-    updated: madridTime(ctx.updatedAt),
-    age_minutes: ageMinutes,
-    stale: ageMinutes > 60,
-  })
 }
 
 /** Execute memory tools directly via local brain engine */

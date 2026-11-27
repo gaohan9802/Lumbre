@@ -9,8 +9,6 @@ export const LIFE_TOOL_POLICIES: ToolPolicySpec[] = [
   { name: 'comment_todo', domain: 'todo', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
 
   { name: 'wake_me', domain: 'wake', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'get_weather', domain: 'context', level: 'green', allowedSources: ALL_SAFE_SOURCES },
-  { name: 'get_location', domain: 'context', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'update_period', domain: 'period', level: 'yellow', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_period', domain: 'period', level: 'green', allowedSources: ALL_SAFE_SOURCES },
   { name: 'read_health_summary', domain: 'health', level: 'green', allowedSources: ALL_SAFE_SOURCES },

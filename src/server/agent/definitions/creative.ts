@@ -166,32 +166,8 @@ export const CREATIVE_TOOL_DEFINITIONS = [
     input_schema: { type: 'object', properties: { entry_id: { type: 'string' } }, required: ['entry_id'] },
   },
   {
-    name: 'list_stickers',
-    description: '查看可用的雪豹、水獭和双人互动表情。准备发图但不确定 sticker_id 时先查；可以按角色分类或用中文情绪、动作检索。新增图片会自动出现在这里，不需要猜 ID。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        category: { type: 'string', enum: ['duo', 'otter', 'leopard'], description: '可选；双人、水獭或雪豹' },
-        query: { type: 'string', description: '可选；情绪或动作关键词，例如抱抱、委屈、吃饭' },
-      },
-    },
-  },
-  {
-    name: 'send_sticker',
-    description: '给小火发一张雪豹水獭表情。你是雪豹，小火是水獭；注意图中动作方向。图片和本轮文字算同一条回复，caption 只写很短的一句话，不需要时省略。entrance=message 正常出现在聊天里；entrance=visit 会先在输入框旁短暂出现，再保留为聊天表情。只在自己真的想表达动作或情绪时使用，不要每轮都发；不确定 ID 时先调用 list_stickers。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        sticker_id: { type: 'string', description: 'list_stickers 返回的稳定 ID' },
-        caption: { type: 'string', description: '可选；表情旁的一句短话，最多 80 字' },
-        entrance: { type: 'string', enum: ['message', 'visit'], description: '可选；默认 message' },
-      },
-      required: ['sticker_id'],
-    },
-  },
-  {
     name: 'read_study_notebook',
-    description: '阅读小火的「小书桌」。笔记可能很长：先用 overview/search/outline，再用 blocks 分页阅读；回答问题只用 question 取问题附近的上下文。图片默认只返回说明，确实需要看画面时才用 view_asset。你只能读取，不能修改小火的笔记。',
+    description: '阅读「小书桌」。笔记可能很长：先用 overview/search/outline，再用 blocks 分页阅读；回答问题只用 question 取问题附近的上下文。图片默认只返回说明，确实需要看画面时才用 view_asset。',
     input_schema: {
       type: 'object',
       properties: {
@@ -204,14 +180,16 @@ export const CREATIVE_TOOL_DEFINITIONS = [
   },
   {
     name: 'respond_study_notebook',
-    description: '在「小书桌」中回答小火的问题，或给某篇笔记留评论。answer 前先用 read_study_notebook(mode=question) 读问题附近内容；回答可以用 Markdown、LaTeX 和代码块。每次写入必须给稳定 operation_key，重试时沿用，避免重复。不能修改、移动、归档或删除小火的正文。',
+    description: '在「小书桌」中回答问题、留评论，或新增分区、子页、笔记和笔记末尾的新正文块。answer 前先用 read_study_notebook(mode=question)；新增前先读 overview，避免重复建设。每次写入必须给稳定 operation_key，重试时沿用。只能新增，绝不能改写已有正文、改名、移动、归档或删除任何内容。',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['answer', 'comment'] }, note_id: { type: 'string' }, question_id: { type: 'string' },
-        block_id: { type: 'string' }, quote: { type: 'string' }, content: { type: 'string' }, operation_key: { type: 'string' },
+        action: { type: 'string', enum: ['answer', 'comment', 'create_field', 'create_section', 'create_note', 'append'] },
+        field_id: { type: 'string' }, section_id: { type: 'string' }, note_id: { type: 'string' }, question_id: { type: 'string' },
+        name: { type: 'string', description: 'create_field/create_section 的名称' }, title: { type: 'string', description: 'create_note 的标题' },
+        block_id: { type: 'string' }, quote: { type: 'string' }, content: { type: 'string', description: '回答、评论、新笔记初始正文或追加正文；支持 Markdown、LaTeX 和代码块' }, operation_key: { type: 'string' },
       },
-      required: ['action', 'note_id', 'content', 'operation_key'],
+      required: ['action', 'operation_key'],
     },
   },
 ] satisfies ToolDef[]

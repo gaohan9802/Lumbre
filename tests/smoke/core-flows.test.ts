@@ -130,7 +130,7 @@ test('chat supports non-streaming and streaming response contracts without real 
     assert.equal((await response.json()).content, 'fixture reply')
     assert.equal(upstreamTools.includes('read_diary'), true)
     assert.equal(upstreamSawImage, true)
-    for (const allowed of ['delete_diary', 'remove_todo', 'send_email', 'reply_email']) {
+    for (const allowed of ['delete_diary', 'remove_todo']) {
       assert.equal(upstreamTools.includes(allowed), true)
     }
     assert.equal(upstreamTools.includes('galatea'), false)

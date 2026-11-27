@@ -29,6 +29,5 @@ export function snapshotOfMessage(message: ChatMessage): MessageVersion {
     providerId: message.providerId,
     modelId: message.modelId,
     sharedCard: message.sharedCard,
-    sticker: message.sticker,
   }
 }

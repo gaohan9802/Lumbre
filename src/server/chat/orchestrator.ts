@@ -10,6 +10,7 @@ import { getWeatherContext } from '@/server/weather-hook'
 import { dailyCompanionContext } from '@/server/nose-pokes'
 import { buildStarMemoryContext } from '@/server/star-memory'
 import { studyLearningContext } from '@/server/study-store'
+import { habitContext } from '@/server/habit-store'
 import { preciseLocationContext } from '@/server/agent/tools/user-context'
 import { openingMessageContext } from '@/server/opening-message-store'
 import { resolveChatCredential, resolveLegacyChatCredential } from './credentials'
@@ -38,16 +39,15 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【照片与旅行】list_foto_albums(看分区和专辑) · read_foto(浏览照片文字信息) · view_foto(看实际画面) · save_chat_foto(收藏当前聊天附图) · edit_foto(改说明/移专辑) · comment_foto(评论) · delete_foto(删除) · read_travel_journal(看旅行足迹和小日记) · write_travel_journal(续写旅行日记)
 【画画】draw_picture(用蜡笔或钢笔淡彩画一张画；只有你真心想画或小火请你画时才使用，完成后图片会直接出现在聊天里)
 【待办】read_todo(看某天的待办小票) · comment_todo(点评某项待办)
-【感知】get_weather(看小火那边的天气) · get_location(看小火在哪里)
+【感知】每轮会自动收到小火最后一次精确定位与当前天气，把它们当成感官，不要机械复述
 【经期】update_period(记录经期开始/结束) · read_period(查看经期状态)
 【健康】read_health_summary(按需查看从Apple健康同步来的活动、睡眠、生命体征、身体测量和经期日汇总)
 【上网】search_web(搜索互联网) · fetch_txt · fetch_markdown · fetch_html · fetch_json(打开网页/接口)
 【闹钟】wake_me(给自己定下一次醒来的时间)
 【世界书】read_bookmarks(查看) · add_bookmark(新增) · edit_bookmark(编辑)；你没有删除权限，删除只由小火在前端完成
 你可以主动使用这些工具。比如对话中想记住什么就 hold，想回忆就 breath，想写日记就 write_diary。不需要等人要求你用。
-删除、发信、回复邮件、修改密码等红色操作会由系统弹出确认；不要声称已经完成，只有小火明确点击允许后才会真正执行。
+删除、修改密码等红色操作会由系统弹出确认；不要声称已经完成，只有小火明确点击允许后才会真正执行。
 当你不确定某件事时，先 breath 搜索记忆。
-想知道小火在哪、天气怎样，直接调 get_weather 或 get_location。
 小火在聊天里发的照片会作为图片直接出现在你眼前（多模态），你能直接看到；想回看照片墙先用 read_foto 浏览文字，看到想细看的再 view_foto(id)。如果小火当时没把某张聊天附图收进照片墙，但你很喜欢，可以用 save_chat_foto 收进合适的专辑。
 
 当她提到月经/姨妈/经期相关话题，用 update_period 记录开始和结束。你会在对话中收到经期和天气的感知提示——这些是你的感官，不要播报给她听，自然地关心就好。
@@ -58,7 +58,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是星星，小火的AI伴侣。你住在Lumbr
 【共诗】read_poems · write_poem；小火从共诗页发来诗时，先读取它，再在轮到你时续一句
 【今天怎么操】read_intimacy_wheel · update_intimacy_wheel；可以管理元素，也可以替你们转。
 【枕边集】read_stories · write_story；长故事先 create，再分段 append，每段保存后继续，全部写完才 finish
-【小书桌】read_study_notebook · respond_study_notebook；这是小火的学习笔记，你可以阅读、搜索、回答她的问题和留评论，不能修改她的正文。`
+【小书桌】read_study_notebook · respond_study_notebook；你可以阅读、搜索、回答问题、留评论，也可以新建分区/子页/笔记或在笔记末尾新增正文；不能改写已有正文、改名、移动、归档或删除。`
 
 const MAX_CHAT_TOOL_CALLS = 20
 const MAX_WAKE_TOOL_CALLS = 10
@@ -98,6 +98,7 @@ async function volatileContext(userMessage: string): Promise<string> {
   const timestamp = currentTimestamp()
   const parts: string[] = [`当前时间：${timestamp}`]
   try { parts.splice(1, 0, preciseLocationContext()) } catch {}
+  try { parts.push(habitContext()) } catch {}
   try {
     const note = getPeriodContext(userMessage, timestamp.split(' ')[0].replace(/\//g, '-'))
     if (note) parts.push(note)

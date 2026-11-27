@@ -7,12 +7,11 @@ import { apiRequest } from '@/lib/api'
 import { withoutOpus55ThinkingInstructions } from '@/lib/cc-system-prompt'
 
 export type ChatSettingsPanel = 'menu' | 'star' | 'settings'
-type RoomUnreadKey = 'todo' | 'notes' | 'diary' | 'photos' | 'favorites' | 'media' | 'poems' | 'stories' | 'future' | 'dictionary' | 'nursery' | 'study'
+type RoomUnreadKey = 'notes' | 'diary' | 'photos' | 'favorites' | 'media' | 'poems' | 'stories' | 'future' | 'dictionary' | 'nursery' | 'study'
 interface Props {
   open: boolean
   onClose: () => void
   initialPanel?: ChatSettingsPanel
-  onTodo?: () => void
   onNotes?: () => void
   onDiary?: () => void
   onPhotos?: () => void
@@ -129,7 +128,7 @@ export function ChatSettings(props: Props) {
         {panel === 'menu' && <>
           <section className="chat-room-card px-3 pb-2 pt-5">
             <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">DAILY</h3>
-            <div className="grid grid-cols-2">{room('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}{room('Todo', () => openRoom('todo', props.onTodo), roomUnread.todo)}{room('告状簿', () => openRoom('notes', props.onNotes), roomUnread.notes)}{room('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}{room('小书桌', () => openRoom('study', props.onStudy), roomUnread.study)}</div>
+            <div className="grid grid-cols-2">{room('日记', () => openRoom('diary', props.onDiary), roomUnread.diary)}{room('告状簿', () => openRoom('notes', props.onNotes), roomUnread.notes)}{room('照片', () => openRoom('photos', props.onPhotos), roomUnread.photos)}{room('小书桌', () => openRoom('study', props.onStudy), roomUnread.study)}</div>
           </section>
           <section className="chat-room-card px-3 pb-2 pt-5">
             <h3 className="chat-session-title mb-2 px-2 text-[11px] font-bold tracking-[.14em] opacity-65">KEEPSAKES</h3>

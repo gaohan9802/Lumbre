@@ -132,22 +132,6 @@ export const LIFE_TOOL_DEFINITIONS = [
     }
   },
   {
-    "name": "get_weather",
-    "description": "获取小火当前位置的天气和城市信息。数据来自小火手机的GPS定位，包含温度、天气状况、城市名。",
-    "input_schema": {
-      "type": "object",
-      "properties": {}
-    }
-  },
-  {
-    "name": "get_location",
-    "description": "获取小火当前的GPS位置：经纬度、城市、所在街道和门牌号、完整地址，以及一个可点击的谷歌地图链接。数据来自小火手机的GPS+反向地理编码。",
-    "input_schema": {
-      "type": "object",
-      "properties": {}
-    }
-  },
-  {
     "name": "update_period",
     "description": "更新经期记录。action: \"start\"(来了), \"end\"(结束了), \"config\"(调整周期参数)。来了/结束了需要传date(ISO日期)。config可传cycle_days和period_length。",
     "input_schema": {

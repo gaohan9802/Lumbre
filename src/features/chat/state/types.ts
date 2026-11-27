@@ -3,7 +3,6 @@ import type { ChatRoute } from '@/lib/chat-route'
 import type { CcEffort } from '@/lib/cc-model'
 import type { SharedCard } from '@/lib/share'
 import type { MessageRequestAudit } from '@/lib/chat-receipt'
-import type { StickerRef } from '@/lib/stickers'
 import type { ChatWindowRole } from '@/lib/chat-window-role'
 
 export interface ContentBlock {
@@ -50,7 +49,6 @@ export interface MessageVersion {
   tool_calls?: { name: string; input: Record<string, any>; result: string }[]
   content_blocks?: ContentBlock[]
   sharedCard?: SharedCard
-  sticker?: StickerRef
   providerId?: string
   modelId?: string
 }
